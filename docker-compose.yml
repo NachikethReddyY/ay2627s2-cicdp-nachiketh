@@ -11,6 +11,12 @@ services:
       - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pgdata:/var/lib/postgresql/data
 
+  engine:
+    build:
+      context: services/engine
+    # Reads LLM_MODEL, LLM_API_BASE, LLM_API_KEY and ENGINE_TOKEN. Not published to the host.
+    env_file: services/engine/.env
+
   api:
     build:
       context: .
@@ -22,6 +28,9 @@ services:
       DATABASE_URL: postgres://learnquest:learnquest@postgres:5432/learnquest
       BETTER_AUTH_SECRET: local-dev-secret-at-least-32-characters-long
       PUBLIC_ORIGIN: http://localhost:5173
+      ENGINE_URL: http://engine:8000
+      # Must match services/engine/.env. Compose refuses to start without it.
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN to the value in services/engine/.env}
     ports:
       - "127.0.0.1:3000:3000"
 

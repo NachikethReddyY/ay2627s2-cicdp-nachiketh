@@ -39,3 +39,25 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm exec turbo run lint test build
+
+  engine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+
+      - run: uv sync --frozen
+
+      - run: uv run ruff check learnquest_engine tests scripts
+
+      - run: uv run mypy --strict learnquest_engine
+
+      - run: uv run pytest
+
+      - name: Advisory check (pinned LiteLLM version is not compromised)
+        working-directory: .
+        run: python3 spikes/litellm-advisory/check.py 1.106.2
