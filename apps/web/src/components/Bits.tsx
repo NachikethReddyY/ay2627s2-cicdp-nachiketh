@@ -27,5 +27,5 @@ export function Spinner() {
 }
 
 export function AiBadge() {
-  return <span className="pill bg-lilac px-2 py-0.5 text-xs">AI</span>;
+  return <span className="pill bg-mint px-2 py-0.5 text-xs">AI</span>;
 }

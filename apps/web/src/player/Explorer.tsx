@@ -26,7 +26,7 @@ function List({ nodes, viewed, editing, onPick }: { nodes: Node[] } & Omit<Props
           {n.path === undefined ? (
             <>
               <span className="flex min-h-6 items-center gap-1.5 px-1 text-sm font-extrabold">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4 flex-none fill-lilac stroke-ink stroke-2 [stroke-linejoin:round]">
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4 flex-none fill-green stroke-ink stroke-2 [stroke-linejoin:round]">
                   <path d="M3 6h7l2 2h9v11H3z" />
                 </svg>
                 {n.name}

@@ -155,6 +155,15 @@ function validate(raw: unknown): GeneratedStep[] {
 
 function validatePart(raw: unknown): PartSecret {
   const part = Part.parse(raw);
+  // shortcut: catches a cut-off body by its unclosed code fence or inline backtick, not every truncation; a retry covers the rest.
+  if (part.kind === "learn") {
+    const fences = part.body.match(/```/g)?.length ?? 0;
+    const inline = (part.body.replace(/```[\s\S]*?```/g, "").match(/`/g)?.length ?? 0);
+    if (fences % 2 || inline % 2) throw new Error("learn part looks truncated");
+    // A model that loops repeats a few words over and over; real prose has many distinct words.
+    const words = part.body.split(/\s+/);
+    if (words.length > 40 && new Set(words).size / words.length < 0.3) throw new Error("learn part is repetitive");
+  }
   if (part.kind === "watch") {
     const tl = buildTimeline([{ beforeFiles: part.beforeFiles, hunks: part.hunks }]); // throws when a hunk does not match its file
     if (JSON.stringify(seek(tl, tl.duration).files) === JSON.stringify(part.beforeFiles)) throw new Error("watch part changes nothing");

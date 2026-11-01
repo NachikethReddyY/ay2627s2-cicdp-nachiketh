@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMachine } from "@xstate/react";
 import { buildTimeline } from "@learnquest/player-core";
 import { TRPCClientError } from "@trpc/client";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { trpc, isNotFound, type RouterOutputs } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import Editor from "@monaco-editor/react";
@@ -9,6 +12,7 @@ import "./monaco";
 import { Player } from "./PlayerPage";
 import { runJs } from "./runJs";
 import { FOCUS } from "./ui";
+import { Bar } from "../components/Bits";
 import { PredictPanel, RevealPanel } from "./LivePanels";
 import { canHint, canSkip, canSubmit, stepMachine, type Reveal } from "./stepMachine";
 
@@ -16,7 +20,7 @@ type Lesson = RouterOutputs["lessons"]["get"];
 
 function Notice({ pip = "pip-think", children }: { pip?: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center bg-lilac/30 p-6">
+    <div className="grid min-h-dvh place-items-center bg-mint/40 p-6">
       <div className="chunk flex max-w-md items-center gap-4 bg-white p-5">
         <img src={`/img/${pip}.png`} alt="" className="float w-20 shrink-0" />
         <div role="status" aria-live="polite" className="font-bold">{children}</div>
@@ -42,13 +46,42 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
         <a href="/" className="underline">Home</a>
       </Notice>
     );
-  if (!data) return <Notice>{slow ? "Pip is writing your next lesson…" : "Loading lesson…"}</Notice>;
-  const next = course ? <CourseNext id={data.id} course={course} /> : <NextLink href="/">Back home</NextLink>;
+  if (!data)
+    return (
+      <Notice>
+        <p>{slow ? "Pip is writing your next lesson…" : "Loading lesson…"}</p>
+        <div className="mt-3 h-3 w-64 max-w-full overflow-hidden rounded-full border-[3px] border-ink bg-white" aria-hidden="true">
+          <div className="sketch h-full w-1/3 rounded-full bg-blue" />
+        </div>
+      </Notice>
+    );
+  const next = (
+    <div className="flex justify-center">{course ? <CourseNext id={data.id} course={course} /> : <NextLink href="/">Back home</NextLink>}</div>
+  );
   const { part } = data;
-  if (data.kind === "learn" && part?.kind === "learn") return <LearnView title={data.title} body={part.body} next={next} />;
-  if (data.kind === "watch" && part?.kind === "watch") return <WatchView title={data.title} part={part} next={next} />;
-  if (data.kind === "practice" && part?.kind === "practice") return <PracticeView title={data.title} part={part} next={next} />;
-  return <Steps lesson={data} />;
+  const progress = course ? <LessonProgress id={data.id} course={course} /> : null;
+  if (data.kind === "learn" && part?.kind === "learn")
+    return <>{progress}<LearnView title={data.title} body={part.body} next={next} /></>;
+  if (data.kind === "watch" && part?.kind === "watch")
+    return <>{progress}<WatchView title={data.title} part={part} next={next} /></>;
+  if (data.kind === "practice" && part?.kind === "practice")
+    return <>{progress}<PracticeView title={data.title} part={part} next={next} /></>;
+  return <>{progress}<Steps lesson={data} /></>;
+}
+
+// Where this part sits in its course, so the learner knows how many are left.
+function LessonProgress({ id, course }: { id: string; course: string }) {
+  const { data } = useApi(`course:${course}`, () => trpc.courses.get.query({ slug: course }));
+  const i = data?.lessons.findIndex((l) => l.slug === id) ?? -1;
+  if (!data || i < 0) return null;
+  const total = data.lessons.length;
+  return (
+    <div className="sticky top-0 z-30 bg-paper/95 px-4 pt-3 pb-2 backdrop-blur">
+      <div className="mx-auto max-w-3xl">
+        <Bar value={i + 1} total={total} label="Course progress" />
+      </div>
+    </div>
+  );
 }
 
 type Part = NonNullable<Lesson["part"]>;
@@ -64,14 +97,23 @@ function CourseNext({ id, course }: { id: string; course: string }) {
 }
 
 function LearnView({ title, body, next }: { title: string; body: string; next: ReactNode }) {
+  // Lessons written before the prompt fix hold HTML line breaks.
+  const markdown = body.replace(/<br\s*\/?>/gi, "\n");
   return (
-    <main className="mx-auto min-h-dvh max-w-3xl px-4 py-6 sm:px-6">
-      <h1 className="font-display text-3xl font-black">{title}</h1>
-      {/* odd chunks are fenced code */}
-      {body.split(/```\w*\n([\s\S]*?)```/).map((t, i) =>
-        i % 2 ? <pre key={i} tabIndex={0} className={`chunk mt-4 overflow-x-auto bg-white p-4 text-sm ${FOCUS}`}><code>{t}</code></pre> : <p key={i} className="mt-4 whitespace-pre-wrap font-semibold">{t.trim()}</p>,
-      )}
-      {next}
+    <main className="mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-3xl flex-col px-4 py-6 sm:px-6">
+      <div className="my-auto">
+        <h1 className="font-display text-3xl font-black">{title}</h1>
+        <div className="learn-md mt-4 font-semibold">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight]}
+            components={{ pre: ({ node, ...props }) => <pre tabIndex={0} className={`chunk overflow-x-auto bg-white p-4 text-sm ${FOCUS}`} {...props} /> }}
+          >
+            {markdown}
+          </ReactMarkdown>
+        </div>
+      </div>
+      <div className="mt-auto pt-8">{next}</div>
     </main>
   );
 }

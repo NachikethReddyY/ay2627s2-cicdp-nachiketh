@@ -12,9 +12,14 @@
     "@trpc/client": "^11.19.0",
     "@xstate/react": "^6.1.0",
     "better-auth": "^1.7.14",
+    "framer-motion": "^14.9.0",
+    "lucide-react": "^1.65.0",
     "monaco-editor": "^0.57.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "xstate": "^5.33.3"
   },
   "devDependencies": {

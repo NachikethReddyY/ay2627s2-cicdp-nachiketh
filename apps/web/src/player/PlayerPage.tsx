@@ -237,7 +237,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
 
       <main
         ref={deskRef}
-        className="relative flex flex-1 flex-col gap-4 bg-lilac/30 p-3 lg:block lg:min-h-0 lg:p-0"
+        className="relative flex flex-1 flex-col gap-4 bg-mint/40 p-3 lg:block lg:min-h-0 lg:p-0"
       >
         {task && (
           <Window {...winProps("instructions")} label="Instructions" title="Instructions" tone="bg-mint">

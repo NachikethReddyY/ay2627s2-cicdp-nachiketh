@@ -176,6 +176,25 @@ test("invalid watch hunks are rejected after one retry, and a good retry succeed
   assert.equal(lessonCalls, 2);
 });
 
+test("a truncated learn body is regenerated", async () => {
+  const { t, lessons: ls } = await setup();
+  const first = ls[0]!.slug;
+  lessonOut = () => (lessonCalls === 1 ? { kind: "learn", body: "Use `let` like `" } : parts.learn);
+  const res = out(await t.q("lessons.get", { id: first }));
+  assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
+  assert.equal(lessonCalls, 2);
+});
+
+test("a looping learn body is regenerated", async () => {
+  const { t, lessons: ls } = await setup();
+  const first = ls[0]!.slug;
+  const looping = { kind: "learn", body: "Your First Python Program# ".repeat(200) };
+  lessonOut = () => (lessonCalls === 1 ? looping : parts.learn);
+  const res = out(await t.q("lessons.get", { id: first }));
+  assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
+  assert.equal(lessonCalls, 2);
+});
+
 test("private AI lesson is hidden from others until the path is published", async () => {
   const { t, slug, lessons: ls } = await setup();
   const last = ls[2]!.slug;

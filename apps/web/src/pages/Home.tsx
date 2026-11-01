@@ -33,7 +33,7 @@ function LearnAnything() {
     );
   };
   return (
-    <form onSubmit={submit} className="chunk mt-2 flex flex-col gap-3 bg-lilac p-4 sm:flex-row sm:items-center sm:p-5">
+    <form onSubmit={submit} className="chunk mt-2 flex flex-col gap-3 bg-mint p-4 sm:flex-row sm:items-center sm:p-5">
       <img src={busy ? "/img/pip-think.png" : "/img/pip-wave.png"} alt="" className={`hidden w-20 shrink-0 sm:block ${busy ? "float" : ""}`} />
       <div className="min-w-0 flex-1 space-y-3">
         <label htmlFor="learn" className="block font-display text-2xl font-black">Learn anything</label>
@@ -51,7 +51,16 @@ function LearnAnything() {
           ))}
         </div>
         <div aria-live="polite" className="min-h-6 text-sm font-extrabold">
-          {busy ? "Pip is sketching your path…" : err && <span role="alert">{err}</span>}
+          {busy ? (
+            <div className="space-y-2">
+              <p>Pip is sketching your path… this can take a minute.</p>
+              <div className="h-3 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white">
+                <div className="sketch h-full w-1/3 rounded-full bg-blue" />
+              </div>
+            </div>
+          ) : (
+            err && <span role="alert">{err}</span>
+          )}
         </div>
       </div>
     </form>
