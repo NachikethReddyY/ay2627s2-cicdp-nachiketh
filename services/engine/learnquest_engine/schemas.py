@@ -156,7 +156,7 @@ class _LessonRef(BaseModel):
 T4000 = Annotated[str, _c(4000)]
 
 
-# One part per lesson kind; each is a flat model, since strict json_schema needs an object at the root.
+# One flat model per part kind: strict json_schema needs an object at the root.
 class LearnPart(BaseModel):
     kind: Literal["learn"]
     body: T4000
@@ -181,7 +181,11 @@ class PracticePart(BaseModel):
     expectedOutput: Annotated[str, StringConstraints(max_length=1000)]
 
 
-PARTS: dict[str, type[BaseModel]] = {"learn": LearnPart, "watch": WatchPart, "practice": PracticePart}
+PARTS: dict[str, type[BaseModel]] = {
+    "learn": LearnPart,
+    "watch": WatchPart,
+    "practice": PracticePart,
+}
 
 
 class LessonContext(BaseModel):

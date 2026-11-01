@@ -4,7 +4,14 @@ from typing import Any
 import pytest
 
 from learnquest_engine import pipeline
-from learnquest_engine.schemas import LearnPart, Lesson, LessonContext, Outline, PracticePart, WatchPart
+from learnquest_engine.schemas import (
+    LearnPart,
+    Lesson,
+    LessonContext,
+    Outline,
+    PracticePart,
+    WatchPart,
+)
 
 CTX = LessonContext.model_validate(
     {
