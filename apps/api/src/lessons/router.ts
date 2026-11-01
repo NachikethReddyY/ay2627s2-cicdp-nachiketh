@@ -4,7 +4,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
-import { ensureLesson } from "../ai/service.ts";
+import { ensureLesson, prefetchNext } from "../ai/service.ts";
 
 const Lesson = z.object({
   id: z.string(),
@@ -61,6 +61,7 @@ export const lessonsRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
       }
       const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson.currentVersionId));
+      if (lesson.sourceKind === "ai") prefetchNext(lesson, ctx.learnerId);
       const rows = await db
         .select({ id: steps.id, idx: steps.idx, pub: steps.public, hintCount: sql<number>`jsonb_array_length(${steps.secret}->'hints')`, state: stepProgress.state })
         .from(steps)

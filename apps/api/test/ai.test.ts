@@ -5,47 +5,53 @@ import { eq } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { learners, lessons, steps, user } from "../src/db/schema.ts";
+import { lessons, steps } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
+import { idle } from "../src/ai/service.ts";
 
 const app = buildApp();
 after(() => app.close());
-const realGenerator = { ...generator }; // the tests below replace these methods with stubs
 
-const kinds = ["learn", "watch", "practice"] as const;
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
-    lessons: [1, 2, 3].map((n) => ({ title: `Lesson ${c}.${n}`, level: n, concepts: ["ownership"], kind: kinds[n - 1]! })),
+    lessons: [1, 2, 3].map((n) => ({ title: `Lesson ${c}.${n}`, level: n, concepts: ["ownership"] })),
   })),
 };
-const watchInput = lesson1.steps[0]!.input;
-const parts = {
-  learn: { kind: "learn", body: "Variables hold values." },
-  watch: { kind: "watch", beforeFiles: watchInput.beforeFiles, hunks: watchInput.hunks },
-  practice: { kind: "practice", instructions: "Write sum(a, b).", starterCode: "function sum(a, b) {}", expectedOutput: "3" },
+const goodLesson = {
+  steps: lesson1.steps.map((s) => ({
+    title: s.title,
+    prompt: s.prompt,
+    kind: s.kind,
+    options: s.options,
+    answer: s.answer,
+    accepted: s.accepted,
+    beforeFiles: s.input.beforeFiles,
+    hunks: s.input.hunks,
+    hints: s.hints,
+    explanations: s.explanations,
+    concepts: ["reduce"],
+  })),
 };
-const badWatch = {
-  ...parts.watch,
-  hunks: parts.watch.hunks.map((h) => ({ ...h, lines: [" not in the file", "+x"] })),
+const badLesson = {
+  steps: goodLesson.steps.map((s) => ({ ...s, hunks: [{ ...s.hunks[0]!, lines: [" not in the file", "+x"] }] })),
 };
 
 let lessonCalls = 0;
-let lessonOut: (kind: string) => unknown;
+let lessonOut: () => unknown;
 beforeEach(() => {
-  env.ENGINE_URL = "http://engine.test";
-  env.ENGINE_TOKEN = "t".repeat(32);
+  env.ANTHROPIC_API_KEY = "test-key";
   lessonCalls = 0;
-  lessonOut = (kind) => parts[kind as keyof typeof parts];
+  lessonOut = () => goodLesson;
   generator.outline = async () => outline;
-  generator.lesson = async (ctx) => {
+  generator.lesson = async () => {
     lessonCalls++;
     await new Promise((r) => setTimeout(r, 30));
-    return lessonOut(ctx.lesson.kind);
+    return lessonOut();
   };
 });
 
@@ -75,9 +81,9 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
 
 test("missing key, non-coding topic and bad input", async () => {
   const t = trpc(app, await signUp(app));
-  env.ENGINE_URL = undefined;
+  env.ANTHROPIC_API_KEY = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");
-  env.ENGINE_URL = "http://engine.test";
+  env.ANTHROPIC_API_KEY = "k";
   generator.outline = async () => ({ notCoding: true });
   const res = await t.m("paths.generate", { prompt: "baking sourdough" });
   assert.equal(code(res), "BAD_REQUEST");
@@ -87,38 +93,10 @@ test("missing key, non-coding topic and bad input", async () => {
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
 });
 
-test("the engine client sends the token and maps an engine error to INTERNAL_SERVER_ERROR", async () => {
-  const t = trpc(app, await signUp(app));
-  const realFetch = globalThis.fetch;
-  const calls: { url: string; token: string | null }[] = [];
-  globalThis.fetch = async (input, init) => {
-    calls.push({ url: String(input), token: new Headers(init?.headers).get("X-Engine-Token") });
-    return new Response(JSON.stringify({ detail: "invalid" }), { status: 422 });
-  };
-  try {
-    generator.outline = realGenerator.outline;
-    assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
-  } finally {
-    globalThis.fetch = realFetch;
-  }
-  assert.deepEqual(calls, [{ url: "http://engine.test/v1/pipeline/outline", token: env.ENGINE_TOKEN }]);
-});
-
 test("at most 5 generated paths per rolling day", async () => {
   const t = trpc(app, await signUp(app));
   for (let i = 0; i < 5; i++) assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
-});
-
-test("the plan tier sets the daily AI path limit", async () => {
-  const email = "tier@example.com";
-  const t = trpc(app, await signUp(app, email));
-  for (let i = 0; i < 5; i++) assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
-  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
-
-  const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
-  await db.update(learners).set({ tier: "pro" }).where(eq(learners.userId, u!.id));
-  assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
 });
 
 test("rejected topics use up the daily limit too", async () => {
@@ -135,73 +113,65 @@ test("a parallel burst cannot exceed the daily limit", async () => {
   assert.equal(res.filter((r) => r.statusCode === 200).length, 5);
 });
 
-test("two concurrent plays write the part once", async () => {
+test("two concurrent plays write the steps once", async () => {
   const { t, lessons: ls } = await setup();
-  const last = ls[2]!.slug;
+  const last = ls[2]!.slug; // no next lesson, so no background generation
   const [a, b] = await Promise.all([t.q("lessons.get", { id: last }), t.q("lessons.get", { id: last })]);
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
-  assert.equal(out(a).kind, "practice");
-  assert.deepEqual(out(a).part, parts.practice);
-  assert.deepEqual(out(a).steps, []);
+  assert.equal(out(a).steps.length, 3);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
   assert.equal(row!.status, "published");
-  assert.equal((await db.select().from(steps)).length, 3); // only seeded lesson-1
+  assert.equal((await db.select().from(steps)).length, 3 + 3); // + seeded lesson-1
+
+  // Steps are readable by the owner and wrong answers record the step's concepts.
+  const stepId = out(a).steps[0].id;
+  assert.equal(out(await t.q("steps.get", { id: stepId })).kind, "mcq");
+  const wrong = await t.m("steps.attempt", { id: stepId, answer: { kind: "mcq", choice: 0 } });
+  assert.deepEqual([out(wrong).correct, out(wrong).missedConcepts], [false, ["reduce"]]);
+  await t.m("steps.skip", { id: stepId });
+  assert.equal(out(await t.q("steps.reveal", { id: stepId })).source, null);
 });
 
-test("playing a part writes only that part, not the next one", async () => {
+test("playing a lesson writes the next one in the background", async () => {
   const { t, lessons: ls } = await setup();
   assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
-  assert.equal(lessonCalls, 1);
+  await idle();
+  assert.equal(lessonCalls, 2);
   const [next] = await db.select().from(lessons).where(eq(lessons.slug, ls[1]!.slug));
-  assert.equal(next!.currentVersionId, null);
-  assert.equal(next!.status, "draft");
+  assert.equal(next!.status, "published");
+  assert.ok(next!.currentVersionId);
+  const [third] = await db.select().from(lessons).where(eq(lessons.slug, ls[2]!.slug));
+  assert.equal(third!.currentVersionId, null);
 });
 
-test("invalid watch hunks are rejected after one retry, and a good retry succeeds", async () => {
+test("invalid hunks are rejected after one retry, and a good retry succeeds", async () => {
   const { t, lessons: ls } = await setup();
-  const watch = ls[1]!.slug;
-  lessonOut = () => badWatch;
-  const res = await t.q("lessons.get", { id: watch });
+  const last = ls[2]!.slug;
+  lessonOut = () => badLesson;
+  const res = await t.q("lessons.get", { id: last });
   assert.equal(code(res), "INTERNAL_SERVER_ERROR");
   assert.equal(lessonCalls, 2);
-  const [row] = await db.select().from(lessons).where(eq(lessons.slug, watch));
+  assert.equal((await db.select().from(steps)).length, 3); // only seeded lesson-1
+  const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
   assert.deepEqual([row!.status, row!.currentVersionId], ["draft", null]);
 
   lessonCalls = 0;
-  lessonOut = () => (lessonCalls === 1 ? badWatch : parts.watch);
-  const ok = out(await t.q("lessons.get", { id: watch }));
-  assert.deepEqual([ok.kind, ok.part], ["watch", parts.watch]);
-  assert.equal(lessonCalls, 2);
-});
-
-test("a truncated learn body is regenerated", async () => {
-  const { t, lessons: ls } = await setup();
-  const first = ls[0]!.slug;
-  lessonOut = () => (lessonCalls === 1 ? { kind: "learn", body: "Use `let` like `" } : parts.learn);
-  const res = out(await t.q("lessons.get", { id: first }));
-  assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
-  assert.equal(lessonCalls, 2);
-});
-
-test("a looping learn body is regenerated", async () => {
-  const { t, lessons: ls } = await setup();
-  const first = ls[0]!.slug;
-  const looping = { kind: "learn", body: "Your First Python Program# ".repeat(200) };
-  lessonOut = () => (lessonCalls === 1 ? looping : parts.learn);
-  const res = out(await t.q("lessons.get", { id: first }));
-  assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
+  lessonOut = () => (lessonCalls === 1 ? badLesson : goodLesson);
+  assert.equal((await t.q("lessons.get", { id: last })).statusCode, 200);
   assert.equal(lessonCalls, 2);
 });
 
 test("private AI lesson is hidden from others until the path is published", async () => {
   const { t, slug, lessons: ls } = await setup();
   const last = ls[2]!.slug;
-  assert.equal((await t.q("lessons.get", { id: last })).statusCode, 200);
+  const stepId = out(await t.q("lessons.get", { id: last })).steps[0].id;
   const other = trpc(app, await signUp(app, "b@example.com"));
   assert.equal(code(await other.q("lessons.get", { id: last })), "NOT_FOUND");
+  assert.equal(code(await other.q("steps.get", { id: stepId })), "NOT_FOUND");
 
   assert.equal((await t.m("paths.publish", { slug })).statusCode, 200);
   assert.equal((await other.q("lessons.get", { id: last })).statusCode, 200);
+  assert.equal((await other.q("steps.get", { id: stepId })).statusCode, 200);
 });
