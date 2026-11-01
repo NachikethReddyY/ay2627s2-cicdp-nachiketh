@@ -1,0 +1,84 @@
+<!doctype html><meta charset="utf-8"><title>LearnQuest report diagrams</title>
+<style>body{font-family:system-ui;max-width:1100px;margin:2rem auto;padding:0 1rem}figure{margin:0 0 3rem;padding:1rem;border:1px solid #ddd}figcaption{font-weight:600;margin-bottom:1rem}</style>
+<figure><figcaption>Figure 1: System architecture</figcaption><pre class="mermaid">
+flowchart LR
+  subgraph Client["Browser: apps/web"]
+    UI["React 19 + TanStack Router"]
+    PL["Lesson player: Monaco + XState"]
+    PC["player-core: timeline replay"]
+    UI --> PL --> PC
+  end
+  RW["Vercel rewrite: /api/*"]
+  subgraph Server["Render: apps/api"]
+    F["Fastify 5: helmet, Origin check, rate limit"]
+    T["tRPC routers: lessons, attempts, progress, paths"]
+    G["Grading + step state machine"]
+    AI["AI generator + Zod validation"]
+    F --> T --> G
+    T --> AI
+  end
+  DB[("Neon PostgreSQL + Better Auth")]
+  LLM["Anthropic API"]
+  UI -- "HTTPS, same-site cookie" --> RW --> F
+  T -- "Drizzle ORM" --> DB
+  AI --> LLM
+</pre></figure>
+<figure><figcaption>Figure 2: Sequence of a prediction attempt</figcaption><pre class="mermaid">
+sequenceDiagram
+  actor L as Learner
+  participant P as Player (XState)
+  participant A as API (tRPC)
+  participant S as Auth middleware
+  participant G as Grader
+  participant M as Step state machine
+  participant D as PostgreSQL
+  L->>P: Submit prediction
+  P->>A: attempts.submit(stepId, answer)
+  A->>S: Resolve learner from session cookie
+  S-->>A: learnerId or UNAUTHORIZED
+  A->>D: Load step secret + step_progress
+  A->>G: Grade answer (MCQ / cloze)
+  G-->>A: correct?
+  A->>M: next(progress, attempt)
+  M-->>A: new progress or conflict (409)
+  A->>D: BEGIN: insert attempt, update step_progress: COMMIT
+  A-->>P: Outcome + only what the new state permits
+  P-->>L: Hint, retry or reveal
+</pre></figure>
+<figure><figcaption>Figure 3: Entity-relationship diagram</figcaption><pre class="mermaid">
+erDiagram
+  USER ||--o{ SESSION : has
+  USER ||--o{ ACCOUNT : has
+  USER ||--o| LEARNERS : "is"
+  USER ||--o{ AI_GENERATIONS : requests
+  LEARNERS ||--o{ ENROLLMENTS : enrols
+  PATHS ||--o{ ENROLLMENTS : has
+  PATHS ||--o{ PATH_COURSES : contains
+  WORLDS ||--o{ PATH_COURSES : "course in"
+  WORLDS ||--o{ CONCEPTS : defines
+  WORLDS ||--o{ LESSONS : holds
+  LESSONS ||--o{ LESSON_VERSIONS : "versioned as"
+  LESSON_VERSIONS ||--o{ STEPS : contains
+  LEARNERS ||--o{ STEP_PROGRESS : tracks
+  STEPS ||--o{ STEP_PROGRESS : "progress on"
+  LEARNERS ||--o{ ATTEMPTS : makes
+  STEPS ||--o{ ATTEMPTS : "attempted on"
+  LEARNERS ||--o{ HINT_EVENTS : takes
+  STEPS ||--o{ HINT_EVENTS : "hint for"
+</pre></figure>
+<figure><figcaption>Figure 4: Step lifecycle state diagram</figcaption><pre class="mermaid">
+stateDiagram-v2
+  [*] --> predicting
+  predicting --> revealed: correct attempt
+  predicting --> hinting: wrong attempt
+  hinting --> hinting: take hint (unlocks next attempt)
+  hinting --> hinting: wrong, hints left (needs new hint, else 409)
+  hinting --> hinting: wrong, last hint used (one retry allowed)
+  hinting --> revealed: correct attempt
+  hinting --> revealed: wrong retry (auto-reveal)
+  predicting --> skipped: skip
+  hinting --> skipped: skip
+  revealed --> [*]
+  skipped --> [*]
+</pre></figure>
+<script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs";mermaid.initialize({startOnLoad:true,theme:"neutral"});</script>
