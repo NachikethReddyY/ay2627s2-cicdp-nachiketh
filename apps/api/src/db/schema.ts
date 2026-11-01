@@ -79,6 +79,10 @@ export const learners = pgTable("learners", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Plan tier; sets the daily AI path limit (see DAILY_AI_PATHS in ai/service.ts).
+  tier: text("tier", { enum: ["free", "pro", "max"] })
+    .notNull()
+    .default("free"),
   // IANA name; streak days are counted in this zone.
   timezone: text("timezone").notNull().default("UTC"),
   dailyGoalXp: integer("daily_goal_xp").notNull().default(50),

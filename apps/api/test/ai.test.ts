@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { lessons, steps } from "../src/db/schema.ts";
+import { learners, lessons, steps, user } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 
@@ -108,6 +108,17 @@ test("at most 5 generated paths per rolling day", async () => {
   const t = trpc(app, await signUp(app));
   for (let i = 0; i < 5; i++) assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
+});
+
+test("the plan tier sets the daily AI path limit", async () => {
+  const email = "tier@example.com";
+  const t = trpc(app, await signUp(app, email));
+  for (let i = 0; i < 5; i++) assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
+
+  const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
+  await db.update(learners).set({ tier: "pro" }).where(eq(learners.userId, u!.id));
+  assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
 });
 
 test("rejected topics use up the daily limit too", async () => {

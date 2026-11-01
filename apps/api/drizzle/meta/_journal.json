@@ -36,6 +36,13 @@
       "when": 1793497162566,
       "tag": "0004_lesson_kind_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793499652509,
+      "tag": "0005_learner_tier",
+      "breakpoints": true
     }
   ]
 }

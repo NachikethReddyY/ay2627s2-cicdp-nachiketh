@@ -75,9 +75,13 @@ const slugify = (s: string, max: number) =>
 
 // ---- paths.generate ----
 
+// Daily AI path limit per plan tier, counted over a rolling 24 hours.
+export const DAILY_AI_PATHS = { free: 5, pro: 20, max: 100 } as const;
+
 export async function generatePath(learnerId: string, topic: string) {
   if (!env.ENGINE_URL) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
-  const [me] = await db.select({ userId: learners.userId }).from(learners).where(eq(learners.id, learnerId));
+  const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
+  const limit = DAILY_AI_PATHS[me!.tier];
   // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
   const allowed = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me!.userId}))`);
@@ -85,11 +89,11 @@ export async function generatePath(learnerId: string, topic: string) {
       rows: [{ n }],
     } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me!.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= 5) return false;
+    if (n >= limit) return false;
     await tx.insert(aiGenerations).values({ userId: me!.userId });
     return true;
   });
-  if (!allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "You can build 5 AI paths per day" });
+  if (!allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You can build ${limit} AI paths per day on your plan` });
 
   let outline;
   try {
