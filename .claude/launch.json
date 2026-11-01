@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@learnquest/web",
+        "dev",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "api-local",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DATABASE_URL=postgres://learnquest:learnquest@localhost:5432/learnquest",
+        "DATABASE_URL_UNPOOLED=postgres://learnquest:learnquest@localhost:5432/learnquest",
+        "pnpm",
+        "--filter",
+        "@learnquest/api",
+        "dev"
+      ],
+      "port": 3000
+    }
+  ]
+}
