@@ -60,7 +60,7 @@ const slugify = (s: string, max: number) =>
 // ---- paths.generate ----
 
 export async function generatePath(learnerId: string, topic: string) {
-  if (!env.ANTHROPIC_API_KEY) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
+  if (!env.ENGINE_URL) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId }).from(learners).where(eq(learners.id, learnerId));
   // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
   const allowed = await withTx(async (tx) => {

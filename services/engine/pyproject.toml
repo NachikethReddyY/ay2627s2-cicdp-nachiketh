@@ -1,0 +1,41 @@
+[project]
+name = "learnquest-engine"
+version = "0.1.0"
+description = "LearnQuest inference engine: LLM pipelines (outline, lesson) behind LiteLLM"
+requires-python = ">=3.12"
+dependencies = [
+    # Exact pin. See spikes/litellm-advisory/README.md before any bump.
+    "litellm==1.106.2",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["learnquest_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true

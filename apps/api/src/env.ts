@@ -12,10 +12,11 @@ const schema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     // IP or comma-separated IPs/CIDRs of the reverse proxy in front of the API. Unset: trust no forwarded address.
     TRUSTED_PROXY: z.string().optional(),
-    // Optional: without a key, paths.generate answers PRECONDITION_FAILED.
-    ANTHROPIC_API_KEY: z.string().min(1).optional(),
-    ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5-5"),
+    // Optional: without both, paths.generate answers PRECONDITION_FAILED. The engine holds the LLM key.
+    ENGINE_URL: z.url().optional(),
+    ENGINE_TOKEN: z.string().min(32).optional(),
   })
+  .refine((e) => !e.ENGINE_URL === !e.ENGINE_TOKEN, { message: "ENGINE_URL and ENGINE_TOKEN must be set together", path: ["ENGINE_TOKEN"] })
   .transform((e) => ({
     ...e,
     DATABASE_URL: e.DATABASE_URL_UNPOOLED ?? e.DATABASE_URL,

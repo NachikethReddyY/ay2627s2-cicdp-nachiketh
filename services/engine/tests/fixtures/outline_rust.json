@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"title\": \"Learn Rust\", \"tagline\": \"From ownership to traits\", \"courses\": [{\"title\": \"Basics\", \"description\": \"Variables and functions\", \"lessons\": [{\"title\": \"Hello, cargo\", \"level\": 1, \"concepts\": [\"cargo\", \"fn main\"]}, {\"title\": \"Variables\", \"level\": 1, \"concepts\": [\"let\", \"mut\"]}, {\"title\": \"Functions\", \"level\": 2, \"concepts\": [\"fn\", \"return\"]}]}, {\"title\": \"Ownership\", \"description\": \"Moves and borrows\", \"lessons\": [{\"title\": \"Moves\", \"level\": 3, \"concepts\": [\"move\"]}, {\"title\": \"Borrows\", \"level\": 3, \"concepts\": [\"&\", \"borrow\"]}, {\"title\": \"Lifetimes\", \"level\": 4, \"concepts\": [\"lifetime\"]}]}]}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import { idle } from "../src/ai/service.ts";
 
 const app = buildApp();
 after(() => app.close());
+const realGenerator = { ...generator }; // the tests below replace these methods with stubs
 
 const outline = {
   title: "Learn Rust",
@@ -44,7 +45,8 @@ const badLesson = {
 let lessonCalls = 0;
 let lessonOut: () => unknown;
 beforeEach(() => {
-  env.ANTHROPIC_API_KEY = "test-key";
+  env.ENGINE_URL = "http://engine.test";
+  env.ENGINE_TOKEN = "t".repeat(32);
   lessonCalls = 0;
   lessonOut = () => goodLesson;
   generator.outline = async () => outline;
@@ -81,9 +83,9 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
 
 test("missing key, non-coding topic and bad input", async () => {
   const t = trpc(app, await signUp(app));
-  env.ANTHROPIC_API_KEY = undefined;
+  env.ENGINE_URL = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");
-  env.ANTHROPIC_API_KEY = "k";
+  env.ENGINE_URL = "http://engine.test";
   generator.outline = async () => ({ notCoding: true });
   const res = await t.m("paths.generate", { prompt: "baking sourdough" });
   assert.equal(code(res), "BAD_REQUEST");
@@ -91,6 +93,23 @@ test("missing key, non-coding topic and bad input", async () => {
   assert.equal(code(await t.m("paths.generate", { prompt: "hi" })), "BAD_REQUEST");
   generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
+});
+
+test("the engine client sends the token and maps an engine error to INTERNAL_SERVER_ERROR", async () => {
+  const t = trpc(app, await signUp(app));
+  const realFetch = globalThis.fetch;
+  const calls: { url: string; token: string | null }[] = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), token: new Headers(init?.headers).get("X-Engine-Token") });
+    return new Response(JSON.stringify({ detail: "invalid" }), { status: 422 });
+  };
+  try {
+    generator.outline = realGenerator.outline;
+    assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.deepEqual(calls, [{ url: "http://engine.test/v1/pipeline/outline", token: env.ENGINE_TOKEN }]);
 });
 
 test("at most 5 generated paths per rolling day", async () => {
