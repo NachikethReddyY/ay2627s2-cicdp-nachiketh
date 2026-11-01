@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LQ Jira preview</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #ffffff; --ink: #172b4d; --muted: #5e6c84;
+    --line: #dfe1e6; --blue: #0c66e4; --green: #1f845a; --amber: #b65c02;
+    --chip: #f1f2f4; --epic: #6e5dc6; --done-bg: #e3fcef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1d2125; --panel: #22272b; --ink: #e6edf3; --muted: #9fadbc;
+      --line: #38414a; --blue: #579dff; --green: #4bce97; --amber: #f5cd47;
+      --chip: #2c333a; --epic: #9f8fef; --done-bg: #1c3329;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1d2125; --panel: #22272b; --ink: #e6edf3; --muted: #9fadbc;
+    --line: #38414a; --blue: #579dff; --green: #4bce97; --amber: #f5cd47;
+    --chip: #2c333a; --epic: #9f8fef; --done-bg: #1c3329;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  .crumb { color: var(--muted); }
+  .tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+  .tabs button { background: none; border: 0; padding: 8px 10px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; font: inherit; }
+  .tabs button[aria-selected="true"] { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+  main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+  section[hidden] { display: none; }
+  .note { background: #fff8e6; color: #5f3b00; border: 1px solid #f5cd47; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .note { background: #3a3218; color: #f5cd47; } }
+  :root[data-theme="dark"] .note { background: #3a3218; color: #f5cd47; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .epic-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .tag { display: inline-block; padding: 2px 7px; border-radius: 4px; background: var(--chip); font-size: 12px; color: var(--muted); }
+  .tag.epic { background: var(--epic); color: #fff; }
+  .tag.done { background: var(--done-bg); color: var(--green); }
+  .tag.todo { color: var(--amber); }
+  .pts { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 11px; background: var(--chip); font-size: 12px; font-weight: 600; }
+  .bar-row { display: grid; grid-template-columns: 170px 1fr 56px; gap: 8px; align-items: center; margin: 6px 0; }
+  .bar { height: 12px; background: var(--chip); border-radius: 6px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--blue); }
+  .muted { color: var(--muted); }
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .col { background: var(--chip); border-radius: 8px; padding: 10px; min-height: 120px; }
+  .col h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .item { display: block; width: 100%; text-align: left; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; margin-bottom: 8px; cursor: pointer; font: inherit; }
+  .item:hover { border-color: var(--blue); }
+  .item .top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--chip); }
+  .sprint { border-left: 4px solid var(--blue); }
+  .sprint.planned { border-left-color: var(--line); }
+  .sprint-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  select, button.btn { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); width: min(620px, 92vw); padding: 0; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg { padding: 18px; }
+  .dlg h2 { margin: 6px 0 10px; font-size: 18px; }
+  .dlg ul { padding-left: 18px; margin: 6px 0 12px; }
+  .dlg a { color: var(--blue); }
+  .dlg .close { float: right; }
+  .link-list a { display: inline-block; margin: 2px 6px 2px 0; font-family: ui-monospace, monospace; font-size: 12px; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .legend span { margin-right: 14px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  @media (max-width: 560px) { main { padding: 12px; } .bar-row { grid-template-columns: 110px 1fr 46px; } th:nth-child(3), td:nth-child(3) { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>LearnQuest · LQ</h1>
+  <span class="crumb">Learn Quest (software project) · Preview, not yet in Jira</span>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button role="tab" data-tab="board" aria-selected="false">Board</button>
+    <button role="tab" data-tab="backlog" aria-selected="false">Backlog</button>
+    <button role="tab" data-tab="sprints" aria-selected="false">Sprints</button>
+    <button role="tab" data-tab="trace" aria-selected="false">Traceability</button>
+  </nav>
+</header>
+
+<main>
+  <div class="note">
+    This is a preview. Nothing is in Jira or GitHub yet. Keys (LQ-n), story points, sprint dates and status are <strong>proposed</strong>. Done items are matched to real commits from <code>git log</code> (Oct 27–29). Points are my estimates, not measured effort. Click any card to open it.
+  </div>
+
+  <!-- OVERVIEW -->
+  <section id="overview">
+    <div class="card">
+      <div class="epic-head">
+        <span class="tag epic">EPIC</span>
+        <strong>LQ-1 · LearnQuest core MVP (6-week plan)</strong>
+        <span class="tag">Owner: Nachiketh reddy</span>
+        <span class="tag">Due: unknown (plan Q3)</span>
+      </div>
+      <p class="muted" style="margin:10px 0 0">Turn a real JS/TS commit into an adaptive lesson: predict first, hint on a miss, reveal with replay, then update the learner model. Source: <code>docs/plan.md</code> §2, §4, §11.1 (the "Must" core).</p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Progress</h2>
+        <div id="progress"></div>
+      </div>
+      <div class="card">
+        <h2>Allocation of done work (story points)</h2>
+        <div id="alloc"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Burndown, 139 points across 4 sprints</h2>
+      <div class="legend"><span><i style="background:var(--blue)"></i>Remaining (actual + plan)</span><span><i style="background:var(--line)"></i>Ideal</span></div>
+      <svg id="burn" viewBox="0 0 640 220" width="100%" role="img" aria-label="Burndown chart"></svg>
+    </div>
+  </section>
+
+  <!-- BOARD -->
+  <section id="board" hidden>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <label class="muted" for="sprintFilter">Sprint</label>
+      <select id="sprintFilter"></select>
+    </div>
+    <div class="cols" id="cols"></div>
+  </section>
+
+  <!-- BACKLOG -->
+  <section id="backlog" hidden>
+    <div class="card" style="padding:0;overflow:auto">
+      <table>
+        <thead><tr><th>Key</th><th>Summary</th><th>Area</th><th>Pts</th><th>Sprint</th><th>Status</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SPRINTS -->
+  <section id="sprints" hidden>
+    <div id="sprintCards"></div>
+  </section>
+
+  <!-- TRACEABILITY -->
+  <section id="trace" hidden>
+    <div class="card">
+      <h2>How the pieces link</h2>
+      <p class="muted" style="margin:0 0 10px">Epic → story → plan work package → commit. Use this to show the CI/CD module where each piece of work came from.</p>
+      <table>
+        <thead><tr><th>Story</th><th>Plan WP</th><th>Commits (GitHub)</th></tr></thead>
+        <tbody id="traceRows"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>CI/CD history (for the module)</h2>
+      <table>
+        <thead><tr><th>Commit</th><th>Date</th><th>What changed</th></tr></thead>
+        <tbody id="ciRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg" id="dlgBody"></div>
+</dialog>
+
+<script>
+const REPO = 'https://github.com/NachikethReddyY/LearnQuest/commit/';
+const AREAS = ['Platform & CI/CD', 'Player & content', 'API & learner data', 'Landing & UX', 'AI'];
+
+const sprints = [
+  { id: 1, name: 'Sprint 1', dates: 'Oct 26 – Oct 31', goal: 'Wiring, player, landing page, API design, Postgres, Render, Vercel', state: 'done' },
+  { id: 2, name: 'Sprint 2', dates: 'Nov 1 – Nov 8', goal: 'tRPC, Python SDK for inference, own UI rendering layer', state: 'planned' },
+  { id: 3, name: 'Sprint 3', dates: 'Nov 9 – Nov 16', goal: 'Wire the SDK to the engine, ingest, learner model', state: 'planned' },
+  { id: 4, name: 'Sprint 4', dates: 'Nov 17 – Nov 26', goal: 'Import and publish, narration, prod deploy, QA, documentation, bug fixes, submission on Nov 27', state: 'planned' }
+];
+
+// status: done | todo. commits are real short SHAs from git log.
+const stories = [
+  { key: 'LQ-2', title: 'Write project plan and concept', area: 'Platform & CI/CD', wp: 'WP0', pts: 3, sprint: 1, status: 'done', commits: ['95f4ec2'],
+    desc: 'Turn the idea into a 6-week plan: cut line, gates and work packages.', ac: ['Scope, weeks, gates and risks written', 'Cut line and fallbacks listed'] },
+  { key: 'LQ-3', title: 'Monorepo scaffold (web, api, engine)', area: 'Platform & CI/CD', wp: 'WP1', pts: 5, sprint: 1, status: 'done', commits: ['d59cac1'],
+    desc: 'Turborepo with web, api and engine folders so every app builds from one root.', ac: ['pnpm workspaces install and build', 'Placeholder apps start'] },
+  { key: 'LQ-4', title: 'CI pipeline on GitHub Actions', area: 'Platform & CI/CD', wp: 'WP1', pts: 5, sprint: 1, status: 'done', commits: ['9ed18f5', '9ba506a', '40c335a', '937db60', '8bb8319'],
+    desc: 'Start with Depot, move to Blacksmith, then GitHub-hosted runner. Remove Depot. Add design doc and CI.', ac: ['Workflow runs on every push', 'Only one CI provider left in the repo'] },
+  { key: 'LQ-5', title: 'Playful landing page (Vite + React)', area: 'Landing & UX', wp: 'WP4', pts: 3, sprint: 1, status: 'done', commits: ['d379859', '913c052'],
+    desc: 'Landing page, ready to deploy on Vercel.', ac: ['Page loads on Vite build', 'Deploy-ready config'] },
+  { key: 'LQ-6', title: 'Design system (DESIGN.md) and Pip art', area: 'Player & content', wp: 'WP4', pts: 2, sprint: 1, status: 'done', commits: ['c591ad5', '1ff20b6', 'bb941aa'],
+    desc: 'Written design rules and original Pip art sources in the repo.', ac: ['DESIGN.md covers colour, type, motion', 'Art sources committed'] },
+  { key: 'LQ-7', title: 'Replay player in a macOS-style workspace', area: 'Player & content', wp: 'WP3, WP4 M1', pts: 8, sprint: 1, status: 'done', commits: ['7bcf789'],
+    desc: 'Watch a code change replay like a video, with Monaco in the browser.', ac: ['Play, pause and seek a replay', 'Monaco bundled, no CDN'] },
+  { key: 'LQ-8', title: 'Step state machine (predict, hint, reveal)', area: 'Player & content', wp: 'WP4 M2', pts: 5, sprint: 1, status: 'done', commits: ['d656ed9'],
+    desc: 'Client side step states for the prediction gate and hint ladder. Server part comes in LQ-9.', ac: ['States match plan §5 diagram', 'Mock API used for now'] },
+  { key: 'LQ-9', title: 'Real API: Postgres and login (replaces mock)', area: 'API & learner data', wp: 'WP5', pts: 8, sprint: 1, status: 'done', commits: ['2135a9d'],
+    desc: 'Fastify API with Postgres. Login replaces the mock.', ac: ['Login and session cookies work', 'Steps and attempts stored in Postgres'] },
+  { key: 'LQ-10', title: 'Wire to Neon Postgres and Neon Auth; Render container', area: 'Platform & CI/CD', wp: 'WP13 (part)', pts: 5, sprint: 1, status: 'done', commits: ['edf6305', 'f5735d5', 'a6a607b'],
+    desc: 'Neon database and auth, container image for Render, /api proxy to the Render API.', ac: ['API image builds', 'Web proxies /api to Render'] },
+  { key: 'LQ-11', title: 'Learning paths, enrollments, /me/home with XP and streak', area: 'API & learner data', wp: 'WP5, WP17', pts: 5, sprint: 1, status: 'done', commits: ['b1959ca'],
+    desc: 'Learners enroll in paths. Home shows XP and streak.', ac: ['Enroll and list paths', 'Home returns XP and streak'] },
+  { key: 'LQ-12', title: 'Home, course and explore pages (TanStack Router)', area: 'Landing & UX', wp: 'WP17', pts: 5, sprint: 1, status: 'done', commits: ['0c840d2', 'eaba91c'],
+    desc: 'Routed home and course pages, explore page with community paths.', ac: ['Routes load and link', 'Explore lists community paths'] },
+  { key: 'LQ-13', title: 'Move the app API to tRPC', area: 'API & learner data', wp: 'WP5', pts: 3, sprint: 2, status: 'done', commits: ['9bdc1ee'],
+    desc: 'Typed API between web and api. Commit 9bdc1ee is already on main (Oct 29), so it is counted as done early in Sprint 2.', ac: ['Web calls use tRPC', 'Old REST routes removed'] },
+  { key: 'LQ-14', title: 'UI clean-up and phone fixes', area: 'Landing & UX', wp: 'WP4', pts: 2, sprint: 1, status: 'done', commits: ['3283285', '3e59965', 'c93142f'],
+    desc: 'Clean-up pass, course number and plural labels, explore search on phones, floating sound toggle removed.', ac: ['Explore search works on a phone', 'No floating sound toggle'] },
+  { key: 'LQ-15', title: 'AI path builder: writes lessons as you go', area: 'AI', wp: 'WP6 (part)', pts: 8, sprint: 1, status: 'done', commits: ['fc0c532'],
+    desc: 'Build a learning path with AI, with lessons written step by step.', ac: ['Path created from a prompt', 'Lessons saved as they are written'] },
+  { key: 'LQ-16', title: 'Player retry, replay focus, timezone-aware home', area: 'Player & content', wp: 'WP4', pts: 2, sprint: 1, status: 'done', commits: ['dbe0b1d'],
+    desc: 'Retry on player errors, replay keeps focus, home uses the learner timezone.', ac: ['Retry works after a failed load', 'Home date matches local time'] },
+  { key: 'LQ-17', title: 'Count every AI request toward the daily limit', area: 'AI', wp: 'NFR2, S3', pts: 2, sprint: 1, status: 'done', commits: ['4f28046'],
+    desc: 'Every AI call is counted, not just some of them.', ac: ['Daily count includes all AI calls'] },
+  { key: 'LQ-18', title: 'Python SDK for inference (LiteLLM)', area: 'AI', wp: 'WP6, WP9', pts: 8, sprint: 2, status: 'todo', commits: [],
+    desc: 'Python package that calls the model through LiteLLM and returns validated JSON. Pedagogy only, one provider.', ac: ['Calls the model and validates with Pydantic', 'Recorded fixtures used in CI, no live calls'] },
+  { key: 'LQ-19', title: 'Own UI rendering layer (OpenUI-style, for our app)', area: 'AI', wp: 'WP10 (design)', pts: 8, sprint: 2, status: 'todo', commits: [],
+    desc: 'Our own renderer that turns model output into allow-listed UI blocks, so the app renders generated content safely.', ac: ['Renders from a JSON spec', 'Unknown blocks are rejected'] },
+  { key: 'LQ-20', title: 'Wire the SDK to the engine (FastAPI)', area: 'AI', wp: 'WP6', pts: 8, sprint: 3, status: 'todo', commits: [],
+    desc: 'Connect the Python SDK to the FastAPI engine. New tech for us, so this includes a learning spike.', ac: ['Engine endpoint returns a validated lesson', 'Spike notes written in docs/adr'] },
+  { key: 'LQ-21', title: 'Ingest a commit from GitHub (licence and secret checks)', area: 'AI', wp: 'WP6', pts: 8, sprint: 3, status: 'todo', commits: [],
+    desc: 'Engine fetches one allow-listed commit, checks licence and secrets, and splits it into per-step file states with unidiff.', ac: ['Allow-list enforced (400 otherwise)', 'Step states tested with unidiff'] },
+  { key: 'LQ-22', title: 'BKT learner model and next-step policy', area: 'API & learner data', wp: 'WP7', pts: 8, sprint: 3, status: 'todo', commits: [],
+    desc: 'Per learner and concept mastery, with the next-step recommendation and its reason.', ac: ['P1–P3 Hypothesis tests green', 'Recommendation includes a reason'] },
+  { key: 'LQ-23', title: 'Import job with SSE, publish and unpublish', area: 'API & learner data', wp: 'WP8', pts: 5, sprint: 4, status: 'todo', commits: [],
+    desc: 'Author imports a commit, sees progress over SSE, publishes or unpublishes.', ac: ['Only the creator sees job events', 'Unpublished lessons hidden from learners'] },
+  { key: 'LQ-24', title: 'Narration MP3s and synthetic lessons 1–2', area: 'Player & content', wp: 'WP11', pts: 5, sprint: 4, status: 'todo', commits: [],
+    desc: 'Hand-written lessons plus one MP3 per step. Browser speech is the fallback.', ac: ['Lesson 1 narrated', 'Missing MP3 falls back to speech'] },
+  { key: 'LQ-25', title: 'Deploy to staging and prod, smoke tests', area: 'Platform & CI/CD', wp: 'WP13', pts: 5, sprint: 4, status: 'todo', commits: [],
+    desc: 'Vercel for web, Render for api and engine. Smoke gates promotion. Follows the CI/CD skill checklist.', ac: ['Staging smoke green', 'Prod smoke green'] },
+  { key: 'LQ-26', title: 'PR e2e, axe and coverage gates', area: 'Platform & CI/CD', wp: 'WP14', pts: 3, sprint: 4, status: 'todo', commits: [],
+    desc: 'Playwright on compose in PRs, axe checks, coverage gates.', ac: ['PR e2e runs on compose', 'axe has no serious violations'] },
+  { key: 'LQ-27', title: 'Final threat model and privacy note', area: 'Platform & CI/CD', wp: 'WP15', pts: 2, sprint: 4, status: 'todo', commits: [],
+    desc: 'STRIDE threat model final, one-paragraph privacy notice.', ac: ['docs/sdlc/threat-model.md final', 'docs/sdlc/privacy.md written'] },
+  { key: 'LQ-28', title: 'Bug-fix reserve (Sprint 4)', area: 'Platform & CI/CD', wp: 'Buffer', pts: 8, sprint: 4, status: 'todo', commits: [],
+    desc: 'Time set aside for bugs found in Sprints 1–3 and during the submission run. Sized, not scoped.', ac: ['Bugs logged as Bug issues under the epic', 'Reserve used or released by Nov 26'] }
+];
+
+const ciCommits = [
+  ['9ed18f5', 'Oct 28', 'Add Depot CI workflows'],
+  ['40c335a', 'Oct 28', 'Run CI on GitHub-hosted runner'],
+  ['9ba506a', 'Oct 28', 'Migrate workflows to Blacksmith (#3)'],
+  ['937db60', 'Oct 28', 'Delete .depot directory, remove Depot CI'],
+  ['ccce173', 'Oct 28', 'Add Macroscope review config (#6)'],
+  ['8bb8319', 'Oct 28', 'Create Design md and CI (#2)'],
+  ['f5735d5', 'Oct 29', 'Build API container image for Render'],
+  ['edf6305', 'Oct 29', 'Wire API to Neon Postgres, provision Neon Auth']
+];
+
+const $ = (s) => document.querySelector(s);
+const sum = (arr) => arr.reduce((a, s) => a + s.pts, 0);
+const done = stories.filter((s) => s.status === 'done');
+const total = sum(stories);
+const doneTotal = sum(done);
+const commitLink = (sha) => `<a href="${REPO}${sha}" target="_blank" rel="noopener">${sha}</a>`;
+const statusTag = (s) => s.status === 'done' ? '<span class="tag done">Done</span>' : '<span class="tag todo">To do</span>';
+const sprintName = (id) => (sprints.find((x) => x.id === id) || {}).name || 'Backlog';
+
+// Tabs
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('main section').forEach((s) => s.hidden = s.id !== b.dataset.tab);
+}));
+
+// Overview: progress
+$('#progress').innerHTML = `
+  <div class="bar-row"><span>Points done</span><div class="bar"><span style="width:${(doneTotal / total * 100).toFixed(0)}%"></span></div><strong>${doneTotal} / ${total}</strong></div>
+  <div class="bar-row"><span>Stories done</span><div class="bar"><span style="width:${(done.length / stories.length * 100).toFixed(0)}%"></span></div><strong>${done.length} / ${stories.length}</strong></div>
+  <p class="muted" style="margin:10px 0 0">Sprint 1 (Oct 26–31) is complete. Sprints 2–4 run to Nov 26, with submission on Nov 27.</p>`;
+
+// Overview: allocation by area (done work)
+$('#alloc').innerHTML = AREAS.map((a) => {
+  const p = sum(done.filter((s) => s.area === a));
+  const pct = (p / doneTotal * 100).toFixed(0);
+  return `<div class="bar-row"><span>${a}</span><div class="bar"><span style="width:${pct}%"></span></div><span>${p} pts · ${pct}%</span></div>`;
+}).join('');
+
+// Overview: burndown. Remaining points after each sprint: actual up to Sprint 1, plan after that.
+(function burndown() {
+  const N = sprints.length;
+  const planRemain = [...Array(N + 1).keys()].map((i) => total - sum(stories.filter((s) => s.sprint <= i)));
+  const actual = [total, total - doneTotal];
+  const W = 640, H = 220, pad = 36;
+  const x = (i) => pad + i * ((W - pad * 2) / N);
+  const y = (v) => H - pad - (v / total) * (H - pad * 2);
+  const ideal = [...Array(N + 1).keys()].map((i) => total - total / N * i);
+  const line = (vals) => vals.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join(' ');
+  const ticks = [...Array(N + 1).keys()].map((i) => `<text x="${x(i)}" y="${H - 12}" text-anchor="middle">${i ? 'End S' + i : 'Start'}</text>`).join('');
+  const grid = [0, 25, 50, 75, 100, 125, 150].filter((v) => v <= total).map((v) => `<line x1="${pad}" x2="${W - pad}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${pad - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+  const dots = (vals, fill) => vals.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${fill}" stroke="var(--blue)" stroke-width="2"/>`).join('');
+  $('#burn').innerHTML = `${grid}${ticks}
+    <path d="${line(ideal)}" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="6 4"/>
+    <path d="${line(planRemain)}" fill="none" stroke="var(--blue)" stroke-width="3"/>
+    ${dots(planRemain, 'var(--panel)')}${dots(actual, 'var(--blue)')}`;
+})();
+
+// Board
+const sel = $('#sprintFilter');
+sel.innerHTML = `<option value="all">All sprints</option>` + sprints.map((s) => `<option value="${s.id}">${s.name} (${s.dates})</option>`).join('');
+function renderBoard() {
+  const v = sel.value;
+  const list = v === 'all' ? stories : stories.filter((s) => String(s.sprint) === v);
+  const col = (title, arr) => `<div class="col"><h3>${title} · ${arr.length}</h3>${arr.map(card).join('') || '<p class="muted">Nothing here</p>'}</div>`;
+  const card = (s) => `<button class="item" data-key="${s.key}"><div class="top"><span class="muted">${s.key}</span><span class="pts">${s.pts}</span></div>${s.title}<div class="muted" style="font-size:12px;margin-top:4px">${s.wp} · ${sprintName(s.sprint)}</div></button>`;
+  $('#cols').innerHTML = col('To do', list.filter((s) => s.status === 'todo')) + col('Done', list.filter((s) => s.status === 'done'));
+}
+sel.addEventListener('change', renderBoard);
+renderBoard();
+
+// Backlog
+$('#rows').innerHTML = stories.map((s) => `<tr class="clickable" data-key="${s.key}"><td class="muted">${s.key}</td><td>${s.title}</td><td>${s.area}</td><td><span class="pts">${s.pts}</span></td><td>${sprintName(s.sprint)}</td><td>${statusTag(s)}</td></tr>`).join('');
+
+// Sprints
+$('#sprintCards').innerHTML = sprints.map((sp) => {
+  const items = stories.filter((s) => s.sprint === sp.id);
+  const p = sum(items);
+  const pd = sum(items.filter((s) => s.status === 'done'));
+  return `<div class="card sprint ${sp.state === 'planned' ? 'planned' : ''}">
+    <div class="sprint-head"><strong>${sp.name} · ${sp.dates}</strong><span class="tag">${pd} / ${p} pts done</span></div>
+    <p class="muted" style="margin:6px 0 10px">Goal: ${sp.goal}</p>
+    <table><tbody>${items.map((s) => `<tr class="clickable" data-key="${s.key}"><td class="muted">${s.key}</td><td>${s.title}</td><td><span class="pts">${s.pts}</span></td><td>${statusTag(s)}</td></tr>`).join('')}</tbody></table>
+  </div>`;
+}).join('');
+
+// Traceability
+$('#traceRows').innerHTML = stories.map((s) => `<tr class="clickable" data-key="${s.key}"><td>${s.key} · ${s.title}</td><td>${s.wp}</td><td class="link-list">${s.commits.map(commitLink).join('') || '<span class="muted">not started</span>'}</td></tr>`).join('');
+$('#ciRows').innerHTML = ciCommits.map(([sha, d, what]) => `<tr><td>${commitLink(sha)}</td><td>${d}</td><td>${what}</td></tr>`).join('');
+
+// Story detail dialog
+function openStory(key) {
+  const s = stories.find((x) => x.key === key);
+  if (!s) return;
+  $('#dlgBody').innerHTML = `
+    <button class="btn close" onclick="document.getElementById('dlg').close()">Close</button>
+    <div class="epic-head"><span class="tag">${s.key}</span>${statusTag(s)}<span class="tag">${s.area}</span><span class="tag">${s.wp}</span></div>
+    <h2>${s.title}</h2>
+    <p class="muted" style="margin:0 0 10px">Epic: LQ-1 · Sprint: ${sprintName(s.sprint)} · Story points: <strong>${s.pts}</strong></p>
+    <p>${s.desc}</p>
+    <strong>Acceptance</strong>
+    <ul>${s.ac.map((a) => `<li>${a}</li>`).join('')}</ul>
+    <strong>Commits</strong>
+    <div class="link-list" style="margin-top:6px">${s.commits.map(commitLink).join('') || '<span class="muted">None yet</span>'}</div>`;
+  $('#dlg').showModal();
+}
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-key]');
+  if (el) openStory(el.dataset.key);
+});
+</script>
+</body>
+</html>
