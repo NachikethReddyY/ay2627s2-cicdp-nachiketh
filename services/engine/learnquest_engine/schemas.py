@@ -174,4 +174,5 @@ def json_schema(model: type[BaseModel]) -> dict[str, Any]:
             node = [walk(v) for v in node]
         return node
 
-    return walk(model.model_json_schema())  # type: ignore[no-any-return]
+    schema: dict[str, Any] = walk(model.model_json_schema())
+    return schema

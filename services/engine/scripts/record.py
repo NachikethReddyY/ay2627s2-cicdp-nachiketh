@@ -39,14 +39,16 @@ def main() -> None:
 
     litellm.completion = spy
     data = json.loads(args.input.read_text())
-    if args.kind == "outline":
-        pipeline.outline(data["topic"])
-    else:
-        pipeline.lesson(LessonContext.model_validate(data))
-
-    text = SECRET.sub("[redacted]", json.dumps({"responses": raw}, indent=2))
-    args.out.write_text(text + "\n")
-    print(f"recorded {len(raw)} completion(s) to {args.out}")
+    try:
+        if args.kind == "outline":
+            pipeline.outline(data["topic"])
+        else:
+            pipeline.lesson(LessonContext.model_validate(data))
+    finally:
+        # Saved even when generation fails, so invalid replies can become fixtures.
+        text = SECRET.sub("[redacted]", json.dumps({"responses": raw}, indent=2))
+        args.out.write_text(text + "\n")
+        print(f"recorded {len(raw)} completion(s) to {args.out}")
 
 
 if __name__ == "__main__":

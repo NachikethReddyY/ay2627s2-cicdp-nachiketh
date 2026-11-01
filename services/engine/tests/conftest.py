@@ -44,7 +44,8 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], list[dict[str, 
         calls: list[dict[str, Any]] = []
 
         def completion(**kw: Any) -> Any:
-            calls.append(kw)
+            # Snapshot each message: the live list keeps growing with repair attempts.
+            calls.append({**kw, "messages": [dict(m) for m in kw["messages"]]})
             if not queue:
                 raise AssertionError(f"{name}: no recorded reply left for call {len(calls)}")
             return litellm.ModelResponse(**queue.pop(0))

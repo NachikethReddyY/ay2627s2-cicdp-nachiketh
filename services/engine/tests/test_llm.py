@@ -101,6 +101,14 @@ def test_any_schema_rejection_falls_back(monkeypatch: pytest.MonkeyPatch) -> Non
     assert calls[1]["response_format"] == {"type": "json_object"}
 
 
+def test_off_mode_states_schema_in_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_JSON_MODE", "off")
+    get_settings.cache_clear()
+    calls = fake(monkeypatch, reply(GOOD))
+    generate("sys", {}, Lesson)
+    assert "JSON schema" in calls[0]["messages"][0]["content"]
+
+
 def test_off_mode_has_no_format(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_JSON_MODE", "off")
     get_settings.cache_clear()

@@ -1,6 +1,8 @@
 import copy
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -10,7 +12,7 @@ from learnquest_engine.schemas import Lesson, Outline, json_schema
 RAW = json.loads((Path(__file__).parent / "fixtures" / "lesson1.json").read_text())
 
 
-def lesson(mutate) -> Lesson:  # type: ignore[no-untyped-def]
+def lesson(mutate: Callable[[list[dict[str, Any]]], object]) -> Lesson:
     raw = copy.deepcopy(RAW)
     mutate(raw["steps"])
     return Lesson.model_validate(raw)

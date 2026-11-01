@@ -22,4 +22,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     # Fails at startup on a missing LLM_MODEL or a short ENGINE_TOKEN, not on the first request.
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

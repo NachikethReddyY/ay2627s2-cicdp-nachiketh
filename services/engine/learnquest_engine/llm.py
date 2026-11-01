@@ -42,7 +42,8 @@ class GenerationError(Exception):
 
 
 def _system(system: str, schema: dict[str, Any], mode: str) -> str:
-    if mode != "object":
+    # "schema" sends the schema as response_format; every other mode must state it in the prompt.
+    if mode == "schema":
         return system
     return (
         f"{system}\n\nReply with one JSON object matching this JSON schema:\n{json.dumps(schema)}"
