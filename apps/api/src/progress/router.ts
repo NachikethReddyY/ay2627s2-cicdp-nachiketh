@@ -40,7 +40,14 @@ const Home = z.object({
 });
 
 const Slug = z.object({ slug: z.string().regex(/^[\w-]{1,64}$/) });
-const Lesson = z.object({ slug: z.string(), title: z.string(), level: z.number(), done: z.number(), total: z.number() });
+const Lesson = z.object({
+  slug: z.string(),
+  title: z.string(),
+  level: z.number(),
+  done: z.number(),
+  total: z.number(),
+  kind: z.enum(["predict", "learn", "watch", "practice"]),
+});
 const CourseDetail = z.object({
   slug: z.string(),
   title: z.string(),
@@ -247,7 +254,7 @@ const courseGet = protectedProcedure.input(Slug).output(CourseDetail).query(asyn
       if (!course) throw notFound("Course not found");
 
       const { rows: lessonRows } = await db.execute<z.infer<typeof Lesson>>(sql`
-        SELECT l.slug, l.title, l.level, ${lessonDone(me)} AS done, ${lessonTotal} AS total
+        SELECT l.slug, l.title, l.level, l.kind, ${lessonDone(me)} AS done, ${lessonTotal} AS total
         FROM lessons l
         WHERE l.world_id = ${course.id} AND ${listed}
         ORDER BY l.level, l.position, l.id`);

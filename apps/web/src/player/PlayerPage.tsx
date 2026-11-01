@@ -376,7 +376,8 @@ const fixtureTitles = lesson.steps.map((s) => s.title);
 const fixtureTimeline = buildTimeline(lesson.steps.map((s) => s.input));
 
 export default function PlayerPage() {
-  const slug = new URLSearchParams(location.search).get("lesson");
+  const q = new URLSearchParams(location.search);
+  const slug = q.get("lesson");
   // No ?lesson= : the bundled sample, for previews and offline work.
-  return slug ? <LiveLesson slug={slug} /> : <Player title={lesson.title} stepTitles={fixtureTitles} timeline={fixtureTimeline} />;
+  return slug ? <LiveLesson slug={slug} course={q.get("course") ?? undefined} /> : <Player title={lesson.title} stepTitles={fixtureTitles} timeline={fixtureTimeline} />;
 }

@@ -1,8 +1,10 @@
 from collections.abc import Callable
 from typing import Any
 
+import pytest
+
 from learnquest_engine import pipeline
-from learnquest_engine.schemas import Lesson, LessonContext, Outline
+from learnquest_engine.schemas import LearnPart, Lesson, LessonContext, Outline, PracticePart, WatchPart
 
 CTX = LessonContext.model_validate(
     {
@@ -37,3 +39,21 @@ def test_lesson_repairs_once(fake_llm: Callable[[str], list[dict[str, Any]]]) ->
     assert res.attempts == 2
     assert res.usage["prompt_tokens"] == 20
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("kind", "fixture", "model"),
+    [
+        ("learn", "part_learn_1", LearnPart),
+        ("watch", "part_watch_1", WatchPart),
+        ("practice", "part_practice_1", PracticePart),
+    ],
+)
+def test_part_uses_its_kind_model(
+    fake_llm: Callable[[str], list[dict[str, Any]]], kind: str, fixture: str, model: type
+) -> None:
+    fake_llm(fixture)
+    ctx = CTX.model_copy(update={"lesson": CTX.lesson.model_copy(update={"kind": kind})})
+    res = pipeline.lesson(ctx)
+    assert isinstance(res.value, model)
+    assert res.value.kind == kind

@@ -7,7 +7,7 @@
           "finish_reason": "stop",
           "message": {
             "role": "assistant",
-            "content": "{\"title\": \"Learn Rust\", \"tagline\": \"From ownership to traits\", \"courses\": [{\"title\": \"Basics\", \"description\": \"Variables and functions\", \"lessons\": [{\"title\": \"Hello, cargo\", \"level\": 1, \"concepts\": [\"cargo\", \"fn main\"]}, {\"title\": \"Variables\", \"level\": 1, \"concepts\": [\"let\", \"mut\"]}, {\"title\": \"Functions\", \"level\": 2, \"concepts\": [\"fn\", \"return\"]}]}, {\"title\": \"Ownership\", \"description\": \"Moves and borrows\", \"lessons\": [{\"title\": \"Moves\", \"level\": 3, \"concepts\": [\"move\"]}, {\"title\": \"Borrows\", \"level\": 3, \"concepts\": [\"&\", \"borrow\"]}, {\"title\": \"Lifetimes\", \"level\": 4, \"concepts\": [\"lifetime\"]}]}]}"
+            "content": "{\"title\": \"Learn Rust\", \"tagline\": \"From ownership to traits\", \"courses\": [{\"title\": \"Basics\", \"description\": \"Variables and functions\", \"lessons\": [{\"title\": \"Hello, cargo\", \"level\": 1, \"concepts\": [\"cargo\", \"fn main\"], \"kind\": \"learn\"}, {\"title\": \"Variables\", \"level\": 1, \"concepts\": [\"let\", \"mut\"], \"kind\": \"watch\"}, {\"title\": \"Functions\", \"level\": 2, \"concepts\": [\"fn\", \"return\"], \"kind\": \"practice\"}]}, {\"title\": \"Ownership\", \"description\": \"Moves and borrows\", \"lessons\": [{\"title\": \"Moves\", \"level\": 3, \"concepts\": [\"move\"], \"kind\": \"learn\"}, {\"title\": \"Borrows\", \"level\": 3, \"concepts\": [\"&\", \"borrow\"], \"kind\": \"watch\"}, {\"title\": \"Lifetimes\", \"level\": 4, \"concepts\": [\"lifetime\"], \"kind\": \"practice\"}]}]}"
           }
         }
       ],

@@ -29,6 +29,13 @@
       "when": 1793244815308,
       "tag": "0003_lowly_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793497162566,
+      "tag": "0004_lesson_kind_parts",
+      "breakpoints": true
     }
   ]
 }

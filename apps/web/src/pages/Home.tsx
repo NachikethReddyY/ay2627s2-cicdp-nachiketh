@@ -142,7 +142,7 @@ function Continue({ c }: { c: NonNullable<HomeData["continue"]> }) {
       <p className="mt-3 font-extrabold">{c.lesson.title} <span className="pill ml-1 bg-white px-2 py-0.5 text-xs">Level {c.lesson.level}</span></p>
       <div className="my-3 max-w-sm"><Bar value={c.lesson.done} total={c.lesson.total} label="Lesson progress" /></div>
       <p className="mb-4 text-sm font-bold">{c.lesson.done} / {c.lesson.total} done</p>
-      <Link to="/play" search={{ lesson: c.lesson.slug }} className="btn ring text-lg">Continue</Link>
+      <Link to="/play" search={{ lesson: c.lesson.slug, course: c.course.slug }} className="btn ring text-lg">Continue</Link>
     </section>
   );
 }

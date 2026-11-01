@@ -4,6 +4,7 @@ import { isNotFound, trpc } from "../lib/trpc";
 import TopNav from "../components/TopNav";
 import { Page, PipEmpty, Spinner } from "../components/Bits";
 
+const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice" };
 const offsets = ["ml-0", "ml-10 sm:ml-16", "ml-16 sm:ml-28", "ml-10 sm:ml-16"];
 
 export default function Course() {
@@ -30,6 +31,7 @@ export default function Course() {
         <section className="chunk h-fit bg-sun p-5">
           <h1 className="font-display text-4xl font-black">{data.title}</h1>
           <p className="mt-2 font-semibold">{data.description}</p>
+          <p className="mt-3 text-sm font-semibold">Each part is written when you open it, so no AI is wasted.</p>
           <p className="mt-3 text-sm font-extrabold">{data.lessons.length} {data.lessons.length === 1 ? "lesson" : "lessons"}</p>
         </section>
         <div className="space-y-8 pb-32">
@@ -45,11 +47,12 @@ export default function Course() {
                   return (
                     <li key={l.slug} className={`flex items-center gap-3 ${offsets[n++ % 4]}`}>
                       {isDone || isCur ? (
-                        <Link to="/play" search={{ lesson: l.slug }} aria-label={`${l.title}${isDone ? " (complete)" : ""}`} className={`${cls} ${isCur ? "ring" : ""} focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-blue`}>{mark}</Link>
+                        <Link to="/play" search={{ lesson: l.slug, course: slug }} aria-label={`${l.title}${isDone ? " (complete)" : ""}`} className={`${cls} ${isCur ? "ring" : ""} focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-blue`}>{mark}</Link>
                       ) : (
                         <span role="img" aria-label={`${l.title} (locked)`} className={cls}>{mark}</span>
                       )}
                       <span className="font-extrabold">{l.title}</span>
+                      {l.kind !== "predict" && <span className="pill bg-white px-2 py-0.5 text-xs">{kinds[l.kind]}</span>}
                       {isCur && <img src="/img/pip-cheer.png" alt="" className="float w-14" />}
                     </li>
                   );
@@ -61,7 +64,7 @@ export default function Course() {
         {current && (
           <div className="chunk fixed inset-x-4 bottom-4 z-20 mx-auto flex max-w-3xl items-center justify-between gap-3 bg-white p-3 sm:p-4">
             <p className="min-w-0 truncate font-extrabold">{current.title}</p>
-            <Link to="/play" search={{ lesson: current.slug }} className="btn shrink-0 !px-6 !py-2">{current.done > 0 ? "Continue" : "Start"}</Link>
+            <Link to="/play" search={{ lesson: current.slug, course: slug }} className="btn shrink-0 !px-6 !py-2">{current.done > 0 ? "Continue" : "Start"}</Link>
           </div>
         )}
       </div>

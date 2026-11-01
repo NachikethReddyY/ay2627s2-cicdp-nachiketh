@@ -3,12 +3,24 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
-import { learners, lessons, stepProgress, steps, worlds } from "../db/schema.ts";
-import { ensureLesson, prefetchNext } from "../ai/service.ts";
+import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
+import { ensureLesson } from "../ai/service.ts";
 
 const Lesson = z.object({
   id: z.string(),
   title: z.string(),
+  kind: z.enum(["predict", "learn", "watch", "practice"]),
+  part: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("learn"), body: z.string() }),
+      z.object({
+        kind: z.literal("watch"),
+        beforeFiles: z.record(z.string(), z.string()),
+        hunks: z.array(z.object({ id: z.string(), file: z.string(), oldStart: z.number(), lines: z.array(z.string()) })),
+      }),
+      z.object({ kind: z.literal("practice"), instructions: z.string(), starterCode: z.string(), expectedOutput: z.string() }),
+    ])
+    .nullable(),
   steps: z.array(
     z.object({
       id: z.string(),
@@ -48,7 +60,7 @@ export const lessonsRouter = router({
       if (!lesson?.currentVersionId || lesson.status !== "published") {
         throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
       }
-      if (lesson.sourceKind === "ai") prefetchNext(lesson, ctx.learnerId);
+      const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson.currentVersionId));
       const rows = await db
         .select({ id: steps.id, idx: steps.idx, pub: steps.public, hintCount: sql<number>`jsonb_array_length(${steps.secret}->'hints')`, state: stepProgress.state })
         .from(steps)
@@ -61,6 +73,8 @@ export const lessonsRouter = router({
       return {
         id: lesson.slug,
         title: lesson.title,
+        kind: lesson.kind,
+        part: version?.content ?? null,
         steps: rows.map((r) => ({
           id: r.id,
           idx: r.idx,
