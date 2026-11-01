@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"kind\": \"watch\", \"beforeFiles\": {\"main.js\": \"let x = 1;\\nconsole.log(x);\\n\"}, \"hunks\": [{\"id\": \"h1\", \"file\": \"main.js\", \"oldStart\": 1, \"lines\": [\"-let x = 1;\", \"+const x = 1;\", \" console.log(x);\"]}]}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    }
+  ]
+}

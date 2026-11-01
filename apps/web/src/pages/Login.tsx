@@ -53,7 +53,7 @@ export default function Login() {
   return (
     <div className="relative isolate min-h-screen overflow-hidden bg-paper">
       {/* Background blobs sit in two opposite corners, so they frame the page instead of scattering across it */}
-      <div aria-hidden="true" className="pointer-events-none absolute -left-24 -top-24 -z-10 size-[28rem] rounded-full bg-lilac/50" />
+      <div aria-hidden="true" className="pointer-events-none absolute -left-24 -top-24 -z-10 size-[28rem] rounded-full bg-mint/60" />
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 -right-24 -z-10 size-[30rem] rounded-full bg-pink/40" />
 
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">

@@ -19,7 +19,7 @@ export default function TopNav({ streak, xp }: { streak?: number; xp?: number })
           type="button"
           aria-label={`Sign out${data ? ` ${data.user.email}` : ""}`}
           onClick={() => void authClient.signOut().finally(() => location.assign("/"))}
-          className="pill grid size-9 place-items-center bg-lilac text-sm"
+          className="pill grid size-9 place-items-center bg-green text-sm"
         >
           {(data?.user.name || data?.user.email || "?")[0].toUpperCase()}
         </button>

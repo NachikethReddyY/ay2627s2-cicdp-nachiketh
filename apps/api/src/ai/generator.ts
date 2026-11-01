@@ -5,7 +5,7 @@ import { env } from "../env.ts";
 export type LessonContext = {
   path: { title: string; tagline: string };
   course: { title: string; description: string };
-  lesson: { title: string; level: number; concepts: string[] };
+  lesson: { title: string; level: number; concepts: string[]; kind: "predict" | "learn" | "watch" | "practice" };
   missedConcepts: string[];
 };
 

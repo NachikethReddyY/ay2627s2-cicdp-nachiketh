@@ -237,7 +237,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
 
       <main
         ref={deskRef}
-        className="relative flex flex-1 flex-col gap-4 bg-lilac/30 p-3 lg:block lg:min-h-0 lg:p-0"
+        className="relative flex flex-1 flex-col gap-4 bg-mint/40 p-3 lg:block lg:min-h-0 lg:p-0"
       >
         {task && (
           <Window {...winProps("instructions")} label="Instructions" title="Instructions" tone="bg-mint">
@@ -376,7 +376,8 @@ const fixtureTitles = lesson.steps.map((s) => s.title);
 const fixtureTimeline = buildTimeline(lesson.steps.map((s) => s.input));
 
 export default function PlayerPage() {
-  const slug = new URLSearchParams(location.search).get("lesson");
+  const q = new URLSearchParams(location.search);
+  const slug = q.get("lesson");
   // No ?lesson= : the bundled sample, for previews and offline work.
-  return slug ? <LiveLesson slug={slug} /> : <Player title={lesson.title} stepTitles={fixtureTitles} timeline={fixtureTimeline} />;
+  return slug ? <LiveLesson slug={slug} course={q.get("course") ?? undefined} /> : <Player title={lesson.title} stepTitles={fixtureTitles} timeline={fixtureTimeline} />;
 }

@@ -79,6 +79,10 @@ export const learners = pgTable("learners", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Plan tier; sets the daily AI path limit (see DAILY_AI_PATHS in ai/service.ts).
+  tier: text("tier", { enum: ["free", "pro", "max"] })
+    .notNull()
+    .default("free"),
   // IANA name; streak days are counted in this zone.
   timezone: text("timezone").notNull().default("UTC"),
   dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
@@ -173,6 +177,12 @@ export const concepts = pgTable(
 
 export type LessonSource = { repo: string; sha: string; path: string };
 
+export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
+export type PartSecret =
+  | { kind: "learn"; body: string }
+  | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
+  | { kind: "practice"; instructions: string; starterCode: string; expectedOutput: string };
+
 export const lessons = pgTable("lessons", {
   id: id(),
   slug: text("slug").notNull().unique(),
@@ -183,6 +193,10 @@ export const lessons = pgTable("lessons", {
   level: integer("level").notNull().default(1),
   position: integer("position").notNull().default(0),
   sourceKind: text("source_kind", { enum: ["repo", "authored", "ai"] }).notNull(),
+  // predict = mcq/cloze steps; learn/watch/practice = one part with content in lesson_versions.content.
+  kind: text("kind", { enum: ["predict", "learn", "watch", "practice"] })
+    .notNull()
+    .default("predict"),
   source: jsonb("source").$type<LessonSource>(),
   // Concepts the lesson should teach; the AI outline stores them here for the lazy lesson call.
   concepts: text("concepts").array().notNull().default(sql`'{}'::text[]`),
@@ -204,6 +218,8 @@ export const lessonVersions = pgTable(
     version: integer("version").notNull(),
     createdAt: createdAt(),
     publishedAt: timestamp("published_at"),
+    // Content of a learn/watch/practice part; null for predict lessons, whose content is in steps.
+    content: jsonb("content").$type<PartSecret>(),
   },
   (t) => [uniqueIndex("lesson_versions_lesson_version").on(t.lessonId, t.version)],
 );

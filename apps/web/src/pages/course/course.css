@@ -1,0 +1,11 @@
+/* Course page only: dark skill tree with its own fonts, so the rest of the app keeps the playful theme. */
+.course {
+  min-height: 100dvh;
+  background: #0b0d11;
+  color: #e4e4e7;
+  font-family: "Geist", system-ui, sans-serif;
+  overflow-x: clip;
+}
+.course .serif { font-family: "Newsreader", Georgia, serif; }
+.course .mono { font-family: "Geist Mono", ui-monospace, monospace; }
+.course :focus-visible { outline: 2px solid #38bdf8; outline-offset: 4px; }

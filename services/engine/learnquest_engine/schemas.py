@@ -25,6 +25,7 @@ class OutlineLesson(BaseModel):  # outline lesson
     title: T80
     level: int = Field(ge=1, le=5)
     concepts: list[T60] = Field(min_length=1, max_length=6)
+    kind: Literal["learn", "watch", "practice"]
 
 
 class Course(BaseModel):
@@ -149,6 +150,42 @@ class _LessonRef(BaseModel):
     title: str
     level: int
     concepts: list[str]
+    kind: Literal["predict", "learn", "watch", "practice"] = "predict"
+
+
+T4000 = Annotated[str, _c(4000)]
+
+
+# One flat model per part kind: strict json_schema needs an object at the root.
+class LearnPart(BaseModel):
+    kind: Literal["learn"]
+    body: T4000
+
+
+class WatchPart(BaseModel):
+    kind: Literal["watch"]
+    beforeFiles: dict[T200, Annotated[str, StringConstraints(max_length=6000)]]
+    hunks: list[Hunk] = Field(min_length=1, max_length=6)
+
+    @model_validator(mode="after")
+    def _files(self) -> "WatchPart":
+        if not 1 <= len(self.beforeFiles) <= 4:
+            raise ValueError("beforeFiles needs 1 to 4 files")
+        return self
+
+
+class PracticePart(BaseModel):
+    kind: Literal["practice"]
+    instructions: T1000
+    starterCode: Annotated[str, StringConstraints(max_length=3000)]
+    expectedOutput: Annotated[str, StringConstraints(max_length=1000)]
+
+
+PARTS: dict[str, type[BaseModel]] = {
+    "learn": LearnPart,
+    "watch": WatchPart,
+    "practice": PracticePart,
+}
 
 
 class LessonContext(BaseModel):

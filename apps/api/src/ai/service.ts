@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { buildTimeline, seek } from "@learnquest/player-core";
 import { db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
-import { aiGenerations, enrollments, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "../db/schema.ts";
+import { aiGenerations, enrollments, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type PartSecret } from "../db/schema.ts";
 import { generator, type LessonContext } from "./generator.ts";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
@@ -21,7 +21,14 @@ const Outline = z.union([
           title: text(80),
           description: text(300),
           lessons: z
-            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6) }))
+            .array(
+              z.object({
+                title: text(80),
+                level: z.number().int().min(1).max(5),
+                concepts: z.array(text(60)).min(1).max(6),
+                kind: z.enum(["learn", "watch", "practice"]),
+              }),
+            )
             .min(3)
             .max(6),
         }),
@@ -32,6 +39,15 @@ const Outline = z.union([
 ]);
 
 const Hunk = z.object({ id: text(40), file: text(200), oldStart: z.number().int().min(1), lines: z.array(z.string().max(300)).min(1).max(60) });
+const Part = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("learn"), body: text(4000) }),
+  z.object({
+    kind: z.literal("watch"),
+    beforeFiles: z.record(text(200), z.string().max(6000)).refine((f) => Object.keys(f).length >= 1 && Object.keys(f).length <= 4),
+    hunks: z.array(Hunk).min(1).max(6),
+  }),
+  z.object({ kind: z.literal("practice"), instructions: text(1000), starterCode: z.string().max(3000), expectedOutput: z.string().max(1000) }),
+]);
 const Hint = z.object({ text: text(400), eliminate: z.number().int().min(0).max(3).optional() });
 const Common = {
   title: text(100),
@@ -59,9 +75,13 @@ const slugify = (s: string, max: number) =>
 
 // ---- paths.generate ----
 
+// Daily AI path limit per plan tier, counted over a rolling 24 hours.
+export const DAILY_AI_PATHS = { free: 5, pro: 20, max: 100 } as const;
+
 export async function generatePath(learnerId: string, topic: string) {
   if (!env.ENGINE_URL) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
-  const [me] = await db.select({ userId: learners.userId }).from(learners).where(eq(learners.id, learnerId));
+  const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
+  const limit = DAILY_AI_PATHS[me!.tier];
   // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
   const allowed = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me!.userId}))`);
@@ -69,11 +89,11 @@ export async function generatePath(learnerId: string, topic: string) {
       rows: [{ n }],
     } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me!.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= 5) return false;
+    if (n >= limit) return false;
     await tx.insert(aiGenerations).values({ userId: me!.userId });
     return true;
   });
-  if (!allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "You can build 5 AI paths per day" });
+  if (!allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You can build ${limit} AI paths per day on your plan` });
 
   let outline;
   try {
@@ -106,6 +126,7 @@ export async function generatePath(learnerId: string, topic: string) {
           level: l.level,
           position: i,
           concepts: l.concepts,
+          kind: l.kind,
           sourceKind: "ai" as const,
           status: "draft" as const,
         })),
@@ -132,11 +153,29 @@ function validate(raw: unknown): GeneratedStep[] {
   return steps;
 }
 
-async function writeSteps(ctx: LessonContext): Promise<GeneratedStep[]> {
+function validatePart(raw: unknown): PartSecret {
+  const part = Part.parse(raw);
+  // shortcut: catches a cut-off body by its unclosed code fence or inline backtick, not every truncation; a retry covers the rest.
+  if (part.kind === "learn") {
+    const fences = part.body.match(/```/g)?.length ?? 0;
+    const inline = (part.body.replace(/```[\s\S]*?```/g, "").match(/`/g)?.length ?? 0);
+    if (fences % 2 || inline % 2) throw new Error("learn part looks truncated");
+    // A model that loops repeats a few words over and over; real prose has many distinct words.
+    const words = part.body.split(/\s+/);
+    if (words.length > 40 && new Set(words).size / words.length < 0.3) throw new Error("learn part is repetitive");
+  }
+  if (part.kind === "watch") {
+    const tl = buildTimeline([{ beforeFiles: part.beforeFiles, hunks: part.hunks }]); // throws when a hunk does not match its file
+    if (JSON.stringify(seek(tl, tl.duration).files) === JSON.stringify(part.beforeFiles)) throw new Error("watch part changes nothing");
+  }
+  return part;
+}
+
+async function writeWith<T>(ctx: LessonContext, check: (raw: unknown) => T): Promise<T> {
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return validate(await generator.lesson(ctx));
+      return check(await generator.lesson(ctx));
     } catch (e) {
       last = e;
       console.error(`lesson generation attempt ${attempt + 1} failed`, e);
@@ -162,60 +201,40 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
     const { rows } = await tx.execute<{ c: string }>(sql`
       SELECT DISTINCT c FROM (SELECT unnest(missed_concepts) AS c, created_at FROM attempts
         WHERE learner_id = ${learnerId} ORDER BY created_at DESC LIMIT 40) t LIMIT 10`);
-    const generated = await writeSteps({
+    const ctx: LessonContext = {
       path: path ?? { title: world!.title, tagline: "" },
       course: { title: world!.title, description: world!.description },
-      lesson: { title: l.title, level: l.level, concepts: l.concepts },
+      lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
       missedConcepts: rows.map((r) => r.c),
-    });
+    };
+    // A part keeps its content on the version; a predict lesson keeps one steps row per step.
+    const part = l.kind === "predict" ? null : await writeWith(ctx, validatePart);
+    const generated = part ? [] : await writeWith(ctx, validate);
 
     const [version] = await tx
       .insert(lessonVersions)
-      .values({ lessonId: l.id, version: 1, publishedAt: new Date() })
+      .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content: part })
       .returning();
-    await tx.insert(steps).values(
-      generated.map((s, idx) => ({
-        lessonVersionId: version!.id,
-        idx,
-        public: { title: s.title, prompt: s.prompt, kind: s.kind, ...(s.kind === "mcq" && { options: s.options }) },
-        secret: {
-          beforeFiles: s.beforeFiles,
-          hunks: s.hunks,
-          answer: s.answer,
-          ...(s.kind === "cloze" && { accepted: [...new Set([s.answer, ...s.accepted])] }),
-          hints: s.hints,
-          explanations: s.explanations,
-          concepts: s.concepts,
-        },
-      })),
-    );
+    if (!part) {
+      await tx.insert(steps).values(
+        generated.map((s, idx) => ({
+          lessonVersionId: version!.id,
+          idx,
+          public: { title: s.title, prompt: s.prompt, kind: s.kind, ...(s.kind === "mcq" && { options: s.options }) },
+          secret: {
+            beforeFiles: s.beforeFiles,
+            hunks: s.hunks,
+            answer: s.answer,
+            ...(s.kind === "cloze" && { accepted: [...new Set([s.answer, ...s.accepted])] }),
+            hints: s.hints,
+            explanations: s.explanations,
+            concepts: s.concepts,
+          },
+        })),
+      );
+    }
     // Visibility stays governed by the owning course and path.
     await tx.update(lessons).set({ currentVersionId: version!.id, status: "published" }).where(eq(lessons.id, l.id));
     return true;
   });
-}
-
-const background = new Set<Promise<unknown>>();
-/** Resolves when background generation has settled (tests). */
-export const idle = () => Promise.allSettled([...background]);
-
-// Fire-and-forget: generate the lesson right after `lesson` in its course so it is usually ready.
-export function prefetchNext(lesson: typeof lessons.$inferSelect, learnerId: string) {
-  const p = (async () => {
-    const [next] = await db
-      .select({ id: lessons.id, v: lessons.currentVersionId })
-      .from(lessons)
-      .where(
-        and(
-          eq(lessons.worldId, lesson.worldId),
-          sql`(${lessons.level}, ${lessons.position}, ${lessons.id}) > (${lesson.level}, ${lesson.position}, ${lesson.id})`,
-        ),
-      )
-      .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.id))
-      .limit(1);
-    if (next && !next.v) await ensureLesson(next.id, learnerId);
-  })()
-    .catch((e) => console.error("prefetch of next lesson failed", e))
-    .finally(() => background.delete(p));
-  background.add(p);
 }

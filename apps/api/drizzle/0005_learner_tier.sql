@@ -1,0 +1,1 @@
+ALTER TABLE "learners" ADD COLUMN "tier" text DEFAULT 'free' NOT NULL;
