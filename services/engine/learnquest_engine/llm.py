@@ -89,8 +89,8 @@ def generate[T: BaseModel](system: str, data: object, model: type[T]) -> Result[
                     temperature=0.4,
                 )
                 break
-            except BadRequestError as e:
-                if mode != "schema" or cfg.LLM_JSON_MODE or "response_format" not in str(e):
+            except BadRequestError:
+                if mode != "schema" or cfg.LLM_JSON_MODE:
                     raise
                 mode = _auto_mode = "object"
                 messages[0]["content"] = _system(system, schema, mode)

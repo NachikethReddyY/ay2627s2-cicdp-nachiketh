@@ -93,6 +93,14 @@ def test_response_format_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[2]["response_format"] == {"type": "json_object"}
 
 
+def test_any_schema_rejection_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    # NVIDIA NIM rejects the schema with a grammar error that does not name response_format.
+    err = BadRequestError('Grammar error: Unimplemented keys: ["propertyNames"]', "m", "nvidia")
+    calls = fake(monkeypatch, err, reply(GOOD), reply(GOOD))
+    generate("sys", {}, Lesson)
+    assert calls[1]["response_format"] == {"type": "json_object"}
+
+
 def test_off_mode_has_no_format(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_JSON_MODE", "off")
     get_settings.cache_clear()
