@@ -19,7 +19,7 @@ from learnquest_engine import pipeline
 from learnquest_engine.schemas import LessonContext
 
 # Keys and bearer tokens must never reach a fixture file.
-SECRET = re.compile(r"(sk-[A-Za-z0-9_-]+|Bearer\s+\S+)")
+SECRET = re.compile(r'(sk-[A-Za-z0-9_-]+|Bearer\s+[^\s",]+)')
 
 
 def main() -> None:
