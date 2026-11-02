@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import dagre from "@dagrejs/dagre";
-import { CHAR_W, layoutDiagram, nodeSize, wrap, type DiagramProps } from "./layout.ts";
+import { CHAR_W, clipToShape, layoutDiagram, nodeSize, wrap, type DiagramProps } from "./layout.ts";
 
 test("wrap keeps every line within the cap, even for one long word", () => {
   for (const s of ["a b c", "x".repeat(60), "the quick brown fox jumps over the lazy dog again and again"])
@@ -32,4 +32,21 @@ for (const shape of ["rect", "round", "diamond", "circle"] as const)
 
 test("nodeSize grows for diamonds", () => {
   assert.ok(nodeSize(["abc"], "diamond").w > nodeSize(["abc"], "rect").w);
+});
+
+test("clipToShape: circle, diamond and rect boundaries", () => {
+  const n = { x: 100, y: 100, w: 80, h: 40 };
+  const c = clipToShape({ ...n, h: 80 }, { x: 100, y: 0 }, "circle");
+  assert.ok(Math.abs(c.x - 100) < 1e-9 && Math.abs(c.y - 60) < 1e-9);
+  const d = clipToShape(n, { x: 200, y: 200 }, "diamond"); // on |dx|/40 + |dy|/20 = 1
+  assert.ok(Math.abs(Math.abs(d.x - 100) / 40 + Math.abs(d.y - 100) / 20 - 1) < 1e-9);
+  assert.deepEqual(clipToShape(n, { x: 100, y: 0 }, "diamond"), { x: 100, y: 80 });
+  assert.deepEqual(clipToShape(n, { x: 300, y: 100 }), { x: 140, y: 100 }); // rect: already on the box edge
+});
+
+test("long labels are widened to at most 3 lines where possible; edge labels reserve room", () => {
+  const label = "a fairly long node label that would wrap onto many lines";
+  const l = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label }, { id: "b", label: "B" }], edges: [{ from: "a", to: "b", label: "yes" }] });
+  assert.ok(l.nodes[0].lines.length <= 4 && l.nodes[0].lines.length < wrap(label).length);
+  assert.ok(l.edges[0].lw > 0 && l.edges[0].lh > 0);
 });

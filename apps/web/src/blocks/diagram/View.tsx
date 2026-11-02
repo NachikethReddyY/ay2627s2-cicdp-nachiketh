@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { BLOCKS } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
-import { FONT, LINE_H, layoutDiagram, pathOf, type DiagramProps, type Layout, type PlacedNode } from "./layout.ts";
+import { FONT, LINE_H, layoutDiagram, pathOf, wrap, type DiagramProps, type Layout, type PlacedNode } from "./layout.ts";
 
 type Props = DiagramProps & { alt: string };
 
@@ -44,7 +44,8 @@ export default function DiagramView({ block }: BlockViewProps<Props>) {
       {layout.edges.map((e, i) => (
         <g key={i}>
           <path d={pathOf(e.points)} fill="none" stroke="var(--color-ink)" strokeWidth={1.5} markerEnd={`url(#${marker})`} />
-          {e.label && <text x={e.lx} y={e.ly} textAnchor="middle" dominantBaseline="central" fill="var(--color-ink)" stroke="var(--color-paper)" strokeWidth={4} paintOrder="stroke">{e.label}</text>}
+          {e.label && <rect x={e.lx - e.lw / 2} y={e.ly - e.lh / 2} width={e.lw} height={e.lh} rx={4} fill="var(--color-paper)" stroke="var(--color-ink)" strokeWidth={1} />}
+          {e.label && <text textAnchor="middle" fill="var(--color-ink)">{wrap(e.label).map((l, k, a) => <tspan key={k} x={e.lx} y={e.ly + (k - (a.length - 1) / 2) * LINE_H} dominantBaseline="central">{l}</tspan>)}</text>}
         </g>
       ))}
       {layout.nodes.map((n) => (

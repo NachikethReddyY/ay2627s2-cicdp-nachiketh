@@ -9,7 +9,7 @@ export type DiagramProps = {
 };
 export type Pt = { x: number; y: number };
 export type PlacedNode = { id: string; lines: string[]; x: number; y: number; w: number; h: number };
-export type PlacedEdge = { points: Pt[]; label?: string; lx: number; ly: number };
+export type PlacedEdge = { points: Pt[]; label?: string; lx: number; ly: number; lw: number; lh: number };
 export type Layout = { nodes: PlacedNode[]; edges: PlacedEdge[]; width: number; height: number };
 
 export const FONT = 14;
@@ -45,13 +45,25 @@ export function nodeSize(lines: string[], shape: DiagramProps["shape"] = "rect")
   return { w: Math.ceil(tw + 2 * PAD), h: Math.ceil(th + 2 * PAD) };
 }
 
+/** Point where the ray from the node centre toward `toward` crosses the node outline (rect/round: box; circle: radius; diamond: its edges). */
+export function clipToShape(n: { x: number; y: number; w: number; h: number }, toward: Pt, shape: DiagramProps["shape"] = "rect"): Pt {
+  const dx = toward.x - n.x, dy = toward.y - n.y;
+  if (dx === 0 && dy === 0) return { x: n.x, y: n.y };
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  const t = shape === "circle" ? n.w / 2 / Math.hypot(dx, dy)
+    : shape === "diamond" ? 1 / (ax / (n.w / 2) + ay / (n.h / 2))
+    : Math.min(ax ? n.w / 2 / ax : Infinity, ay ? n.h / 2 / ay : Infinity);
+  return { x: n.x + dx * t, y: n.y + dy * t };
+}
+
 const DIR: Record<string, "TB" | "LR"> = { timeline: "LR" };
 
 export function layoutDiagram(dagre: typeof Dagre, p: DiagramProps): Layout {
   const g = new dagre.graphlib.Graph({ multigraph: true });
   g.setGraph({ rankdir: DIR[p.kind] ?? "TB", nodesep: 24, ranksep: 36, edgesep: 12, marginx: MARGIN, marginy: MARGIN });
   g.setDefaultEdgeLabel(() => ({}));
-  const boxes = new Map(p.nodes.map((n) => { const lines = wrap(n.label); return [n.id, { lines, ...nodeSize(lines, p.shape) }]; }));
+  // Fix C: a label that would wrap past 3 lines gets a wider line (up to 24 chars) so the box stays readable at 360px.
+  const boxes = new Map(p.nodes.map((n) => { let lines = wrap(n.label); if (lines.length > 3) lines = wrap(n.label, Math.min(24, Math.ceil(n.label.length / 3) + 2)); return [n.id, { lines, ...nodeSize(lines, p.shape) }]; }));
   for (const [id, b] of boxes) g.setNode(id, { width: b.w, height: b.h });
   p.edges.forEach((e, i) => {
     const l = e.label ? wrap(e.label, WRAP) : undefined;
@@ -66,7 +78,14 @@ export function layoutDiagram(dagre: typeof Dagre, p: DiagramProps): Layout {
   });
   const edges = p.edges.map((e, i) => {
     const d = g.edge({ v: e.from, w: e.to, name: String(i) })!;
-    return { points: d.points, label: e.label, lx: d.x ?? 0, ly: d.y ?? 0 };
+    // dagre ends edges on the bounding box; pull circle/diamond ends onto the real outline.
+    const points = [...d.points];
+    const [a, b] = [nodes.find((n) => n.id === e.from)!, nodes.find((n) => n.id === e.to)!];
+    if ((p.shape === "circle" || p.shape === "diamond") && points.length > 1) {
+      points[0] = clipToShape(a, points[1], p.shape);
+      points[points.length - 1] = clipToShape(b, points[points.length - 2], p.shape);
+    }
+    return { points, label: e.label, lx: d.x ?? 0, ly: d.y ?? 0, lw: d.width ?? 0, lh: d.height ?? 0 };
   });
   const gr = g.graph();
   return { nodes, edges, width: Math.ceil(gr.width ?? 0), height: Math.ceil(gr.height ?? 0) };
