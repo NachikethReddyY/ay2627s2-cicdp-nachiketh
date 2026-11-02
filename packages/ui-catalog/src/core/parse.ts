@@ -7,7 +7,7 @@ import { diagramBlock } from "../blocks/diagram/index.ts";
 import { imageBlock } from "../blocks/image/index.ts";
 import { textBlock } from "../blocks/text/index.ts";
 
-/** `path` is dotted from the spec root, e.g. "blocks.2.props.foo"; "$" is the root itself. */
+/** `path` is dotted from the spec root; dots and backslashes inside segments are escaped. */
 export type Issue = { path: string; message: string };
 
 export type Block<P = unknown> = { type: string; id: string; props: P };
@@ -32,7 +32,8 @@ export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock, diagramBlo
 
 export type ParseResult = { ok: true; spec: Spec; issues: Issue[] } | { ok: false; issues: Issue[] };
 
-const at = (path: PropertyKey[]) => (path.length ? path.join(".") : "$");
+const at = (path: PropertyKey[]) =>
+  path.length ? path.map((part) => String(part).replace(/\\/g, "\\\\").replace(/\./g, "\\.")).join(".") : "$";
 
 const zodIssues = (error: z.ZodError, prefix: PropertyKey[] = []): Issue[] =>
   error.issues.flatMap((i) =>
@@ -67,7 +68,8 @@ export function parseSpec(input: unknown, enabled: readonly BlockModule[] = BLOC
   const ids = new Set<string>();
 
   env.data.blocks.forEach((raw, i) => {
-    const fail = (path: string, message: string) => issues.push({ path: `blocks.${i}${path && "." + path}`, message });
+    const fail = (path: string, message: string) =>
+      issues.push({ path: at(["blocks", i, ...(path ? path.split(".") : [])]), message });
     const type = (raw as { type?: unknown } | null)?.type;
     if (typeof type !== "string") return fail("type", "block type is missing");
     if (RESERVED.includes(type)) return fail("type", `"${type}" blocks are not available`);

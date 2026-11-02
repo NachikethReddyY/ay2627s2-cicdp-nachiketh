@@ -6,9 +6,9 @@ import { z } from "zod";
 import { BLOCKS, RESERVED, alt, blockSchema, color, parseSpec, sanitize, text, type BlockModule, type ParseResult } from "../src/index.ts";
 
 // Test-only module: the core ships with an empty registry, so fixtures use "probe".
-const probe: BlockModule<{ title: string; alt: string; tone?: string }> = {
+const probe: BlockModule<{ title: string; alt: string; tone?: string; secret?: { token: string } }> = {
   type: "probe",
-  schema: z.strictObject({ title: text(40), alt: alt(), tone: color().optional() }),
+  schema: z.strictObject({ title: text(40), alt: alt(), tone: color().optional(), secret: z.strictObject({ token: text(40) }).optional() }),
   check: (b) => (b.props.title === "forbidden" ? [{ path: "props.title", message: "forbidden title" }] : []),
   describe: (b) => `Probe: ${b.props.title}`,
   prompt: "probe: a test block",
@@ -53,6 +53,20 @@ test("oversize is rejected for its size, not its content", () => {
 
 test("invalid JSON is an envelope failure", () => {
   assert.deepEqual(parseSpec("{nope", reg).issues, [{ path: "$", message: "spec is not valid JSON" }]);
+});
+
+test("unknown property paths escape dots within a key", () => {
+  const block = { type: "probe", id: "x", props: { title: "ok", alt: "ok", "secret.token": 1 } };
+  const dottedKey = parseSpec({ v: 1, blocks: [block] }, reg).issues[0].path;
+  const nested = parseSpec({ v: 1, blocks: [{ ...block, props: { title: "ok", alt: "ok", secret: { token: 1 } } }] }, reg).issues[0].path;
+  assert.equal(dottedKey, "blocks.0.props.secret\\.token");
+  assert.equal(nested, "blocks.0.props.secret.token");
+  assert.notEqual(dottedKey, nested);
+  const backslashKey = parseSpec(
+    { v: 1, blocks: [{ ...block, props: { title: "ok", alt: "ok", "secret\\token": 1 } }] },
+    reg,
+  ).issues[0].path;
+  assert.equal(backslashKey, "blocks.0.props.secret\\\\token");
 });
 
 // Each fixture has a good block 0 and a bad block 1: the bad one is dropped, the good one kept.
