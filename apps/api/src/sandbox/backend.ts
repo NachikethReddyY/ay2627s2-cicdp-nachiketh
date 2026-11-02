@@ -12,17 +12,21 @@ export interface SandboxBackend {
   openShell(learnerId: string, size: { cols: number; rows: number }): Promise<ShellHandle>;
 }
 
-let backend: SandboxBackend | null = null;
+let backend: Promise<SandboxBackend> | null = null;
 
 // Docker is imported on first use, so a disabled sandbox never loads node-pty.
-export async function getBackend(): Promise<SandboxBackend> {
-  if (!backend) {
-    const { dockerBackend } = await import("./docker.ts");
-    backend = dockerBackend({ image: env.SANDBOX_IMAGE });
-  }
+// The promise is cached so concurrent first calls share one backend.
+export function getBackend(): Promise<SandboxBackend> {
+  backend ??= import("./docker.ts").then(
+    ({ dockerBackend }) => dockerBackend({ image: env.SANDBOX_IMAGE }),
+    (err) => {
+      backend = null; // let the next call retry a failed load
+      throw err;
+    },
+  );
   return backend;
 }
 
 export function setBackend(b: SandboxBackend | null) {
-  backend = b;
+  backend = b && Promise.resolve(b);
 }

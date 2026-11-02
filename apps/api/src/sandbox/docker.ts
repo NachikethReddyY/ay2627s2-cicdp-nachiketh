@@ -22,6 +22,7 @@ export function dockerBackend(opts: { image: string; idleMs?: number }): Sandbox
   const attached = new Map<string, number>();
   const timers = new Map<string, NodeJS.Timeout>();
   const starting = new Map<string, Promise<void>>();
+  const stopping = new Map<string, Promise<void>>();
 
   async function ensureRunning(name: string) {
     const state = await run("docker", ["inspect", "-f", "{{.State.Running}}", name]).then(
@@ -37,6 +38,12 @@ export function dockerBackend(opts: { image: string; idleMs?: number }): Sandbox
       "run", "-d", "--name", name,
       "--cpus", "1", "--memory", "1g", "--pids-limit", "256",
       "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+      // Read-only root plus RAM-backed home and /tmp caps disk use (tmpfs also counts against --memory); files are lost on idle stop, the editor re-syncs them.
+      "--read-only",
+      "--tmpfs", "/home/learner:rw,exec,size=512m,uid=1001,gid=1001,mode=0700",
+      "--tmpfs", "/tmp:rw,exec,size=64m",
+      // The venv under /opt is read-only now, so pip installs into home.
+      "-e", "PIP_TARGET=/home/learner/.pip", "-e", "PYTHONPATH=/home/learner/.pip",
       opts.image, "sleep", "infinity",
     ]);
   }
@@ -62,23 +69,34 @@ export function dockerBackend(opts: { image: string; idleMs?: number }): Sandbox
         if (n > 0) return;
         attached.delete(name);
         // Only the open-shell count is watched: a process left running in the background does not keep the container up.
-        const t = setTimeout(() => void run("docker", ["stop", "-t", "2", name]).catch(() => {}), idleMs);
+        const t = setTimeout(() => {
+          const p = run("docker", ["stop", "-t", "2", name]).then(() => {}, () => {}).finally(() => stopping.delete(name));
+          stopping.set(name, p);
+        }, idleMs);
         t.unref();
         timers.set(name, t);
       };
       try {
+        // A stop already in flight can't be cancelled, so let it finish before starting the container again.
+        await stopping.get(name);
         await ensure(name);
       } catch (err) {
         release();
         throw err;
       }
-      const term = pty.spawn("docker", ["exec", "-it", name, "bash", "-l"], {
-        name: "xterm-256color",
-        cols,
-        rows,
-        encoding: null,
-        env: process.env as Record<string, string>,
-      });
+      let term: ReturnType<typeof pty.spawn>;
+      try {
+        term = pty.spawn("docker", ["exec", "-it", name, "bash", "-l"], {
+          name: "xterm-256color",
+          cols,
+          rows,
+          encoding: null,
+          env: process.env as Record<string, string>,
+        });
+      } catch (err) {
+        release();
+        throw err;
+      }
       let released = false;
       const once = () => {
         if (!released) {

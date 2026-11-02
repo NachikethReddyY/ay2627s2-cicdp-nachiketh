@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
-import { setBackend, type ShellHandle } from "../src/sandbox/backend.ts";
+import { getBackend, setBackend, type ShellHandle } from "../src/sandbox/backend.ts";
 
 const app = buildApp();
 env.SANDBOX_ENABLED = true;
@@ -171,4 +171,11 @@ test("an invalid tab id is refused with 400 before the upgrade", async () => {
     assert.equal((await get(tab)).statusCode, 400, `tab=${tab}`);
   }
   await assert.rejects(connect(cookie, "bad.tab"), /handshake refused/);
+});
+
+test("concurrent first getBackend calls share one backend", async () => {
+  setBackend(null);
+  const [a, b] = await Promise.all([getBackend(), getBackend()]);
+  assert.equal(a, b);
+  setBackend(null);
 });
