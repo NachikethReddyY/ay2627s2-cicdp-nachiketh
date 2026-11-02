@@ -21,6 +21,9 @@ const schema = z
     S3_ACCESS_KEY_ID: z.string().min(1).optional(),
     S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     S3_REGION: z.string().default("auto"),
+    // Dev-only visual playground (/api/dev/visual): the Python engine and the token it shares with services/engine/.env.
+    ENGINE_URL: z.url().default("http://localhost:8000"),
+    ENGINE_TOKEN: z.string().min(32).optional(),
     // Per-learner Docker shell (docs/plans/sandbox-editor-plan.md). Off: /sandbox/shell answers 503 and Docker is never touched.
     SANDBOX_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     SANDBOX_IMAGE: z.string().min(1).default("lq-sandbox:dev"),
