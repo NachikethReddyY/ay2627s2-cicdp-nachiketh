@@ -43,6 +43,13 @@
       "when": 1793499652509,
       "tag": "0005_learner_tier",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793502234778,
+      "tag": "0006_salty_sphinx",
+      "breakpoints": true
     }
   ]
 }

@@ -177,6 +177,7 @@ class WatchPart(BaseModel):
 class PracticePart(BaseModel):
     kind: Literal["practice"]
     instructions: T1000
+    language: Literal["python", "javascript"]
     starterCode: Annotated[str, StringConstraints(max_length=3000)]
     expectedOutput: Annotated[str, StringConstraints(max_length=1000)]
 

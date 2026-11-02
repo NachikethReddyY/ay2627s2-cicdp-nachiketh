@@ -9,6 +9,7 @@ import { authRoutes } from "./auth/routes.ts";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
 import { appRouter, type AppRouter } from "./trpc/router.ts";
 import { createContext } from "./trpc/trpc.ts";
+import { sandboxRoutes } from "./sandbox/route.ts";
 
 const CODES: Record<number, string> = {
   400: "bad_request",
@@ -82,6 +83,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
           },
         } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
       });
+      api.register(sandboxRoutes);
       api.get(
         "/healthz",
         { schema: { response: { 200: z.object({ ok: z.literal(true) }) } } },

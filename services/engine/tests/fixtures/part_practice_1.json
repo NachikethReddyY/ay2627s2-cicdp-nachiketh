@@ -7,7 +7,7 @@
           "finish_reason": "stop",
           "message": {
             "role": "assistant",
-            "content": "{\"kind\": \"practice\", \"instructions\": \"Write sum(a, b) that returns a + b, then print sum(1, 2).\", \"starterCode\": \"function sum(a, b) {\\n}\\n\", \"expectedOutput\": \"3\"}"
+            "content": "{\"kind\": \"practice\", \"instructions\": \"Write sum(a, b) that returns a + b, then print sum(1, 2).\", \"language\": \"javascript\", \"starterCode\": \"function sum(a, b) {\\n}\\n\", \"expectedOutput\": \"3\"}"
           }
         }
       ],
