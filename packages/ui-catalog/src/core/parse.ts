@@ -5,6 +5,7 @@ import { RESERVED } from "./reserved.ts";
 import { chartBlock } from "../blocks/chart/index.ts";
 import { diagramBlock } from "../blocks/diagram/index.ts";
 import { imageBlock } from "../blocks/image/index.ts";
+import { scene3dBlock } from "../blocks/scene3d/index.ts";
 import { stageBlock } from "../blocks/stage/index.ts";
 import { textBlock } from "../blocks/text/index.ts";
 
@@ -29,7 +30,7 @@ export type BlockModule<P = any> = {
 };
 
 // Registered block modules.
-export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock, diagramBlock, chartBlock, stageBlock];
+export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock, diagramBlock, chartBlock, stageBlock, scene3dBlock];
 
 export type ParseResult = { ok: true; spec: Spec; issues: Issue[] } | { ok: false; issues: Issue[] };
 

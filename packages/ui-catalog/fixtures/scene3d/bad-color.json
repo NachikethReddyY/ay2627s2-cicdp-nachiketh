@@ -1,0 +1,1 @@
+{"v":1,"blocks":[{"type":"text","id":"t1","props":{"md":"Hi"}},{"type":"scene3d","id":"s3","props":{"alt":"A plant cell","primitives":[{"id":"a","kind":"sphere","position":[0,0,0],"size":1,"color":"red","material":"matte"}],"camera":"iso","lights":"soft"}}]}
