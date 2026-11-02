@@ -1,0 +1,1 @@
+{"v":1,"blocks":[{"type":"text","id":"t1","props":{"md":"intro"}},{"type":"chart","id":"c1","props":{"kind":"line","alt":"Lines","series":[{"label":"S1","points":[{"x":1,"y":1}]},{"label":"S2","points":[{"x":1,"y":1}]},{"label":"S3","points":[{"x":1,"y":1}]},{"label":"S4","points":[{"x":1,"y":1}]},{"label":"S5","points":[{"x":1,"y":1}]}]}}]}

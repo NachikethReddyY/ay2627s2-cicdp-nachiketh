@@ -12,6 +12,22 @@ A visual is one JSON object: `{"v": 1, "blocks": [...]}`.
 
 ## Blocks
 
+### chart
+
+At most 4 per spec.
+
+Use `chart` to show numbers: `kind` is bar, line, scatter or function. `alt` is required: say what the chart shows. Optional `xLabel` and `yLabel` (up to 40 chars) name the axes.
+bar, line and scatter take `series`: up to 4, each {label, optional color, points}, with up to 60 points {x, y}. For line and scatter x is a number; for bar x may be a short text category. `color` is a theme name (ink, green, green-deep, blue, sun, pink, lilac, mint, paper).
+function takes `expr` instead (up to 80 chars), plotted as y in terms of x, with optional `xMin`/`xMax` (default -10 to 10), optional `color`, and up to 2 `sliders` {id, label, min, max, optional value} whose ids can be used in expr (ids must not be x or a function name).
+expr allows only numbers, x, slider ids, + - * / ^, parentheses, unary minus, and sin cos tan sqrt abs exp log (one argument) and min max (two arguments). Nothing else: no other names, text, or symbols.
+Example: {"type":"chart","id":"parab","props":{"kind":"function","alt":"A parabola y = a times x squared, opening wider as a shrinks","expr":"a * x^2","sliders":[{"id":"a","label":"Steepness","min":0.1,"max":3,"value":1}],"xLabel":"x","yLabel":"y"}}
+
+Props schema:
+
+```json
+{"type":"object","properties":{"kind":{"type":"string","enum":["bar","line","scatter","function"]},"alt":{"type":"string","minLength":1,"maxLength":200},"xLabel":{"type":"string","minLength":1,"maxLength":40},"yLabel":{"type":"string","minLength":1,"maxLength":40},"series":{"minItems":1,"maxItems":4,"type":"array","items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":40},"color":{"type":"string","enum":["ink","paper","green","green-deep","blue","sun","pink","lilac","mint"]},"points":{"minItems":1,"maxItems":60,"type":"array","items":{"type":"object","properties":{"x":{"anyOf":[{"type":"number","minimum":-1000000000,"maximum":1000000000},{"type":"string","minLength":1,"maxLength":20}]},"y":{"type":"number","minimum":-1000000000,"maximum":1000000000}},"required":["x","y"],"additionalProperties":false}}},"required":["label","points"],"additionalProperties":false}},"expr":{"type":"string","minLength":1,"maxLength":80},"sliders":{"maxItems":2,"type":"array","items":{"type":"object","properties":{"id":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"label":{"type":"string","minLength":1,"maxLength":30},"min":{"type":"number","minimum":-1000000000,"maximum":1000000000},"max":{"type":"number","minimum":-1000000000,"maximum":1000000000},"value":{"type":"number","minimum":-1000000000,"maximum":1000000000}},"required":["id","label","min","max"],"additionalProperties":false}},"xMin":{"type":"number","minimum":-1000000000,"maximum":1000000000},"xMax":{"type":"number","minimum":-1000000000,"maximum":1000000000},"color":{"type":"string","enum":["ink","paper","green","green-deep","blue","sun","pink","lilac","mint"]}},"required":["kind","alt"],"additionalProperties":false}
+```
+
 ### diagram
 
 At most 3 per spec.

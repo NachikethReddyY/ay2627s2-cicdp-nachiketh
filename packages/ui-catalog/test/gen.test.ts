@@ -29,7 +29,7 @@ test("empty registry: schema accepts no spec, catalog says so", () => {
 test("registered modules form a closed, discriminated union", () => {
   const s = specSchema([probe, other]);
   assert.ok(s.safeParse({ v: 1, blocks: [block] }).success);
-  assert.equal(s.safeParse({ v: 1, blocks: [{ ...block, type: "chart" }] }).success, false);
+  assert.equal(s.safeParse({ v: 1, blocks: [{ ...block, type: "globe" }] }).success, false);
   assert.equal(s.safeParse({ v: 1, blocks: [{ ...block, props: { ...block.props, x: 1 } }] }).success, false);
   const items = JSON.parse(jsonSchema([probe, other])).properties.blocks.items;
   assert.deepEqual(items.oneOf.map((o: any) => o.properties.type.const), ["a_other", "probe"]);

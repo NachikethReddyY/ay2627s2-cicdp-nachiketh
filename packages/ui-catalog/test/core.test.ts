@@ -21,7 +21,7 @@ const parse = (name: string) => parseSpec(fixture(name), reg);
 const paths = (r: ParseResult) => r.issues.map((i) => i.path);
 
 test("registry holds text and image and reserves run", () => {
-  assert.deepEqual(BLOCKS.map((m) => m.type), ["text", "image", "diagram"]);
+  assert.deepEqual(BLOCKS.map((m) => m.type), ["text", "image", "diagram", "chart"]);
   assert.ok(RESERVED.includes("run"));
 });
 
@@ -57,7 +57,7 @@ test("invalid JSON is an envelope failure", () => {
 
 // Each fixture has a good block 0 and a bad block 1: the bad one is dropped, the good one kept.
 for (const [name, path, message] of [
-  ["unknown-type.json", "blocks.1.type", /unknown block type "chart"/],
+  ["unknown-type.json", "blocks.1.type", /unknown block type "globe"/],
   ["reserved-run.json", "blocks.1.type", /"run" blocks are not available/],
   ["extra-prop.json", "blocks.1.props.foo", /unknown property/],
   ["extra-block-key.json", "blocks.1.style", /unknown property/],
