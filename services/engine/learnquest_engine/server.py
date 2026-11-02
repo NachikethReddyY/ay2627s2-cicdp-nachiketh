@@ -82,8 +82,12 @@ def visual_route(body: VisualRequest) -> JSONResponse:
             status_code=503,
             content={"error": "LLM not configured (LLM_API_KEY is empty)", "issues": []},
         )
-    doc = visual.generate_visual(body.prompt).value.model_dump()
+    doc = visual.unwrap(visual.generate_visual(body.prompt).value.model_dump())
     found = visual.issues(doc)
+    if found:
+        # One repair call with the exact problems, then give up with a clear 422.
+        doc = visual.unwrap(visual.generate_visual(body.prompt, found).value.model_dump())
+        found = visual.issues(doc)
     if found:
         return JSONResponse(
             status_code=422,

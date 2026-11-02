@@ -28,10 +28,13 @@ def test_valid_doc_passes(client: TestClient, fake_llm: FakeLLM) -> None:
 
 
 def test_invalid_doc_is_rejected(client: TestClient, fake_llm: FakeLLM) -> None:
-    fake_llm("visual_bad")
+    # The first reply is invalid, so the route makes one repair call; the repair is also invalid.
+    calls = fake_llm("visual_bad_repair")
     r = client.post("/v1/pipeline/visual", json={"prompt": "pets chart"}, headers=TOKEN)
     assert r.status_code == 422
     assert r.json()["issues"]
+    assert len(calls) == 2
+    assert "fix_these_issues" in calls[1]["messages"][-1]["content"]
 
 
 def test_unconfigured_llm_is_clear(monkeypatch: pytest.MonkeyPatch) -> None:
