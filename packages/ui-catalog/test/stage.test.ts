@@ -17,6 +17,7 @@ test("valid stages parse cleanly", () => {
 for (const [name, path, msg] of [
   ["too-many-shapes", "blocks.1.props.shapes", /60|at most|too big/i],
   ["coord-101", "blocks.1.props.shapes.0.x", /100|too big|at most/i],
+  ["rect-overflow", "blocks.1.props.shapes.0.x", /leaves the 0-100 canvas/],
   ["unknown-kind", "blocks.1.props.shapes.0.kind", /./],
   ["unknown-id", "blocks.1.props.timeline.steps.1.set.0.id", /unknown shape/],
   ["bad-prop", "blocks.1.props.timeline.steps.1.set.0.prop", /cannot be animated/],
@@ -46,6 +47,17 @@ test("check rejects missing geometry, wrong-type values and duplicate ids", () =
   assert.match(bad(stage(c, t("x", "5"))), /must be a number/);
   assert.match(bad(stage(c, t("x", 101))), /between 0 and 100/);
   assert.ok(parseSpec(stage(c, t("opacity", 0.5))).ok);
+});
+
+test("check keeps whole shapes inside the canvas", () => {
+  const stage = (shape: object) => ({ v: 1, blocks: [{ type: "stage", id: "s", props: { alt: "a", shapes: [{ id: "a", ...shape }] } }] });
+  const paths = (shape: object) => parseSpec(stage(shape)).issues.map((i) => i.path);
+  assert.deepEqual(paths({ kind: "rect", x: 90, y: 0, w: 50, h: 5 }), ["blocks.0.props.shapes.0.x"]);
+  assert.deepEqual(paths({ kind: "circle", x: 50, y: 5, r: 20 }), ["blocks.0.props.shapes.0.y"]);
+  assert.deepEqual(paths({ kind: "line", x: 10, y: 10, x2: 20, y2: 101 }).length, 1);
+  assert.deepEqual(paths({ kind: "line", x: 10, y: 10, x2: 20, y2: 95 }), []);
+  assert.deepEqual(paths({ kind: "ellipse", x: 95, y: 50, w: 20, h: 10 }), ["blocks.0.props.shapes.0.x"]);
+  assert.deepEqual(paths({ kind: "rect", x: 50, y: 80, w: 50, h: 20 }), []);
 });
 
 test("describe lists shapes and the step captions", () => {

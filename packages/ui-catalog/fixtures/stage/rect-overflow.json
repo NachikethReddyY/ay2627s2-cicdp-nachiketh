@@ -1,0 +1,95 @@
+{
+  "v": 1,
+  "blocks": [
+    {
+      "type": "text",
+      "id": "t1",
+      "props": {
+        "md": "Hi"
+      }
+    },
+    {
+      "type": "stage",
+      "id": "s_tl",
+      "props": {
+        "alt": "A ball sits on the ground",
+        "shapes": [
+          {
+            "id": "ground",
+            "kind": "rect",
+            "x": 90,
+            "y": 80,
+            "w": 50,
+            "h": 20,
+            "fill": "green"
+          },
+          {
+            "id": "ball",
+            "kind": "circle",
+            "x": 15,
+            "y": 72,
+            "r": 8,
+            "fill": "sun",
+            "stroke": "ink",
+            "label": "Ball"
+          },
+          {
+            "id": "path",
+            "kind": "line",
+            "x": 10,
+            "y": 90,
+            "x2": 90,
+            "y2": 90,
+            "stroke": "ink"
+          },
+          {
+            "id": "cap",
+            "kind": "text",
+            "x": 50,
+            "y": 10,
+            "label": "Rolling"
+          },
+          {
+            "id": "oval",
+            "kind": "ellipse",
+            "x": 50,
+            "y": 50,
+            "w": 20,
+            "h": 10,
+            "fill": "pink"
+          }
+        ],
+        "timeline": {
+          "steps": [
+            {
+              "caption": "Start on the left",
+              "durationMs": 1000,
+              "set": []
+            },
+            {
+              "caption": "Roll to the right",
+              "durationMs": 1500,
+              "set": [
+                {
+                  "id": "ball",
+                  "prop": "x",
+                  "value": 85
+                },
+                {
+                  "id": "ball",
+                  "prop": "fill",
+                  "value": "blue"
+                },
+                {
+                  "id": "oval",
+                  "prop": "opacity",
+                  "value": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
