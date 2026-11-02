@@ -8,6 +8,8 @@ RUN apt-get update \
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV && chown -R 1001:1001 $VIRTUAL_ENV
 ENV PATH=$VIRTUAL_ENV/bin:$PATH
+# Shells open with `bash -l`, and /etc/profile resets PATH, so add the venv back there.
+RUN echo 'export PATH=/opt/venv/bin:$PATH' > /etc/profile.d/venv.sh
 
 RUN useradd -m -u 1001 -s /bin/bash learner
 USER learner
