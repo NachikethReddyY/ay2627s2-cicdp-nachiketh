@@ -2,6 +2,8 @@ import type { z } from "zod";
 import { MAX_SPEC_BYTES } from "./caps.ts";
 import { blockSchema, envelopeSchema } from "./envelope.ts";
 import { RESERVED } from "./reserved.ts";
+import { imageBlock } from "../blocks/image/index.ts";
+import { textBlock } from "../blocks/text/index.ts";
 
 /** `path` is dotted from the spec root, e.g. "blocks.2.props.foo"; "$" is the root itself. */
 export type Issue = { path: string; message: string };
@@ -14,7 +16,7 @@ export type BlockModule<P = any> = {
   /** Strict props schema (z.strictObject) with its caps; the core wraps it as { type, id, props }. */
   schema: z.ZodType<P>;
   /** Semantic checks the schema cannot express. Paths are relative to the block, e.g. "props.items.0". */
-  check: (block: Block<P>) => Issue[];
+  check: (block: Block<P>, ...ctx: any[]) => Issue[];
   /** One-line plain-text summary of the block, for logs and screen-reader fallbacks. */
   describe: (block: Block<P>) => string;
   /** Prompt fragment that teaches the model this block. */
@@ -23,8 +25,8 @@ export type BlockModule<P = any> = {
   budget: number;
 };
 
-// Registered block modules. Empty until the block tasks land.
-export const BLOCKS: readonly BlockModule[] = [];
+// Registered block modules.
+export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock];
 
 export type ParseResult = { ok: true; spec: Spec; issues: Issue[] } | { ok: false; issues: Issue[] };
 

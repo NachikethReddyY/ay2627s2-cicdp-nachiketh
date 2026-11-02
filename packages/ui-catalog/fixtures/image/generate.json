@@ -1,0 +1,1 @@
+{"v":1,"blocks":[{"type":"image","id":"i1","props":{"source":"asset","assetId":"ast_pizza","alt":"A pizza"}},{"type":"image","id":"i2","props":{"source":"generate","prompt":"a cat","alt":"A cat"}}]}

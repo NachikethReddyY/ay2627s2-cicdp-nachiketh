@@ -20,8 +20,8 @@ const fixture = (name: string) => readFileSync(new URL(`../fixtures/core/${name}
 const parse = (name: string) => parseSpec(fixture(name), reg);
 const paths = (r: ParseResult) => r.issues.map((i) => i.path);
 
-test("core registry starts empty and reserves run", () => {
-  assert.deepEqual(BLOCKS, []);
+test("registry holds text and image and reserves run", () => {
+  assert.deepEqual(BLOCKS.map((m) => m.type), ["text", "image"]);
   assert.ok(RESERVED.includes("run"));
 });
 
@@ -83,7 +83,7 @@ test("budget caps blocks per type", () => {
   assert.deepEqual(paths(r), ["blocks.2"]);
 });
 
-// shortcut: the "disabled" message needs a module in BLOCKS; test it when the first block lands.
+// the "disabled" message needs a module in BLOCKS; covered below with text.
 test("a type outside the enabled list is rejected", () => {
   const r = parseSpec(fixture("valid.json"), []);
   assert.equal(r.ok, false);

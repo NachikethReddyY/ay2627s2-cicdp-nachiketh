@@ -12,4 +12,32 @@ A visual is one JSON object: `{"v": 1, "blocks": [...]}`.
 
 ## Blocks
 
-No block types are available yet.
+### image
+
+At most 4 per spec.
+
+Use `image` to show an existing picture from the asset library: {"source":"asset","assetId":"<id>","alt":"...","caption":"..."}.
+Only use an assetId you were given. `alt` is required: describe what the picture shows. `caption` is optional.
+The "generate" source is not available yet; do not use it.
+Example: {"type":"image","id":"pic","props":{"source":"asset","assetId":"ast_pizza","alt":"A pizza cut into 8 equal slices","caption":"8 slices"}}
+
+Props schema:
+
+```json
+{"type":"object","properties":{"source":{"type":"string","const":"asset"},"assetId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$"},"alt":{"type":"string","minLength":1,"maxLength":200},"caption":{"type":"string","minLength":1,"maxLength":200}},"required":["source","assetId","alt"],"additionalProperties":false}
+```
+
+### text
+
+At most 6 per spec.
+
+Use `text` for a short explanation, definition or caption that no other block covers.
+`md` is plain text in paragraphs (blank line between them); only **bold** and *italic* are styled.
+No HTML, no headings, lists or images. Links are shown as plain text, not clickable.
+Example: {"type":"text","id":"intro","props":{"md":"A **fraction** shows part of a whole.\n\nThe bottom number says how many equal parts."}}
+
+Props schema:
+
+```json
+{"type":"object","properties":{"md":{"type":"string","minLength":1,"maxLength":2000}},"required":["md"],"additionalProperties":false}
+```
