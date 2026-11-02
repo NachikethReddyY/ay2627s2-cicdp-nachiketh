@@ -1,21 +1,23 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { BLOCKS } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
+import StepControls from "../StepControls.tsx";
+import { useTimeline } from "../hooks/useTimeline.ts";
+import type { Timeline, TimelineState } from "@learnquest/ui-catalog";
 import { FONT, LINE_H, directionFor, layoutDiagram, pathOf, wrap, type DiagramProps, type Layout, type PlacedNode } from "./layout.ts";
 
-type Props = DiagramProps & { alt: string };
+type Props = DiagramProps & { alt: string; timeline?: Timeline };
 
-// shortcut: no timeline highlighting; the diagram module has no timeline field yet, wire useTimeline when it does
-function Shape({ n, shape }: { n: PlacedNode; shape: DiagramProps["shape"] }) {
+function Shape({ n, shape, active }: { n: PlacedNode; shape: DiagramProps["shape"]; active: boolean }) {
   const { x, y, w, h } = n;
-  const c = { fill: "var(--color-paper)", stroke: "var(--color-ink)", strokeWidth: 2 };
+  const c = { fill: active ? "var(--color-sun)" : "var(--color-paper)", stroke: "var(--color-ink)", strokeWidth: active ? 4 : 2 };
   if (shape === "circle") return <circle cx={x} cy={y} r={w / 2} {...c} />;
   if (shape === "diamond") return <polygon points={`${x},${y - h / 2} ${x + w / 2},${y} ${x},${y + h / 2} ${x - w / 2},${y}`} {...c} />;
   const r = shape === "round" ? Math.min(h / 2, 20) : 4;
   return <rect x={x - w / 2} y={y - h / 2} width={w} height={h} rx={r} {...c} />;
 }
 
-export default function DiagramView({ block }: BlockViewProps<Props>) {
+function Diagram({ block, state }: BlockViewProps<Props> & { state?: TimelineState }) {
   const p = block.props;
   const [layout, setLayout] = useState<Layout | null>(null);
   const [failed, setFailed] = useState(false);
@@ -62,7 +64,7 @@ export default function DiagramView({ block }: BlockViewProps<Props>) {
       ))}
       {layout.nodes.map((n) => (
         <g key={n.id}>
-          <Shape n={n} shape={p.shape} />
+          <Shape n={n} shape={p.shape} active={state?.[n.id]?.active === true} />
           <text textAnchor="middle" fill="var(--color-ink)">
             {n.lines.map((l, i) => <tspan key={i} x={n.x} y={n.y + (i - (n.lines.length - 1) / 2) * LINE_H} dominantBaseline="central">{l}</tspan>)}
           </text>
@@ -71,4 +73,19 @@ export default function DiagramView({ block }: BlockViewProps<Props>) {
     </svg>
   );
   return <div ref={box} className="min-w-0 max-w-full">{body}</div>;
+}
+
+function Timed({ block, timeline }: BlockViewProps<Props> & { timeline: Timeline }) {
+  const tl = useTimeline(timeline);
+  return (
+    <div ref={tl.ref} className="min-w-0 max-w-full">
+      <Diagram block={block} state={tl.state} />
+      <StepControls tl={tl} />
+    </div>
+  );
+}
+
+export default function DiagramView({ block }: BlockViewProps<Props>) {
+  const t = block.props.timeline;
+  return t ? <Timed block={block} timeline={t} /> : <Diagram block={block} />;
 }
