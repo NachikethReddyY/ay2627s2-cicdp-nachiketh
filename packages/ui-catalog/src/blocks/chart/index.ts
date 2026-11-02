@@ -14,6 +14,7 @@ const num = () => z.number().min(-1e9).max(1e9);
 
 type Slider = { id: string; label: string; min: number; max: number; value?: number };
 type Series = { label: string; color?: (typeof import("../../core/caps.ts").THEME_COLORS)[number]; points: { x: number | string; y: number }[] };
+export type ChartProps = Props;
 type Props = {
   kind: (typeof KINDS)[number];
   alt: string;
