@@ -12,6 +12,21 @@ A visual is one JSON object: `{"v": 1, "blocks": [...]}`.
 
 ## Blocks
 
+### diagram
+
+At most 3 per spec.
+
+Prefer `diagram` when a structure is the point: steps in a process, a hierarchy, a cycle, a timeline, relationships.
+`kind` is flow, tree, cycle, timeline, graph or labelled. `shape` (rect, round, diamond, circle) is optional and applies to every node.
+Up to 30 nodes (id, label up to 60 chars) and 50 edges (from, to, optional label up to 40 chars); every edge must use node ids. `alt` is required: say what the diagram shows.
+Example: {"type":"diagram","id":"water","props":{"kind":"cycle","alt":"The water cycle: evaporation, condensation, rain","nodes":[{"id":"sea","label":"Sea"},{"id":"cloud","label":"Cloud"},{"id":"rain","label":"Rain"}],"edges":[{"from":"sea","to":"cloud","label":"evaporates"},{"from":"cloud","to":"rain"},{"from":"rain","to":"sea"}]}}
+
+Props schema:
+
+```json
+{"type":"object","properties":{"kind":{"type":"string","enum":["flow","tree","cycle","timeline","graph","labelled"]},"shape":{"type":"string","enum":["rect","round","diamond","circle"]},"alt":{"type":"string","minLength":1,"maxLength":200},"nodes":{"minItems":1,"maxItems":30,"type":"array","items":{"type":"object","properties":{"id":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"label":{"type":"string","minLength":1,"maxLength":60}},"required":["id","label"],"additionalProperties":false}},"edges":{"maxItems":50,"type":"array","items":{"type":"object","properties":{"from":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"to":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"label":{"type":"string","minLength":1,"maxLength":40}},"required":["from","to"],"additionalProperties":false}}},"required":["kind","alt","nodes","edges"],"additionalProperties":false}
+```
+
 ### image
 
 At most 4 per spec.

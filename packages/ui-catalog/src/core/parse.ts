@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { MAX_SPEC_BYTES } from "./caps.ts";
 import { blockSchema, envelopeSchema } from "./envelope.ts";
 import { RESERVED } from "./reserved.ts";
+import { diagramBlock } from "../blocks/diagram/index.ts";
 import { imageBlock } from "../blocks/image/index.ts";
 import { textBlock } from "../blocks/text/index.ts";
 
@@ -26,7 +27,7 @@ export type BlockModule<P = any> = {
 };
 
 // Registered block modules.
-export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock];
+export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock, diagramBlock];
 
 export type ParseResult = { ok: true; spec: Spec; issues: Issue[] } | { ok: false; issues: Issue[] };
 
