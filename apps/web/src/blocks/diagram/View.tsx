@@ -1,7 +1,7 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { BLOCKS } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
-import { FONT, LINE_H, layoutDiagram, pathOf, wrap, type DiagramProps, type Layout, type PlacedNode } from "./layout.ts";
+import { FONT, LINE_H, directionFor, layoutDiagram, pathOf, wrap, type DiagramProps, type Layout, type PlacedNode } from "./layout.ts";
 
 type Props = DiagramProps & { alt: string };
 
@@ -20,19 +20,31 @@ export default function DiagramView({ block }: BlockViewProps<Props>) {
   const [layout, setLayout] = useState<Layout | null>(null);
   const [failed, setFailed] = useState(false);
   const marker = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0); // 0 = unmeasured: top-to-bottom
 
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setWidth(e!.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Only the direction matters, so the layout reruns when the width crosses the breakpoint, not on every resize.
+  const dir = directionFor(p.kind, width);
   useEffect(() => {
     let live = true;
     import("@dagrejs/dagre")
-      .then((m) => live && setLayout(layoutDiagram(m.default ?? m, p)))
+      .then((m) => live && setLayout(layoutDiagram(m.default ?? m, p, dir)))
       .catch(() => live && setFailed(true));
     return () => { live = false; };
-  }, [p]);
+  }, [p, dir]);
 
-  if (failed) return <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{BLOCKS.find((m) => m.type === "diagram")!.describe(block)}</p>;
-  if (!layout) return <div role="img" aria-label={p.alt} className="h-24 w-full rounded-2xl border-2 border-ink bg-white" />;
-
-  return (
+  let body;
+  if (failed) body = <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{BLOCKS.find((m) => m.type === "diagram")!.describe(block)}</p>;
+  else if (!layout) body = <div role="img" aria-label={p.alt} className="h-24 w-full rounded-2xl border-2 border-ink bg-white" />;
+  else body = (
     <svg role="img" aria-label={p.alt} viewBox={`0 0 ${layout.width} ${layout.height}`} width={layout.width} height={layout.height}
       style={{ maxWidth: "100%", height: "auto", aspectRatio: `${layout.width} / ${layout.height}` }}
       className="block rounded-2xl border-2 border-ink bg-white" fontSize={FONT}>
@@ -58,4 +70,5 @@ export default function DiagramView({ block }: BlockViewProps<Props>) {
       ))}
     </svg>
   );
+  return <div ref={box} className="min-w-0 max-w-full">{body}</div>;
 }

@@ -59,11 +59,16 @@ export function clipToShape(n: { x: number; y: number; w: number; h: number }, t
   return { x: n.x + dx * t, y: n.y + dy * t };
 }
 
-const DIR: Record<string, "TB" | "LR"> = { timeline: "LR" };
+export const WIDE = 640; // container px at which flow and cycle diagrams switch to left-to-right
 
-export function layoutDiagram(dagre: typeof Dagre, p: DiagramProps): Layout {
+/** Rank direction: timelines always run across; flow and cycle run across on a wide container; everything else (and unmeasured) stays top-to-bottom. */
+export function directionFor(kind: string, width: number): "TB" | "LR" {
+  return kind === "timeline" || ((kind === "flow" || kind === "cycle") && width >= WIDE) ? "LR" : "TB";
+}
+
+export function layoutDiagram(dagre: typeof Dagre, p: DiagramProps, dir: "TB" | "LR" = directionFor(p.kind, 0)): Layout {
   const g = new dagre.graphlib.Graph({ multigraph: true });
-  g.setGraph({ rankdir: DIR[p.kind] ?? "TB", nodesep: 24, ranksep: 36, edgesep: 12, marginx: MARGIN, marginy: MARGIN });
+  g.setGraph({ rankdir: dir, nodesep: 24, ranksep: 36, edgesep: 12, marginx: MARGIN, marginy: MARGIN });
   g.setDefaultEdgeLabel(() => ({}));
   // Last resort: a label that would still wrap past 3 lines gets a wider line (up to 24 chars). The SVG scales to its container, so wide viewBoxes are fine.
   const boxes = new Map(p.nodes.map((n) => { let lines = wrap(n.label, NODE_WRAP); if (lines.length > 3) lines = wrap(n.label, Math.max(NODE_WRAP, Math.min(24, Math.ceil(n.label.length / 3) + 2))); return [n.id, { lines, ...nodeSize(lines, p.shape) }]; }));

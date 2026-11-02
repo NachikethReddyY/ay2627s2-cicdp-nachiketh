@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import dagre from "@dagrejs/dagre";
-import { CHAR_W, MIN_W, NODE_WRAP, clipToShape, layoutDiagram, nodeSize, wrap, type DiagramProps } from "./layout.ts";
+import { CHAR_W, MIN_W, NODE_WRAP, clipToShape, directionFor, layoutDiagram, nodeSize, wrap, type DiagramProps } from "./layout.ts";
 
 test("wrap keeps every line within the cap, even for one long word", () => {
   for (const s of ["a b c", "x".repeat(60), "the quick brown fox jumps over the lazy dog again and again"])
@@ -61,4 +61,20 @@ test("short label gets the minimum width; long label wraps at spaces within the 
   assert.ok(w >= MIN_W);
   const long = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label: "supercalifragilisticexpialidocious" }], edges: [] }).nodes[0];
   assert.ok(long.lines.length > 1 && long.lines.every((l) => l.length <= 24));
+});
+
+test("directionFor: wide flow and cycle go left to right; narrow, tree and unmeasured stay top to bottom", () => {
+  assert.equal(directionFor("flow", 640), "LR");
+  assert.equal(directionFor("cycle", 900), "LR");
+  assert.equal(directionFor("flow", 639), "TB");
+  assert.equal(directionFor("flow", 0), "TB");
+  assert.equal(directionFor("tree", 1200), "TB");
+  assert.equal(directionFor("timeline", 0), "LR");
+});
+
+test("a wide flow lays out wider than tall; narrow lays out taller than wide", () => {
+  const chain = (n: number): DiagramProps => ({ kind: "flow", nodes: Array.from({ length: n }, (_, i) => ({ id: `n${i}`, label: `Step ${i}` })), edges: Array.from({ length: n - 1 }, (_, i) => ({ from: `n${i}`, to: `n${i + 1}` })) });
+  const lr = layoutDiagram(dagre, chain(7), "LR"), tb = layoutDiagram(dagre, chain(7), "TB");
+  assert.ok(lr.width > lr.height);
+  assert.ok(tb.height > tb.width);
 });
