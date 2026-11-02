@@ -14,7 +14,7 @@ from litellm.exceptions import (
 )
 from pydantic import BaseModel, Field
 
-from learnquest_engine import pipeline
+from learnquest_engine import pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.schemas import LessonContext
@@ -27,6 +27,10 @@ app = FastAPI(title="LearnQuest engine", docs_url=None, redoc_url=None)
 
 class OutlineRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=200)
+
+
+class VisualRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=500)
 
 
 def require_token(x_engine_token: Annotated[str | None, Header()] = None) -> None:
@@ -68,6 +72,24 @@ def outline_route(body: OutlineRequest) -> dict[str, Any]:
 @app.post("/v1/pipeline/lesson", dependencies=[Depends(require_token)])
 def lesson_route(body: LessonContext) -> dict[str, Any]:
     return _body("lesson", pipeline.lesson(body))
+
+
+@app.post("/v1/pipeline/visual", dependencies=[Depends(require_token)])
+def visual_route(body: VisualRequest) -> JSONResponse:
+    key = get_settings().LLM_API_KEY
+    if key is None or not key.get_secret_value():
+        return JSONResponse(
+            status_code=503,
+            content={"error": "LLM not configured (LLM_API_KEY is empty)", "issues": []},
+        )
+    doc = visual.generate_visual(body.prompt).value.model_dump()
+    found = visual.issues(doc)
+    if found:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "Model output failed the visual schema", "issues": found},
+        )
+    return JSONResponse({"doc": doc})
 
 
 @app.exception_handler(GenerationError)
