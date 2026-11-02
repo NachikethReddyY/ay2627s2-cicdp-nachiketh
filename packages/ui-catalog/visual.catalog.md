@@ -58,6 +58,20 @@ Props schema:
 {"type":"object","properties":{"source":{"type":"string","const":"asset"},"assetId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$"},"alt":{"type":"string","minLength":1,"maxLength":200},"caption":{"type":"string","minLength":1,"maxLength":200}},"required":["source","assetId","alt"],"additionalProperties":false}
 ```
 
+### stage
+
+At most 3 per spec.
+
+Use `stage` for a small animated 2D scene. `alt` is required: say what the scene shows. `shapes` (up to 60) sit on a 0-100 by 0-100 canvas; every number is 0 to 100. Each shape has id, kind (rect, circle, ellipse, line, text), x, y, optional fill and stroke (theme colours) and optional label (up to 40 chars). rect and ellipse need w and h (rect x,y is its top-left), circle needs r, line needs x2 and y2, text needs label.
+Optional `timeline` (up to 30 steps): each step has caption, durationMs (300 to 4000) and set, a list of {id, prop, value} using shape ids. prop is one of x, y, opacity, fill, stroke, w, h, r: numbers 0 to 100 (opacity 0 to 1), fill and stroke are theme colours.
+Example: {"type":"stage","id":"ball","props":{"alt":"A ball rolls from the left to the right of the ground","shapes":[{"id":"ground","kind":"rect","x":0,"y":80,"w":100,"h":20,"fill":"green"},{"id":"ball","kind":"circle","x":15,"y":72,"r":8,"fill":"sun","stroke":"ink","label":"Ball"}],"timeline":{"steps":[{"caption":"The ball starts on the left","durationMs":1000,"set":[]},{"caption":"It rolls to the right","durationMs":1500,"set":[{"id":"ball","prop":"x","value":85}]}]}}}
+
+Props schema:
+
+```json
+{"type":"object","properties":{"alt":{"type":"string","minLength":1,"maxLength":200},"shapes":{"minItems":1,"maxItems":60,"type":"array","items":{"type":"object","properties":{"id":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"kind":{"type":"string","enum":["rect","circle","ellipse","line","text"]},"x":{"type":"number","minimum":0,"maximum":100},"y":{"type":"number","minimum":0,"maximum":100},"w":{"type":"number","minimum":0,"maximum":100},"h":{"type":"number","minimum":0,"maximum":100},"r":{"type":"number","minimum":0,"maximum":100},"x2":{"type":"number","minimum":0,"maximum":100},"y2":{"type":"number","minimum":0,"maximum":100},"fill":{"type":"string","enum":["ink","paper","green","green-deep","blue","sun","pink","lilac","mint"]},"stroke":{"type":"string","enum":["ink","paper","green","green-deep","blue","sun","pink","lilac","mint"]},"label":{"type":"string","minLength":1,"maxLength":40}},"required":["id","kind","x","y"],"additionalProperties":false}},"timeline":{"type":"object","properties":{"steps":{"minItems":1,"maxItems":30,"type":"array","items":{"type":"object","properties":{"caption":{"type":"string","minLength":1,"maxLength":200},"durationMs":{"type":"integer","minimum":300,"maximum":4000},"set":{"maxItems":20,"type":"array","items":{"type":"object","properties":{"id":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"prop":{"type":"string","pattern":"^[a-z0-9_]{1,24}$"},"value":{"anyOf":[{"type":"string","minLength":1,"maxLength":200},{"type":"number"},{"type":"boolean"}]}},"required":["id","prop","value"],"additionalProperties":false}}},"required":["caption","durationMs","set"],"additionalProperties":false}},"autoplay":{"type":"boolean"}},"required":["steps"],"additionalProperties":false}},"required":["alt","shapes"],"additionalProperties":false}
+```
+
 ### text
 
 At most 6 per spec.
