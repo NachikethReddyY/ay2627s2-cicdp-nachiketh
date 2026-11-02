@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { timelineSchema } from "@learnquest/ui-catalog";
-import { initialPlaying, keyAction, plan, stepReduce, tick } from "./model.ts";
+import { initialPlaying, keyAction, motionAction, plan, stepReduce, tick } from "./model.ts";
 
 const tl = timelineSchema.parse({
   steps: [0, 1, 2].map((i) => ({ caption: `s${i}`, durationMs: 500, set: [] })),
@@ -43,4 +43,24 @@ test("reduced motion turns autoplay off", () => {
   assert.equal(initialPlaying(true, false), true);
   assert.equal(initialPlaying(true, true), false);
   assert.equal(initialPlaying(undefined, false), false);
+});
+
+test("reduced motion turns Play into a single step", () => {
+  assert.equal(motionAction("toggle", true), "next");
+  assert.equal(motionAction("play", true), "next");
+  assert.equal(motionAction("toggle", false), "toggle");
+  assert.equal(motionAction("prev", true), "prev");
+});
+
+test("keyAction ignores keys with Alt, Ctrl or Meta held", () => {
+  assert.equal(keyAction("ArrowLeft", "DIV", { alt: true }), null);
+  assert.equal(keyAction("ArrowLeft", "DIV", { ctrl: true }), null);
+  assert.equal(keyAction("Home", "DIV", { meta: true }), null);
+  assert.equal(keyAction("ArrowLeft", "DIV", {}), "prev");
+});
+
+test("plan cleans alt text of rejected blocks", () => {
+  const p = plan({ v: 1, blocks: [{ type: "nope", id: "a", props: { alt: "  hi\u0000 there  " } }] });
+  const it = p.items[0];
+  assert.equal(it?.kind === "rejected" && it.alt, "hi there");
 });

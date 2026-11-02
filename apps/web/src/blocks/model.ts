@@ -1,12 +1,12 @@
 // Pure helpers for the renderer shell. No React or DOM, so node --test can run them.
-import { parseSpec, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
+import { parseSpec, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
 
 export type Item = { kind: "block"; block: Block } | { kind: "rejected"; alt: string; reasons: string[] };
 export type Plan = { items: Item[]; issues: Issue[]; fatal: boolean };
 
 const altOf = (raw: unknown): string => {
   const a = (raw as { props?: { alt?: unknown } } | null)?.props?.alt;
-  return typeof a === "string" ? a : "";
+  return typeof a === "string" ? sanitize(a).trim().slice(0, MAX_ALT) : "";
 };
 
 /** Re-parses a doc and lines every raw block up with either its parsed block or a rejection (keeping its alt text). */
@@ -51,8 +51,12 @@ export const tick = (t: Timeline, s: Stepper): Stepper => {
   return { step: n, playing: n < stepCount(t) - 1 };
 };
 
+/** Reduced motion has no autoplay, so Play steps forward once instead of flipping to "Pause". */
+export const motionAction = (a: StepAction, reduced: boolean): StepAction => (reduced && (a === "play" || a === "toggle") ? "next" : a);
+
 /** Space, arrows and Home/End. Native controls (buttons, the scrub slider) keep their own keys. */
-export function keyAction(key: string, targetTag = ""): StepAction | null {
+export function keyAction(key: string, targetTag = "", mods: { alt?: boolean; ctrl?: boolean; meta?: boolean } = {}): StepAction | null {
+  if (mods.alt || mods.ctrl || mods.meta) return null;
   if (["BUTTON", "INPUT", "TEXTAREA", "SELECT"].includes(targetTag.toUpperCase())) return null;
   return ({ " ": "toggle", ArrowRight: "next", ArrowLeft: "prev", Home: "first", End: "last" } as const)[key as " "] ?? null;
 }

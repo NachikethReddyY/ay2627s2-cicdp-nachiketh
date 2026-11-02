@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { Timeline } from "@learnquest/ui-catalog";
-import { initialPlaying, stepReduce, tick, viewState, type StepAction, type Stepper } from "../model.ts";
+import { initialPlaying, motionAction, stepReduce, tick, viewState, type StepAction, type Stepper } from "../model.ts";
 import { useReducedMotion } from "./useReducedMotion.ts";
 
 /** Drives a timeline. Attach `ref` to the block's root so autoplay pauses when it is off-screen. */
@@ -35,7 +35,7 @@ export function useTimeline(timeline: Timeline) {
     return () => clearTimeout(id);
   }, [running, s.step, timeline]);
 
-  return { ...s, ...viewState(timeline, s), reduced, ref, dispatch: dispatch as (a: StepAction) => void };
+  return { ...s, ...viewState(timeline, s), reduced, ref, dispatch: ((a: StepAction) => dispatch(motionAction(a, reduced))) };
 }
 
 export type TimelineControl = ReturnType<typeof useTimeline>;
