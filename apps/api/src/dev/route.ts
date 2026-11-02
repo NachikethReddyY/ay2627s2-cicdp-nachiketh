@@ -23,7 +23,6 @@ export async function devRoutes(app: FastifyInstance) {
         method: "POST",
         headers: { "content-type": "application/json", "x-engine-token": env.ENGINE_TOKEN },
         body: JSON.stringify(body.data),
-        signal: AbortSignal.timeout(130_000),
       });
     } catch {
       return fail(`Engine unreachable at ${env.ENGINE_URL}`);
