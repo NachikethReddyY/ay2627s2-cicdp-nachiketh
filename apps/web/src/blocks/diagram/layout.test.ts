@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import dagre from "@dagrejs/dagre";
-import { CHAR_W, clipToShape, layoutDiagram, nodeSize, wrap, type DiagramProps } from "./layout.ts";
+import { CHAR_W, MIN_W, NODE_WRAP, clipToShape, layoutDiagram, nodeSize, wrap, type DiagramProps } from "./layout.ts";
 
 test("wrap keeps every line within the cap, even for one long word", () => {
   for (const s of ["a b c", "x".repeat(60), "the quick brown fox jumps over the lazy dog again and again"])
@@ -31,7 +31,7 @@ for (const shape of ["rect", "round", "diamond", "circle"] as const)
     });
 
 test("nodeSize grows for diamonds", () => {
-  assert.ok(nodeSize(["abc"], "diamond").w > nodeSize(["abc"], "rect").w);
+  assert.ok(nodeSize(["x".repeat(18)], "diamond").w > nodeSize(["x".repeat(18)], "rect").w);
 });
 
 test("clipToShape: circle, diamond and rect boundaries", () => {
@@ -49,4 +49,16 @@ test("long labels are widened to at most 3 lines where possible; edge labels res
   const l = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label }, { id: "b", label: "B" }], edges: [{ from: "a", to: "b", label: "yes" }] });
   assert.ok(l.nodes[0].lines.length <= 4 && l.nodes[0].lines.length < wrap(label).length);
   assert.ok(l.edges[0].lw > 0 && l.edges[0].lh > 0);
+});
+
+test("short label gets the minimum width; long label wraps at spaces within the line cap", () => {
+  const short = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label: "Hi" }], edges: [] }).nodes[0];
+  assert.equal(short.w, MIN_W);
+  const label = "Server segments video (adaptive bitrate) for playback";
+  const { lines, w } = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label }], edges: [] }).nodes[0];
+  assert.equal(lines.join(" "), label); // only spaces were break points
+  assert.ok(lines.every((l) => l.length <= NODE_WRAP));
+  assert.ok(w >= MIN_W);
+  const long = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label: "supercalifragilisticexpialidocious" }], edges: [] }).nodes[0];
+  assert.ok(long.lines.length > 1 && long.lines.every((l) => l.length <= 24));
 });

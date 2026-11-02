@@ -15,7 +15,10 @@ export type Layout = { nodes: PlacedNode[]; edges: PlacedEdge[]; width: number; 
 export const FONT = 14;
 export const CHAR_W = 8; // generous average glyph width at FONT, so text never overruns its box
 export const LINE_H = 18;
-const WRAP = 14; // chars per label line
+const WRAP = 14; // chars per edge-label line
+export const NODE_WRAP = 18; // chars per node-label line
+export const MIN_W = 150;
+const MIN_H = 44;
 const PAD = 12;
 const MARGIN = 12;
 
@@ -40,9 +43,9 @@ export function wrap(label: string, max = WRAP): string[] {
 export function nodeSize(lines: string[], shape: DiagramProps["shape"] = "rect"): { w: number; h: number } {
   const tw = Math.max(...lines.map((l) => l.length)) * CHAR_W;
   const th = lines.length * LINE_H;
-  if (shape === "diamond") return { w: Math.ceil((tw + 2 * PAD) * 1.6), h: Math.ceil((th + 2 * PAD) * 1.6) };
-  if (shape === "circle") { const d = Math.ceil(Math.hypot(tw, th) + PAD); return { w: d, h: d }; }
-  return { w: Math.ceil(tw + 2 * PAD), h: Math.ceil(th + 2 * PAD) };
+  if (shape === "diamond") return { w: Math.max(MIN_W, Math.ceil((tw + 2 * PAD) * 1.6)), h: Math.max(MIN_H, Math.ceil((th + 2 * PAD) * 1.6)) };
+  if (shape === "circle") { const d = Math.max(96, Math.ceil(Math.hypot(tw, th) + PAD)); return { w: d, h: d }; }
+  return { w: Math.max(MIN_W, Math.ceil(tw + 2 * PAD)), h: Math.max(MIN_H, Math.ceil(th + 2 * PAD)) };
 }
 
 /** Point where the ray from the node centre toward `toward` crosses the node outline (rect/round: box; circle: radius; diamond: its edges). */
@@ -62,8 +65,8 @@ export function layoutDiagram(dagre: typeof Dagre, p: DiagramProps): Layout {
   const g = new dagre.graphlib.Graph({ multigraph: true });
   g.setGraph({ rankdir: DIR[p.kind] ?? "TB", nodesep: 24, ranksep: 36, edgesep: 12, marginx: MARGIN, marginy: MARGIN });
   g.setDefaultEdgeLabel(() => ({}));
-  // Fix C: a label that would wrap past 3 lines gets a wider line (up to 24 chars) so the box stays readable at 360px.
-  const boxes = new Map(p.nodes.map((n) => { let lines = wrap(n.label); if (lines.length > 3) lines = wrap(n.label, Math.min(24, Math.ceil(n.label.length / 3) + 2)); return [n.id, { lines, ...nodeSize(lines, p.shape) }]; }));
+  // Last resort: a label that would still wrap past 3 lines gets a wider line (up to 24 chars). The SVG scales to its container, so wide viewBoxes are fine.
+  const boxes = new Map(p.nodes.map((n) => { let lines = wrap(n.label, NODE_WRAP); if (lines.length > 3) lines = wrap(n.label, Math.max(NODE_WRAP, Math.min(24, Math.ceil(n.label.length / 3) + 2))); return [n.id, { lines, ...nodeSize(lines, p.shape) }]; }));
   for (const [id, b] of boxes) g.setNode(id, { width: b.w, height: b.h });
   p.edges.forEach((e, i) => {
     const l = e.label ? wrap(e.label, WRAP) : undefined;
