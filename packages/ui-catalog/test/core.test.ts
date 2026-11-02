@@ -21,7 +21,7 @@ const parse = (name: string) => parseSpec(fixture(name), reg);
 const paths = (r: ParseResult) => r.issues.map((i) => i.path);
 
 test("registry holds text and image and reserves run", () => {
-  assert.deepEqual(BLOCKS.map((m) => m.type), ["text", "image", "diagram", "chart", "stage", "scene3d"]);
+  assert.deepEqual(BLOCKS.map((m) => m.type), ["text", "image", "diagram", "chart", "stage", "scene3d", "game"]);
   assert.ok(RESERVED.includes("run"));
 });
 

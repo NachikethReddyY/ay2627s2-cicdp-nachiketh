@@ -315,6 +315,363 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "game"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]{1,24}$"
+              },
+              "props": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "goalText": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "alt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 400
+                  },
+                  "hints": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    }
+                  },
+                  "shell": {
+                    "type": "object",
+                    "properties": {
+                      "lives": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "kind": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "grid"
+                          },
+                          "size": {
+                            "type": "object",
+                            "properties": {
+                              "w": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 10
+                              },
+                              "h": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 10
+                              }
+                            },
+                            "required": [
+                              "w",
+                              "h"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "start": {
+                            "type": "object",
+                            "properties": {
+                              "x": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9
+                              },
+                              "y": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9
+                              },
+                              "dir": {
+                                "type": "string",
+                                "enum": [
+                                  "up",
+                                  "right",
+                                  "down",
+                                  "left"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "x",
+                              "y",
+                              "dir"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "goal": {
+                            "type": "object",
+                            "properties": {
+                              "x": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9
+                              },
+                              "y": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9
+                              }
+                            },
+                            "required": [
+                              "x",
+                              "y"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "walls": {
+                            "maxItems": 60,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9
+                                },
+                                "y": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9
+                                }
+                              },
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "gems": {
+                            "maxItems": 10,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9
+                                },
+                                "y": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9
+                                }
+                              },
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "commands": {
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "forward",
+                                "left",
+                                "right",
+                                "pick"
+                              ]
+                            }
+                          },
+                          "allowRepeat": {
+                            "type": "object",
+                            "properties": {
+                              "maxTimes": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 9
+                              },
+                              "maxBody": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 6
+                              }
+                            },
+                            "required": [
+                              "maxTimes",
+                              "maxBody"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "maxBlocks": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "watch",
+                              "solve",
+                              "debug"
+                            ]
+                          },
+                          "maxSteps": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          "solution": {
+                            "minItems": 1,
+                            "maxItems": 60,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "forward",
+                                    "left",
+                                    "right",
+                                    "pick"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "repeat": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 9
+                                    },
+                                    "body": {
+                                      "minItems": 1,
+                                      "maxItems": 6,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "enum": [
+                                          "forward",
+                                          "left",
+                                          "right",
+                                          "pick"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "repeat",
+                                    "body"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          },
+                          "starter": {
+                            "minItems": 1,
+                            "maxItems": 60,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "forward",
+                                    "left",
+                                    "right",
+                                    "pick"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "repeat": {
+                                      "type": "integer",
+                                      "minimum": 2,
+                                      "maximum": 9
+                                    },
+                                    "body": {
+                                      "minItems": 1,
+                                      "maxItems": 6,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "enum": [
+                                          "forward",
+                                          "left",
+                                          "right",
+                                          "pick"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "repeat",
+                                    "body"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "size",
+                          "start",
+                          "goal",
+                          "walls",
+                          "gems",
+                          "commands",
+                          "mode",
+                          "maxSteps"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "title",
+                  "goalText",
+                  "alt",
+                  "hints",
+                  "shell",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "props"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "image"
               },
               "id": {
