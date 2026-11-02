@@ -15,7 +15,23 @@ const schema = z
     // Optional: without a key, paths.generate answers PRECONDITION_FAILED.
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5-5"),
+    // Lesson media bucket (docs/media-storage-plan.md §2). Unset: media calls answer PRECONDITION_FAILED.
+    S3_ENDPOINT: z.url().optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    S3_REGION: z.string().default("auto"),
+    // Per-learner Docker shell (docs/plans/sandbox-editor-plan.md). Off: /sandbox/shell answers 503 and Docker is never touched.
+    SANDBOX_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+    SANDBOX_IMAGE: z.string().min(1).default("lq-sandbox:dev"),
   })
+  .refine(
+    (e) => {
+      const s3 = [e.S3_ENDPOINT, e.S3_BUCKET, e.S3_ACCESS_KEY_ID, e.S3_SECRET_ACCESS_KEY];
+      return s3.every(Boolean) || !s3.some(Boolean);
+    },
+    { message: "set all of S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, or none", path: ["S3_BUCKET"] },
+  )
   .transform((e) => ({
     ...e,
     DATABASE_URL: e.DATABASE_URL_UNPOOLED ?? e.DATABASE_URL,

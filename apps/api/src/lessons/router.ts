@@ -5,6 +5,7 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { ensureLesson, prefetchNext } from "../ai/service.ts";
+import { listMedia } from "../media/service.ts";
 
 const Lesson = z.object({
   id: z.string(),
@@ -18,7 +19,7 @@ const Lesson = z.object({
         beforeFiles: z.record(z.string(), z.string()),
         hunks: z.array(z.object({ id: z.string(), file: z.string(), oldStart: z.number(), lines: z.array(z.string()) })),
       }),
-      z.object({ kind: z.literal("practice"), instructions: z.string(), starterCode: z.string(), expectedOutput: z.string() }),
+      z.object({ kind: z.literal("practice"), instructions: z.string(), language: z.enum(["python", "javascript"]).default("javascript"), starterCode: z.string(), expectedOutput: z.string() }),
     ])
     .nullable(),
   steps: z.array(
@@ -30,6 +31,8 @@ const Lesson = z.object({
       state: z.enum(["predicting", "hinting", "revealed", "skipped"]),
     }),
   ),
+  // Short-lived signed URLs; see media/storage.ts.
+  media: z.array(z.object({ stepId: z.string().nullable(), kind: z.enum(["narration", "image"]), url: z.string() })),
 });
 
 export const lessonsRouter = router({
@@ -71,6 +74,7 @@ export const lessonsRouter = router({
         )
         .where(eq(steps.lessonVersionId, lesson.currentVersionId))
         .orderBy(asc(steps.idx));
+      const media = await listMedia(lesson.currentVersionId);
       return {
         id: lesson.slug,
         title: lesson.title,
@@ -83,6 +87,7 @@ export const lessonsRouter = router({
           hintCount: r.hintCount,
           state: r.state ?? "predicting",
         })),
+        media,
       };
     }),
 });

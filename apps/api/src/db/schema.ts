@@ -181,7 +181,7 @@ export type Hunk = { id: string; file: string; oldStart: number; lines: string[]
 export type PartSecret =
   | { kind: "learn"; body: string }
   | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
-  | { kind: "practice"; instructions: string; starterCode: string; expectedOutput: string };
+  | { kind: "practice"; instructions: string; language?: "python" | "javascript"; starterCode: string; expectedOutput: string };
 
 export const lessons = pgTable("lessons", {
   id: id(),
@@ -313,4 +313,23 @@ export const hintEvents = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.stepId, t.rung] })],
+);
+
+// Per-version lesson media, object bytes live in the bucket under `key` (docs/media-storage-plan.md §3.3).
+export const lessonMedia = pgTable(
+  "lesson_media",
+  {
+    id: id(),
+    lessonVersionId: text("lesson_version_id")
+      .notNull()
+      .references(() => lessonVersions.id),
+    // Null = lesson-level (cover image).
+    stepId: text("step_id").references(() => steps.id),
+    kind: text("kind", { enum: ["narration", "image"] }).notNull(),
+    key: text("key").notNull().unique(),
+    contentType: text("content_type").notNull(),
+    bytes: integer("bytes").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("lesson_media_version").on(t.lessonVersionId)],
 );
