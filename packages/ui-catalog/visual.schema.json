@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LearnQuest visual spec",
+  "type": "object",
+  "properties": {
+    "v": {
+      "type": "number",
+      "const": 1
+    },
+    "blocks": {
+      "minItems": 1,
+      "maxItems": 12,
+      "type": "array",
+      "items": {
+        "not": {}
+      }
+    }
+  },
+  "required": [
+    "v",
+    "blocks"
+  ],
+  "additionalProperties": false
+}

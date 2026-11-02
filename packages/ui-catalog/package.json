@@ -6,7 +6,8 @@
   "exports": "./src/index.ts",
   "scripts": {
     "test": "node --test 'test/**/*.test.ts'",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "gen": "node src/gen/main.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"
