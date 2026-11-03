@@ -15,6 +15,7 @@ const schema = z
     // Optional: without a key, paths.generate answers PRECONDITION_FAILED.
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5-5"),
+    MODERATION_API_KEY: z.string().min(1).optional(),
     TIERS_JSON: z.string().optional(),
     AI_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(0),
     AI_MONTHLY_BUDGET_USD: z.coerce.number().nonnegative().default(0),

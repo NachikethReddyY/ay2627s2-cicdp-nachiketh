@@ -10,6 +10,8 @@ import { aiGenerations, enrollments, learners, lessons, lessonVersions, pathCour
 import { generator, type LessonContext } from "./generator.ts";
 import { tiers } from "../config/tiers.ts";
 import { reserveAiSpend } from "../config/budget.ts";
+import { isSafe } from "../safety/moderation.ts";
+import { REFUSAL_COPY } from "../safety/copy.ts";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 const Outline = z.union([
@@ -62,6 +64,7 @@ const slugify = (s: string, max: number) =>
 // ---- paths.generate ----
 
 export async function generatePath(learnerId: string, topic: string) {
+  if (!(await isSafe(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
   if (!env.ANTHROPIC_API_KEY) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
   // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
@@ -81,6 +84,7 @@ export async function generatePath(learnerId: string, topic: string) {
   let outline;
   try {
     outline = Outline.parse(await generator.outline(topic));
+    if (!(await isSafe(JSON.stringify(outline)))) throw new Error("Generated content refused by safety filter");
   } catch (e) {
     console.error("outline generation failed", e);
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });

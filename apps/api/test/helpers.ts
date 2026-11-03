@@ -7,6 +7,7 @@ if (!new URL(process.env.DATABASE_URL).pathname.endsWith("_test")) {
   throw new Error("Refusing to run tests: the test database name must end with _test");
 }
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
+process.env.PUBLIC_ORIGIN ??= "http://localhost:5173";
 // inject() connects from 127.0.0.1, so that address stands in for the proxy and its forwarded IP is honoured.
 process.env.TRUSTED_PROXY ??= "127.0.0.1";
 
@@ -19,6 +20,8 @@ const { sql } = await import("drizzle-orm");
 const { db } = await import("../src/db/client.ts");
 const { runMigrations } = await import("../src/db/migrate.ts");
 const { seed } = await import("../src/db/seed.ts");
+const { setModerationClient } = await import("../src/safety/moderation.ts");
+setModerationClient(async () => ({ flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } }));
 
 await runMigrations();
 
