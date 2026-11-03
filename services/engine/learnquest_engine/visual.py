@@ -82,3 +82,11 @@ def unwrap(doc: dict[str, Any]) -> dict[str, Any]:
         else:
             blocks.append(block)
     return {**doc, "blocks": blocks}
+
+
+def validated(doc: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Keep a model-written document only if it passes the committed schema."""
+    if doc is None:
+        return None
+    flat = unwrap(doc)
+    return None if issues(flat) else flat

@@ -30,6 +30,5 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
     # Model output is untrusted: keep the doc only if it passes the committed schema.
     doc = getattr(res.value, "doc", None)
     if doc is not None:
-        doc = visual.unwrap(doc)
-        res.value = res.value.model_copy(update={"doc": None if visual.issues(doc) else doc})
+        res.value = res.value.model_copy(update={"doc": visual.validated(doc)})
     return res

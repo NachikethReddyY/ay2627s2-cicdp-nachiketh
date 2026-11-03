@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"kind\": \"learn\", \"body\": \"Photosynthesis turns light, water and carbon dioxide into glucose and oxygen.\\n\\nThe chart shows one plant's leaf count over two weeks.\", \"doc\": {\"v\": 1, \"blocks\": [{\"type\": \"text\", \"id\": \"summary\", \"props\": {\"md\": \"**Photosynthesis** stores light energy as sugar.\"}}, {\"type\": \"chart\", \"id\": \"leaves\", \"props\": {\"kind\": \"bar\", \"alt\": \"Leaf count grows from 2 in week 1 to 5 in week 2\", \"xLabel\": \"Week\", \"yLabel\": \"Leaves\", \"series\": [{\"label\": \"Plant\", \"color\": \"green\", \"points\": [{\"x\": \"Week 1\", \"y\": 2}, {\"x\": \"Week 2\", \"y\": 5}]}]}}]}}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 1200,
+        "completion_tokens": 180,
+        "total_tokens": 1380
+      }
+    }
+  ]
+}
