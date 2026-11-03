@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Outcome } from "./model.ts";
 
 export const btn = "min-h-11 min-w-11 rounded-full border-2 border-ink bg-white px-4 font-extrabold disabled:opacity-40";
@@ -10,12 +10,20 @@ type Props = {
   /** Announced in the aria-live region: every move, bump, pick, win and lose. No timers anywhere (WCAG 2.2.1). */
   live: string;
   onRetry: () => void;
+  onComplete?: () => void;
   children: ReactNode;
 };
 
 /** What every game shares: title, goal, alt, hints, lives, win/lose banner, Retry and the live region. */
-export default function Shell({ title, goalText, alt, hints, lives, maxLives, outcome, live, onRetry, children }: Props) {
+export default function Shell({ title, goalText, alt, hints, lives, maxLives, outcome, live, onRetry, onComplete, children }: Props) {
   const [shown, setShown] = useState(0);
+  const completed = useRef(false);
+  useEffect(() => {
+    if (outcome === "win" && !completed.current) {
+      completed.current = true;
+      onComplete?.();
+    }
+  }, [outcome, onComplete]);
   const over = outcome === "win" || outcome === "lose";
   return (
     <section aria-label={title} className="flex min-w-0 max-w-full flex-col gap-3 rounded-2xl border-2 border-ink bg-white p-3">

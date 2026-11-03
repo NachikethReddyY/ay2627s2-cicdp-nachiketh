@@ -57,6 +57,13 @@
       "when": 1793668247741,
       "tag": "0007_third_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793670000000,
+      "tag": "0008_quiz_game_completions",
+      "breakpoints": true
     }
   ]
 }

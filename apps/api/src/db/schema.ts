@@ -321,6 +321,18 @@ export const hintEvents = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.stepId, t.rung] })],
 );
 
+export const gameCompletions = pgTable(
+  "game_completions",
+  {
+    learnerId: text("learner_id").notNull().references(() => learners.id),
+    lessonId: text("lesson_id").notNull().references(() => lessons.id),
+    partIdx: integer("part_idx").notNull(),
+    blockId: text("block_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.lessonId, t.partIdx, t.blockId] })],
+);
+
 // Per-version lesson media, object bytes live in the bucket under `key` (docs/media-storage-plan.md §3.3).
 export const lessonMedia = pgTable(
   "lesson_media",

@@ -2,9 +2,11 @@ import { useMemo, useState, type ReactElement } from "react";
 import { BLOCKS, DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type GameProps, type GridCommand, type GridProgram, type GridProps, type GridRun } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
+import { trpc } from "../../lib/trpc.ts";
 import Shell, { btn } from "./Shell.tsx";
 import DragGame from "./DragGame.tsx";
 import PhysicsGame from "./PhysicsGame.tsx";
+import QuizGame from "./QuizGame.tsx";
 import { announceRun, announceStep, controls, edit, keyIntent, stepText, verdict, type Intent, type Outcome } from "./model.ts";
 
 const C = 40;
@@ -50,7 +52,7 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
   );
 }
 
-function GridGame({ p, g }: { p: GameProps; g: GridProps }) {
+function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete?: () => void }) {
   const reduced = useReducedMotion();
   const c = controls(g.mode);
   const start: At = { x: g.start.x, y: g.start.y, dir: g.start.dir, collected: [] };
@@ -96,7 +98,7 @@ function GridGame({ p, g }: { p: GameProps; g: GridProps }) {
   };
 
   return (
-    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
+    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} onComplete={onComplete}>
       <div
         role="group" aria-label="Game controls" tabIndex={0} className="flex min-w-0 flex-col gap-3"
         onKeyDown={(e) => {
@@ -157,10 +159,12 @@ function GridGame({ p, g }: { p: GameProps; g: GridProps }) {
   );
 }
 
-export default function GameView({ block }: BlockViewProps<GameProps>) {
+export default function GameView({ block, gameCompletion }: BlockViewProps<GameProps>) {
   const p = block.props;
-  if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} />;
-  if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} />;
-  if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} />;
+  const onComplete = gameCompletion ? () => { void trpc.games.complete.mutate({ ...gameCompletion, blockId: block.id }).catch(() => {}); } : undefined;
+  if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} onComplete={onComplete} />;
+  if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} onComplete={onComplete} />;
+  if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} onComplete={onComplete} />;
+  if (p.kind.kind === "quiz") return <QuizGame p={p} kind={p.kind} onComplete={onComplete} />;
   return <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{BLOCKS.find((m) => m.type === "game")!.describe(block)}</p>;
 }

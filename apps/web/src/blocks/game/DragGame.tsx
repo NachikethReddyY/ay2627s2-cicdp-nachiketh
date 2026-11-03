@@ -41,7 +41,7 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
   );
 }
 
-function DragBoard({ p, kind }: { p: GameProps; kind: DragKind }) {
+function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void }) {
   const setup = useMemo(() => setupFor(kind), [kind]);
   const maxLives = p.shell.lives;
   const [placed, setPlaced] = useState<Placed>(setup.start);
@@ -106,7 +106,7 @@ function DragBoard({ p, kind }: { p: GameProps; kind: DragKind }) {
   );
 
   return (
-    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
+    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} onComplete={onComplete}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd} onDragOver={(e) => setHot(e.over ? String(e.over.id) : null)} onDragCancel={() => setHot(null)}>
         <div role="group" aria-label={`${setup.title} game`} className="flex min-w-0 flex-col gap-3">
           {pool.length > 0 && (
@@ -135,6 +135,6 @@ function DragBoard({ p, kind }: { p: GameProps; kind: DragKind }) {
   );
 }
 
-export default function DragGame({ p, kind }: { p: GameProps; kind: DragKind }) {
-  return <DragBoard p={p} kind={kind} />;
+export default function DragGame({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void }) {
+  return <DragBoard p={p} kind={kind} onComplete={onComplete} />;
 }

@@ -2,6 +2,7 @@ import { BLOCKS, type Block, type Spec } from "@learnquest/ui-catalog";
 import BlockFrame from "./BlockFrame.tsx";
 import { plan } from "./model.ts";
 import { RENDERERS } from "./registry.ts";
+import type { GameCompletionContext } from "./registry.ts";
 
 const card = "rounded-2xl border-2 border-ink bg-white p-3 text-sm break-words";
 
@@ -15,7 +16,7 @@ function describe(mod: (typeof BLOCKS)[number] | undefined, block: Block): strin
 }
 
 /** Renders a visual doc. Always re-parses first, so nothing unvalidated reaches a block. */
-export default function VisualView({ doc }: { doc: unknown | Spec }) {
+export default function VisualView({ doc, gameCompletion }: { doc: unknown | Spec; gameCompletion?: GameCompletionContext }) {
   const p = plan(doc);
   if (p.fatal) return <Rejected alt="" />;
   return (
@@ -28,7 +29,7 @@ export default function VisualView({ doc }: { doc: unknown | Spec }) {
         const mod = BLOCKS.find((m) => m.type === block.type);
         return (
           <BlockFrame key={`b:${block.id}`} describe={describe(mod, block)} raw={block}>
-            <View block={block} />
+            <View block={block} gameCompletion={gameCompletion} />
           </BlockFrame>
         );
       })}

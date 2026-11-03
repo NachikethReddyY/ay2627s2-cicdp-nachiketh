@@ -7,7 +7,7 @@ import type { Outcome } from "./model.ts";
 const W = 400;
 const H = 160;
 
-export default function PhysicsGame({ p, kind }: { p: GameProps; kind: PhysicsProps }) {
+export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kind: PhysicsProps; onComplete?: () => void }) {
   const reduced = useReducedMotion();
   const maxLives = p.shell.lives;
   const [angle, setAngle] = useState(45);
@@ -48,7 +48,7 @@ export default function PhysicsGame({ p, kind }: { p: GameProps; kind: PhysicsPr
   // Reduced motion: the finished flight is drawn at once. Otherwise the CSS draw-in animation plays it; it has no timer, so nothing times the learner out.
   const d = shot ? shot.path.map((q, i) => `${i ? "L" : "M"}${sx(q.x).toFixed(1)} ${sy(q.y).toFixed(1)}`).join(" ") : "";
   return (
-    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
+    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} onComplete={onComplete}>
       <div role="group" aria-label="Physics game" className="flex min-w-0 flex-col gap-3">
         <svg role="img" aria-label={`Ground with a target ${kind.target.width} metres wide at ${kind.target.x} metres${shot ? `; last throw landed at ${shot.landX.toFixed(1)} metres` : ""}`} viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full rounded-2xl border-2 border-ink bg-paper">
           <line x1={0} x2={W} y1={H - 10} y2={H - 10} stroke="var(--color-ink)" strokeWidth={2} />

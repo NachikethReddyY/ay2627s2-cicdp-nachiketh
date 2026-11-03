@@ -23,6 +23,7 @@ export { scene3dBlock, type Scene3dProps, vec3Value, ANIMATABLE as SCENE3D_ANIMA
 export { gameBlock } from "./blocks/game/index.ts";
 export { orderKind, matchKind, sortKind, MAX_DRAG_ITEMS, MAX_SORT_CARDS, MAX_BUCKETS, type OrderProps, type MatchProps, type SortProps } from "./blocks/game/drag.ts";
 export { physicsKind, simulateLaunch, reachable, MIN_ANGLE, MAX_ANGLE, MAX_LAUNCH_SPEED, MAX_TARGET_X, type PhysicsProps, type Launch } from "./blocks/game/physics.ts";
+export { quizKind, MIN_QUIZ_QUESTIONS, MAX_QUIZ_QUESTIONS, MIN_QUIZ_OPTIONS, MAX_QUIZ_OPTIONS, type QuizProps, type QuizQuestion } from "./blocks/game/quiz.ts";
 export { GAME_KINDS, gameSchema, type GameProps, type GameKindProps } from "./blocks/game/schema.ts";
 export { MAX_HINTS, MAX_LIVES, MAX_GAME_ALT, type GameKind, type ShellProps } from "./blocks/game/shell.ts";
 export {

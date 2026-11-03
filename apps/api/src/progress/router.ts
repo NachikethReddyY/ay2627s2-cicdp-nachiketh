@@ -139,12 +139,17 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
 
     // shortcut: assumes the DB session zone is UTC (true on Neon and local docker), so created_at is UTC.
     const { rows: days } = await db.execute<{ day: string; solved: number; xp: number }>(sql`
-      SELECT to_char((a.created_at AT TIME ZONE 'UTC') AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
-        count(*) FILTER (WHERE a.correct)::int AS solved,
-        sum(${XP})::int AS xp
-      FROM attempts a JOIN learners l ON l.id = a.learner_id
-      WHERE a.learner_id = ${me} AND a.observed
-      GROUP BY 1`);
+      SELECT day, sum(solved)::int AS solved, sum(xp)::int AS xp FROM (
+        SELECT to_char((a.created_at AT TIME ZONE 'UTC') AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
+          count(*) FILTER (WHERE a.correct)::int AS solved, sum(${XP})::int AS xp
+        FROM attempts a JOIN learners l ON l.id = a.learner_id
+        WHERE a.learner_id = ${me} AND a.observed GROUP BY 1
+        UNION ALL
+        SELECT to_char((gc.created_at AT TIME ZONE 'UTC') AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
+          0::int AS solved, (count(*) * 10)::int AS xp
+        FROM game_completions gc JOIN learners l ON l.id = gc.learner_id
+        WHERE gc.learner_id = ${me} GROUP BY 1
+      ) activity GROUP BY day`);
     const { rows: [clock] } = await db.execute<{ today: string; goal: number }>(sql`
       SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS today, daily_goal_xp AS goal
       FROM learners WHERE id = ${me}`);
@@ -396,3 +401,21 @@ const generate = protectedProcedure
 export const pathsRouter = router({ list: pathList, get: pathGet, enroll, publish, generate });
 export const coursesRouter = router({ get: courseGet });
 export const meRouter = router({ update: meUpdate });
+const gameComplete = protectedProcedure
+  .input(z.object({ lessonId: z.string().regex(/^[\w-]{1,64}$/), partIdx: z.number().int().min(0).max(100), blockId: z.string().regex(/^[\w-]{1,64}$/) }))
+  .output(z.object({ awarded: z.boolean() }))
+  .mutation(async ({ ctx, input }) => {
+    const { rows } = await db.execute(sql`
+      INSERT INTO game_completions (learner_id, lesson_id, part_idx, block_id)
+      SELECT ${ctx.learnerId}, l.id, ${input.partIdx}, ${input.blockId}
+      FROM lessons l
+      JOIN worlds w ON w.id = l.world_id
+      JOIN learners me ON me.id = ${ctx.learnerId}
+      WHERE (l.id = ${input.lessonId} OR l.slug = ${input.lessonId})
+        AND l.status = 'published'
+        AND (w.visibility = 'public' OR w.owner_id = me.user_id)
+      ON CONFLICT DO NOTHING
+      RETURNING 1`);
+    return { awarded: rows.length > 0 };
+  });
+export const gamesRouter = router({ complete: gameComplete });
