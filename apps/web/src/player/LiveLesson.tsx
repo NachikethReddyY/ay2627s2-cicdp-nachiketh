@@ -70,7 +70,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   if (data.kind === "practice" && part?.kind === "practice")
     return <PracticeView lessonId={data.id} title={data.title} part={part} next={next} />;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
-    return <div className="flex h-dvh flex-col">{progress}<GamePracticeView title={data.title} intro={part.intro} doc={part.doc} next={next} /></div>;
+    return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} title={data.title} intro={part.intro} doc={part.doc} next={next} /></div>;
   return <>{progress}<Steps lesson={data} /></>;
 }
 
@@ -119,6 +119,9 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
   const [term, setTerm] = useState(""); // what the terminal shows: program output plus the answers typed
   const [ok, setOk] = useState<boolean | null>(null);
   const [sid, setSid] = useState<string | null>(null); // the live run, if any
+  const [starting, setStarting] = useState(false); // a run request is in flight; sid is not set yet
+  const sidRef = useRef<string | null>(null); // mirrors sid so the unmount cleanup can stop the run
+  const live = useRef(true); // false once the page is gone, so a late startPython result is stopped
   const [typed, setTyped] = useState("");
   const stdout = useRef(""); // program output only, without the echoed answers; Check compares this
   const checking = useRef(false);
@@ -136,6 +139,15 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
       void trpc.parts.complete.mutate({ lessonId }).catch(() => {});
     }
   };
+
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      if (sidRef.current) void stopPython(sidRef.current).catch(() => {});
+    };
+  }, []);
+  useEffect(() => { sidRef.current = sid; }, [sid]);
 
   // Follows a live Python run: new output is appended as it arrives, until the program ends.
   useEffect(() => {
@@ -169,12 +181,20 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
     setOk(null); // clearing first remounts the badge, so its animation plays on every check
     stdout.current = "";
     setTerm("");
+    setStarting(true);
+    let id: string;
     try {
-      setSid((await startPython(code, python ? "python" : "javascript")).id);
+      id = (await startPython(code, python ? "python" : "javascript")).id;
     } catch (e) {
+      if (!live.current) return;
+      setStarting(false);
       setTerm(msg(e));
       judge("", msg(e));
+      return;
     }
+    if (!live.current) { void stopPython(id).catch(() => {}); return; } // the page closed while the request was pending
+    setStarting(false);
+    setSid(id);
   };
   const stop = () => {
     if (!sid) return;
@@ -235,7 +255,7 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
         panel: <p className="whitespace-pre-wrap font-semibold">{part.instructions}</p>,
         footer: (
           <>
-            <button type="button" disabled={sid !== null} onClick={() => run(true)} className={`btn check ${FOCUS}`}>Check</button>
+            <button type="button" disabled={starting || sid !== null} onClick={() => run(true)} className={`btn check ${FOCUS}`}>Check</button>
             {next}
           </>
         ),
@@ -246,7 +266,7 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
               <span aria-hidden="true">■</span> Stop
             </button>
           ) : (
-            <button ref={runRef} type="button" onClick={() => run(false)} className={`pill flex min-h-7 items-center gap-1 bg-green px-3 text-sm font-extrabold ${FOCUS}`}>
+            <button ref={runRef} type="button" disabled={starting} onClick={() => run(false)} className={`pill flex min-h-7 items-center gap-1 bg-green px-3 text-sm font-extrabold ${FOCUS}`}>
               <span aria-hidden="true">▶</span> Run
             </button>
           ),
