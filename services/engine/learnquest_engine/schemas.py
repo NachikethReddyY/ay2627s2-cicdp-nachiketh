@@ -150,7 +150,7 @@ class _LessonRef(BaseModel):
     title: str
     level: int
     concepts: list[str]
-    kind: Literal["predict", "learn", "watch", "practice"] = "predict"
+    kind: Literal["predict", "learn", "watch", "practice", "game-practice"] = "predict"
 
 
 T4000 = Annotated[str, _c(4000)]
@@ -160,6 +160,7 @@ T4000 = Annotated[str, _c(4000)]
 class LearnPart(BaseModel):
     kind: Literal["learn"]
     body: T4000
+    doc: dict[str, Any] | None = None  # dropped by the pipeline if invalid
 
 
 class WatchPart(BaseModel):
@@ -182,10 +183,17 @@ class PracticePart(BaseModel):
     expectedOutput: Annotated[str, StringConstraints(max_length=1000)]
 
 
+class GamePracticePart(BaseModel):
+    kind: Literal["game-practice"]
+    intro: T500
+    doc: dict[str, Any] | None = None
+
+
 PARTS: dict[str, type[BaseModel]] = {
     "learn": LearnPart,
     "watch": WatchPart,
     "practice": PracticePart,
+    "game-practice": GamePracticePart,
 }
 
 
