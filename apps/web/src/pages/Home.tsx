@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useApi, type HomeData, type PathCardData } from "../lib/api";
 import { trpc, trpcCode } from "../lib/trpc";
-import { authClient } from "../lib/auth";
 import { PipEmpty, Spinner } from "../components/Bits";
 import "./home.css";
 
@@ -11,8 +10,8 @@ const LEAGUE_XP = 500;
 
 const aiErrors: Record<string, string> = {
   PRECONDITION_FAILED: "Pip's AI helper isn't switched on here yet.",
-      TOO_MANY_REQUESTS: "You've reached today's AI path limit. Pip will be ready to sketch again tomorrow!",
-  BAD_REQUEST: "Pip couldn't make a useful learning path for that topic. Try another topic!",
+  TOO_MANY_REQUESTS: "You've sketched 5 paths today. Pip needs a nap, try again tomorrow!",
+  BAD_REQUEST: "Pip only draws coding paths. Try a language, a tool or a project idea!",
 };
 const genericError = "Oops, Pip dropped the pencil. We couldn't generate that path. Check your connection and try again.";
 
@@ -77,7 +76,7 @@ function Generator() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    if (q.trim().length < 3) {
+    if (!q.trim()) {
       setEmpty(true);
       return;
     }
@@ -96,7 +95,7 @@ function Generator() {
         <label htmlFor="gen-q">What do you want to learn to code?</label>
         <div className="lq-gen-row">
           <input
-            id="gen-q" type="text" autoComplete="off" value={q} disabled={busy} maxLength={300} aria-describedby="gen-status"
+            id="gen-q" type="text" autoComplete="off" value={q} disabled={busy} aria-describedby="gen-status"
             onChange={(e) => {
               setQ(e.target.value);
               setEmpty(false);
@@ -120,13 +119,10 @@ function Generator() {
       </ul>
       <div id="gen-status" className="lq-status" aria-live="polite">
         {busy && (
-          <div className="lq-loading-state">
-            <p className="lq-msg load">
-              <svg className="lq-sketch" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path d="M3 22c8-14 14-14 18-4s10 8 14-2 12-10 26 2" fill="none" stroke="#2257FF" strokeWidth={3.5} strokeLinecap="round" /></svg>
-              Pip is sketching your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
-            </p>
-            <div className="lq-placeholder-row" aria-hidden="true">{[0, 1, 2, 3].map((i) => <span key={i} />)}</div>
-          </div>
+          <p className="lq-msg load">
+            <svg className="lq-sketch" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path d="M3 22c8-14 14-14 18-4s10 8 14-2 12-10 26 2" fill="none" stroke="#2257FF" strokeWidth={3.5} strokeLinecap="round" /></svg>
+            Pip is sketching your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
+          </p>
         )}
         {err && (
           <div className="lq-msg err lq-shake" role="alert">
@@ -190,7 +186,7 @@ function Continue({ c }: { c: NonNullable<HomeData["continue"]> }) {
           <span style={{ font: "400 20px var(--font-display)", whiteSpace: "nowrap" }}>{c.lesson.done} / {c.lesson.total}</span>
         </div>
         <div style={{ position: "relative", display: "inline-block", marginTop: 26 }}>
-          <Link to="/play" search={{ lesson: c.lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Continue<Arrow /></Link>
+          <Link to="/play" search={{ lesson: c.lesson.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Continue<Arrow /></Link>
         </div>
       </div>
       <div className="lq-code lq-tr2" aria-hidden="true">
@@ -273,7 +269,6 @@ export default function Home() {
   }, [reload]);
 
   const stats = data?.stats;
-  const session = authClient.useSession().data;
 
   return (
     <div className="lq">
@@ -285,20 +280,12 @@ export default function Home() {
           </svg>
           <span className="lq-logo-word">Learn<span className="lq-logo-q">Quest</span></span>
         </Link>
-        <nav aria-label="Main" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <Link to="/explore" className="lq-pill lq-navlink">Explore</Link>
-          {stats && (<>
+        {stats && (
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <p className="lq-pill"><Flame w={22} h={28} cls="lq-flame" /><span className="lq-pill-n">{stats.streak}</span><span className="sr">day streak</span></p>
             <p className="lq-pill"><Bolt w={20} h={24} /><span className="lq-pill-n">{stats.xp}</span><span>XP</span></p>
-          </>)}
-          <button
-            type="button" className="lq-pill lq-navlink" style={{ cursor: "pointer", justifyContent: "center", width: 44, padding: 0 }}
-            aria-label={`Sign out${session ? ` ${session.user.email}` : ""}`}
-            onClick={() => void authClient.signOut().finally(() => location.assign("/"))}
-          >
-            {(session?.user.name || session?.user.email || "?")[0].toUpperCase()}
-          </button>
-        </nav>
+          </div>
+        )}
       </header>
 
       <main className="lq-wrap">
@@ -321,14 +308,7 @@ export default function Home() {
                       <h2 id="start">Start a path</h2>
                       <span className="lq-sticker lq-r lq-bg-sun">OFFICIAL</span>
                     </div>
-                    {data.official.length === 0 ? (
-                      <div className="lq-empty-card">
-                        <Pip src="/img/pip-think.png" size={96} />
-                        <div><h3>No official paths here yet.</h3><p>Pip is still drawing them up. Tell the generator what you want to learn and get a path of your own right now.</p>
-                          <a className="lq-btn lq-btn-blue" href="#gen-q">Try the generator</a>
-                        </div>
-                      </div>
-                    ) : (
+                    {data.official.length === 0 ? <PipEmpty>No paths yet. Check back soon.</PipEmpty> : (
                       <ul style={{ display: "flex", flexDirection: "column", gap: 18, listStyle: "none", margin: 0, padding: 0 }}>
                         {data.official.map((p, i) => (
                           <li key={p.slug} className={`lq-card ${i === 0 ? "lq-bg-sun lq-tl" : i % 2 ? "lq-tl2" : "lq-tr"}`} style={{ padding: 22, borderRadius: 24, display: "flex", alignItems: "center", gap: 16 }}>
@@ -363,12 +343,7 @@ export default function Home() {
                     <span className="lq-sticker lq-bg-lilac">SHARED</span>
                     <Link to="/explore" className="lq-see-all">See all →</Link>
                   </div>
-                  {data.community.length === 0 ? (
-                    <div className="lq-empty-card">
-                      <Pip src="/img/pip-sheet.png" size={96} />
-                      <div><h3>No shared paths yet.</h3><p>Pip is waiting for the first one. Make a path and share it, and it shows up here for everyone.</p></div>
-                    </div>
-                  ) : (
+                  {data.community.length === 0 ? <PipEmpty img="pip-sheet">No community paths yet. Be the first to share one.</PipEmpty> : (
                     <ul className="lq-comm">
                       {data.community.slice(0, 4).map((p: PathCardData, i) => (
                         <li key={p.slug}>
@@ -434,26 +409,7 @@ export default function Home() {
                 </div>
               </section>
 
-              <section className={`lq-card lq-stat lq-league ${stats.xp >= LEAGUE_XP ? "lq-league-unlocked" : "lq-tr"} lq-rise d4`} aria-labelledby="league-h">
-                {stats.xp >= LEAGUE_XP ? <>
-                  <div className="lq-league-rays" aria-hidden="true" />
-                  <div className="lq-confetti" aria-hidden="true">{[0, 1, 2, 3, 4, 5].map((i) => <i key={i} />)}</div>
-                  <span className="lq-sticker lq-bg-mint" style={{ position: "absolute", top: -14, left: 16 }}>UNLOCKED</span>
-                  <span className="lq-sticker lq-bg-pink lq-r" style={{ position: "absolute", top: -14, right: 18 }}>NEW</span>
-                  <div className="lq-league-content">
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                      <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
-                        <path d="M18 8h28v14a14 14 0 0 1-28 0z" fill="#FFD23F" stroke="#15121F" strokeWidth={3} strokeLinejoin="round" />
-                        <path d="M18 14H9a10 10 0 0 0 10 12M46 14h9a10 10 0 0 1-10 12" fill="none" stroke="#15121F" strokeWidth={3} />
-                        <path d="M28 36h8v10h-8zM20 46h24v9H20z" fill="#FF7AB6" stroke="#15121F" strokeWidth={3} strokeLinejoin="round" />
-                        <path d="m32 12 2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z" fill="#2257FF" stroke="#15121F" strokeWidth={1.5} />
-                      </svg>
-                      <div><h2 id="league-h">Leagues</h2><p style={{ font: "700 15px var(--font-body)", marginTop: 4 }}>You hit 500 XP. Welcome to the league.</p></div>
-                    </div>
-                    <div className="lq-meter f-sun" role="progressbar" aria-label="League progress" aria-valuemin={0} aria-valuemax={LEAGUE_XP} aria-valuenow={LEAGUE_XP} style={{ marginTop: 16 }}><span style={{ width: "100%" }} /></div>
-                    <p style={{ marginTop: 8, font: "700 14px var(--font-body)" }}>500 / 500 XP</p>
-                  </div>
-                </> : <>
+              <section className="lq-card lq-stat lq-league lq-tr lq-rise d4" aria-labelledby="league-h">
                 <span className="lq-sticker lq-bg-surface" style={{ position: "absolute", top: -14, right: 18 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth={2.5} /><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" strokeWidth={2.5} /></svg>
                   LOCKED
@@ -480,7 +436,6 @@ export default function Home() {
                   <span>{stats.xp} / {LEAGUE_XP} XP</span>
                   <span>{Math.max(LEAGUE_XP - stats.xp, 0)} XP to go</span>
                 </p>
-                </>}
               </section>
             </aside>
           )}
