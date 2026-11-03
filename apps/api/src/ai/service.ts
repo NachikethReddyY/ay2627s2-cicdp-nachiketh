@@ -12,6 +12,7 @@ import { tiers } from "../config/tiers.ts";
 import { reserveAiSpend } from "../config/budget.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
+import { measureGeneration } from "./telemetry.ts";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 const Outline = z.union([
@@ -61,9 +62,14 @@ type GeneratedStep = z.infer<typeof Step>;
 const slugify = (s: string, max: number) =>
   `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(3).toString("hex")}`;
 
+function assertAiEnabled() {
+  if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });
+}
+
 // ---- paths.generate ----
 
 export async function generatePath(learnerId: string, topic: string) {
+  assertAiEnabled();
   if (!(await isSafe(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
   if (!env.ANTHROPIC_API_KEY) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
@@ -83,10 +89,10 @@ export async function generatePath(learnerId: string, topic: string) {
 
   let outline;
   try {
-    outline = Outline.parse(await generator.outline(topic));
+    outline = Outline.parse(await measureGeneration("outline", () => generator.outline(topic)));
     if (!(await isSafe(JSON.stringify(outline)))) throw new Error("Generated content refused by safety filter");
-  } catch (e) {
-    console.error("outline generation failed", e);
+  } catch {
+    console.error("outline generation failed");
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });
   }
   if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
@@ -141,16 +147,14 @@ function validate(raw: unknown): GeneratedStep[] {
 }
 
 async function writeSteps(ctx: LessonContext): Promise<GeneratedStep[]> {
-  let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return validate(await generator.lesson(ctx));
-    } catch (e) {
-      last = e;
-      console.error(`lesson generation attempt ${attempt + 1} failed`, e);
+      return validate(await measureGeneration("lesson", () => generator.lesson(ctx)));
+    } catch {
+      console.error(`lesson generation attempt ${attempt + 1} failed`);
     }
   }
-  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't write this lesson. Try again.", cause: last });
+  throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't write this lesson. Try again." });
 }
 
 // Writes the lesson's steps once. The row lock is held across the Claude call, so concurrent callers wait,
@@ -159,6 +163,7 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
   return withTx(async (tx) => {
     const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
     if (!l || l.currentVersionId || l.sourceKind !== "ai") return false;
+    assertAiEnabled();
 
     const [world] = await tx.select().from(worlds).where(eq(worlds.id, l.worldId));
     const [path] = await tx
