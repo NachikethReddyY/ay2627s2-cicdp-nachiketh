@@ -3,6 +3,7 @@ import { BLOCKS, DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type GameProps, t
 import type { BlockViewProps } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import Shell, { btn } from "./Shell.tsx";
+import DragGame from "./DragGame.tsx";
 import { announceRun, announceStep, controls, edit, keyIntent, stepText, verdict, type Intent, type Outcome } from "./model.ts";
 
 const C = 40;
@@ -158,5 +159,6 @@ function GridGame({ p, g }: { p: GameProps; g: GridProps }) {
 export default function GameView({ block }: BlockViewProps<GameProps>) {
   const p = block.props;
   if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} />;
+  if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} />;
   return <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{BLOCKS.find((m) => m.type === "game")!.describe(block)}</p>;
 }

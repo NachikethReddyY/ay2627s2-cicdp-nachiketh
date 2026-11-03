@@ -721,6 +721,119 @@
                           "maxSteps"
                         ],
                         "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "order"
+                          },
+                          "items": {
+                            "minItems": 2,
+                            "maxItems": 8,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 60
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "items"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "match"
+                          },
+                          "pairs": {
+                            "minItems": 2,
+                            "maxItems": 8,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "left": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 60
+                                },
+                                "right": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 60
+                                }
+                              },
+                              "required": [
+                                "left",
+                                "right"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "pairs"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "sort"
+                          },
+                          "buckets": {
+                            "minItems": 2,
+                            "maxItems": 4,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            }
+                          },
+                          "cards": {
+                            "minItems": 2,
+                            "maxItems": 10,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 60
+                                },
+                                "bucket": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "text",
+                                "bucket"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "buckets",
+                          "cards"
+                        ],
+                        "additionalProperties": false
                       }
                     ]
                   }
