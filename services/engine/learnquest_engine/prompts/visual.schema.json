@@ -1467,6 +1467,39 @@
                       "steps"
                     ],
                     "additionalProperties": false
+                  },
+                  "physics": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "bounce"
+                      },
+                      "body": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_]{1,24}$"
+                      },
+                      "floor": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "restitution": {
+                        "type": "number",
+                        "minimum": 0.2,
+                        "maximum": 0.9
+                      },
+                      "autoplay": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "body",
+                      "floor",
+                      "restitution"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [

@@ -18,6 +18,7 @@ Rules:
   - numbers, or how something changes with a variable: chart (line, bar,
     scatter, or function with sliders)
   - motion, or something that happens over time: stage, with timeline steps
+  - something falling, dropping or bouncing under gravity: stage with physics, not timeline
   - a process, cycle, hierarchy, or relationships between parts: diagram,
     and at most one diagram per answer
   - definitions, explanations, or facts: text, alongside any other block
