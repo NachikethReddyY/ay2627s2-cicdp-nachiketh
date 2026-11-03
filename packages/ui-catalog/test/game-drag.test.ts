@@ -7,7 +7,7 @@ const game = (kind: unknown) => ({
   blocks: [{ type: "game", id: "g", props: { title: "T", goalText: "G", alt: "A", hints: [], shell: {}, kind } }],
 });
 const issues = (kind: unknown) => parseSpec(game(kind)).issues;
-const kindOf = (kind: unknown) => (parseSpec(game(kind)).spec.blocks[0]!.props as GameProps).kind;
+const kindOf = (kind: unknown) => ((parseSpec(game(kind)) as Extract<ReturnType<typeof parseSpec>, { ok: true }>).spec.blocks[0]!.props as GameProps).kind;
 
 test("valid order, match and sort kinds parse cleanly", () => {
   assert.deepEqual(issues({ kind: "order", items: ["one", "two", "three"] }), []);

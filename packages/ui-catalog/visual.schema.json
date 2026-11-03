@@ -834,6 +834,46 @@
                           "cards"
                         ],
                         "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "physics"
+                          },
+                          "target": {
+                            "type": "object",
+                            "properties": {
+                              "x": {
+                                "type": "integer",
+                                "minimum": 2,
+                                "maximum": 100
+                              },
+                              "width": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              }
+                            },
+                            "required": [
+                              "x",
+                              "width"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "maxSpeed": {
+                            "type": "integer",
+                            "minimum": 5,
+                            "maximum": 40
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "target",
+                          "maxSpeed"
+                        ],
+                        "additionalProperties": false
                       }
                     ]
                   }
