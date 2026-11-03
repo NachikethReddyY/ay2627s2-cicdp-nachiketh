@@ -85,7 +85,7 @@ def generate[T: BaseModel](system: str, data: object, model: type[T]) -> Result[
                     api_key=cfg.LLM_API_KEY.get_secret_value() if cfg.LLM_API_KEY else None,
                     messages=messages,
                     response_format=formats.get(mode),
-                    max_tokens=cfg.LLM_MAX_TOKENS,
+                    max_completion_tokens=cfg.LLM_MAX_TOKENS,
                     timeout=cfg.LLM_TIMEOUT_S,
                     temperature=0.4,
                 )

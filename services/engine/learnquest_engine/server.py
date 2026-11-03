@@ -1,5 +1,6 @@
 import hmac
 import logging
+import time
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -82,18 +83,48 @@ def visual_route(body: VisualRequest) -> JSONResponse:
             status_code=503,
             content={"error": "LLM not configured (LLM_API_KEY is empty)", "issues": []},
         )
-    doc = visual.unwrap(visual.generate_visual(body.prompt).value.model_dump())
-    found = visual.issues(doc)
+    t0 = time.monotonic()
+    first = visual.generate_visual(body.prompt)
+    t1 = time.monotonic()
+    doc = visual.unwrap(first.value.model_dump())
+    found = visual.all_issues(doc)
+    t2 = time.monotonic()
+    log.warning(
+        "visual: first pass %.1fs (attempts=%d, completion_tokens=%d), checks %.1fs, issues=%d",
+        t1 - t0,
+        first.attempts,
+        first.usage["completion_tokens"],
+        t2 - t1,
+        len(found),
+    )
     if found:
         # One repair call with the exact problems, then give up with a clear 422.
-        doc = visual.unwrap(visual.generate_visual(body.prompt, found).value.model_dump())
-        found = visual.issues(doc)
+        log.warning("visual: first pass issues: %s", found)
+        repaired = visual.generate_visual(body.prompt, found, doc)
+        t3 = time.monotonic()
+        doc = visual.unwrap(repaired.value.model_dump())
+        found = visual.all_issues(doc)
+        log.warning(
+            "visual: repair pass %.1fs (attempts=%d, completion_tokens=%d), checks %.1fs",
+            t3 - t2,
+            repaired.attempts,
+            repaired.usage["completion_tokens"],
+            time.monotonic() - t3,
+        )
+        log.warning("visual: after repair: %s", found)
     if found:
         return JSONResponse(
             status_code=422,
             content={"error": "Model output failed the visual schema", "issues": found},
         )
     return JSONResponse({"doc": doc})
+
+
+@app.exception_handler(visual.CheckerUnavailable)
+def checker_unavailable(_: Request, exc: visual.CheckerUnavailable) -> JSONResponse:
+    # Fail closed: a document the checker never saw must not be served as valid.
+    log.error("visual checker unavailable: %s", exc)
+    return JSONResponse(status_code=503, content={"error": "visual checker unavailable", "issues": []})
 
 
 @app.exception_handler(GenerationError)

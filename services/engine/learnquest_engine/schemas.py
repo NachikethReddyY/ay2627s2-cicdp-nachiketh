@@ -25,7 +25,7 @@ class OutlineLesson(BaseModel):  # outline lesson
     title: T80
     level: int = Field(ge=1, le=5)
     concepts: list[T60] = Field(min_length=1, max_length=6)
-    kind: Literal["learn", "watch", "practice"]
+    kind: Literal["learn", "watch", "practice", "game-practice"]
 
 
 class Course(BaseModel):
