@@ -40,6 +40,32 @@ test("a game-practice part needs a valid document", () => {
   assert.throws(() => validatePart({ kind: "game-practice", intro: "Sort them", doc: { v: 1, blocks: [{ type: "run", id: "x", props: {} }] } }), /catalog/);
 });
 
+const gameBlock = {
+  type: "game",
+  id: "robot",
+  props: {
+    title: "Get the gem",
+    goalText: "Pick up the gem, then reach the flag.",
+    alt: "Build a program for a robot on a 4 by 3 grid.",
+    hints: ["Pick the gem before you turn."],
+    shell: { lives: 3 },
+    kind: { kind: "grid", size: { w: 4, h: 3 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 3, y: 2 }, walls: [{ x: 1, y: 1 }], gems: [{ x: 3, y: 0 }], commands: ["forward", "left", "right", "pick"], mode: "solve", maxSteps: 12, solution: ["forward", "forward", "forward", "pick", "right", "forward", "forward"] },
+  },
+};
+
+test("a game-practice document without a game block is rejected", () => {
+  assert.throws(
+    () => validatePart({ kind: "game-practice", intro: "Sort them", doc: { v: 1, blocks: [{ type: "text", id: "t", props: { md: "Only text" } }] } }),
+    /no game block/,
+  );
+});
+
+test("a game-practice document with a game block is accepted", () => {
+  const part = validatePart({ kind: "game-practice", intro: "Get the gem", doc: { v: 1, blocks: [gameBlock] } });
+  assert.equal(part.kind, "game-practice");
+  assert.deepEqual((part as Extract<PartSecret, { kind: "game-practice" }>).doc.blocks.map((b) => b.type), ["game"]);
+});
+
 test("a model-written generated image block is stripped from a learn doc", () => {
   const part = validatePart({
     kind: "learn",

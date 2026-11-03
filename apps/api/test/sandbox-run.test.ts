@@ -13,10 +13,14 @@ const tick = () => new Promise((r) => setImmediate(r));
 
 // A fake `docker` process. `onInput` decides what it prints and when it exits when a line arrives on stdin.
 function fakeDocker(onInput: (child: FakeChild, line: string) => void, initial = "", exitAtStart: number | null = null) {
-  const calls = { args: [] as string[], stdin: "" };
+  // `args` is the `docker run` call; `rm` is the `docker rm -f` call, whose exit the test controls through `rmChild`.
+  const calls = { args: [] as string[], rm: [] as string[], rmChild: null as FakeChild | null, stdin: "" };
   const spawn = (_cmd: string, args: string[]) => {
-    calls.args = args;
     const child = new EventEmitter() as FakeChild;
+    if (args[0] === "rm") {
+      calls.rm = args;
+      calls.rmChild = child;
+    } else calls.args = args;
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     child.stdin = new Writable({ write(chunk, _enc, done) { calls.stdin += chunk.toString(); onInput(child, chunk.toString()); done(); } });
@@ -68,6 +72,24 @@ test("a learner's answer reaches the program, and the output streams in order", 
   await tick();
   assert.equal(calls.stdin, "8\n");
   assert.deepEqual(runStatus(id, "learner-b", 5), { output: "Next year: 9\n", next: 18, done: true, error: undefined });
+});
+
+test("stopping a run removes its container by name, and frees the slot only after docker rm exits", async () => {
+  const { spawn, calls } = fakeDocker(() => {});
+  const id = startRun("input()", "learner-h", "python", spawn as never)!;
+  assert.equal(calls.args[calls.args.indexOf("--name") + 1], `lq-run-${id}`, "container has a known name");
+  assert.ok(startRun("input()", "learner-h", "python", spawn as never), "second run");
+  await tick();
+
+  assert.equal(stopRun(id, "learner-h"), true);
+  assert.deepEqual(calls.rm, ["rm", "-f", `lq-run-${id}`]);
+  assert.equal(runStatus(id, "learner-h", 0)?.done, false, "slot held while docker rm runs");
+  assert.equal(startRun("input()", "learner-h", "python", spawn as never), null, "still at the limit");
+
+  calls.rmChild!.emit("close", 0);
+  await tick();
+  assert.equal(runStatus(id, "learner-h", 0)?.done, true);
+  assert.ok(startRun("input()", "learner-h", "python", spawn as never), "slot freed after rm");
 });
 
 test("another learner cannot read or answer a run", async () => {

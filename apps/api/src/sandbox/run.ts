@@ -18,8 +18,10 @@ type Run = {
   id: string;
   learner: string;
   child: ReturnType<Spawn>;
+  spawn: Spawn;
   out: string;
   done: boolean;
+  stopping: boolean;
   error?: string;
   timer: NodeJS.Timeout;
 };
@@ -34,6 +36,20 @@ function finish(run: Run, error?: string) {
   setTimeout(() => runs.delete(run.id), KEEP_S * 1000).unref();
 }
 
+// Killing the local `docker run` client leaves the container running, so stopping removes it by name.
+const containerName = (id: string) => `lq-run-${id}`;
+
+/** Removes the run's container, then ends the run, so the learner's slot is freed only once it is gone. */
+function terminate(run: Run, error?: string) {
+  if (run.stopping) return;
+  run.stopping = true;
+  run.child.kill("SIGKILL");
+  const rm = run.spawn("docker", ["rm", "-f", containerName(run.id)], { stdio: "ignore" });
+  const end = () => finish(run, error);
+  rm.on("close", end);
+  rm.on("error", end);
+}
+
 export type Language = "python" | "javascript";
 const INTERPRETER: Record<Language, string[]> = {
   python: ["python3", "-I", "-u", "-c"],
@@ -45,17 +61,17 @@ export function startRun(code: string, learner: string, language: Language, spaw
   let active = 0;
   for (const r of runs.values()) if (r.learner === learner && !r.done) active++;
   if (active >= MAX_ACTIVE) return null;
+  const id = randomUUID();
   const args = [
-    "run", "--rm", "-i", "--network", "none",
+    "run", "--rm", "-i", "--name", containerName(id), "--network", "none",
     "--cpus", "0.5", "--memory", "256m", "--pids-limit", "64",
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
     "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "1001:1001",
     env.SANDBOX_IMAGE, "timeout", "-s", "KILL", String(LIMIT_S), ...INTERPRETER[language], code,
   ];
   const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
-  const id = randomUUID();
   // Backstop in case the container hangs past the program's own limit.
-  const run: Run = { id, learner, child, out: "", done: false, timer: setTimeout(() => { finish(run, STOPPED); child.kill("SIGKILL"); }, (LIMIT_S + 5) * 1000) };
+  const run: Run = { id, learner, child, spawn, out: "", done: false, stopping: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000) };
   runs.set(id, run);
   let err = "";
   child.stdout?.on("data", (d: Buffer) => { if (run.out.length < MAX_OUT) run.out += d.toString(); });
@@ -63,6 +79,7 @@ export function startRun(code: string, learner: string, language: Language, spaw
   child.stdin?.on("error", () => {}); // the program may exit before a late answer arrives
   child.on("error", () => finish(run, "Could not run the code"));
   child.on("close", (exit) => {
+    if (run.stopping) return; // the container's removal ends the run
     if (exit === 0) finish(run);
     else if (exit === 124 || exit === 137) finish(run, STOPPED);
     else finish(run, err.trim() || "The code stopped with an error.");
@@ -92,10 +109,7 @@ export function sendRunInput(id: string, learner: string, line: string): boolean
 export function stopRun(id: string, learner: string): boolean {
   const r = own(id, learner);
   if (!r) return false;
-  if (!r.done) {
-    finish(r);
-    r.child.kill("SIGKILL");
-  }
+  if (!r.done) terminate(r);
   return true;
 }
 

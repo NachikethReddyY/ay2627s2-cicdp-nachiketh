@@ -173,9 +173,9 @@ async function writeWith<T>(produce: () => Promise<unknown>, check: (raw: unknow
 // Writes the lesson's steps once. The row lock is held across the Claude call, so concurrent callers wait,
 // then see the version and return. shortcut: this holds one pool connection for the call's duration.
 export async function ensureLesson(lessonId: string, learnerId: string) {
-  return withTx(async (tx) => {
+  const written = await withTx(async (tx) => {
     const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
-    if (!l || l.currentVersionId || l.sourceKind !== "ai") return false;
+    if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
     assertAiEnabled();
 
     const [world] = await tx.select().from(worlds).where(eq(worlds.id, l.worldId));
@@ -225,11 +225,9 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
       .insert(lessonVersions)
       .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content: part })
       .returning();
-    // Images in a visual document are generated now, while the lesson is written, not on the learner's first read.
-    if (part && (part.kind === "learn" || part.kind === "game-practice") && part.doc) {
-      const [learner] = await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
-      await prewarmDocImages(part.doc, { lessonVersionId: version!.id, learnerId, tier: learner!.tier as keyof typeof tiers });
-    }
+    // Images are generated after commit below: their save uses its own connection and cannot see this version yet.
+    const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
+    const [learner] = prewarm ? await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId)) : [];
     if (!part) {
       await tx.insert(steps).values(
         generated.map((s, idx) => ({
@@ -250,8 +248,15 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
     }
     // Visibility stays governed by the owning course and path.
     await tx.update(lessons).set({ currentVersionId: version!.id, status: "published" }).where(eq(lessons.id, l.id));
-    return true;
+    return { lessonVersionId: version!.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
   });
+  if (!written) return false;
+  // Best-effort: a failed image must not fail the lesson read.
+  if (written.prewarm) {
+    await prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
+      .catch((e) => console.error("prewarm of lesson images failed", e));
+  }
+  return true;
 }
 
 const background = new Set<Promise<unknown>>();

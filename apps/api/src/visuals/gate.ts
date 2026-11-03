@@ -65,7 +65,10 @@ export function validatePart(raw: unknown): PartSecret {
       // The game is the part, so an invalid one is an error, not a dropped visual.
       const parsed = parseSpec(part.doc);
       if (!parsed.ok) throw new Error("game-practice document failed the catalog");
-      return { kind: "game-practice", intro: part.intro, doc: dropClientImages(parsed.spec) };
+      const spec = dropClientImages(parsed.spec);
+      // parseSpec keeps any surviving block, so a document whose game block was dropped would be stored as text only.
+      if (!spec.blocks.some((b) => b.type === "game")) throw new Error("game-practice document has no game block");
+      return { kind: "game-practice", intro: part.intro, doc: spec };
     }
   }
 }
