@@ -19,7 +19,7 @@ const outline = {
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
-    lessons: [1, 2, 3].map((n) => ({ title: `Lesson ${c}.${n}`, level: n, concepts: ["ownership"] })),
+    lessons: [1, 2, 3].map((n) => ({ title: `Lesson ${c}.${n}`, level: n, concepts: ["ownership"], kind: (["learn", "watch", "practice"] as const)[n - 1] })),
   })),
 };
 const goodLesson = {
@@ -70,7 +70,7 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   const path = out(await t.q("paths.get", { slug }));
   assert.deepEqual([path.origin, path.visibility, path.mine, path.enrolled, path.courses.length], ["ai", "private", true, true, 2]);
   const rows = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));
-  assert.deepEqual([rows[0]!.status, rows[0]!.sourceKind, rows[0]!.currentVersionId, rows[0]!.concepts], ["draft", "ai", null, ["ownership"]]);
+  assert.deepEqual([rows[0]!.status, rows[0]!.sourceKind, rows[0]!.currentVersionId, rows[0]!.concepts, rows[0]!.kind], ["draft", "ai", null, ["ownership"], "learn"]);
 
   const other = trpc(app, await signUp(app, "b@example.com"));
   assert.equal(code(await other.q("paths.get", { slug })), "NOT_FOUND");
@@ -84,10 +84,10 @@ test("missing key, non-coding topic and bad input", async () => {
   env.ANTHROPIC_API_KEY = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");
   env.ANTHROPIC_API_KEY = "k";
-  generator.outline = async () => ({ notCoding: true });
+  generator.outline = async () => ({ refused: true });
   const res = await t.m("paths.generate", { prompt: "baking sourdough" });
   assert.equal(code(res), "BAD_REQUEST");
-  assert.match(res.json().error.message, /coding topics/);
+  assert.match(res.json().error.message, /that request/i);
   assert.equal(code(await t.m("paths.generate", { prompt: "hi" })), "BAD_REQUEST");
   generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
@@ -101,7 +101,7 @@ test("at most 5 generated paths per rolling day", async () => {
 
 test("rejected topics use up the daily limit too", async () => {
   const t = trpc(app, await signUp(app));
-  generator.outline = async () => ({ notCoding: true });
+  generator.outline = async () => ({ refused: true });
   for (let i = 0; i < 5; i++) assert.equal(code(await t.m("paths.generate", { prompt: "baking bread" })), "BAD_REQUEST");
   generator.outline = async () => outline;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");

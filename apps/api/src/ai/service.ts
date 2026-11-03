@@ -15,7 +15,7 @@ import { REFUSAL_COPY } from "../safety/copy.ts";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 const Outline = z.union([
-  z.object({ notCoding: z.literal(true) }),
+  z.object({ refused: z.literal(true) }),
   z.object({
     title: text(80),
     tagline: text(160),
@@ -25,7 +25,7 @@ const Outline = z.union([
           title: text(80),
           description: text(300),
           lessons: z
-            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6) }))
+            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["learn", "watch", "practice"]) }))
             .min(3)
             .max(6),
         }),
@@ -89,7 +89,7 @@ export async function generatePath(learnerId: string, topic: string) {
     console.error("outline generation failed", e);
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });
   }
-  if ("notCoding" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: "LearnQuest paths are for coding topics" });
+  if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
 
   return withTx(async (tx) => {
     const owned = { ownerId: me!.userId, visibility: "private", origin: "ai" } as const;
@@ -113,6 +113,7 @@ export async function generatePath(learnerId: string, topic: string) {
           level: l.level,
           position: i,
           concepts: l.concepts,
+          kind: l.kind,
           sourceKind: "ai" as const,
           status: "draft" as const,
         })),

@@ -48,9 +48,15 @@ def test_too_few_steps() -> None:
 
 
 def test_outline_shapes() -> None:
-    assert Outline.model_validate({"notCoding": True}).notCoding
+    assert Outline.model_validate({"refused": True}).refused
     with pytest.raises(ValidationError):
         Outline.model_validate({"title": "x"})
+
+
+def test_photosynthesis_outline_fixture() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "outline_photosynthesis.json"
+    raw_outline = json.loads(fixture.read_text())
+    assert Outline.model_validate(raw_outline).courses[0].lessons[0].kind == "learn"  # type: ignore[union-attr]
 
 
 def test_json_schema_is_strict() -> None:

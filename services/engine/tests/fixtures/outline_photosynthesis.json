@@ -1,0 +1,24 @@
+{
+  "title": "Learn Photosynthesis",
+  "tagline": "How plants turn light into food",
+  "courses": [
+    {
+      "title": "Foundations",
+      "description": "The inputs and outputs of photosynthesis",
+      "lessons": [
+        {"title": "Leaf structures", "level": 1, "concepts": ["chloroplasts"], "kind": "learn"},
+        {"title": "Light and pigments", "level": 1, "concepts": ["chlorophyll"], "kind": "watch"},
+        {"title": "Photosynthesis equation", "level": 2, "concepts": ["glucose", "oxygen"], "kind": "practice"}
+      ]
+    },
+    {
+      "title": "Energy cycle",
+      "description": "Follow matter and energy through the process",
+      "lessons": [
+        {"title": "Light reactions", "level": 3, "concepts": ["water", "sunlight"], "kind": "learn"},
+        {"title": "Carbon fixation", "level": 3, "concepts": ["carbon dioxide"], "kind": "watch"},
+        {"title": "Limiting factors", "level": 4, "concepts": ["light intensity"], "kind": "practice"}
+      ]
+    }
+  ]
+}

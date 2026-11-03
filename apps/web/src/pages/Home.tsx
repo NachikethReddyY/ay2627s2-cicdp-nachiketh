@@ -11,7 +11,7 @@ const LEAGUE_XP = 500;
 const aiErrors: Record<string, string> = {
   PRECONDITION_FAILED: "Pip's AI helper isn't switched on here yet.",
       TOO_MANY_REQUESTS: "You've reached today's AI path limit. Pip will be ready to sketch again tomorrow!",
-  BAD_REQUEST: "Pip only draws coding paths. Try a language, a tool or a project idea!",
+  BAD_REQUEST: "Pip couldn't make a useful learning path for that topic. Try another topic!",
 };
 
 function LearnAnything() {
@@ -40,7 +40,7 @@ function LearnAnything() {
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             id="learn" value={text} onChange={(e) => setText(e.target.value)} maxLength={300} disabled={busy}
-            placeholder="What do you want to learn to code?"
+            placeholder="What do you want to learn?"
             className="min-w-0 flex-1 rounded-xl border-[3px] border-ink bg-white px-4 py-2.5 font-semibold outline-none focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue"
           />
           <button type="submit" disabled={busy || text.trim().length < 3} className="btn disabled:opacity-50">{busy ? "Sketching…" : "Generate"}</button>

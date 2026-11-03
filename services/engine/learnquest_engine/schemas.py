@@ -35,12 +35,12 @@ class Course(BaseModel):
 
 
 class Outline(BaseModel):
-    """Either `notCoding: true` alone, or title + tagline + courses.
+    """Either `refused: true` alone, or title + tagline + courses.
 
     One flat model instead of a root union: strict json_schema needs an object at the root.
     """
 
-    notCoding: Literal[True] | None = None
+    refused: Literal[True] | None = None
     title: T80 | None = None
     tagline: T160 | None = None
     courses: list[Course] | None = Field(default=None, min_length=2, max_length=4)
@@ -48,9 +48,9 @@ class Outline(BaseModel):
     @model_validator(mode="after")
     def _one_shape(self) -> "Outline":
         full = self.title is not None and self.tagline is not None and self.courses is not None
-        if self.notCoding:
+        if self.refused:
             if self.title or self.tagline or self.courses:
-                raise ValueError("notCoding outline must omit everything else")
+                raise ValueError("refused outline must omit everything else")
         elif not full:
             raise ValueError("outline needs title, tagline and courses")
         return self
