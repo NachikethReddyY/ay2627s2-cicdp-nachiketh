@@ -124,7 +124,10 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 def checker_unavailable(_: Request, exc: visual.CheckerUnavailable) -> JSONResponse:
     # Fail closed: a document the checker never saw must not be served as valid.
     log.error("visual checker unavailable: %s", exc)
-    return JSONResponse(status_code=503, content={"error": "visual checker unavailable", "issues": []})
+    return JSONResponse(
+        status_code=503,
+        content={"error": "visual checker unavailable", "issues": []},
+    )
 
 
 @app.exception_handler(GenerationError)
