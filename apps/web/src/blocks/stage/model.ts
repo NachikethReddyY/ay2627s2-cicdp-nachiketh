@@ -18,8 +18,8 @@ export type Resolved = {
   labelPill: boolean;
 };
 
-export function segment(prevStep: number, step: number, reduced: boolean, poses: number[]): [number, number] | null {
-  return !reduced && step === prevStep + 1 ? [poses[prevStep]!, poses[step]!] : null;
+export function segment(step: number, animate: boolean, poses: number[]): [number, number] | null {
+  return animate && step + 1 < poses.length ? [poses[step]!, poses[step + 1]!] : null;
 }
 
 export function bodyState(id: string, y: number): TimelineState {

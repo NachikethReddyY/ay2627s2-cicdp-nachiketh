@@ -45,12 +45,13 @@ test("small shape labels move above into a pill and use palette text", () => {
   assert.equal(resolve({ id: "green", kind: "circle", x: 5, y: 5, r: 20, fill: "green" }, undefined).fill, "var(--color-mint)");
 });
 
-test("physics segments animate only the next step and snap for jumps or reduced motion", () => {
+test("entered physics steps animate their own interval; jumps and reduced motion snap", () => {
   const poses = [0, 0.5, 1.25, 2];
-  assert.deepEqual(segment(0, 1, false, poses), [0, 0.5]);
-  assert.equal(segment(1, 0, false, poses), null);
-  assert.equal(segment(0, 2, false, poses), null);
-  assert.equal(segment(0, 1, true, poses), null);
+  assert.deepEqual(segment(0, true, poses), [0, 0.5]);
+  assert.deepEqual(segment(1, true, poses), [0.5, 1.25]);
+  assert.deepEqual(segment(2, true, poses), [1.25, 2]);
+  assert.equal(segment(3, true, poses), null);
+  assert.equal(segment(0, false, poses), null);
 });
 
 test("bodyState resolves to deterministic simulator poses when scrubbing", () => {

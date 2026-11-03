@@ -72,26 +72,35 @@ function Bouncing({ p }: { p: Props }) {
   }, [p.shapes, physics]);
   const tl = useTimeline(simulation.timeline);
   const [time, setTime] = useState(0);
-  const previous = useRef(0);
+  const timeRef = useRef(0);
+  const lastStep = useRef(tl.step);
   useEffect(() => {
-    const range = segment(previous.current, tl.step, tl.reduced, simulation.poses);
-    previous.current = tl.step;
+    const stepChanged = lastStep.current !== tl.step;
+    lastStep.current = tl.step;
+    if (!tl.playing && !tl.reduced && !stepChanged) return;
+    const range = segment(tl.step, tl.playing && !tl.reduced, simulation.poses);
     if (!range) {
-      setTime(simulation.poses[tl.step]!);
+      const pose = simulation.poses[tl.step]!;
+      timeRef.current = pose;
+      setTime(pose);
       return;
     }
-    const [from, to] = range;
+    const [start, to] = range;
+    const from = stepChanged ? start : Math.max(start, Math.min(to, timeRef.current));
+    const duration = simulation.timeline.steps[tl.step]!.durationMs;
+    const remaining = duration * ((to - from) / (to - start));
     let frame = 0;
     let started: number | null = null;
     const animate = (now: number) => {
       started ??= now;
-      const next = Math.min(to, from + (now - started) / 1000);
+      const next = from + (to - from) * Math.min(1, (now - started) / remaining);
+      timeRef.current = next;
       setTime(next);
       if (next < to) frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [tl.step, tl.reduced, simulation.poses]);
+  }, [tl.step, tl.playing, tl.reduced, simulation.poses, simulation.timeline.steps]);
   return <div ref={tl.ref} className="min-w-0 max-w-full">
     <Scene p={p} state={bodyState(physics.body, bounceY(simulation.bounce, time))} ms={0} />
     <StageControls tl={tl} captions={simulation.timeline.steps.map((step) => step.caption)} />
