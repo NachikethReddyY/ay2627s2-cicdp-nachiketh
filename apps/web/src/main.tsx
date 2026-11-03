@@ -47,7 +47,10 @@ const routeTree = root.addChildren([
     path: "/play",
     component: () => <PlayerPage />,
     beforeLoad: requireSession,
-    validateSearch: (s: Record<string, unknown>): { lesson?: string } => ({ lesson: typeof s.lesson === "string" ? s.lesson : undefined }),
+    validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string } => ({
+      lesson: typeof s.lesson === "string" ? s.lesson : undefined,
+      course: typeof s.course === "string" ? s.course : undefined,
+    }),
   }),
   createRoute({ ...r, path: "/diff", component: () => <DiffPage /> }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: requireSession }),
