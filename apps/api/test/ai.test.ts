@@ -9,6 +9,7 @@ import { lessons, steps } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { idle } from "../src/ai/service.ts";
+import photosynthesis from "../../../services/engine/tests/fixtures/outline_photosynthesis.json" with { type: "json" };
 
 const app = buildApp();
 after(() => app.close());
@@ -77,6 +78,16 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   assert.equal(code(await other.q("courses.get", { slug: firstCourseSlug })), "NOT_FOUND");
   assert.equal(code(await other.q("lessons.get", { id: ls[0]!.slug })), "NOT_FOUND");
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
+});
+
+test("photosynthesis outline persists the supported lesson kinds", async () => {
+  const fixture = photosynthesis as typeof outline;
+  generator.outline = async () => fixture;
+  const { t, firstCourseSlug } = await setup("photosynthesis@example.com");
+  const course = out(await t.q("courses.get", { slug: firstCourseSlug }));
+  assert.deepEqual((course.lessons as { title: string; kind: string }[]).map(({ title, kind }) => [title, kind]),
+    fixture.courses[0]!.lessons.map(({ title, kind }) => [title, kind]));
+  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "watch", "practice"]));
 });
 
 test("missing key, non-coding topic and bad input", async () => {
