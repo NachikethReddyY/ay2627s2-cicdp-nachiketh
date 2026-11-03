@@ -13,20 +13,31 @@ export default function PathTrack({ xs, lit, row }: { xs: number[]; lit: number;
       return `C${px},${my} ${x},${my} ${x},${y}`;
     }).join(" ");
   return (
-    <svg aria-hidden className="pointer-events-none absolute top-0 left-1/2 overflow-visible" width="1" height={h}>
-      <path d={d(pts)} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth={4} strokeLinecap="round" strokeDasharray="1 12" />
+    <svg aria-hidden className="course-track" width="1" height={h}>
+      <path d={d(pts)} fill="none" stroke="#15121F" strokeOpacity={0.3} strokeWidth={3} strokeLinecap="round" strokeDasharray="9 9" />
       {lit > 1 && (
-        <motion.path
-          d={d(pts.slice(0, lit))}
-          fill="none"
-          stroke="#10B981"
-          strokeWidth={5}
-          strokeLinecap="round"
-          style={{ filter: "drop-shadow(0 0 6px rgba(16,185,129,0.6))" }}
-          initial={{ pathLength: reduce ? 1 : 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: reduce ? 0 : 1.2, ease: "easeInOut" }}
-        />
+        <>
+          <motion.path
+            d={d(pts.slice(0, lit))}
+            fill="none"
+            stroke="#15121F"
+            strokeWidth={9}
+            strokeLinecap="round"
+            initial={{ pathLength: reduce ? 1 : 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: reduce ? 0 : 1.2, ease: "easeInOut" }}
+          />
+          <motion.path
+            d={d(pts.slice(0, lit))}
+            fill="none"
+            stroke="#2257FF"
+            strokeWidth={4}
+            strokeLinecap="round"
+            initial={{ pathLength: reduce ? 1 : 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: reduce ? 0 : 1.2, ease: "easeInOut" }}
+          />
+        </>
       )}
     </svg>
   );

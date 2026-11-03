@@ -1,0 +1,195 @@
+/* Explore page: sticker-book search, filters and path cards, scoped under .lq-explore. */
+
+.lq-explore { min-height: 100vh; }
+
+/* The shared top bar still uses the app's old utility classes; bring them onto the sticker palette. */
+.lq-explore .font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+.lq-explore .text-blue { color: var(--blue); }
+.lq-explore .pill {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-weight: 700;
+}
+.lq-explore .pill.bg-green {
+  color: var(--ink);
+  background: var(--sun);
+}
+
+/* heading + filters */
+.lq-explore .explore-page { padding-top: 6px; }
+.lq-explore .explore-h {
+  font-size: clamp(40px, 9vw, 56px);
+  line-height: 1;
+}
+.lq-explore .explore-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.lq-explore .explore-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lq-explore .explore-tab[aria-pressed="true"] {
+  background: var(--sun);
+  box-shadow: 1px 1px 0 var(--ink);
+  translate: 2px 2px;
+}
+.lq-explore .explore-tab[aria-pressed="true"]:hover {
+  translate: 2px 2px;
+  rotate: 0deg;
+}
+.lq-explore .explore-search-wrap {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 360px;
+}
+.lq-explore .explore-search {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: inset 3px 3px 0 rgba(21, 18, 31, 0.12);
+  font: 500 16px var(--font-body);
+  appearance: none;
+}
+.lq-explore .explore-search::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.lq-explore .explore-results { margin-top: 24px; }
+
+/* path cards, matching the home page community cards */
+.lq.lq-explore .lq-comm.explore-list {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 22px;
+  align-items: start;
+}
+.lq.lq-explore .lq-comm > li:nth-child(even) { margin-top: 0; }
+.lq.lq-explore .explore-card {
+  gap: 12px;
+  min-height: 0;
+  padding: 18px;
+}
+.lq-explore .explore-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.lq-explore .explore-card-title {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.lq-explore .explore-card h2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 24px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.lq-explore .explore-ai { display: inline-flex; }
+.lq-explore .explore-ai .pill {
+  min-height: 26px;
+  padding: 2px 8px;
+  color: var(--ink);
+  background: var(--mint);
+  border-width: 2.5px;
+  box-shadow: 2px 2px 0 var(--ink);
+  font: 700 12px/1 var(--font-body);
+  rotate: -5deg;
+}
+.lq-explore .explore-tagline {
+  margin-top: 5px;
+  font: 500 15px/1.4 var(--font-body);
+  color: var(--ink);
+}
+.lq-explore .explore-meta {
+  margin-top: 6px;
+  font: 700 13px var(--font-body);
+  color: var(--ink);
+}
+
+.lq.lq-explore .lq-btn-sm {
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 17px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.lq.lq-explore .lq-btn-sm:hover { box-shadow: 5px 5px 0 var(--ink); }
+.lq.lq-explore .explore-joined {
+  align-self: flex-start;
+  color: var(--ink);
+  font-size: 12px;
+  rotate: -3deg;
+}
+.lq-explore .explore-pub {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.lq-explore .explore-pub-err {
+  font: 700 13px var(--font-body);
+  color: var(--ink);
+}
+.lq-explore .explore-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lq-explore .explore-confirm > span { font: 700 13px var(--font-body); }
+
+/* course links inside a card */
+.lq-explore .explore-courses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lq-explore .explore-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 2px 2px 0 var(--ink);
+  font: 700 14px var(--font-body);
+  text-decoration: none;
+  transition: translate var(--t-med) var(--ease-pop);
+}
+.lq-explore .explore-tag:hover { translate: 0 -2px; }
+
+/* empty and error states */
+.lq.lq-explore .lq-empty-card { margin-top: 24px; }
+.lq.lq-explore .lq-empty-card p {
+  margin: 0;
+  font: 700 16px/1.4 var(--font-body);
+  color: var(--ink);
+}
+
+@media (max-width: 480px) {
+  .lq-explore .explore-search-wrap { flex-basis: 100%; max-width: none; }
+  .lq.lq-explore .explore-card { padding: 16px 14px; }
+  .lq-explore .explore-card h2 { font-size: 22px; }
+  .lq.lq-explore .lq-empty-card { align-items: flex-start; }
+}
