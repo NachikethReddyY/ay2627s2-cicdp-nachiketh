@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { env } from "../env.ts";
+import { callEngine, EngineError } from "../engine-client/client.ts";
 
 const Body = z.object({ prompt: z.string().min(1).max(500) });
 
@@ -13,25 +14,16 @@ export async function devRoutes(app: FastifyInstance) {
     if (!body.success) {
       return reply.status(400).send({ error: { code: "bad_request", message: "prompt must be 1-500 characters" } });
     }
-    const fail = (message: string) =>
-      reply.status(502).send({ error: { code: "engine_error", message } });
-    if (!env.ENGINE_TOKEN) return fail("ENGINE_TOKEN is not set in apps/api/.env");
-
-    let res: Response;
     try {
-      res = await fetch(new URL("/v1/pipeline/visual", env.ENGINE_URL), {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-engine-token": env.ENGINE_TOKEN },
-        body: JSON.stringify(body.data),
-      });
-    } catch {
-      return fail(`Engine unreachable at ${env.ENGINE_URL}`);
-    }
-    const json = (await res.json().catch(() => null)) as { error?: unknown; issues?: unknown } | null;
-    if (!res.ok) {
+      return await callEngine("/v1/pipeline/visual", body.data);
+    } catch (e) {
+      const err = e instanceof EngineError ? e : null;
+      const json = err?.body as { error?: unknown; issues?: unknown } | null | undefined;
       const issues = Array.isArray(json?.issues) ? ` (${json.issues.slice(0, 5).join("; ")})` : "";
-      return fail(`${typeof json?.error === "string" ? json.error : `Engine answered ${res.status}`}${issues}`);
+      const message = err?.message === "ENGINE_TOKEN is not set"
+        ? "ENGINE_TOKEN is not set in apps/api/.env"
+        : `${typeof json?.error === "string" ? json.error : (err?.message ?? "Engine failed")}${issues}`;
+      return reply.status(502).send({ error: { code: "engine_error", message } });
     }
-    return json;
   });
 }

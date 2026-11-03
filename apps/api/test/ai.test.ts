@@ -1,13 +1,14 @@
 import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
 import { learners, lessons, steps, user } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
+import { engineParts } from "../src/engine-client/parts.ts";
 import { idle } from "../src/ai/service.ts";
 import photosynthesis from "../../../services/engine/tests/fixtures/outline_photosynthesis.json" with { type: "json" };
 
@@ -42,7 +43,8 @@ beforeEach(() => {
   lessonCalls = 0;
   lessonOut = (kind) => parts[kind as keyof typeof parts];
   generator.outline = async () => outline;
-  generator.lesson = async (ctx) => {
+  // Non-predict parts come from the engine. Each call counts as one model call for these tests.
+  engineParts.lesson = async (ctx) => {
     lessonCalls++;
     await new Promise((r) => setTimeout(r, 30));
     return lessonOut(ctx.lesson.kind);
@@ -135,7 +137,7 @@ test("two concurrent plays write the part once", async () => {
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
   assert.equal(out(a).kind, "practice");
-  assert.deepEqual(out(a).part, parts.practice);
+  assert.deepEqual(out(a).part, { ...parts.practice, language: "javascript" }); // the router defaults the language
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
@@ -197,4 +199,47 @@ test("private AI lesson is hidden from others until the path is published", asyn
 
   assert.equal((await t.m("paths.publish", { slug })).statusCode, 200);
   assert.equal((await other.q("lessons.get", { id: last })).statusCode, 200);
+});
+
+test("a part generated for one learner is reused by another without a model call", async () => {
+  const first = await setup("c@example.com");
+  assert.equal((await first.t.q("lessons.get", { id: first.lessons[0]!.slug })).statusCode, 200);
+  await idle(); // background prefetch of neighbouring lessons also calls the engine
+  const before = lessonCalls;
+
+  const second = await setup("d@example.com");
+  const res = out(await second.t.q("lessons.get", { id: second.lessons[0]!.slug }));
+  assert.deepEqual(res.part, parts.learn);
+  assert.equal(lessonCalls, before); // same lesson content, so the cached part is served
+  await idle();
+});
+
+test("a learn part's visual document is stored and returned", async () => {
+  const doc = { v: 1, blocks: [{ type: "text", id: "t", props: { md: "Ownership moves values." } }] };
+  lessonOut = (kind) => (kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
+  const { t, lessons: ls } = await setup();
+  const res = out(await t.q("lessons.get", { id: ls[0]!.slug }));
+  assert.equal(res.part.kind, "learn");
+  assert.deepEqual((res.part.doc as { blocks: { id: string }[] }).blocks.map((b) => b.id), ["t"]);
+});
+
+test("the AI budget stops a lesson with its own message, before the model call and without a retry", async () => {
+  await db.execute(sql`DELETE FROM spend_ledger`);
+  const old = { daily: env.AI_DAILY_BUDGET_USD, estimate: env.AI_CALL_ESTIMATE_USD };
+  try {
+    env.AI_CALL_ESTIMATE_USD = 0.01;
+    env.AI_DAILY_BUDGET_USD = 0.025; // outline 0.01, first part 0.02; the second part would reach 0.03
+    const { t, lessons: ls } = await setup();
+    assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
+    assert.equal(lessonCalls, 1);
+    const res = await t.q("lessons.get", { id: ls[1]!.slug });
+    assert.equal(code(res), "TOO_MANY_REQUESTS");
+    assert.equal(res.json().error.message, "AI budget limit reached");
+    assert.equal(lessonCalls, 1);
+  } finally {
+    env.AI_DAILY_BUDGET_USD = old.daily;
+    env.AI_CALL_ESTIMATE_USD = old.estimate;
+    await idle();
+    await db.execute(sql`DELETE FROM spend_ledger`);
+  }
 });

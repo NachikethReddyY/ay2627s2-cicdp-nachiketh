@@ -28,13 +28,25 @@ export function setModerationClient(client: ModerationClient): void {
   moderationClient = client;
 }
 
-export async function isSafe(input: string, client: ModerationClient = moderationClient): Promise<boolean> {
+/**
+ * failOpen: when the moderation service is unavailable, allow the text (learner topics and generated lessons).
+ * Images never fail open: imagegen calls this without it, so a safety outage stops images but not lessons.
+ */
+export async function isSafe(
+  input: string,
+  client: ModerationClient = moderationClient,
+  { failOpen = false }: { failOpen?: boolean } = {},
+): Promise<boolean> {
   // Only trusted, exact curriculum topics bypass the provider. Learner text never enters this list.
   if (allowList.test(input.trim())) return true;
   try {
     const result = await client(input);
     return !result.flagged && CATEGORIES.every((category) => (result.scores[category] ?? 1) < THRESHOLD);
-  } catch {
-    return false;
+  } catch (error) {
+    if (failOpen) console.warn("moderation unavailable; text allowed", error instanceof Error ? error.message : "");
+    return failOpen;
   }
 }
+
+/** Text check for topics and generated lessons: fails open when moderation is down. */
+export const isSafeText = (input: string) => isSafe(input, moderationClient, { failOpen: true });

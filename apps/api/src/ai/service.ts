@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -6,11 +6,14 @@ import { buildTimeline, seek } from "@learnquest/player-core";
 import { db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
-import { aiGenerations, enrollments, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type PartSecret } from "../db/schema.ts";
+import { aiGenerations, enrollments, generationCache, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type PartSecret } from "../db/schema.ts";
 import { generator, type LessonContext } from "./generator.ts";
+import { engineParts, type PartContext } from "../engine-client/parts.ts";
+import { validatePart } from "../visuals/gate.ts";
+import { prewarmDocImages } from "../media/imagegen.ts";
 import { tiers } from "../config/tiers.ts";
 import { reserveAiSpend } from "../config/budget.ts";
-import { isSafe } from "../safety/moderation.ts";
+import { isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
 
@@ -26,7 +29,7 @@ const Outline = z.union([
           title: text(80),
           description: text(300),
           lessons: z
-            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["learn", "watch", "practice"]) }))
+            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["learn", "watch", "practice", "game-practice"]) }))
             .min(3)
             .max(6),
         }),
@@ -37,15 +40,6 @@ const Outline = z.union([
 ]);
 
 const Hunk = z.object({ id: text(40), file: text(200), oldStart: z.number().int().min(1), lines: z.array(z.string().max(300)).min(1).max(60) });
-const Part = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("learn"), body: text(4000) }),
-  z.object({
-    kind: z.literal("watch"),
-    beforeFiles: z.record(text(200), z.string().max(6000)).refine((f) => Object.keys(f).length >= 1 && Object.keys(f).length <= 4),
-    hunks: z.array(Hunk).min(1).max(6),
-  }),
-  z.object({ kind: z.literal("practice"), instructions: text(1000), starterCode: z.string().max(3000), expectedOutput: z.string().max(1000) }),
-]);
 const Hint = z.object({ text: text(400), eliminate: z.number().int().min(0).max(3).optional() });
 const Common = {
   title: text(100),
@@ -82,8 +76,8 @@ export const DAILY_AI_PATHS = { free: 5, pro: 20, max: 100 } as const;
 
 export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
-  if (!(await isSafe(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
-  if (!env.ANTHROPIC_API_KEY) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
+  if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
+  if (!env.ANTHROPIC_API_KEY && !env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
   // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
   const allowed = await withTx(async (tx) => {
@@ -97,12 +91,12 @@ export async function generatePath(learnerId: string, topic: string) {
     return true;
   });
   if (!allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me!.tier as keyof typeof tiers].aiPathsPerDay} AI paths for today` });
-  await reserveAiSpend();
+  await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
 
   let outline;
   try {
     outline = Outline.parse(await measureGeneration("outline", () => generator.outline(topic)));
-    if (!(await isSafe(JSON.stringify(outline)))) throw new Error("Generated content refused by safety filter");
+    if (!(await isSafeText(JSON.stringify(outline)))) throw new Error("Generated content refused by safety filter");
   } catch {
     console.error("outline generation failed");
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });
@@ -158,30 +152,17 @@ function validate(raw: unknown): GeneratedStep[] {
   return steps;
 }
 
-function validatePart(raw: unknown): PartSecret {
-  const part = Part.parse(raw);
-  // shortcut: catches a cut-off body by its unclosed code fence or inline backtick, not every truncation; a retry covers the rest.
-  if (part.kind === "learn") {
-    const fences = part.body.match(/```/g)?.length ?? 0;
-    const inline = (part.body.replace(/```[\s\S]*?```/g, "").match(/`/g)?.length ?? 0);
-    if (fences % 2 || inline % 2) throw new Error("learn part looks truncated");
-    // A model that loops repeats a few words over and over; real prose has many distinct words.
-    const words = part.body.split(/\s+/);
-    if (words.length > 40 && new Set(words).size / words.length < 0.3) throw new Error("learn part is repetitive");
-  }
-  if (part.kind === "watch") {
-    const tl = buildTimeline([{ beforeFiles: part.beforeFiles, hunks: part.hunks }]); // throws when a hunk does not match its file
-    if (JSON.stringify(seek(tl, tl.duration).files) === JSON.stringify(part.beforeFiles)) throw new Error("watch part changes nothing");
-  }
-  return part;
-}
+// Bump when a prompt or the engine's part shape changes, so stale cached parts are not reused.
+const PART_CACHE_VERSION = 1;
 
-async function writeWith<T>(ctx: LessonContext, check: (raw: unknown) => T): Promise<T> {
+async function writeWith<T>(produce: () => Promise<unknown>, check: (raw: unknown) => T): Promise<T> {
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return check(await measureGeneration("lesson", () => generator.lesson(ctx)));
+      return check(await produce());
     } catch (e) {
+      // Budget and kill-switch errors are final: retrying would not help and would hide the message.
+      if (e instanceof TRPCError) throw e;
       last = e;
       console.error(`lesson generation attempt ${attempt + 1} failed`, e);
     }
@@ -214,13 +195,41 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
       missedConcepts: rows.map((r) => r.c),
     };
     // A part keeps its content on the version; a predict lesson keeps one steps row per step.
-    const part = l.kind === "predict" ? null : await writeWith(ctx, validatePart);
-    const generated = part ? [] : await writeWith(ctx, validate);
+    // Parts come from the engine and are cached by what produced them, so a repeat lesson makes no model call.
+    let part: PartSecret | null = null;
+    if (l.kind !== "predict") {
+      const partCtx: PartContext = { ...ctx, missedConcepts: [] };
+      const key = createHash("sha256").update(`v${PART_CACHE_VERSION}:${JSON.stringify(partCtx)}`).digest("hex");
+      const [hit] = await tx.select({ content: generationCache.content }).from(generationCache).where(eq(generationCache.key, key)).limit(1);
+      let cached: PartSecret | null = null;
+      if (hit) {
+        try { cached = validatePart(hit.content); } catch { /* stale or unsafe cache row: regenerate */ }
+      }
+      if (cached) part = cached;
+      else {
+        part = await writeWith(async () => {
+          await reserveAiSpend(env.AI_CALL_ESTIMATE_USD); // per attempt, so a retry is reserved too
+          return measureGeneration("part", () => engineParts.lesson(partCtx));
+        }, validatePart);
+        await tx.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
+      }
+    }
+    const generated = part
+      ? []
+      : await writeWith(async () => {
+          await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
+          return measureGeneration("lesson", () => generator.lesson(ctx));
+        }, validate);
 
     const [version] = await tx
       .insert(lessonVersions)
       .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content: part })
       .returning();
+    // Images in a visual document are generated now, while the lesson is written, not on the learner's first read.
+    if (part && (part.kind === "learn" || part.kind === "game-practice") && part.doc) {
+      const [learner] = await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
+      await prewarmDocImages(part.doc, { lessonVersionId: version!.id, learnerId, tier: learner!.tier as keyof typeof tiers });
+    }
     if (!part) {
       await tx.insert(steps).values(
         generated.map((s, idx) => ({

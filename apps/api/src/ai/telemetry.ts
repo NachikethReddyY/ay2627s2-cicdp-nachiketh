@@ -1,5 +1,5 @@
 /** Record provider-call counts and timings without retaining any generated or learner text. */
-export async function measureGeneration<T>(operation: "outline" | "lesson", call: () => Promise<T>): Promise<T> {
+export async function measureGeneration<T>(operation: "outline" | "lesson" | "part", call: () => Promise<T>): Promise<T> {
   const started = performance.now();
   let outcome: "success" | "error" = "success";
   try {

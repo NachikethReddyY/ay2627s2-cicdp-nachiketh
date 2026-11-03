@@ -20,14 +20,16 @@ const { sql } = await import("drizzle-orm");
 const { db } = await import("../src/db/client.ts");
 const { runMigrations } = await import("../src/db/migrate.ts");
 const { seed } = await import("../src/db/seed.ts");
+const { idle } = await import("../src/ai/service.ts");
 const { setModerationClient } = await import("../src/safety/moderation.ts");
 setModerationClient(async () => ({ flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } }));
 
 await runMigrations();
 
 beforeEach(async () => {
+  await idle(); // prefetch left running by the previous test would deadlock the truncate
   await db.execute(
-    sql`TRUNCATE enrollments, lesson_media, path_courses, paths, hint_events, attempts, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
+    sql`TRUNCATE enrollments, generation_cache, lesson_media, part_completions, path_courses, paths, hint_events, attempts, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
   );
 });
 

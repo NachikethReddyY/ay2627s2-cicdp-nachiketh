@@ -46,7 +46,7 @@ const Lesson = z.object({
   level: z.number(),
   done: z.number(),
   total: z.number(),
-  kind: z.enum(["predict", "learn", "watch", "practice"]),
+  kind: z.enum(["predict", "learn", "watch", "practice", "game-practice"]),
 });
 const CourseDetail = z.object({
   slug: z.string(),
@@ -107,10 +107,18 @@ type LessonRow = {
 };
 
 // Per-lesson progress over the lesson's current version; used by /me/home and the course and path reads.
-const lessonTotal = sql`(SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int`;
-const lessonDone = (me: string) => sql`(SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
-  WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}
-    AND sp.state IN ('revealed', 'skipped'))::int`;
+// Predict lessons count steps; learn/watch/practice/game-practice lessons are one part, done via part_completions.
+const lessonTotal = sql`(CASE WHEN l.kind = 'predict'
+  THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int ELSE 1 END)`;
+const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
+  THEN (SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
+    WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}
+      AND sp.state IN ('revealed', 'skipped'))::int
+  ELSE (SELECT count(*) FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me})::int END)`;
+const lastActive = (me: string) => sql`GREATEST(
+  (SELECT max(sp.updated_at) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
+    WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}),
+  (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}))`;
 const complete = (l: { done: number; total: number }) => l.total > 0 && l.done >= l.total;
 // The learner's user id, to compare with owner_id.
 const myUser = (me: string) => sql`(SELECT user_id FROM learners WHERE id = ${me})`;
@@ -162,8 +170,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         l.slug AS lesson_slug, l.title AS lesson_title, l.level,
         ${lessonTotal} AS total,
         ${lessonDone(me)} AS done,
-        (SELECT max(sp.updated_at) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
-          WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}) AS last_active
+        ${lastActive(me)} AS last_active
       FROM enrollments e
       JOIN paths p ON p.id = e.path_id
       JOIN path_courses pc ON pc.path_id = p.id
@@ -401,6 +408,7 @@ const generate = protectedProcedure
 export const pathsRouter = router({ list: pathList, get: pathGet, enroll, publish, generate });
 export const coursesRouter = router({ get: courseGet });
 export const meRouter = router({ update: meUpdate });
+// Awards only for a real game block of the lesson's current game-practice version; the single part is partIdx 0.
 const gameComplete = protectedProcedure
   .input(z.object({ lessonId: z.string().regex(/^[\w-]{1,64}$/), partIdx: z.number().int().min(0).max(100), blockId: z.string().regex(/^[\w-]{1,64}$/) }))
   .output(z.object({ awarded: z.boolean() }))
@@ -411,9 +419,14 @@ const gameComplete = protectedProcedure
       FROM lessons l
       JOIN worlds w ON w.id = l.world_id
       JOIN learners me ON me.id = ${ctx.learnerId}
+      JOIN lesson_versions v ON v.id = l.current_version_id
       WHERE (l.id = ${input.lessonId} OR l.slug = ${input.lessonId})
         AND l.status = 'published'
         AND (w.visibility = 'public' OR w.owner_id = me.user_id)
+        AND ${input.partIdx} = 0
+        AND v.content->>'kind' = 'game-practice'
+        AND EXISTS (SELECT 1 FROM jsonb_array_elements(v.content->'doc'->'blocks') b
+          WHERE b->>'id' = ${input.blockId} AND b->>'type' = 'game')
       ON CONFLICT DO NOTHING
       RETURNING 1`);
     return { awarded: rows.length > 0 };

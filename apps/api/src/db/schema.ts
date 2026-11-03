@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import type { Spec } from "@learnquest/ui-catalog";
 import {
   boolean,
   index,
+  numeric,
   integer,
   jsonb,
   pgTable,
@@ -125,7 +127,8 @@ export const aiGenerations = pgTable(
 
 export const spendLedger = pgTable("spend_ledger", {
   id: id(),
-  amountUsd: integer("amount_usd").notNull(),
+  // Fixed-point dollars: a per-image estimate such as 0.04 cannot be stored in an integer column.
+  amountUsd: numeric("amount_usd", { precision: 12, scale: 4 }).notNull(),
   createdAt: createdAt(),
 });
 
@@ -184,10 +187,12 @@ export const concepts = pgTable(
 export type LessonSource = { repo: string; sha: string; path: string };
 
 export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
+// Visual docs are validated by visuals/gate.ts before they are stored, so the type here is the validated shape.
 export type PartSecret =
-  | { kind: "learn"; body: string }
+  | { kind: "learn"; body: string; doc?: Spec }
   | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
-  | { kind: "practice"; instructions: string; language?: "python" | "javascript"; starterCode: string; expectedOutput: string };
+  | { kind: "practice"; instructions: string; language?: "python" | "javascript"; starterCode: string; expectedOutput: string }
+  | { kind: "game-practice"; intro: string; doc: Spec };
 
 export const lessons = pgTable("lessons", {
   id: id(),
@@ -200,7 +205,7 @@ export const lessons = pgTable("lessons", {
   position: integer("position").notNull().default(0),
   sourceKind: text("source_kind", { enum: ["repo", "authored", "ai"] }).notNull(),
   // predict = mcq/cloze steps; learn/watch/practice = one part with content in lesson_versions.content.
-  kind: text("kind", { enum: ["predict", "learn", "watch", "practice"] })
+  kind: text("kind", { enum: ["predict", "learn", "watch", "practice", "game-practice"] })
     .notNull()
     .default("predict"),
   source: jsonb("source").$type<LessonSource>(),
@@ -321,6 +326,14 @@ export const hintEvents = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.stepId, t.rung] })],
 );
 
+// Generated parts keyed by what produced them (kind, path, course, lesson), so the same lesson is never generated twice.
+export const generationCache = pgTable("generation_cache", {
+  key: text("key").primaryKey(),
+  kind: text("kind", { enum: ["learn", "watch", "practice", "game-practice"] }).notNull(),
+  content: jsonb("content").$type<PartSecret>().notNull(),
+  createdAt: createdAt(),
+});
+
 export const gameCompletions = pgTable(
   "game_completions",
   {
@@ -331,6 +344,21 @@ export const gameCompletions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId, t.partIdx, t.blockId] })],
+);
+
+// A learn/watch/practice/game-practice lesson is done once its single part is completed (predict lessons count steps).
+export const partCompletions = pgTable(
+  "part_completions",
+  {
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    lessonId: text("lesson_id")
+      .notNull()
+      .references(() => lessons.id, { onDelete: "cascade" }),
+    completedAt: timestamp("completed_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.lessonId] })],
 );
 
 // Per-version lesson media, object bytes live in the bucket under `key` (docs/media-storage-plan.md §3.3).
@@ -352,4 +380,19 @@ export const lessonMedia = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("lesson_media_version").on(t.lessonVersionId)],
+);
+
+// One row per image slot taken (reserved before the provider call, flipped to failed on error). The daily cap counts "ready" rows.
+export const imageGenerations = pgTable(
+  "image_generations",
+  {
+    id: id(),
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    promptHash: text("prompt_hash").notNull(),
+    status: text("status", { enum: ["ready", "failed"] }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("image_generations_learner_time").on(t.learnerId, t.createdAt)],
 );

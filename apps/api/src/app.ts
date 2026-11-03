@@ -10,6 +10,7 @@ import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/a
 import { appRouter, type AppRouter } from "./trpc/router.ts";
 import { createContext } from "./trpc/trpc.ts";
 import { sandboxRoutes } from "./sandbox/route.ts";
+import { sandboxRunRoute } from "./sandbox/run.ts";
 import { devRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
@@ -85,6 +86,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
         } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
       });
       api.register(sandboxRoutes);
+      api.register(sandboxRunRoute);
       api.register(devRoutes);
       api.get(
         "/healthz",
