@@ -1,1 +1,1 @@
-{"v":1,"blocks":[{"type":"text","id":"t1","props":{"md":"A bouncing ball"}},{"type":"stage","id":"s_bounce","props":{"alt":"A ball bounces","shapes":[{"id":"ball","kind":"rect","x":20,"y":20,"w":10,"h":10}],"physics":{"kind":"bounce","body":"ball","floor":80,"restitution":0.75}}}]}
+{"v":1,"blocks":[{"type":"text","id":"t1","props":{"md":"A bouncing ball"}},{"type":"stage","id":"s_bounce","props":{"alt":"A ball bounces","shapes":[{"id":"ball","kind":"ellipse","x":20,"y":20,"w":10,"h":10}],"physics":{"kind":"bounce","body":"ball","floor":80,"restitution":0.75}}}]}

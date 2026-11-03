@@ -7,6 +7,8 @@ export const MAX_SET = 20;
 export const MAX_CAPTION = 200;
 export const MIN_STEP_MS = 300;
 export const MAX_STEP_MS = 4000;
+/** Motion curves a step may use (GSAP ease names). */
+export const EASES = ["none", "power2.in", "power2.out", "power2.inOut", "back.out(1.6)", "bounce.out", "elastic.out(1, 0.5)"] as const;
 
 // `prop` uses the id pattern too: state keys stay short snake_case names, never free text.
 const setSchema = z.strictObject({
@@ -18,6 +20,7 @@ const setSchema = z.strictObject({
 const stepSchema = z.strictObject({
   caption: text(MAX_CAPTION),
   durationMs: z.int().min(MIN_STEP_MS).max(MAX_STEP_MS),
+  ease: z.enum(EASES).optional(),
   set: z.array(setSchema).max(MAX_SET),
 });
 

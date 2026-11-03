@@ -6,14 +6,17 @@ export const MAX_HOPS = 30;
 export const MAX_SIM_S = 15;
 export const CAPTIONED_HOPS = 4;
 
-export type BounceShape = { kind: "circle"; y: number; r: number };
+/** y is the body's reference height (a circle's centre, a rect's top); below is the distance from y to its lowest edge. */
+export const bodyBelow = (s: { kind: string; r?: number; h?: number }) => (s.kind === "circle" ? (s.r ?? 0) : (s.h ?? 0));
+
+export type BounceBody = { y: number; below: number };
 export type BouncePhysics = { kind: "bounce"; floor: number; restitution: number; autoplay?: boolean };
 export type BounceHop = { at: number; speed: number; height: number };
 export type Bounce = { y0: number; rest: number; t0: number; hops: BounceHop[]; restAt: number };
 
-export function simulateBounce(shape: BounceShape, physics: BouncePhysics): Bounce {
-  const rest = physics.floor - shape.r;
-  const y0 = shape.y;
+export function simulateBounce(body: BounceBody, physics: BouncePhysics): Bounce {
+  const rest = physics.floor - body.below;
+  const y0 = body.y;
   const drop = rest - y0;
   const t0 = Math.sqrt((2 * drop) / G_UNITS);
   const impactSpeed = G_UNITS * t0;
@@ -48,7 +51,10 @@ export function bounceTimeline(bounce: Bounce, physics: BouncePhysics): { timeli
   const steps = poses.map((pose, i) => {
     const durationMs = Math.max(1, Math.round(((poses[i + 1] ?? pose + 0.3) - pose) * 1000));
     if (i === 0) return { caption: "Held still: all of its energy is stored as height (potential energy).", durationMs, set: [] };
-    if (i === poses.length - 1) return { caption: "Smaller and smaller bounces, until the ball rests on the ground.", durationMs, set: [] };
+    if (i === poses.length - 1) {
+      const caption = visible.length ? "Smaller and smaller bounces, until it rests on the ground." : "It lands and stops, with no bounce.";
+      return { caption, durationMs, set: [] };
+    }
     const hop = visible[i - 1]!;
     const percent = (100 * hop.height) / (bounce.rest - bounce.y0);
     const caption = i === 1

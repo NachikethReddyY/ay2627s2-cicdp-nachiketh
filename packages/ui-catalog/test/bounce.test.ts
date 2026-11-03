@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { bounceTimeline, bounceY, G_UNITS, MAX_HOPS, MAX_SIM_S, REST_HEIGHT, simulateBounce } from "../src/index.ts";
 
-const shape = { kind: "circle" as const, y: 20, r: 6 };
+const shape = { y: 20, below: 6 };
 const physics = { kind: "bounce" as const, floor: 80, restitution: 0.75 };
 
 test("bounce heights decay by restitution squared and energy never increases", () => {
@@ -20,7 +20,7 @@ test("the ball rests below threshold within the simulation caps", () => {
   const next = b.hops.at(-1)!.height * physics.restitution ** 2;
   assert.ok(next < REST_HEIGHT);
   assert.equal(bounceY(b, b.restAt + 1), b.rest);
-  const worst = simulateBounce({ kind: "circle", y: 0, r: 0 }, { ...physics, floor: 100, restitution: 0.9 });
+  const worst = simulateBounce({ y: 0, below: 0 }, { ...physics, floor: 100, restitution: 0.9 });
   assert.ok(worst.hops.length <= MAX_HOPS);
   assert.ok(worst.restAt <= MAX_SIM_S);
 });
@@ -49,4 +49,19 @@ test("energy is conserved during a hop and the derived timeline has ordered posi
   assert.ok(poses.every((pose, i) => i === 0 || pose > poses[i - 1]!));
   assert.ok(timeline.steps.every((step) => step.durationMs > 0));
   assert.match(timeline.steps[1]!.caption, /%/);
+});
+
+test("restitution 0 drops and stays: no hops, rests at the floor, caption says so", () => {
+  const b = simulateBounce(shape, { ...physics, restitution: 0 });
+  assert.equal(b.hops.length, 0);
+  assert.equal(bounceY(b, b.restAt + 1), b.rest);
+  const { timeline } = bounceTimeline(b, { ...physics, restitution: 0 });
+  assert.match(timeline.steps.at(-1)!.caption, /no bounce/);
+});
+
+test("a rect body rests with its bottom edge on the floor, so its top is floor minus height", () => {
+  const box = { y: 10, below: 12 };
+  const b = simulateBounce(box, { ...physics, restitution: 0 });
+  assert.equal(b.rest, physics.floor - 12);
+  assert.equal(bounceY(b, b.restAt), physics.floor - 12);
 });
