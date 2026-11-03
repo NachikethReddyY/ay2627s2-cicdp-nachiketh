@@ -344,7 +344,9 @@ export const lessonMedia = pgTable(
     // Null = lesson-level (cover image).
     stepId: text("step_id").references(() => steps.id),
     kind: text("kind", { enum: ["narration", "image"] }).notNull(),
-    key: text("key").notNull().unique(),
+    status: text("status", { enum: ["pending", "ready", "failed"] }).notNull().default("ready"),
+    promptHash: text("prompt_hash").unique(),
+    key: text("key").unique(),
     contentType: text("content_type").notNull(),
     bytes: integer("bytes").notNull(),
     createdAt: createdAt(),

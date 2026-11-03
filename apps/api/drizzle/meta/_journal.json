@@ -64,6 +64,13 @@
       "when": 1793670000000,
       "tag": "0008_quiz_game_completions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793670381936,
+      "tag": "0009_premium_zombie",
+      "breakpoints": true
     }
   ]
 }
