@@ -195,6 +195,16 @@ for (const [name, body] of chatShapes) {
   });
 }
 
+test("concurrent requests for one prompt share a single provider call", async () => {
+  const f = await fake("images");
+  configure(f.url, "images");
+  setStorage(memoryStorage());
+  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_(), tier: "max" as const };
+  const results = await Promise.all([generateImage({ ...base, ...opts }), generateImage({ ...base, ...opts })]);
+  assert.equal(f.calls.length, 1);
+  assert.ok(results.every((r) => r.status === "ready"));
+});
+
 test("prewarm generates each image once, so a later read costs no provider call", async () => {
   const f = await fake("images");
   configure(f.url, "images");

@@ -30,14 +30,29 @@ function chatImage(message: ChatMessage): string | undefined {
   return md ? md[1] : text.trim();
 }
 
-export async function generateImage(input: {
+type ImageInput = {
   lessonVersionId: string;
   learnerId: string;
   stepId?: string;
   prompt: string;
   description: string;
   tier: keyof typeof tiers;
-}, http: HttpClient = fetchHttp): Promise<ImageResult> {
+};
+
+// Concurrent reads of the same prompt (prewarm racing a lesson read) share one provider call instead of paying twice.
+// shortcut: per process only; another API instance can still start its own call, the promptHash unique index stops a duplicate save.
+const inFlight = new Map<string, Promise<ImageResult>>();
+
+export function generateImage(input: ImageInput, http: HttpClient = fetchHttp): Promise<ImageResult> {
+  const key = `${input.learnerId}:${createHash("sha256").update(input.prompt).digest("hex")}`;
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const run = generateImageOnce(input, http).finally(() => inFlight.delete(key));
+  inFlight.set(key, run);
+  return run;
+}
+
+async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<ImageResult> {
   const fallback: ImageResult = { status: "fallback", description: input.description, marked: true };
   if (!ready()) return fallback;
   const hash = createHash("sha256").update(input.prompt).digest("hex");
