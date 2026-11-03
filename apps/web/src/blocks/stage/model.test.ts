@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { timelineSchema, stateAt } from "@learnquest/ui-catalog";
-import { resolve, type StageShape } from "./model.ts";
+import { bounceTimeline, bounceY, simulateBounce, timelineSchema, stateAt } from "@learnquest/ui-catalog";
+import { bodyState, resolve, segment, type StageShape } from "./model.ts";
 
 const ball: StageShape = { id: "ball", kind: "circle", x: 10, y: 20, r: 5, fill: "sun" };
 const tl = timelineSchema.parse({
@@ -30,4 +30,22 @@ test("bad state values fall back instead of leaking into attributes", () => {
 test("label sits at the centre of rects and lines", () => {
   assert.deepEqual(resolve({ id: "b", kind: "rect", x: 10, y: 10, w: 20, h: 10 }, undefined).label, { x: 20, y: 15 });
   assert.deepEqual(resolve({ id: "l", kind: "line", x: 0, y: 0, x2: 10, y2: 20 }, undefined).label, { x: 5, y: 10 });
+});
+
+test("physics segments animate only the next step and snap for jumps or reduced motion", () => {
+  const poses = [0, 0.5, 1.25, 2];
+  assert.deepEqual(segment(0, 1, false, poses), [0, 0.5]);
+  assert.equal(segment(1, 0, false, poses), null);
+  assert.equal(segment(0, 2, false, poses), null);
+  assert.equal(segment(0, 1, true, poses), null);
+});
+
+test("bodyState resolves to deterministic simulator poses when scrubbing", () => {
+  const b = simulateBounce({ kind: "circle", y: 20, r: 6 }, { kind: "bounce", floor: 80, restitution: 0.75 });
+  const { poses } = bounceTimeline(b, { kind: "bounce", floor: 80, restitution: 0.75 });
+  const at = (i: number) => resolve(ball, bodyState("ball", bounceY(b, poses[i]!))).dy;
+  const expected = at(2);
+  assert.equal(at(2), expected);
+  assert.equal(resolve(ball, bodyState("ball", bounceY(b, poses[2]!))).dy, expected);
+  assert.equal(resolve(ball, bodyState("ball", 37)).dy, 17);
 });

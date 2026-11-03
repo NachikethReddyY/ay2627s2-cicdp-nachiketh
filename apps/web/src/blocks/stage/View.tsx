@@ -1,8 +1,10 @@
 import type { StageProps, TimelineState } from "@learnquest/ui-catalog";
+import { bounceTimeline, bounceY, simulateBounce } from "@learnquest/ui-catalog";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BlockViewProps } from "../registry.ts";
 import StepControls from "../StepControls.tsx";
 import { useTimeline } from "../hooks/useTimeline.ts";
-import { resolve } from "./model.ts";
+import { bodyState, resolve, segment } from "./model.ts";
 
 type Props = StageProps;
 
@@ -47,7 +49,42 @@ function Timed({ p, timeline }: { p: Props; timeline: NonNullable<Props["timelin
   );
 }
 
+function Bouncing({ p }: { p: Props }) {
+  const physics = p.physics!;
+  const simulation = useMemo(() => {
+    const body = p.shapes.find((s) => s.id === physics.body)!;
+    const bounce = simulateBounce({ kind: "circle", y: body.y, r: body.r! }, physics);
+    return { bounce, ...bounceTimeline(bounce, physics) };
+  }, [p.shapes, physics]);
+  const tl = useTimeline(simulation.timeline);
+  const [time, setTime] = useState(0);
+  const previous = useRef(0);
+  useEffect(() => {
+    const range = segment(previous.current, tl.step, tl.reduced, simulation.poses);
+    previous.current = tl.step;
+    if (!range) {
+      setTime(simulation.poses[tl.step]!);
+      return;
+    }
+    const [from, to] = range;
+    let frame = 0;
+    let started: number | null = null;
+    const animate = (now: number) => {
+      started ??= now;
+      const next = Math.min(to, from + (now - started) / 1000);
+      setTime(next);
+      if (next < to) frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [tl.step, tl.reduced, simulation.poses]);
+  return <div ref={tl.ref} className="min-w-0 max-w-full">
+    <Scene p={p} state={bodyState(physics.body, bounceY(simulation.bounce, time))} ms={0} />
+    <StepControls tl={tl} />
+  </div>;
+}
+
 export default function StageView({ block }: BlockViewProps<Props>) {
   const p = block.props;
-  return p.timeline ? <Timed p={p} timeline={p.timeline} /> : <Scene p={p} ms={0} />;
+  return p.physics ? <Bouncing p={p} /> : p.timeline ? <Timed p={p} timeline={p.timeline} /> : <Scene p={p} ms={0} />;
 }

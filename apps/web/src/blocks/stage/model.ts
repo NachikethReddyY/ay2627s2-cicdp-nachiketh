@@ -16,6 +16,16 @@ export type Resolved = {
   label: { x: number; y: number };
 };
 
+export function segment(prevStep: number, step: number, reduced: boolean, poses: number[]): [number, number] | null {
+  return !reduced && step === prevStep + 1 ? [poses[prevStep]!, poses[step]!] : null;
+}
+
+export function bodyState(id: string, y: number): TimelineState {
+  const state: TimelineState = Object.create(null);
+  state[id] = { y };
+  return state;
+}
+
 const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
 const isColor = (v: unknown): v is string => typeof v === "string" && (THEME_COLORS as readonly string[]).includes(v);
 const css = (state: unknown, own: string | undefined, fallback: string) => `var(--color-${isColor(state) ? state : isColor(own) ? own : fallback})`;
