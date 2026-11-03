@@ -13,6 +13,13 @@ test("valid stages parse cleanly", () => {
   assert.equal(r.spec.blocks.length, 2);
 });
 
+test("valid physics stage parses without changing the v1 envelope", () => {
+  const r = parseSpec(load("valid-bounce"));
+  assert.ok(r.ok);
+  assert.deepEqual(r.issues, []);
+  assert.match(mod.describe(r.spec.blocks[1]!), /keeping about 56% of its energy/);
+});
+
 // Each negative fixture is [text block, bad stage]; the stage is dropped and the text kept.
 for (const [name, path, msg] of [
   ["too-many-shapes", "blocks.1.props.shapes", /60|at most|too big/i],
@@ -24,6 +31,10 @@ for (const [name, path, msg] of [
   ["opacity-2", "blocks.1.props.timeline.steps.1.set.2.value", /between 0 and 1/],
   ["no-alt", "blocks.1.props.alt", /./],
   ["bad-color", "blocks.1.props.shapes.0.fill", /./],
+  ["bounce-not-circle", "blocks.1.props.physics.body", /must be a circle/],
+  ["bounce-below-floor", "blocks.1.props.physics.floor", /at least 5 above/],
+  ["bounce-with-timeline", "blocks.1.props.physics", /use either timeline or physics/],
+  ["bounce-restitution", "blocks.1.props.physics.restitution", /./],
 ] as const) {
   test(`stage/${name} drops the bad block`, () => {
     const r = parseSpec(load(name));
