@@ -31,7 +31,14 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
     <div
       ref={setNodeRef}
       role="group"
-      aria-label={`${zone.label}${occupant ? `, holds ${occupant}` : ", empty"}`}
+      aria-label={`${zone.label}${occupant ? `, holds ${occupant}` : ", empty"}. Select an item, then press Enter or Space to place it here.`}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && !e.repeat) {
+          e.preventDefault();
+          onTap();
+        }
+      }}
       onClick={onTap}
       className={`flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-ink p-2 ${over ? "bg-sun" : "bg-paper"}`}
     >
