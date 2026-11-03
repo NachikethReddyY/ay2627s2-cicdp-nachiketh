@@ -27,9 +27,22 @@ test("bad state values fall back instead of leaking into attributes", () => {
   assert.deepEqual([r.dx, r.fill, r.opacity], [0, "var(--color-sun)", 1]);
 });
 
-test("label sits at the centre of rects and lines", () => {
-  assert.deepEqual(resolve({ id: "b", kind: "rect", x: 10, y: 10, w: 20, h: 10 }, undefined).label, { x: 20, y: 15 });
+test("small rect labels move above while line labels stay centred", () => {
+  const rect = resolve({ id: "b", kind: "rect", x: 10, y: 10, w: 20, h: 10, label: "Box" }, undefined);
+  assert.deepEqual(rect.label, { x: 20, y: 6 });
+  assert.equal(rect.labelPill, true);
   assert.deepEqual(resolve({ id: "l", kind: "line", x: 0, y: 0, x2: 10, y2: 20 }, undefined).label, { x: 5, y: 10 });
+});
+
+test("small shape labels move above into a pill and use palette text", () => {
+  const smallCircle = resolve({ ...ball, label: "Ball" }, undefined);
+  assert.equal(smallCircle.labelPill, true);
+  assert.deepEqual(smallCircle.label, { x: 10, y: 11 });
+  assert.equal(smallCircle.text, "var(--color-ink)");
+  const smallRect = resolve({ id: "r", kind: "rect", x: 10, y: 20, w: 30, h: 12, fill: "blue", label: "Box" }, undefined);
+  assert.equal(smallRect.labelPill, true);
+  assert.equal(smallRect.text, "var(--color-white)");
+  assert.equal(resolve({ id: "green", kind: "circle", x: 5, y: 5, r: 20, fill: "green" }, undefined).fill, "var(--color-mint)");
 });
 
 test("physics segments animate only the next step and snap for jumps or reduced motion", () => {
