@@ -3,10 +3,16 @@ import type { BlockViewProps } from "../registry.ts";
 import { resolveImage } from "./model.ts";
 
 // shortcut: /media/assets/<id> does not exist yet, so images usually show the described card; real signed-URL flow is not built (LQ-36 / image pipeline)
-export default function ImageView({ block }: BlockViewProps<{ assetId: string; alt: string; caption?: string }>) {
-  const { assetId, alt, caption } = block.props;
+type Props = { source?: string; assetId?: string; url?: string; alt: string; caption?: string };
+
+export default function ImageView({ block }: BlockViewProps<Props>) {
+  const { source, alt, caption } = block.props;
+  // "generated" carries a server-signed url; "generated-pending" and anything else without one gets the description card. The prompt never reaches here.
+  const assetId = source === "generated" ? (block.props.url ?? "") : (block.props.assetId ?? "");
   const [failedId, setFailedId] = useState<string | null>(null);
-  const img = resolveImage(assetId, failedId);
+  const img = source === "generated"
+    ? (assetId && assetId !== failedId ? { kind: "load" as const, src: assetId } : { kind: "fallback" as const })
+    : source === "asset" ? resolveImage(assetId, failedId) : { kind: "fallback" as const };
   return (
     <figure className="m-0 min-w-0 max-w-full">
       {img.kind === "load" ? (

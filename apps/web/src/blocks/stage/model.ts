@@ -6,7 +6,12 @@ export type Resolved = {
   /** Offset from the shape's own x,y; applied as a CSS transform so it can tween. */
   dx: number;
   dy: number;
+  /** Degrees about the shape's own x,y, and a scale factor. */
+  rot: number;
+  sc: number;
   opacity: number;
+  /** Pen-stroke reveal 0..1 for paths and lines. */
+  draw: number;
   fill: string;
   stroke: string;
   text: string;
@@ -57,7 +62,10 @@ export function resolve(s: StageShape, state: TimelineState | undefined): Resolv
   return {
     dx: num(t?.x, s.x) - s.x,
     dy: num(t?.y, s.y) - s.y,
+    rot: num(t?.rotation, 0),
+    sc: num(t?.scale, 1),
     opacity: Math.min(1, Math.max(0, num(t?.opacity, 1))),
+    draw: Math.min(1, Math.max(0, num(t?.draw, 1))),
     fill: css(t?.fill, s.fill, colors.fill),
     stroke: css(t?.stroke, s.stroke, colors.stroke),
     text: `var(--color-${colors.text})`,

@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Timeline } from "@learnquest/ui-catalog";
 import { initialPlaying, motionAction, stepReduce, tick, viewState, type StepAction, type Stepper } from "../model.ts";
 import { useReducedMotion } from "./useReducedMotion.ts";
@@ -28,6 +28,8 @@ export function useTimeline(timeline: Timeline) {
     return () => { document.removeEventListener("visibilitychange", onVis); io?.disconnect(); };
   }, []);
 
+  // Memoized so the state object keeps its identity between renders; a new one each frame would restart every tween.
+  const view = useMemo(() => viewState(timeline, s), [timeline, s.step]);
   const running = s.playing && onScreen && !tabHidden && !reduced;
   useEffect(() => {
     if (!running) return;
@@ -35,7 +37,7 @@ export function useTimeline(timeline: Timeline) {
     return () => clearTimeout(id);
   }, [running, s.step, timeline]);
 
-  return { ...s, ...viewState(timeline, s), reduced, ref, dispatch: ((a: StepAction) => dispatch(motionAction(a, reduced))) };
+  return { ...s, ...view, reduced, ref, dispatch: ((a: StepAction) => dispatch(motionAction(a, reduced))) };
 }
 
 export type TimelineControl = ReturnType<typeof useTimeline>;

@@ -9,13 +9,14 @@ export type EditorHandle = { show(r: SeekResult): void; focus(): void };
 const langOf = (p: string) => (/\.tsx?$/.test(p) ? "typescript" : /\.jsx?$/.test(p) ? "javascript" : "plaintext");
 
 type Props = {
-  ref: Ref<EditorHandle>;
+  ref?: Ref<EditorHandle>;
   transportRef: RefObject<HTMLButtonElement | null>;
   viewPath?: string; // file the user picked; falls back to the replay's active file
   overlay?: ReactNode;
+  edit?: { value: string; language: string; onChange(v: string): void }; // practice: the learner types here
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -76,17 +77,19 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay }: Pro
     <div className="relative h-[65dvh] min-w-0 flex-none lg:h-auto lg:min-h-0 lg:flex-1">
       <Editor
         loading={<div className="grid h-full place-items-center"><Loader label="Opening the editor" /></div>}
-        language={langOf(viewPath ?? active)}
+        language={edit?.language ?? langOf(viewPath ?? active)}
+        value={edit?.value}
+        onChange={edit && ((v) => edit.onChange(v ?? ""))}
         theme="vs"
         onMount={onMount}
         options={{
-          readOnly: true,
-          ariaLabel: "Code replay, read only. Press Escape to leave the editor.",
+          readOnly: !edit,
+          ariaLabel: edit ? "Your code. Press Escape to leave the editor." : "Code replay, read only. Press Escape to leave the editor.",
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           automaticLayout: true,
           fontSize: 14,
-          padding: { bottom: 140 }, // room for the floating controls
+          padding: { bottom: edit ? 16 : 140 }, // room for the replay's floating controls
           hover: { enabled: "off" },
           occurrencesHighlight: "off",
         }}

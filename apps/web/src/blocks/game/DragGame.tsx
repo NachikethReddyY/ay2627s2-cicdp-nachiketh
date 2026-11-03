@@ -27,6 +27,8 @@ function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected:
 
 function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: string; over: boolean; onTap: () => void; children: ReactNode }) {
   const { setNodeRef } = useDroppable({ id: zone.id });
+  // Item buttons bubble their clicks and keys here; those select the item and must not also place the selection.
+  const fromItem = (e: { target: EventTarget }) => e.target instanceof Element && e.target.closest("button") !== null;
   return (
     <div
       ref={setNodeRef}
@@ -34,12 +36,12 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
       aria-label={`${zone.label}${occupant ? `, holds ${occupant}` : ", empty"}. Select an item, then press Enter or Space to place it here.`}
       tabIndex={0}
       onKeyDown={(e) => {
-        if ((e.key === "Enter" || e.key === " ") && !e.repeat) {
+        if ((e.key === "Enter" || e.key === " ") && !e.repeat && !fromItem(e)) {
           e.preventDefault();
           onTap();
         }
       }}
-      onClick={onTap}
+      onClick={(e) => { if (!fromItem(e)) onTap(); }}
       className={`flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-ink p-2 ${over ? "bg-sun" : "bg-paper"}`}
     >
       <span className="text-xs font-extrabold">{zone.label}</span>

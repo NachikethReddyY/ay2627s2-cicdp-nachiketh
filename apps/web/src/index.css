@@ -186,7 +186,7 @@ body {
 }
 
 /* Learn parts: Markdown body. Code colours follow the palette; hljs tokens come from rehype-highlight. */
-.learn-md > * + * { margin-top: 0.75rem; }
+.lq .learn-md > * + * { margin-top: 0.75rem; }  /* .lq p resets margins; this must out-rank it */
 .learn-md h2, .learn-md h3 { font-family: var(--font-display, inherit); font-weight: 900; font-size: 1.35rem; margin-top: 1.25rem; }
 .learn-md ul { list-style: disc; padding-left: 1.5rem; }
 .learn-md ol { list-style: decimal; padding-left: 1.5rem; }

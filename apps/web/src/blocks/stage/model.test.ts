@@ -55,7 +55,7 @@ test("entered physics steps animate their own interval; jumps and reduced motion
 });
 
 test("bodyState resolves to deterministic simulator poses when scrubbing", () => {
-  const b = simulateBounce({ kind: "circle", y: 20, r: 6 }, { kind: "bounce", floor: 80, restitution: 0.75 });
+  const b = simulateBounce({ y: 20, below: 6 }, { kind: "bounce", floor: 80, restitution: 0.75 });
   const { poses } = bounceTimeline(b, { kind: "bounce", floor: 80, restitution: 0.75 });
   const at = (i: number) => resolve(ball, bodyState("ball", bounceY(b, poses[i]!))).dy;
   const expected = at(2);

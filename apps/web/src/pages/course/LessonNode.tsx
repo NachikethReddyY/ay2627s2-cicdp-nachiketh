@@ -6,7 +6,7 @@ import type { CourseData } from "../../lib/api";
 
 type Lesson = CourseData["lessons"][number];
 
-export const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice" };
+export const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game" };
 
 export function Pill({ kind }: { kind: Lesson["kind"] }) {
   if (kind === "predict") return null;

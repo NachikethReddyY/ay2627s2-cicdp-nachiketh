@@ -10,6 +10,14 @@ const examples = [
   "a quiz on the planets",
 ];
 
+/** "blocks.1.props.timeline.steps.2.set.0.value" -> "Block 2, step 3, set 1, value". Falls back to the raw path. */
+export function plainIssue({ path, message }: { path: string; message: string }): string {
+  const m = /^blocks\.(\d+)(?:\.props)?\.?(.*)$/.exec(path);
+  if (!m) return `${path}: ${message}`;
+  const rest = m[2].replace(/timeline\.steps\.(\d+)/, (_, n) => `step ${+n + 1}`).replace(/\.?set\.(\d+)/, (_, n) => `, set ${+n + 1}`).replace(/\./g, ", ").replace(/^, /, "");
+  return `Block ${+m[1] + 1}${rest ? `, ${rest.replace(/^step (\d+), ,/, "step $1,")}` : ""}: ${message}`;
+}
+
 /** Dev-only gallery: generate, edit, parse, and preview visual block specs. */
 export default function DevBlocks() {
   const [src, setSrc] = useState("");
@@ -21,6 +29,7 @@ export default function DevBlocks() {
   if (!import.meta.env.DEV) return null;
 
   const res = src.trim() ? parseSpec(src) : null;
+  const dropped = res ? res.issues.filter((i) => /^blocks\.\d+(\.|$)/.test(i.path)) : [];
   const reducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   async function generate() {
@@ -85,6 +94,7 @@ export default function DevBlocks() {
           <section className="db-preview" aria-label="Rendered visual">
             <div className="lq-card db-preview-card">
               <h2>Preview</h2>
+              {dropped.length > 0 && <div className="db-notice" role="alert">A visual was dropped because it failed validation. {dropped.length > 3 ? `First 3 of ${dropped.length} issues:` : "Issues:"}<ul>{dropped.slice(0, 3).map((i, n) => <li key={n}>{plainIssue(i)}</li>)}</ul></div>}
               {res ? <VisualView doc={src} /> : <p className="db-empty">Your rendered visual will appear here.</p>}
             </div>
           </section>
