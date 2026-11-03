@@ -20,7 +20,7 @@ type Lesson = RouterOutputs["lessons"]["get"];
 
 function Notice({ pip = "pip-think", children }: { pip?: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center bg-mint/40 p-6">
+    <div className="lq player-notice grid min-h-dvh place-items-center p-6">
       <div className="chunk flex max-w-md items-center gap-4 bg-white p-5">
         <img src={`/img/${pip}.png`} alt="" className="float w-20 shrink-0" />
         <div role="status" aria-live="polite" className="font-bold">{children}</div>
@@ -100,7 +100,7 @@ function LearnView({ title, body, next }: { title: string; body: string; next: R
   // Lessons written before the prompt fix hold HTML line breaks.
   const markdown = body.replace(/<br\s*\/?>/gi, "\n");
   return (
-    <main className="mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-3xl flex-col px-4 py-6 sm:px-6">
+    <main className="lq player-content mx-auto flex min-h-[calc(100dvh-4.5rem)] max-w-3xl flex-col px-4 py-6 sm:px-6">
       <div className="my-auto">
         <h1 className="font-display text-3xl font-black">{title}</h1>
         <div className="learn-md mt-4 font-semibold">
@@ -149,7 +149,7 @@ function PracticeView({ title, part, next }: { title: string; part: Extract<Part
     setBusy(false);
   };
   return (
-    <main className="mx-auto grid min-h-dvh max-w-6xl gap-4 px-4 py-6 sm:px-6 lg:grid-cols-2">
+    <main className="lq player-content mx-auto grid min-h-dvh max-w-6xl gap-4 px-4 py-6 sm:px-6 lg:grid-cols-2">
       <section>
         <h1 className="font-display text-3xl font-black">{title}</h1>
         <p className="mt-4 whitespace-pre-wrap font-semibold">{part.instructions}</p>

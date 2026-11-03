@@ -11,6 +11,7 @@ import { stepIndexAt, useReplay } from "./useReplay";
 import { useWindows, type Kind, type WinId } from "./useWindows";
 import { FOCUS } from "./ui";
 import LiveLesson from "./LiveLesson";
+import "./player.css";
 
 const KEYS: [string, string][] = [
   ["Space / K", "Play or pause"],
@@ -187,7 +188,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
   });
 
   return (
-    <div className="flex min-h-dvh flex-col bg-paper lg:h-dvh lg:overflow-hidden" onKeyDown={onKeyDown}>
+    <div className="lq player-page flex min-h-dvh flex-col lg:h-dvh lg:overflow-hidden" onKeyDown={onKeyDown}>
       <header className="flex min-h-8 flex-none flex-wrap items-center gap-x-3 border-b-[3px] border-ink bg-white px-3 py-0.5 text-sm">
         <a href="/" aria-label="LearnQuest home" className={`grid min-h-6 min-w-6 place-items-center rounded-md ${FOCUS}`}>
           <img src="/img/pip-wave.png" alt="" className="size-6 object-contain" />
