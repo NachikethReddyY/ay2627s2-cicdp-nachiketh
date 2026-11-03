@@ -15,6 +15,10 @@ const schema = z
     // Optional: without a key, paths.generate answers PRECONDITION_FAILED.
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5-5"),
+    TIERS_JSON: z.string().optional(),
+    AI_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(0),
+    AI_MONTHLY_BUDGET_USD: z.coerce.number().nonnegative().default(0),
+    AI_KILL_SWITCH: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     // Lesson media bucket (docs/media-storage-plan.md §2). Unset: media calls answer PRECONDITION_FAILED.
     S3_ENDPOINT: z.url().optional(),
     S3_BUCKET: z.string().min(1).optional(),

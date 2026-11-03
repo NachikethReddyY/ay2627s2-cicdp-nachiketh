@@ -10,7 +10,7 @@ const LEAGUE_XP = 500;
 
 const aiErrors: Record<string, string> = {
   PRECONDITION_FAILED: "Pip's AI helper isn't switched on here yet.",
-  TOO_MANY_REQUESTS: "You've sketched 5 paths today. Pip needs a nap, try again tomorrow!",
+      TOO_MANY_REQUESTS: "You've reached today's AI path limit. Pip will be ready to sketch again tomorrow!",
   BAD_REQUEST: "Pip only draws coding paths. Try a language, a tool or a project idea!",
 };
 

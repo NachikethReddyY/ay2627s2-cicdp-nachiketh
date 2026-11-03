@@ -79,7 +79,7 @@ export const learners = pgTable("learners", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
-  // Plan tier; sets the daily AI path limit (see DAILY_AI_PATHS in ai/service.ts).
+  // Plan tier selects the configured daily AI path limit.
   tier: text("tier", { enum: ["free", "pro", "max"] })
     .notNull()
     .default("free"),
@@ -122,6 +122,12 @@ export const aiGenerations = pgTable(
   },
   (t) => [index("ai_generations_user_time").on(t.userId, t.createdAt)],
 );
+
+export const spendLedger = pgTable("spend_ledger", {
+  id: id(),
+  amountUsd: integer("amount_usd").notNull(),
+  createdAt: createdAt(),
+});
 
 export const paths = pgTable("paths", {
   id: id(),
