@@ -29,19 +29,24 @@ const slowConnection = () => shouldStartAsPoster((navigator as unknown as { conn
 const btn = "grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-ink bg-white";
 const textBtn = "mt-2 min-h-11 rounded-full border-2 border-ink bg-white px-4 font-extrabold";
 
-function Prim({ p, state, ms, objs }: { p: Primitive; state?: TimelineState; ms: number; objs: Objs }) {
+function Prim({ p, state, ms, paused, objs }: { p: Primitive; state?: TimelineState; ms: number; paused: boolean; objs: Objs }) {
   const g = useRef<Object3D>(null);
   const r = resolve(p, state);
   const invalidate = useThree((s) => s.invalidate);
   const cur = useRef<{ pos: Vec3; rot: Vec3 }>({ pos: [...r.position], rot: [...r.rotation] });
+  // Pause freezes the easing in flight; a new target (a step jumped to while paused) clears the freeze and eases in.
+  const frozen = useRef(false);
   useEffect(() => { const o = g.current; if (o) objs.set(p.id, o); return () => { objs.delete(p.id); }; }, [objs, p.id]);
   // Frameloop is "demand": a new target needs one frame to start; the loop then keeps invalidating until it arrives.
-  useEffect(() => { invalidate(); }, [invalidate, state, ms]);
+  useEffect(() => { frozen.current = false; invalidate(); }, [invalidate, state, ms]);
+  useEffect(() => { frozen.current = paused; invalidate(); }, [invalidate, paused]);
   // Ease towards the target; ms is 0 under reduced motion and without a timeline, which snaps instead.
   useFrame(({ invalidate: again }, dt) => {
     const o = g.current;
-    if (!o) return;
-    const k = ms ? 1 - Math.exp((-dt * 4000) / ms) : 1;
+    if (!o || frozen.current) return;
+    // Clamped so the first frame after a pause or an off-screen gap does not snap to the target.
+    const step = Math.min(dt, 0.1);
+    const k = ms ? 1 - Math.exp((-step * 4000) / ms) : 1;
     let left = 0;
     for (let i = 0; i < 3; i++) {
       cur.current.pos[i] = cur.current.pos[i]! + (r.position[i]! - cur.current.pos[i]!) * k;
@@ -100,7 +105,7 @@ function Rig({ base, orbit, poke, labels, objs, sizes }: {
 const STEP = 0.15;
 const ZOOM = { min: 0.5, max: 2, by: 0.8 };
 
-function Scene({ p, desc, state, ms }: { p: Props; desc: string; state?: TimelineState; ms: number }) {
+function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string; state?: TimelineState; ms: number; paused?: boolean }) {
   const cam = cameraPreset(p.camera);
   const light = lightPreset(p.lights);
   const orbit = useRef<Orbit>({ yaw: 0, pitch: 0, zoom: 1 });
@@ -181,7 +186,7 @@ function Scene({ p, desc, state, ms }: { p: Props; desc: string; state?: Timelin
             <ambientLight intensity={light.ambient} />
             <directionalLight position={light.at} intensity={light.key} />
             <Rig base={cam.position} orbit={orbit} poke={poke} labels={labels} objs={objs} sizes={sizes} />
-            {p.primitives.map((x) => <Prim key={x.id} p={x} state={state} ms={ms} objs={objs} />)}
+            {p.primitives.map((x) => <Prim key={x.id} p={x} state={state} ms={ms} paused={paused} objs={objs} />)}
           </Canvas>
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
             {tagged.map((x) => (
@@ -218,7 +223,7 @@ function Timed({ p, desc, timeline }: { p: Props; desc: string; timeline: NonNul
   const tl = useTimeline(timeline);
   return (
     <div ref={tl.ref} className="min-w-0 max-w-full">
-      <Scene p={p} desc={desc} state={tl.state} ms={tl.reduced ? 0 : timeline.steps[tl.step]!.durationMs} />
+      <Scene p={p} desc={desc} state={tl.state} ms={tl.reduced ? 0 : timeline.steps[tl.step]!.durationMs} paused={!tl.playing} />
       {/* Captions are announced by the aria-live region inside StepControls. */}
       <StepControls tl={tl} />
     </div>

@@ -44,15 +44,21 @@ class Outline(BaseModel):
     title: T80 | None = None
     tagline: T160 | None = None
     courses: list[Course] | None = Field(default=None, min_length=2, max_length=4)
+    # "other" = non-coding topic: watch (code replay) and practice (code task) would need code.
+    subject: Literal["code", "other"] | None = None
 
     @model_validator(mode="after")
     def _one_shape(self) -> "Outline":
         full = self.title is not None and self.tagline is not None and self.courses is not None
         if self.refused:
-            if self.title or self.tagline or self.courses:
+            if self.title or self.tagline or self.courses or self.subject:
                 raise ValueError("refused outline must omit everything else")
-        elif not full:
-            raise ValueError("outline needs title, tagline and courses")
+        elif not full or self.subject is None:
+            raise ValueError("outline needs title, tagline, courses and subject")
+        elif self.subject == "other" and any(
+            lesson.kind in ("watch", "practice") for c in self.courses or [] for lesson in c.lessons
+        ):
+            raise ValueError("non-coding outline may only use learn and game-practice lessons")
         return self
 
 

@@ -11,7 +11,7 @@ import { learners, lessons, steps, user } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
-import { idle } from "../src/ai/service.ts";
+import { ensureLesson, idle } from "../src/ai/service.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
 import photosynthesis from "../../../services/engine/tests/fixtures/outline_photosynthesis.json" with { type: "json" };
 
@@ -22,6 +22,7 @@ const kinds = ["learn", "watch", "practice"] as const;
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
+  subject: "code",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
@@ -78,14 +79,22 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
 });
 
-test("photosynthesis outline persists the supported lesson kinds", async () => {
+test("photosynthesis outline persists only non-coding lesson kinds", async () => {
   const fixture = photosynthesis as typeof outline;
   generator.outline = async () => fixture;
   const { t, firstCourseSlug } = await setup("photosynthesis@example.com");
   const course = out(await t.q("courses.get", { slug: firstCourseSlug }));
   assert.deepEqual((course.lessons as { title: string; kind: string }[]).map(({ title, kind }) => [title, kind]),
     fixture.courses[0]!.lessons.map(({ title, kind }) => [title, kind]));
-  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "watch", "practice"]));
+  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "game-practice"]));
+});
+
+test("a non-coding outline with a watch lesson is rejected", async () => {
+  const t = trpc(app, await signUp(app, "noncode-watch@example.com"));
+  const bad = structuredClone(photosynthesis) as typeof outline;
+  bad.courses[0]!.lessons[0]!.kind = "watch";
+  generator.outline = async () => bad;
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn photosynthesis" })), "INTERNAL_SERVER_ERROR");
 });
 
 test("missing key, non-coding topic and bad input", async () => {
@@ -151,10 +160,24 @@ test("two concurrent plays write the part once", async () => {
 test("playing a part writes only that part, not the next one", async () => {
   const { t, lessons: ls } = await setup();
   assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
+  await idle(); // the background prefetch must have run (and skipped the part) before we look
   assert.equal(lessonCalls, 1);
   const [next] = await db.select().from(lessons).where(eq(lessons.slug, ls[1]!.slug));
   assert.equal(next!.currentVersionId, null);
   assert.equal(next!.status, "draft");
+});
+
+test("concurrent ensureLesson calls for one lesson make one call and reserve once", { timeout: 15_000 }, async () => {
+  const { lessons: ls } = await setup("burst@example.com");
+  const [lesson] = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.slug, ls[0]!.slug));
+  const [learner] = await db.select({ id: learners.id }).from(learners);
+  await db.execute(sql`DELETE FROM spend_ledger`); // drop the outline's reservation
+  assert.deepEqual(await Promise.all([ensureLesson(lesson!.id, learner!.id), ensureLesson(lesson!.id, learner!.id)]), [true, true]);
+  assert.equal(lessonCalls, 1);
+  const [{ n }] = (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM spend_ledger`)).rows;
+  assert.equal(n, 1);
+  assert.equal(await ensureLesson(lesson!.id, learner!.id), false); // already written: no call, no reservation
+  assert.equal(lessonCalls, 1);
 });
 
 test("invalid watch hunks are rejected after one retry, and a good retry succeeds", async () => {

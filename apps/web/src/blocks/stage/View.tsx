@@ -5,16 +5,17 @@ import { gsap } from "gsap";
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import type { BlockViewProps } from "../registry.ts";
 import { useTimeline } from "../hooks/useTimeline.ts";
-import { bodyState, resolve, segment } from "./model.ts";
+import { bodyState, holdTween, resolve, segment } from "./model.ts";
 
 type Props = StageProps;
 
 /** Tweens the numeric props of a timeline state with GSAP; text and colour props switch at the start of the step. */
 const REST: Record<string, number> = { rotation: 0, scale: 1, opacity: 1, draw: 1 };
 
-function useTweened(target: TimelineState, duration: number, ease: string, reduced: boolean, shapes: Props["shapes"]): TimelineState {
+function useTweened(target: TimelineState, duration: number, ease: string, reduced: boolean, shapes: Props["shapes"], paused: boolean): TimelineState {
   const [shown, setShown] = useState(target);
   const last = useRef<Map<string, number>>(new Map());
+  const tweenRef = useRef<gsap.core.Tween | null>(null);
   useEffect(() => {
     const entries: [string, string, number][] = [];
     for (const id of Object.keys(target)) for (const prop of Object.keys(target[id]!)) {
@@ -40,8 +41,16 @@ function useTweened(target: TimelineState, duration: number, ease: string, reduc
     };
     if (reduced || duration <= 0 || entries.length === 0) { Object.assign(obj, goal); render(); return; }
     const tween = gsap.to(obj, { ...goal, duration: duration / 1000, ease, onUpdate: render });
-    return () => { tween.kill(); };
+    tweenRef.current = tween;
+    return () => { tween.kill(); tweenRef.current = null; };
   }, [target, duration, ease, reduced, shapes]);
+  // Pause freezes the tween in flight, on a change only so a fresh mount is not frozen. A step jumped to while paused still plays.
+  const pausedSeen = useRef(paused);
+  useEffect(() => {
+    if (pausedSeen.current === paused) return;
+    pausedSeen.current = paused;
+    holdTween(tweenRef.current, paused);
+  }, [paused]);
   return shown;
 }
 
@@ -93,7 +102,7 @@ function StageControls({ tl }: { tl: ReturnType<typeof useTimeline> }) {
 function Timed({ p, timeline }: { p: Props; timeline: NonNullable<Props["timeline"]> }) {
   const tl = useTimeline(timeline);
   const step = timeline.steps[tl.step]!;
-  const shown = useTweened(tl.state, step.durationMs, step.ease ?? "none", tl.reduced, p.shapes);
+  const shown = useTweened(tl.state, step.durationMs, step.ease ?? "none", tl.reduced, p.shapes, !tl.playing);
   return (
     <div ref={tl.ref} className="min-w-0 max-w-full">
       <Scene p={p} state={shown} />

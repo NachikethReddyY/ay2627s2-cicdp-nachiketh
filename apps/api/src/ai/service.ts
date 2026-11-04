@@ -3,7 +3,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { buildTimeline, seek } from "@learnquest/player-core";
-import { db } from "../db/client.ts";
+import { db, type Db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 import { aiGenerations, enrollments, generationCache, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type PartSecret } from "../db/schema.ts";
@@ -23,6 +23,7 @@ const Outline = z.union([
   z.object({
     title: text(80),
     tagline: text(160),
+    subject: z.enum(["code", "other"]),
     courses: z
       .array(
         z.object({
@@ -36,7 +37,10 @@ const Outline = z.union([
       )
       .min(2)
       .max(4),
-  }),
+  }).refine(
+    (o) => o.subject === "code" || o.courses.every((c) => c.lessons.every((l) => l.kind === "learn" || l.kind === "game-practice")),
+    "non-coding outline may only use learn and game-practice lessons",
+  ),
 ]);
 
 const Hunk = z.object({ id: text(40), file: text(200), oldStart: z.number().int().min(1), lines: z.array(z.string().max(300)).min(1).max(60) });
@@ -166,11 +170,124 @@ async function moderated<T>(v: T): Promise<T> {
 // Bump when a prompt or the engine's part shape changes, so stale cached parts are not reused.
 const PART_CACHE_VERSION = 1;
 
-async function writeWith<T>(produce: () => Promise<unknown>, check: (raw: unknown) => T | Promise<T>): Promise<T> {
+type LessonRow = typeof lessons.$inferSelect;
+
+function partCacheKey(ctx: LessonContext) {
+  return createHash("sha256").update(`v${PART_CACHE_VERSION}:${JSON.stringify({ ...ctx, missedConcepts: [] })}`).digest("hex");
+}
+
+async function cachedPart(key: string): Promise<PartSecret | null> {
+  const [hit] = await db.select({ content: generationCache.content }).from(generationCache).where(eq(generationCache.key, key)).limit(1);
+  if (!hit) return null;
+  try {
+    return validatePart(hit.content);
+  } catch {
+    return null; // stale or unsafe cache row: regenerate
+  }
+}
+
+async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonContext> {
+  const [world] = await db.select().from(worlds).where(eq(worlds.id, l.worldId));
+  const [path] = await db
+    .select({ title: paths.title, tagline: paths.tagline })
+    .from(pathCourses)
+    .innerJoin(paths, eq(paths.id, pathCourses.pathId))
+    .where(eq(pathCourses.worldId, l.worldId))
+    .limit(1);
+  const { rows } = await db.execute<{ c: string }>(sql`
+    SELECT DISTINCT c FROM (SELECT unnest(missed_concepts) AS c, created_at FROM attempts
+      WHERE learner_id = ${learnerId} ORDER BY created_at DESC LIMIT 40) t LIMIT 10`);
+  return {
+    path: path ?? { title: world!.title, tagline: "" },
+    course: { title: world!.title, description: world!.description },
+    lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
+    missedConcepts: rows.map((r) => r.c),
+  };
+}
+
+// Runs under the lesson row lock. It takes no pool connection of its own: the budget was reserved before the lock.
+async function writeOnce(tx: Db, lessonId: string, learnerId: string, ctx: LessonContext, key: string | null, cached: PartSecret | null) {
+  const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
+  if (!l || l.currentVersionId || l.sourceKind !== "ai") return null; // another caller wrote it while this one waited
+
+  // A part keeps its content on the version; a predict lesson keeps one steps row per step.
+  // Parts come from the engine and are cached by what produced them, so a repeat lesson makes no model call.
+  let part = cached;
+  if (key && !part) {
+    const partCtx: PartContext = { ...ctx, missedConcepts: [] };
+    part = await moderated(validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx))));
+    await tx.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
+  }
+  const generated = key ? [] : await moderated(validate(await measureGeneration("lesson", () => generator.lesson(ctx))));
+
+  const [version] = await tx
+    .insert(lessonVersions)
+    .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content: part })
+    .returning();
+  // Images are generated after commit below: their save uses its own connection and cannot see this version yet.
+  const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
+  const [learner] = prewarm ? await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId)) : [];
+  if (!part) {
+    await tx.insert(steps).values(
+      generated.map((s, idx) => ({
+        lessonVersionId: version!.id,
+        idx,
+        public: { title: s.title, prompt: s.prompt, kind: s.kind, ...(s.kind === "mcq" && { options: s.options }) },
+        secret: {
+          beforeFiles: s.beforeFiles,
+          hunks: s.hunks,
+          answer: s.answer,
+          ...(s.kind === "cloze" && { accepted: [...new Set([s.answer, ...s.accepted])] }),
+          hints: s.hints,
+          explanations: s.explanations,
+          concepts: s.concepts,
+        },
+      })),
+    );
+  }
+  // Visibility stays governed by the owning course and path.
+  await tx.update(lessons).set({ currentVersionId: version!.id, status: "published" }).where(eq(lessons.id, l.id));
+  return { lessonVersionId: version!.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
+}
+
+// Lock design: the lesson row lock dedupes writes, and the Claude call runs under it, so one generation per lesson.
+// Budget is reserved before the lock is taken, so a lock holder never waits for a pool connection. Each retry is a
+// new reservation and a new transaction, so the lock is never held across a retry's reservation.
+// shortcut: a caller that loses the lock race reserves a call it never makes (budget over-counted, never under).
+const inflight = new Map<string, Promise<boolean>>();
+
+// Writes the lesson's steps once. Concurrent callers in this process share one in-flight write.
+export function ensureLesson(lessonId: string, learnerId: string): Promise<boolean> {
+  const running = inflight.get(lessonId);
+  if (running) return running;
+  const p = writeLesson(lessonId, learnerId).finally(() => inflight.delete(lessonId));
+  inflight.set(lessonId, p);
+  return p;
+}
+
+async function writeLesson(lessonId: string, learnerId: string): Promise<boolean> {
+  // Reads outside any transaction, so a written or non-AI lesson returns before any budget is reserved.
+  const [pre] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
+  if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
+  assertAiEnabled();
+  const ctx = await lessonContext(pre, learnerId);
+  const key = pre.kind === "predict" ? null : partCacheKey(ctx);
+  const cached = key ? await cachedPart(key) : null; // a cache hit makes no model call and reserves nothing
+
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
+    if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD); // before the lock; a retry is reserved too
     try {
-      return await check(await produce());
+      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, ctx, key, cached));
+      if (!written) return false;
+      // Best-effort and not awaited: the read must not wait on image generation.
+      if (written.prewarm) {
+        const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
+          .catch((e) => console.error("prewarm of lesson images failed", e))
+          .finally(() => background.delete(p));
+        background.add(p);
+      }
+      return true;
     } catch (e) {
       // Budget and kill-switch errors are final: retrying would not help and would hide the message.
       if (e instanceof TRPCError) throw e;
@@ -181,106 +298,16 @@ async function writeWith<T>(produce: () => Promise<unknown>, check: (raw: unknow
   throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't write this lesson. Try again.", cause: last });
 }
 
-// Writes the lesson's steps once. The row lock is held across the Claude call, so concurrent callers wait,
-// then see the version and return. shortcut: this holds one pool connection for the call's duration.
-export async function ensureLesson(lessonId: string, learnerId: string) {
-  const written = await withTx(async (tx) => {
-    const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
-    if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
-    assertAiEnabled();
-
-    const [world] = await tx.select().from(worlds).where(eq(worlds.id, l.worldId));
-    const [path] = await tx
-      .select({ title: paths.title, tagline: paths.tagline })
-      .from(pathCourses)
-      .innerJoin(paths, eq(paths.id, pathCourses.pathId))
-      .where(eq(pathCourses.worldId, l.worldId))
-      .limit(1);
-    const { rows } = await tx.execute<{ c: string }>(sql`
-      SELECT DISTINCT c FROM (SELECT unnest(missed_concepts) AS c, created_at FROM attempts
-        WHERE learner_id = ${learnerId} ORDER BY created_at DESC LIMIT 40) t LIMIT 10`);
-    const ctx: LessonContext = {
-      path: path ?? { title: world!.title, tagline: "" },
-      course: { title: world!.title, description: world!.description },
-      lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
-      missedConcepts: rows.map((r) => r.c),
-    };
-    // A part keeps its content on the version; a predict lesson keeps one steps row per step.
-    // Parts come from the engine and are cached by what produced them, so a repeat lesson makes no model call.
-    let part: PartSecret | null = null;
-    if (l.kind !== "predict") {
-      const partCtx: PartContext = { ...ctx, missedConcepts: [] };
-      const key = createHash("sha256").update(`v${PART_CACHE_VERSION}:${JSON.stringify(partCtx)}`).digest("hex");
-      const [hit] = await tx.select({ content: generationCache.content }).from(generationCache).where(eq(generationCache.key, key)).limit(1);
-      let cached: PartSecret | null = null;
-      if (hit) {
-        try { cached = validatePart(hit.content); } catch { /* stale or unsafe cache row: regenerate */ }
-      }
-      if (cached) part = cached;
-      else {
-        part = await writeWith(async () => {
-          await reserveAiSpend(env.AI_CALL_ESTIMATE_USD); // per attempt, so a retry is reserved too
-          return measureGeneration("part", () => engineParts.lesson(partCtx));
-        }, async (raw) => moderated(validatePart(raw)));
-        await tx.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
-      }
-    }
-    const generated = part
-      ? []
-      : await writeWith(async () => {
-          await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
-          return measureGeneration("lesson", () => generator.lesson(ctx));
-        }, async (raw) => moderated(validate(raw)));
-
-    const [version] = await tx
-      .insert(lessonVersions)
-      .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content: part })
-      .returning();
-    // Images are generated after commit below: their save uses its own connection and cannot see this version yet.
-    const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
-    const [learner] = prewarm ? await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId)) : [];
-    if (!part) {
-      await tx.insert(steps).values(
-        generated.map((s, idx) => ({
-          lessonVersionId: version!.id,
-          idx,
-          public: { title: s.title, prompt: s.prompt, kind: s.kind, ...(s.kind === "mcq" && { options: s.options }) },
-          secret: {
-            beforeFiles: s.beforeFiles,
-            hunks: s.hunks,
-            answer: s.answer,
-            ...(s.kind === "cloze" && { accepted: [...new Set([s.answer, ...s.accepted])] }),
-            hints: s.hints,
-            explanations: s.explanations,
-            concepts: s.concepts,
-          },
-        })),
-      );
-    }
-    // Visibility stays governed by the owning course and path.
-    await tx.update(lessons).set({ currentVersionId: version!.id, status: "published" }).where(eq(lessons.id, l.id));
-    return { lessonVersionId: version!.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
-  });
-  if (!written) return false;
-  // Best-effort and not awaited: the read must not wait on image generation.
-  if (written.prewarm) {
-    const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
-      .catch((e) => console.error("prewarm of lesson images failed", e))
-      .finally(() => background.delete(p));
-    background.add(p);
-  }
-  return true;
-}
-
 const background = new Set<Promise<unknown>>();
 /** Resolves when background generation has settled (tests). */
 export const idle = () => Promise.allSettled([...background]);
 
 // Fire-and-forget: generate the lesson right after `lesson` in its course so it is usually ready.
+// Parts are written only when opened (the course page promises no AI is wasted), so only predict lessons prefetch.
 export function prefetchNext(lesson: typeof lessons.$inferSelect, learnerId: string) {
   const p = (async () => {
     const [next] = await db
-      .select({ id: lessons.id, v: lessons.currentVersionId })
+      .select({ id: lessons.id, v: lessons.currentVersionId, kind: lessons.kind })
       .from(lessons)
       .where(
         and(
@@ -290,7 +317,7 @@ export function prefetchNext(lesson: typeof lessons.$inferSelect, learnerId: str
       )
       .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.id))
       .limit(1);
-    if (next && !next.v) await ensureLesson(next.id, learnerId);
+    if (next && !next.v && next.kind === "predict") await ensureLesson(next.id, learnerId);
   })()
     .catch((e) => console.error("prefetch of next lesson failed", e))
     .finally(() => background.delete(p));

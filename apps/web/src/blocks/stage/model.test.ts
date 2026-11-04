@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { bounceTimeline, bounceY, simulateBounce, timelineSchema, stateAt } from "@learnquest/ui-catalog";
-import { bodyState, resolve, segment, type StageShape } from "./model.ts";
+import { gsap } from "gsap";
+import { bodyState, holdTween, resolve, segment, type StageShape } from "./model.ts";
 
 const ball: StageShape = { id: "ball", kind: "circle", x: 10, y: 20, r: 5, fill: "sun" };
 const tl = timelineSchema.parse({
@@ -62,4 +63,18 @@ test("bodyState resolves to deterministic simulator poses when scrubbing", () =>
   assert.equal(at(2), expected);
   assert.equal(resolve(ball, bodyState("ball", bounceY(b, poses[2]!))).dy, expected);
   assert.equal(resolve(ball, bodyState("ball", 37)).dy, 17);
+});
+
+test("holdTween freezes an in-flight tween until released, and an unpaused control tween still advances", async () => {
+  const held = gsap.to({ x: 0 }, { x: 100, duration: 10 });
+  const control = gsap.to({ x: 0 }, { x: 100, duration: 10 });
+  holdTween(held, true);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(held.paused(), true);
+  assert.equal(held.progress(), 0);
+  assert.ok(control.progress() > 0, "gsap ticks in node, so the frozen tween really is held");
+  holdTween(held, false);
+  assert.equal(held.paused(), false);
+  held.kill();
+  control.kill();
 });

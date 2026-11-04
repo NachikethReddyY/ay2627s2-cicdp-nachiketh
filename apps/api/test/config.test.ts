@@ -25,6 +25,15 @@ test("TIERS_JSON parses overrides and merges them over defaults", () => {
   assert.match(bad.stderr, /TIERS_JSON must contain valid JSON/);
 });
 
+test("a blank IMAGE_ESTIMATE_USD falls back to the 0.04 default instead of 0", () => {
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", `import { env } from './src/env.ts'; console.log(env.IMAGE_ESTIMATE_USD)`], {
+    cwd: new URL("..", import.meta.url).pathname,
+    env: { ...process.env, IMAGE_ESTIMATE_USD: "" }, encoding: "utf8",
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), "0.04");
+});
+
 test("reserveAiSpend refuses daily and monthly overages and the kill switch", async () => {
   const ids = [randomUUID(), randomUUID()];
   const old = { daily: env.AI_DAILY_BUDGET_USD, monthly: env.AI_MONTHLY_BUDGET_USD, kill: env.AI_KILL_SWITCH };
