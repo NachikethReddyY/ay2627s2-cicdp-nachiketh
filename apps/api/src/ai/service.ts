@@ -23,6 +23,7 @@ const Outline = z.union([
   z.object({
     title: text(80),
     tagline: text(160),
+    subject: z.enum(["code", "other"]),
     courses: z
       .array(
         z.object({
@@ -36,7 +37,10 @@ const Outline = z.union([
       )
       .min(2)
       .max(4),
-  }),
+  }).refine(
+    (o) => o.subject === "code" || o.courses.every((c) => c.lessons.every((l) => l.kind === "learn" || l.kind === "game-practice")),
+    "non-coding outline may only use learn and game-practice lessons",
+  ),
 ]);
 
 const Hunk = z.object({ id: text(40), file: text(200), oldStart: z.number().int().min(1), lines: z.array(z.string().max(300)).min(1).max(60) });

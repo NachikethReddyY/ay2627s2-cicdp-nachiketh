@@ -22,6 +22,7 @@ const kinds = ["learn", "watch", "practice"] as const;
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
+  subject: "code",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
@@ -78,14 +79,22 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
 });
 
-test("photosynthesis outline persists the supported lesson kinds", async () => {
+test("photosynthesis outline persists only non-coding lesson kinds", async () => {
   const fixture = photosynthesis as typeof outline;
   generator.outline = async () => fixture;
   const { t, firstCourseSlug } = await setup("photosynthesis@example.com");
   const course = out(await t.q("courses.get", { slug: firstCourseSlug }));
   assert.deepEqual((course.lessons as { title: string; kind: string }[]).map(({ title, kind }) => [title, kind]),
     fixture.courses[0]!.lessons.map(({ title, kind }) => [title, kind]));
-  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "watch", "practice"]));
+  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "game-practice"]));
+});
+
+test("a non-coding outline with a watch lesson is rejected", async () => {
+  const t = trpc(app, await signUp(app, "noncode-watch@example.com"));
+  const bad = structuredClone(photosynthesis) as typeof outline;
+  bad.courses[0]!.lessons[0]!.kind = "watch";
+  generator.outline = async () => bad;
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn photosynthesis" })), "INTERNAL_SERVER_ERROR");
 });
 
 test("missing key, non-coding topic and bad input", async () => {
