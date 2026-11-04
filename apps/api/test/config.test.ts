@@ -46,3 +46,24 @@ test("reserveAiSpend refuses daily and monthly overages and the kill switch", as
     await db.execute(sql`DELETE FROM spend_ledger WHERE id IN (${ids[0]}, ${ids[1]})`);
   }
 });
+
+test("reserveAiSpend serializes parallel reservations so only what fits succeeds", async () => {
+  const old = { daily: env.AI_DAILY_BUDGET_USD, monthly: env.AI_MONTHLY_BUDGET_USD, kill: env.AI_KILL_SWITCH };
+  const { rows: before } = await db.execute<{ id: string }>(sql`SELECT id FROM spend_ledger`);
+  try {
+    env.AI_KILL_SWITCH = false;
+    env.AI_MONTHLY_BUDGET_USD = 0;
+    const { rows: [{ daily }] } = await db.execute<{ daily: string }>(
+      sql`SELECT COALESCE(sum(amount_usd) FILTER (WHERE created_at >= date_trunc('day', now())), 0)::text AS daily FROM spend_ledger`);
+    env.AI_DAILY_BUDGET_USD = Number(daily) + 3.5; // room for exactly 3 one-dollar reservations
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => reserveAiSpend(1)));
+    assert.equal(results.filter((r) => r.status === "fulfilled").length, 3);
+    for (const r of results) if (r.status === "rejected") assert.equal(r.reason.code, "TOO_MANY_REQUESTS");
+  } finally {
+    env.AI_DAILY_BUDGET_USD = old.daily;
+    env.AI_MONTHLY_BUDGET_USD = old.monthly;
+    env.AI_KILL_SWITCH = old.kill;
+    const keep = before.map((r) => r.id);
+    await db.execute(keep.length ? sql`DELETE FROM spend_ledger WHERE id NOT IN (${sql.join(keep.map((i) => sql`${i}`), sql`, `)})` : sql`DELETE FROM spend_ledger`);
+  }
+});
