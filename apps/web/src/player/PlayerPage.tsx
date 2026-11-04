@@ -11,6 +11,7 @@ import { stepIndexAt, useReplay } from "./useReplay";
 import { useWindows, type Kind, type WinId } from "./useWindows";
 import { FOCUS } from "./ui";
 import LiveLesson from "./LiveLesson";
+import "./player.css";
 
 const KEYS: [string, string][] = [
   ["Space / K", "Play or pause"],
@@ -54,7 +55,8 @@ const modeParam = new URLSearchParams(location.search).get("mode");
 const MODE = modeParam === "task" || modeParam === "video" ? modeParam : lesson.mode;
 
 // `live` = a lesson from the API: one step at a time, the instructions window holds the predict/reveal panel.
-type Live = { idx: number; panel: ReactNode; playKey: unknown };
+// `code` swaps the replay (editor + transport bar) for the learner's own editor: practice lessons, no video.
+type Live = { idx: number; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; code?: { title: string; tool: ReactNode; body: ReactNode } };
 type Props = { title: string; stepTitles: string[]; timeline: Timeline; live?: Live };
 
 const icons = {
@@ -70,7 +72,8 @@ const Icon = ({ k, cls = "size-5" }: { k: keyof typeof icons; cls?: string }) =>
 );
 
 export function Player({ title, stepTitles, timeline, live }: Props) {
-  const task = live ? true : MODE === "task";
+  const task = live ? live.panel !== null : MODE === "task";
+  const code = live?.code;
   const editorRef = useRef<EditorHandle>(null);
   const playRef = useRef<HTMLButtonElement>(null);
   const helpRef = useRef<HTMLDialogElement>(null);
@@ -140,6 +143,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
       e.preventDefault();
       return;
     }
+    if (code) return; // the replay shortcuts mean nothing without a replay
     // Keys belong to Monaco, form fields, the slider thumb (Radix handles arrows itself) and the window move handle.
     if (e.ctrlKey || e.metaKey || e.altKey || el.closest(".monaco-editor, input, select, textarea, [role=slider], [role=menubar], [role=menu], [data-move-handle]")) return;
     const onButton = el.tagName === "BUTTON"; // Space activates a focused button natively
@@ -187,13 +191,14 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
   });
 
   return (
-    <div className="flex min-h-dvh flex-col bg-paper lg:h-dvh lg:overflow-hidden" onKeyDown={onKeyDown}>
+    <div className={`lq player-page flex flex-col ${code ? "h-dvh overflow-hidden" : "min-h-dvh lg:h-dvh lg:overflow-hidden"}`} onKeyDown={onKeyDown}>
       <header className="flex min-h-8 flex-none flex-wrap items-center gap-x-3 border-b-[3px] border-ink bg-white px-3 py-0.5 text-sm">
         <a href="/" aria-label="LearnQuest home" className={`grid min-h-6 min-w-6 place-items-center rounded-md ${FOCUS}`}>
           <img src="/img/pip-wave.png" alt="" className="size-6 object-contain" />
         </a>
         <h1 className="flex-none font-sans text-sm font-extrabold">{title}</h1>
         <MenuBar
+          replay={!code}
           playing={r.playing}
           speed={r.speed}
           muted={vol.muted}
@@ -222,6 +227,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
           {stepTitle}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {live?.footer && <div className="menu-next flex items-center gap-2">{live.footer}</div>}
           <div role="group" aria-label={`Step ${cur + 1} of ${N}`} className="flex items-center gap-1.5">
             <div aria-hidden="true" className="flex gap-0.5">
               {stepTitles.map((t, i) => (
@@ -237,7 +243,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
 
       <main
         ref={deskRef}
-        className="relative flex flex-1 flex-col gap-4 bg-lilac/30 p-3 lg:block lg:min-h-0 lg:p-0"
+        className={`relative flex flex-1 flex-col gap-4 bg-mint/40 p-3 lg:block lg:min-h-0 lg:p-0 ${code ? "min-h-0 overflow-y-auto lg:overflow-visible max-lg:[&>section]:flex-none" : ""}`}
       >
         {task && (
           <Window {...winProps("instructions")} label="Instructions" title="Instructions" tone="bg-mint">
@@ -274,10 +280,10 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
         <Window
           {...winProps("code")}
           label={codeLabel}
-          title={task ? viewed || "Code" : `Player — ${viewed}`}
+          title={code ? code.title : task ? viewed || "Code" : `Player — ${viewed}`}
           tone="bg-sun"
           onPointerMove={wake}
-          titleExtra={
+          titleExtra={code ? code.tool : (
             <button
               type="button"
               aria-label="File explorer"
@@ -288,9 +294,9 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
             >
               <Icon k="sidebar" />
             </button>
-          }
+          )}
         >
-          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          {code ? code.body : <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
             <Explorer
               id="explorer"
               hidden={!explorer}
@@ -329,7 +335,7 @@ export function Player({ title, stepTitles, timeline, live }: Props) {
                 />
               }
             />
-          </div>
+          </div>}
         </Window>
 
         <Dock
@@ -376,7 +382,8 @@ const fixtureTitles = lesson.steps.map((s) => s.title);
 const fixtureTimeline = buildTimeline(lesson.steps.map((s) => s.input));
 
 export default function PlayerPage() {
-  const slug = new URLSearchParams(location.search).get("lesson");
+  const q = new URLSearchParams(location.search);
+  const slug = q.get("lesson");
   // No ?lesson= : the bundled sample, for previews and offline work.
-  return slug ? <LiveLesson slug={slug} /> : <Player title={lesson.title} stepTitles={fixtureTitles} timeline={fixtureTimeline} />;
+  return slug ? <LiveLesson slug={slug} course={q.get("course") ?? undefined} /> : <Player title={lesson.title} stepTitles={fixtureTitles} timeline={fixtureTimeline} />;
 }

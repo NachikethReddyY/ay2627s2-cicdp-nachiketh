@@ -25,7 +25,7 @@ class OutlineLesson(BaseModel):  # outline lesson
     title: T80
     level: int = Field(ge=1, le=5)
     concepts: list[T60] = Field(min_length=1, max_length=6)
-    kind: Literal["learn", "watch", "practice"]
+    kind: Literal["learn", "watch", "practice", "game-practice"]
 
 
 class Course(BaseModel):
@@ -35,24 +35,30 @@ class Course(BaseModel):
 
 
 class Outline(BaseModel):
-    """Either `notCoding: true` alone, or title + tagline + courses.
+    """Either `refused: true` alone, or title + tagline + courses.
 
     One flat model instead of a root union: strict json_schema needs an object at the root.
     """
 
-    notCoding: Literal[True] | None = None
+    refused: Literal[True] | None = None
     title: T80 | None = None
     tagline: T160 | None = None
     courses: list[Course] | None = Field(default=None, min_length=2, max_length=4)
+    # "other" = non-coding topic: watch (code replay) and practice (code task) would need code.
+    subject: Literal["code", "other"] | None = None
 
     @model_validator(mode="after")
     def _one_shape(self) -> "Outline":
         full = self.title is not None and self.tagline is not None and self.courses is not None
-        if self.notCoding:
-            if self.title or self.tagline or self.courses:
-                raise ValueError("notCoding outline must omit everything else")
-        elif not full:
-            raise ValueError("outline needs title, tagline and courses")
+        if self.refused:
+            if self.title or self.tagline or self.courses or self.subject:
+                raise ValueError("refused outline must omit everything else")
+        elif not full or self.subject is None:
+            raise ValueError("outline needs title, tagline, courses and subject")
+        elif self.subject == "other" and any(
+            lesson.kind in ("watch", "practice") for c in self.courses or [] for lesson in c.lessons
+        ):
+            raise ValueError("non-coding outline may only use learn and game-practice lessons")
         return self
 
 
@@ -150,7 +156,7 @@ class _LessonRef(BaseModel):
     title: str
     level: int
     concepts: list[str]
-    kind: Literal["predict", "learn", "watch", "practice"] = "predict"
+    kind: Literal["predict", "learn", "watch", "practice", "game-practice"] = "predict"
 
 
 T4000 = Annotated[str, _c(4000)]
@@ -160,6 +166,7 @@ T4000 = Annotated[str, _c(4000)]
 class LearnPart(BaseModel):
     kind: Literal["learn"]
     body: T4000
+    doc: dict[str, Any] | None = None  # dropped by the pipeline if invalid
 
 
 class WatchPart(BaseModel):
@@ -182,10 +189,17 @@ class PracticePart(BaseModel):
     expectedOutput: Annotated[str, StringConstraints(max_length=1000)]
 
 
+class GamePracticePart(BaseModel):
+    kind: Literal["game-practice"]
+    intro: T500
+    doc: dict[str, Any] | None = None
+
+
 PARTS: dict[str, type[BaseModel]] = {
     "learn": LearnPart,
     "watch": WatchPart,
     "practice": PracticePart,
+    "game-practice": GamePracticePart,
 }
 
 

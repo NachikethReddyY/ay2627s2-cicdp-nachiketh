@@ -13,6 +13,7 @@ const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
+const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 
 // The player has its own audio, so button sounds stay off there.
 const isQuiet = (p: string) => p.startsWith("/play") || p.startsWith("/diff");
@@ -46,11 +47,15 @@ const routeTree = root.addChildren([
     path: "/play",
     component: () => <PlayerPage />,
     beforeLoad: requireSession,
-    validateSearch: (s: Record<string, unknown>): { lesson?: string } => ({ lesson: typeof s.lesson === "string" ? s.lesson : undefined }),
+    validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string } => ({
+      lesson: typeof s.lesson === "string" ? s.lesson : undefined,
+      course: typeof s.course === "string" ? s.course : undefined,
+    }),
   }),
   createRoute({ ...r, path: "/diff", component: () => <DiffPage /> }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: requireSession }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: requireSession }),
+  ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
 ]);
 
 const router = createRouter({ routeTree });

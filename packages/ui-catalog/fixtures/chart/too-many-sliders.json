@@ -1,0 +1,1 @@
+{"v":1,"blocks":[{"type":"text","id":"t1","props":{"md":"intro"}},{"type":"chart","id":"c1","props":{"kind":"function","alt":"A curve","expr":"a*x+b+c","sliders":[{"id":"a","label":"A","min":0,"max":1},{"id":"b","label":"B","min":0,"max":1},{"id":"c","label":"C","min":0,"max":1}]}}]}

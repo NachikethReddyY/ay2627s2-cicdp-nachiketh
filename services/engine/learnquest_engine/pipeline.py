@@ -3,6 +3,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from learnquest_engine import visual
 from learnquest_engine.llm import Result, generate
 from learnquest_engine.schemas import PARTS, Lesson, LessonContext, Outline
 
@@ -22,4 +23,12 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
     kind = ctx.lesson.kind
     if kind == "predict":
         return generate(_prompt("lesson"), ctx.model_dump(), Lesson)
-    return generate(_prompt(kind), ctx.model_dump(), PARTS[kind])
+    system = _prompt(kind.replace("-", "_"))
+    if kind not in ("learn", "game-practice"):
+        return generate(system, ctx.model_dump(), PARTS[kind])
+    res = generate(system + "\n\n" + visual._system(), ctx.model_dump(), PARTS[kind])
+    # Model output is untrusted: keep the doc only if it passes the committed schema.
+    doc = getattr(res.value, "doc", None)
+    if doc is not None:
+        res.value = res.value.model_copy(update={"doc": visual.validated(doc)})
+    return res

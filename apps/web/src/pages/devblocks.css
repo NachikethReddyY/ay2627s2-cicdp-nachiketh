@@ -1,0 +1,42 @@
+.devblocks { min-height: 100vh; }
+.devblocks .db-wrap { width: min(1440px, 100%); margin: 0 auto; padding: 32px 28px 64px; }
+.devblocks .db-header { margin-bottom: 24px; }
+.devblocks .db-header h1 { margin: 12px 0 6px; font-size: clamp(34px, 5vw, 48px); }
+.devblocks .db-header p { color: var(--muted); font-weight: 500; }
+.devblocks .db-notice { margin: 0 0 20px; padding: 12px 16px; border: 3px solid var(--line); border-radius: 14px; background: var(--lilac); color: var(--ink); box-shadow: 3px 3px 0 var(--shadow); font-weight: 700; }
+.devblocks .db-grid { display: grid; grid-template-columns: minmax(340px, .82fr) minmax(0, 1.18fr); align-items: start; gap: 28px; }
+.devblocks .db-controls { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.devblocks .db-panel, .devblocks .db-details, .devblocks .db-preview-card { padding: 22px; }
+.devblocks .db-label { display: block; margin: 0 0 8px; font-weight: 700; }
+.devblocks textarea { display: block; width: 100%; min-width: 0; padding: 12px 14px; border: 3px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); font: 500 15px/1.55 var(--font-body); box-shadow: inset 3px 3px 0 rgb(21 18 31 / 10%); resize: vertical; }
+.devblocks textarea:focus-visible, .devblocks button:focus-visible, .devblocks summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.devblocks #db-spec { font-family: var(--font-code); font-size: 13px; }
+.devblocks .db-picks { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 18px; }
+.devblocks .db-chip { min-height: 42px; }
+.devblocks .db-generate { min-width: 150px; }
+.devblocks .db-status { min-height: 42px; display: flex; align-items: center; margin-top: 14px; padding: 8px 12px; border: 3px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 3px 3px 0 var(--shadow); font-weight: 700; overflow-wrap: anywhere; }
+.devblocks .db-status.is-error { background: #ffd9e9; color: #15121f; }
+.devblocks .db-spinner { width: 18px; height: 18px; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: db-spin 700ms linear infinite; }
+@keyframes db-spin { to { rotate: 360deg; } }
+.devblocks .db-details summary { cursor: pointer; font: 400 23px/1.2 var(--font-display); }
+.devblocks .db-details[open] summary { margin-bottom: 18px; }
+.devblocks .db-parse { padding: 18px 20px; }
+.devblocks .db-issues { margin-bottom: 14px; padding: 12px 14px; border: 3px solid var(--line); border-radius: 12px; background: var(--pink); color: #15121f; }
+.devblocks .db-issues h2 { margin-bottom: 8px; font-size: 22px; }
+.devblocks .db-issues ul { margin: 0; padding-left: 22px; }
+.devblocks .db-issues li { margin: 5px 0; overflow-wrap: anywhere; }
+.devblocks .db-issues code { font-family: var(--font-code); font-weight: 700; }
+.devblocks .db-parse pre { max-height: 280px; overflow: auto; margin: 0; padding: 14px; border: 3px solid var(--line); border-radius: 12px; background: #15121f; color: #fff; font: 500 12px/1.55 var(--font-code); white-space: pre-wrap; overflow-wrap: anywhere; }
+.devblocks .db-preview { position: sticky; top: 18px; min-width: 0; }
+.devblocks .db-preview-card { min-height: 300px; background: var(--sun); }
+.devblocks .db-preview-card h2 { margin-bottom: 18px; font-size: 28px; }
+.devblocks .db-empty { padding: 24px 16px; border: 3px dashed var(--line); border-radius: 14px; background: #fff; color: #4a4458; text-align: center; font-weight: 700; }
+@media (max-width: 767px) {
+  .devblocks .db-wrap { padding: 24px 16px 48px; }
+  .devblocks .db-grid { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .devblocks .db-preview { position: static; }
+  .devblocks .db-panel, .devblocks .db-details, .devblocks .db-preview-card { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .devblocks .db-spinner { animation-duration: 1ms; animation-iteration-count: 1; }
+}

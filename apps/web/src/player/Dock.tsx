@@ -25,7 +25,7 @@ export default function Dock({ items, hidden }: { items: DockItem[]; hidden: boo
             aria-pressed={it.pressed}
             data-dock-id={it.id}
             onClick={it.onClick}
-            className={`grid size-11 place-items-center rounded-xl border-[3px] border-ink transition-[width,height] motion-reduce:transition-none motion-safe:hover:size-14 ${it.tone} ${FOCUS}`}
+            className={`grid size-11 place-items-center rounded-xl border-[3px] border-ink transition-[width,height,scale] motion-reduce:transition-none motion-safe:hover:size-14 motion-safe:active:scale-90 ${it.tone} ${FOCUS}`}
           >
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 fill-none stroke-ink stroke-2 [stroke-linecap:round] [stroke-linejoin:round]">
               {it.icon}

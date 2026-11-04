@@ -48,9 +48,58 @@ def test_too_few_steps() -> None:
 
 
 def test_outline_shapes() -> None:
-    assert Outline.model_validate({"notCoding": True}).notCoding
+    assert Outline.model_validate({"refused": True}).refused
     with pytest.raises(ValidationError):
         Outline.model_validate({"title": "x"})
+
+
+def test_photosynthesis_outline_fixture() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "outline_photosynthesis.json"
+    raw_outline = json.loads(fixture.read_text())
+    assert (Outline.model_validate(raw_outline).courses or [])[0].lessons[0].kind == "learn"
+
+
+def _outline(name: str) -> dict[str, Any]:
+    data: dict[str, Any] = json.loads((Path(__file__).parent / "fixtures" / name).read_text())
+    return data
+
+
+@pytest.mark.parametrize("kind", ["watch", "practice"])
+def test_non_coding_outline_rejects_code_kinds(kind: str) -> None:
+    raw = _outline("outline_photosynthesis.json")
+    raw["courses"][1]["lessons"][0]["kind"] = kind
+    with pytest.raises(ValidationError, match="non-coding outline"):
+        Outline.model_validate(raw)
+
+
+def test_non_coding_outline_allows_learn_and_game_practice() -> None:
+    kinds = {
+        lesson["kind"]
+        for course in _outline("outline_photosynthesis.json")["courses"]
+        for lesson in course["lessons"]
+    }
+    assert kinds == {"learn", "game-practice"}
+
+
+def test_coding_outline_keeps_watch_and_practice() -> None:
+    raw = _outline("outline_photosynthesis.json")
+    raw["subject"] = "code"
+    raw["courses"][0]["lessons"][1]["kind"] = "watch"
+    raw["courses"][0]["lessons"][2]["kind"] = "practice"
+    assert Outline.model_validate(raw).subject == "code"
+
+
+def test_outline_requires_subject() -> None:
+    raw = _outline("outline_photosynthesis.json")
+    del raw["subject"]
+    with pytest.raises(ValidationError, match="subject"):
+        Outline.model_validate(raw)
+
+
+def test_outline_prompt_states_the_non_coding_rule() -> None:
+    prompt = (Path(__file__).parent.parent / "learnquest_engine/prompts/outline.md").read_text()
+    assert 'subject "other"' in prompt
+    assert "only learn or game-practice" in prompt
 
 
 def test_json_schema_is_strict() -> None:

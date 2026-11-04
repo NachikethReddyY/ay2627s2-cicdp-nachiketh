@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
-import { lessons, learners, pathCourses, paths, user, worlds } from "../src/db/schema.ts";
+import { lessonVersions, lessons, learners, pathCourses, paths, stepProgress, user, worlds } from "../src/db/schema.ts";
 import { streak, week } from "../src/progress/streak.ts";
 
 const app = buildApp();
@@ -70,6 +70,21 @@ test("enrolled learner gets continue, progress and XP", async () => {
   assert.equal(body.stats.streak, 1);
   assert.equal(body.continue, null, "only lesson is finished");
   assert.deepEqual(body.paths[0].courses[0], { slug: "codequest", title: "Shopping Cart Basics", lessonsDone: 1, lessonsTotal: 1 });
+});
+
+test("game completion grants XP once and leaves lesson mastery unchanged", async () => {
+  const cookie = await signUp(app);
+  const before = (await db.select().from(stepProgress)).length;
+  // games.complete only counts a real game block of a game-practice lesson, so seed one.
+  const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
+  const [game] = await db.insert(lessons).values({ slug: "game-xp", title: "Game", worldId: world!.id, sourceKind: "authored", kind: "game-practice", status: "published" }).returning();
+  await db.insert(lessonVersions).values({ lessonId: game!.id, version: 1, content: { kind: "game-practice", intro: "Play.", doc: { v: 1, blocks: [{ type: "game", id: "quiz-one", props: {} }] } } });
+  await db.update(lessons).set({ currentVersionId: (await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, game!.id)))[0]!.id }).where(eq(lessons.id, game!.id));
+  const input = { lessonId: "game-xp", partIdx: 0, blockId: "quiz-one" };
+  assert.deepEqual(out(await m(cookie, "games.complete", input)), { awarded: true });
+  assert.deepEqual(out(await m(cookie, "games.complete", input)), { awarded: false });
+  assert.equal(out(await get(cookie)).stats.xp, 10);
+  assert.equal((await db.select().from(stepProgress)).length, before);
 });
 
 test("courses.get: published lessons only, private courses only for the owner", async () => {

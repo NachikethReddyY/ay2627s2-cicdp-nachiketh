@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"v\": 1, \"blocks\": [{\"type\": \"chart\", \"id\": \"c_bar\", \"props\": {\"kind\": \"bar\", \"alt\": \"Pets owned by students: dogs 12, cats 9, fish 4\", \"xLabel\": \"Pet\", \"yLabel\": \"Students\", \"series\": [{\"label\": \"Class A\", \"color\": \"blue\", \"points\": [{\"x\": \"Dogs\", \"y\": 12}, {\"x\": \"Cats\", \"y\": 9}, {\"x\": \"Fish\", \"y\": 4}]}, {\"label\": \"Class B\", \"color\": \"sun\", \"points\": [{\"x\": \"Dogs\", \"y\": 8}, {\"x\": \"Cats\", \"y\": 11}, {\"x\": \"Fish\", \"y\": 2}]}]}}, {\"type\": \"chart\", \"id\": \"c_line\", \"props\": {\"kind\": \"line\", \"alt\": \"Plant height grows each week\", \"xLabel\": \"Week\", \"yLabel\": \"Height (cm)\", \"series\": [{\"label\": \"Plant\", \"color\": \"green\", \"points\": [{\"x\": 0, \"y\": 2}, {\"x\": 1, \"y\": 4}, {\"x\": 2, \"y\": 7}, {\"x\": 3, \"y\": 11}]}]}}, {\"type\": \"chart\", \"id\": \"c_scat\", \"props\": {\"kind\": \"scatter\", \"alt\": \"Hours studied against test score\", \"xLabel\": \"Hours\", \"yLabel\": \"Score\", \"series\": [{\"label\": \"Students\", \"color\": \"pink\", \"points\": [{\"x\": 1, \"y\": 55}, {\"x\": 2, \"y\": 62}, {\"x\": 3, \"y\": 70}, {\"x\": 4, \"y\": 81}]}]}}, {\"type\": \"chart\", \"id\": \"c_fn\", \"props\": {\"kind\": \"function\", \"alt\": \"A line with slope m and intercept c\", \"expr\": \"m * x + c\", \"xMin\": -5, \"xMax\": 5, \"color\": \"green-deep\", \"sliders\": [{\"id\": \"m\", \"label\": \"Slope\", \"min\": -3, \"max\": 3, \"value\": 1}, {\"id\": \"c\", \"label\": \"Intercept\", \"min\": -5, \"max\": 5}]}}]}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    }
+  ]
+}

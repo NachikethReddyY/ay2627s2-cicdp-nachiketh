@@ -1,11 +1,16 @@
 import json
+import os
 import socket
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-import litellm
-import pytest
+# litellm reads ./.env at import time in DEV mode, which would leak a developer's local key
+# and timeout into tests. Must be set before litellm is imported.
+os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
+
+import litellm  # noqa: E402
+import pytest  # noqa: E402
 
 from learnquest_engine.config import get_settings
 
@@ -13,8 +18,10 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
-def engine_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     # Settings must load in every test; no real key is ever needed or read.
+    # Run from an empty directory so a developer's services/engine/.env is never read.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LLM_MODEL", "openai/test")
     monkeypatch.setenv("ENGINE_TOKEN", "x" * 32)
     monkeypatch.delenv("LLM_API_KEY", raising=False)

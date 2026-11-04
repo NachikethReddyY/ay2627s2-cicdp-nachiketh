@@ -1,0 +1,1 @@
+ALTER TABLE "spend_ledger" ALTER COLUMN "amount_usd" SET DATA TYPE numeric(12, 4);

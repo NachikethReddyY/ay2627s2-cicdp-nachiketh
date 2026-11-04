@@ -5,21 +5,25 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { ensureLesson, prefetchNext } from "../ai/service.ts";
+import { tiers } from "../config/tiers.ts";
+import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 
 const Lesson = z.object({
   id: z.string(),
   title: z.string(),
-  kind: z.enum(["predict", "learn", "watch", "practice"]),
+  kind: z.enum(["predict", "learn", "watch", "practice", "game-practice"]),
   part: z
     .discriminatedUnion("kind", [
-      z.object({ kind: z.literal("learn"), body: z.string() }),
+      // doc is a catalog-validated visual document; the client re-parses it before rendering.
+      z.object({ kind: z.literal("learn"), body: z.string(), doc: z.unknown().optional() }),
       z.object({
         kind: z.literal("watch"),
         beforeFiles: z.record(z.string(), z.string()),
         hunks: z.array(z.object({ id: z.string(), file: z.string(), oldStart: z.number(), lines: z.array(z.string()) })),
       }),
       z.object({ kind: z.literal("practice"), instructions: z.string(), language: z.enum(["python", "javascript"]).default("javascript"), starterCode: z.string(), expectedOutput: z.string() }),
+      z.object({ kind: z.literal("game-practice"), intro: z.string(), doc: z.unknown() }),
     ])
     .nullable(),
   steps: z.array(
@@ -43,7 +47,7 @@ export const lessonsRouter = router({
       const { id } = input;
       // Visible = in a public course or one the caller owns; anything else is indistinguishable from missing.
       const [found] = await db
-        .select({ lesson: lessons })
+        .select({ lesson: lessons, tier: learners.tier })
         .from(lessons)
         .innerJoin(worlds, eq(worlds.id, lessons.worldId))
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
@@ -75,11 +79,17 @@ export const lessonsRouter = router({
         .where(eq(steps.lessonVersionId, lesson.currentVersionId))
         .orderBy(asc(steps.idx));
       const media = await listMedia(lesson.currentVersionId);
+      // Generated images are resolved per read: the prompt is stripped here and never reaches the learner.
+      let part = version?.content ?? null;
+      if (part && (part.kind === "learn" || part.kind === "game-practice") && part.doc) {
+        const doc = await resolveDocImages(part.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId, tier: found!.tier as keyof typeof tiers });
+        part = { ...part, doc } as typeof part; // resolveDocImages keeps the catalog shape; its return type is unknown
+      }
       return {
         id: lesson.slug,
         title: lesson.title,
         kind: lesson.kind,
-        part: version?.content ?? null,
+        part,
         steps: rows.map((r) => ({
           id: r.id,
           idx: r.idx,

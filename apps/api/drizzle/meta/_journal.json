@@ -50,6 +50,55 @@
       "when": 1793502234778,
       "tag": "0006_salty_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793668247741,
+      "tag": "0007_third_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793670000000,
+      "tag": "0008_quiz_game_completions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793670381936,
+      "tag": "0009_premium_zombie",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793706600234,
+      "tag": "0010_illegal_skreet",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793708582660,
+      "tag": "0011_simple_chameleon",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793709122298,
+      "tag": "0012_abnormal_mach_iv",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793719192525,
+      "tag": "0013_first_captain_flint",
+      "breakpoints": true
     }
   ]
 }

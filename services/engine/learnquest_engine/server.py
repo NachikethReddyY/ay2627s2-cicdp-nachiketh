@@ -1,5 +1,6 @@
 import hmac
 import logging
+import time
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -14,7 +15,7 @@ from litellm.exceptions import (
 )
 from pydantic import BaseModel, Field
 
-from learnquest_engine import pipeline
+from learnquest_engine import pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.schemas import LessonContext
@@ -27,6 +28,10 @@ app = FastAPI(title="LearnQuest engine", docs_url=None, redoc_url=None)
 
 class OutlineRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=200)
+
+
+class VisualRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=500)
 
 
 def require_token(x_engine_token: Annotated[str | None, Header()] = None) -> None:
@@ -68,6 +73,61 @@ def outline_route(body: OutlineRequest) -> dict[str, Any]:
 @app.post("/v1/pipeline/lesson", dependencies=[Depends(require_token)])
 def lesson_route(body: LessonContext) -> dict[str, Any]:
     return _body("lesson", pipeline.lesson(body))
+
+
+@app.post("/v1/pipeline/visual", dependencies=[Depends(require_token)])
+def visual_route(body: VisualRequest) -> JSONResponse:
+    key = get_settings().LLM_API_KEY
+    if key is None or not key.get_secret_value():
+        return JSONResponse(
+            status_code=503,
+            content={"error": "LLM not configured (LLM_API_KEY is empty)", "issues": []},
+        )
+    t0 = time.monotonic()
+    first = visual.generate_visual(body.prompt)
+    t1 = time.monotonic()
+    doc = visual.unwrap(first.value.model_dump())
+    found = visual.all_issues(doc)
+    t2 = time.monotonic()
+    log.warning(
+        "visual: first pass %.1fs (attempts=%d, completion_tokens=%d), checks %.1fs, issues=%d",
+        t1 - t0,
+        first.attempts,
+        first.usage["completion_tokens"],
+        t2 - t1,
+        len(found),
+    )
+    if found:
+        # One repair call with the exact problems, then give up with a clear 422.
+        log.warning("visual: first pass issues: %s", found)
+        repaired = visual.generate_visual(body.prompt, found, doc)
+        t3 = time.monotonic()
+        doc = visual.unwrap(repaired.value.model_dump())
+        found = visual.all_issues(doc)
+        log.warning(
+            "visual: repair pass %.1fs (attempts=%d, completion_tokens=%d), checks %.1fs",
+            t3 - t2,
+            repaired.attempts,
+            repaired.usage["completion_tokens"],
+            time.monotonic() - t3,
+        )
+        log.warning("visual: after repair: %s", found)
+    if found:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "Model output failed the visual schema", "issues": found},
+        )
+    return JSONResponse({"doc": doc})
+
+
+@app.exception_handler(visual.CheckerUnavailable)
+def checker_unavailable(_: Request, exc: visual.CheckerUnavailable) -> JSONResponse:
+    # Fail closed: a document the checker never saw must not be served as valid.
+    log.error("visual checker unavailable: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"error": "visual checker unavailable", "issues": []},
+    )
 
 
 @app.exception_handler(GenerationError)

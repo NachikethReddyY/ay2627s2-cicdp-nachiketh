@@ -5,6 +5,7 @@ import { FOCUS, MENU_ITEM, MENU_PANEL } from "./ui";
 import { SPEEDS, type Speed } from "./useReplay";
 
 type Props = {
+  replay: boolean; // false: no replay (practice), so no Playback menu, file sidebar or replay help
   playing: boolean;
   speed: Speed;
   muted: boolean;
@@ -91,7 +92,7 @@ export default function MenuBar(p: Props) {
   const { on } = p;
   return (
     <M.Root aria-label="Player menu" className="flex min-w-0 items-center gap-0.5 overflow-x-auto py-1">
-      <Menu name="Playback">
+      {p.replay && <Menu name="Playback">
         <Item label={p.playing ? "Pause" : "Play"} hint="Space" keys="Space" onSelect={on.toggle} />
         <Item label="Previous step" hint="Shift+←" keys="Shift+ArrowLeft" onSelect={() => on.step(-1)} />
         <Item label="Next step" hint="Shift+→" keys="Shift+ArrowRight" onSelect={() => on.step(1)} />
@@ -119,17 +120,17 @@ export default function MenuBar(p: Props) {
           </M.Portal>
         </M.Sub>
         <Item label={p.muted ? "Unmute" : "Mute"} hint="M" keys="M" onSelect={on.mute} />
-      </Menu>
+      </Menu>}
 
-      <Menu name="View">
-        <Item label={p.explorer ? "Hide file sidebar" : "Show file sidebar"} hint="B" keys="B" onSelect={on.sidebar} />
+      {(p.replay || p.desktop) && <Menu name="View">
+        {p.replay && <Item label={p.explorer ? "Hide file sidebar" : "Show file sidebar"} hint="B" keys="B" onSelect={on.sidebar} />}
         {p.desktop && (
           <>
             <Item label={p.full ? "Exit full screen" : "Enter full screen"} hint="F" keys="F" onSelect={on.full} />
             <Item label="Zoom window" disabled={p.full} onSelect={on.zoom} />
           </>
         )}
-      </Menu>
+      </Menu>}
 
       {p.desktop && (
         <Menu name="Window">
@@ -146,10 +147,10 @@ export default function MenuBar(p: Props) {
 
       <Account />
 
-      <Menu name="Help">
+      {p.replay && <Menu name="Help">
         <Item label="Keyboard shortcuts" hint="?" keys="Shift+Slash" onSelect={on.keys} />
         <Item label="About this replay" onSelect={on.about} />
-      </Menu>
+      </Menu>}
     </M.Root>
   );
 }

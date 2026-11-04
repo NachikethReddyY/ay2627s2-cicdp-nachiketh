@@ -1,0 +1,109 @@
+@import "../pages/home.css";
+
+.lq.player-page { width: 100%; overflow-x: clip; }
+.lq.player-page > header {
+  min-height: 52px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 3px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 4px 0 var(--shadow);
+  font-family: var(--font-body);
+  z-index: 20;
+}
+.lq.player-page > header h1 { font: 400 18px/1.05 var(--font-display); }
+.lq.player-page > header [role="group"] { padding: 4px 9px; border: 2.5px solid var(--line); border-radius: 999px; background: var(--sun); box-shadow: 2px 2px 0 var(--shadow); font-family: var(--font-body); }
+.lq.player-page > header [role="group"] > div > span { width: 10px; height: 10px; }
+.lq.player-page > main {
+  min-width: 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dot) 1.3px, transparent 1.5px);
+  background-size: 22px 22px;
+  color: var(--text);
+  font-family: var(--font-body);
+}
+.lq.player-page section[id^="win-"] {
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 3px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 5px 5px 0 var(--shadow);
+}
+.lq.player-page section[id^="win-"] > div:first-child {
+  background: var(--sun);
+  color: var(--text);
+  border-bottom: 3px solid var(--line);
+}
+.lq.player-page section[id="win-instructions"] > div:first-child { background: var(--mint); }
+.lq.player-page section[id^="win-"] h3,
+.lq.player-page section[id^="win-"] h4 { font-family: var(--font-display); font-weight: 400; line-height: 1.08; }
+.lq.player-page nav[aria-label="Files"] { background: var(--paper); border-color: var(--line); font-family: var(--font-body); }
+.lq.player-page [data-dock-id] { box-shadow: 2px 2px 0 var(--shadow); }
+.lq.player-page [role="group"][aria-label="Dock"] { background: var(--surface); border-color: var(--line); box-shadow: 4px 4px 0 var(--shadow); }
+.lq.player-page [class*="absolute bottom-4"] {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 var(--shadow);
+  font-family: var(--font-body);
+}
+.lq.player-page [class*="absolute bottom-4"] button.pill {
+  min-height: 36px;
+  border: 2.5px solid var(--line);
+  box-shadow: 2px 2px 0 var(--shadow);
+  color: var(--text);
+}
+.lq.player-page [class*="absolute bottom-4"] button[aria-label="Play"] { background: var(--sun); }
+.lq.player-page [class*="absolute bottom-4"] button[aria-label="Pause"] { background: var(--mint); }
+.lq.player-page .track { border: 2.5px solid var(--line); border-radius: 999px; background: var(--track); }
+.lq.player-page .track [data-radix-slider-range] { background: var(--blue); }
+.lq.player-page dialog {
+  color: var(--text);
+  border: 3px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 5px 5px 0 var(--shadow);
+}
+.lq.player-page dialog::backdrop { background: rgb(21 18 31 / 55%); }
+.lq.player-page button,
+.lq.player-page select { font-family: var(--font-body); }
+.lq.player-page button.btn,
+.lq.player-page a.btn { min-height: 44px; border: 3px solid var(--line); border-radius: 12px; background: var(--sun); color: #15121f; box-shadow: 3px 3px 0 var(--shadow); font: 400 17px/1 var(--font-display); }
+.lq.player-page button.pill { border: 2.5px solid var(--line); box-shadow: 2px 2px 0 var(--shadow); font-family: var(--font-body); }
+.lq.player-page :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+.lq.diff-page { min-height: 100vh; padding-top: 24px; padding-bottom: 48px; }
+.lq.diff-page > a { display: inline-flex; align-items: center; padding: 6px 12px; background: var(--surface); border: 3px solid var(--line); border-radius: 12px; box-shadow: 3px 3px 0 var(--shadow); color: var(--text); text-decoration: none; }
+.lq.diff-page main { min-width: 0; }
+.lq.diff-page h1 { margin-top: 24px; font-size: 32px; }
+.lq.diff-page .diff-step { min-width: 0; }
+.lq.diff-page .diff-step h2 { margin-bottom: 16px; font-size: 24px; }
+.lq.diff-page .diff-step h3 { overflow-wrap: anywhere; font-family: var(--font-code); font-size: 14px; }
+.lq.diff-page .diff-step > div > div { border-radius: 14px; box-shadow: 4px 4px 0 var(--shadow); }
+
+@media (max-width: 640px) {
+  .lq.player-page > header { gap: 6px; }
+  .lq.player-page > header h1 { max-width: 36vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lq.player-page > header [role="group"] { margin-left: auto; }
+  .lq.player-page > main { padding: 12px; }
+  .lq.player-page section[id^="win-"] { max-width: 100%; }
+  .lq.player-page [class*="absolute bottom-4"] { width: calc(100% - 20px); bottom: 10px; gap: 6px; padding: 8px; }
+  .lq.player-page [class*="absolute bottom-4"] > div:last-child { gap: 5px; }
+  .lq.player-page [class*="absolute bottom-4"] span.font-mono { font-size: 11px; }
+  .lq.diff-page { padding-left: 16px; padding-right: 16px; }
+  .lq.diff-page h1 { font-size: 28px; }
+  .lq.diff-page .diff-step { padding: 14px; }
+}
+
+/* Next in the top menu bar: sized to match the menu items. */
+.lq.player-page .menu-next .btn { min-height: 0; font-size: 14px; line-height: 1.25; padding: 2px 12px; border-width: 2px; border-radius: 8px; box-shadow: 2px 2px 0 var(--shadow); margin: 0; }
+.lq.player-page .menu-next button.check { background: var(--mint); }
+
+/* Check verdict: a pop for Correct, a shake for Not quite. Still on reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .lq.player-page .verdict-ok { animation: lq-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
+  .lq.player-page .verdict-no { animation: lq-shake 0.45s ease-in-out; }
+}
+@keyframes lq-pop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes lq-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }

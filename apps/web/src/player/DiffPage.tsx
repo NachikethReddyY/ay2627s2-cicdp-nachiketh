@@ -3,6 +3,7 @@ import { DiffEditor } from "@monaco-editor/react";
 import { buildTimeline, filesAtEnd } from "@learnquest/player-core";
 import lesson from "./fixtures/lesson1";
 import "./monaco";
+import "./player.css";
 
 export default function DiffPage() {
   const [narrow, setNarrow] = useState(() => matchMedia("(max-width: 767px)").matches);
@@ -14,8 +15,8 @@ export default function DiffPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
-      <a href="/" className="font-display text-2xl font-black">
+    <div className="lq diff-page mx-auto max-w-6xl px-4 py-5 sm:px-6">
+      <a href="/" className="lq-logo font-display text-2xl font-black">
         Learn<span className="text-blue">Quest</span>
       </a>
       <main>
@@ -24,7 +25,7 @@ export default function DiffPage() {
           const after = filesAtEnd(buildTimeline([s.input]));
           const changed = Object.keys(after).filter((p) => after[p] !== s.input.beforeFiles[p]);
           return (
-            <section key={s.id} className="mt-8" aria-labelledby={`${s.id}-h`}>
+            <section key={s.id} className="lq-card diff-step mt-8 p-4 sm:p-6" aria-labelledby={`${s.id}-h`}>
               <h2 id={`${s.id}-h`} className="font-display text-xl font-black">
                 Step {s.idx + 1}: {s.title}
               </h2>

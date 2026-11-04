@@ -10,6 +10,8 @@ import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/a
 import { appRouter, type AppRouter } from "./trpc/router.ts";
 import { createContext } from "./trpc/trpc.ts";
 import { sandboxRoutes } from "./sandbox/route.ts";
+import { sandboxRunRoute } from "./sandbox/run.ts";
+import { devRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
   400: "bad_request",
@@ -67,7 +69,8 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   );
 
   app.addHook("onClose", async () => {
-    await pool.end();
+    // A test helper may already have ended the pool; pg rejects a second end().
+    await pool.end().catch(() => undefined);
   });
 
   app.register(
@@ -84,6 +87,8 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
         } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
       });
       api.register(sandboxRoutes);
+      api.register(sandboxRunRoute);
+      api.register(devRoutes);
       api.get(
         "/healthz",
         { schema: { response: { 200: z.object({ ok: z.literal(true) }) } } },

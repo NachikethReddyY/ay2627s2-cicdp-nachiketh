@@ -38,6 +38,7 @@ export async function saveMedia(input: {
   kind: MediaKind;
   body: Uint8Array;
   contentType: string;
+  promptHash?: string;
 }) {
   if (!storage) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Media storage is not configured" });
   const spec = KINDS[input.kind];
@@ -54,6 +55,7 @@ export async function saveMedia(input: {
     lessonVersionId: input.lessonVersionId,
     stepId: input.stepId ?? null,
     kind: input.kind,
+    promptHash: input.promptHash,
     key,
     contentType: input.contentType,
     bytes: input.body.byteLength,
@@ -66,9 +68,9 @@ export async function listMedia(lessonVersionId: string) {
   const s = storage;
   if (!s) return [];
   const rows = await db
-    .select({ stepId: lessonMedia.stepId, kind: lessonMedia.kind, key: lessonMedia.key })
+    .select({ stepId: lessonMedia.stepId, kind: lessonMedia.kind, key: lessonMedia.key, status: lessonMedia.status })
     .from(lessonMedia)
     .where(eq(lessonMedia.lessonVersionId, lessonVersionId))
     .orderBy(asc(lessonMedia.createdAt));
-  return Promise.all(rows.map(async (r) => ({ stepId: r.stepId, kind: r.kind, url: await s.signGet(r.key) })));
+  return Promise.all(rows.filter((r): r is typeof r & { key: string } => r.key !== null && r.status === "ready").map(async (r) => ({ stepId: r.stepId, kind: r.kind, url: await s.signGet(r.key) })));
 }

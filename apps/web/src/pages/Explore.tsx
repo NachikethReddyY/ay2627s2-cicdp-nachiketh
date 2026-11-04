@@ -3,9 +3,12 @@ import { Link } from "@tanstack/react-router";
 import { useApi, type ExplorePath } from "../lib/api";
 import { trpc } from "../lib/trpc";
 import TopNav from "../components/TopNav";
-import { AiBadge, Page, PipEmpty, Spinner } from "../components/Bits";
+import { AiBadge, Page, Spinner } from "../components/Bits";
+import "./home.css";
+import "./explore.css";
 
 const tabs = [["official", "Official"], ["community", "Community"], ["mine", "Mine"]] as const;
+const tones = ["lq-bg-lilac lq-tl2", "lq-bg-pink lq-tr", "lq-bg-mint lq-tl", "lq-bg-sun lq-tr2"];
 
 function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
   const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
@@ -15,47 +18,50 @@ function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
   }, [state]);
   if (state === "idle" || state === "error")
     return (
-      <div>
-        <button type="button" className="btn !px-5 !py-2 text-sm" onClick={() => setState("confirm")}>Publish</button>
-        {state === "error" && <p role="alert" className="mt-1 text-sm font-bold">Couldn't publish. Try again.</p>}
+      <div className="explore-pub">
+        <button type="button" className="lq-btn lq-btn-surface lq-btn-sm" onClick={() => setState("confirm")}>Publish</button>
+        {state === "error" && <p role="alert" className="explore-pub-err">Couldn't publish. Try again.</p>}
       </div>
     );
   return (
-    <div role="group" aria-label={`Publish ${p.title}`} className="flex flex-wrap items-center gap-2">
-      <span className="text-sm font-extrabold">Make this path public?</span>
-      <button ref={confirmRef} type="button" disabled={state === "busy"} className="btn !px-4 !py-1.5 text-sm disabled:opacity-60"
+    <div role="group" aria-label={`Publish ${p.title}`} className="explore-confirm">
+      <span>Make this path public?</span>
+      <button ref={confirmRef} type="button" disabled={state === "busy"} className="lq-btn lq-btn-sun lq-btn-sm"
         onClick={() => { setState("busy"); trpc.paths.publish.mutate({ slug: p.slug }).then(onDone, () => setState("error")); }}>
         Yes, publish
       </button>
-      <button type="button" disabled={state === "busy"} className="pill bg-white px-4 py-1.5 text-sm" onClick={() => setState("idle")}>Cancel</button>
+      <button type="button" disabled={state === "busy"} className="lq-btn lq-btn-surface lq-btn-sm" onClick={() => setState("idle")}>Cancel</button>
     </div>
   );
 }
 
-function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: string }) {
+function Row({ p, onDone, scope, tone }: { p: ExplorePath; onDone: () => void; scope: string; tone: string }) {
   const [busy, setBusy] = useState(false);
   return (
-    <li className="chunk bg-white p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 font-display text-2xl font-black">{p.title}{p.origin === "ai" && <AiBadge />}</h2>
-          <p className="text-sm font-semibold text-ink/70">{p.tagline}</p>
-          <p className="mt-1 text-xs font-extrabold">{p.courseCount} {p.courseCount === 1 ? "course" : "courses"} · {p.learners} {p.learners === 1 ? "learner" : "learners"}</p>
+    <li className={`lq-card lq-cc lq-lift explore-card ${tone}`}>
+      <div className="explore-card-head">
+        <div className="explore-card-title">
+          <h2>
+            {p.title}
+            {p.origin === "ai" && <span className="explore-ai"><AiBadge /></span>}
+          </h2>
+          <p className="explore-tagline">{p.tagline}</p>
+          <p className="explore-meta">{p.courseCount} {p.courseCount === 1 ? "course" : "courses"} · {p.learners} {p.learners === 1 ? "learner" : "learners"}</p>
         </div>
         {scope === "mine" && p.visibility === "private" ? (
           <Publish p={p} onDone={onDone} />
         ) : p.enrolled ? (
-          <span className="pill bg-mint px-4 py-1.5 text-sm">Joined ✓</span>
+          <span className="lq-sticker lq-bg-mint explore-joined">Joined ✓</span>
         ) : (
-          <button type="button" disabled={busy} className="btn !px-5 !py-2 text-sm disabled:opacity-60"
+          <button type="button" disabled={busy} className="lq-btn lq-btn-surface lq-btn-sm"
             onClick={() => { setBusy(true); trpc.paths.enroll.mutate({ slug: p.slug }).then(onDone).catch(() => {}).finally(() => setBusy(false)); }}>
             Join
           </button>
         )}
       </div>
-      <ul className="mt-3 flex flex-wrap gap-2">
+      <ul className="explore-courses">
         {p.courses.map((c) => (
-          <li key={c.slug}><Link to="/courses/$slug" params={{ slug: c.slug }} className="pill bg-paper px-3 py-1 text-sm">{c.title}</Link></li>
+          <li key={c.slug}><Link to="/courses/$slug" params={{ slug: c.slug }} className="explore-tag">{c.title}</Link></li>
         ))}
       </ul>
     </li>
@@ -73,30 +79,43 @@ export default function Explore() {
   const { data, error, loading, reload } = useApi(`paths:${scope}:${dq}`, () => trpc.paths.list.query({ scope, q: dq || undefined }));
 
   return (
-    <>
+    <div className="lq lq-explore">
       <TopNav />
       <Page>
-        <h1 className="font-display text-5xl font-black">Explore</h1>
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <div role="group" aria-label="Path source" className="flex gap-2">
-            {tabs.map(([v, label]) => (
-              <button key={v} type="button" aria-pressed={scope === v} onClick={() => setScope(v)}
-                className={`pill px-4 py-1.5 text-sm ${scope === v ? "bg-sun" : "bg-white"}`}>{label}</button>
-            ))}
+        <div className="explore-page">
+          <h1 className="explore-h">Explore</h1>
+          <div className="explore-filters">
+            <div role="group" aria-label="Path source" className="explore-tabs">
+              {tabs.map(([v, label]) => (
+                <button key={v} type="button" aria-pressed={scope === v} onClick={() => setScope(v)}
+                  className="lq-chip explore-tab">{label}</button>
+              ))}
+            </div>
+            <div className="explore-search-wrap">
+              <label htmlFor="q" className="sr-only">Search paths</label>
+              <input id="q" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search paths"
+                className="explore-search" />
+            </div>
           </div>
-          <div className="min-w-48 flex-1 sm:max-w-xs">
-            <label htmlFor="q" className="sr-only">Search paths</label>
-            <input id="q" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search paths"
-              className="w-full rounded-xl border-[3px] border-ink bg-white px-4 py-2 font-semibold outline-none focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-blue" />
+          <div className="explore-results">
+            {error ? (
+              <div className="lq-empty-card">
+                <img src="/img/pip-oops.png" alt="" />
+                <div><p>Couldn't load paths.</p></div>
+              </div>
+            ) : loading || !data ? <Spinner /> : data.length === 0 ? (
+              <div className="lq-empty-card">
+                <img src="/img/pip-think.png" alt="" />
+                <div><p>{scope === "mine" ? "You haven't joined or made any paths yet." : "Nothing here yet."}</p></div>
+              </div>
+            ) : (
+              <ul className="lq-comm explore-list">
+                {data.map((p, i) => <Row key={p.slug} p={p} onDone={reload} scope={scope} tone={tones[i % 4]} />)}
+              </ul>
+            )}
           </div>
-        </div>
-        <div className="mt-6">
-          {error ? <PipEmpty img="pip-oops">Couldn't load paths.</PipEmpty>
-            : loading || !data ? <Spinner />
-            : data.length === 0 ? <PipEmpty>{scope === "mine" ? "You haven't joined or made any paths yet." : "Nothing here yet."}</PipEmpty>
-            : <ul className="space-y-5">{data.map((p) => <Row key={p.slug} p={p} onDone={reload} scope={scope} />)}</ul>}
         </div>
       </Page>
-    </>
+    </div>
   );
 }
