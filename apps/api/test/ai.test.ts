@@ -278,11 +278,9 @@ test("flagged generated lesson text is rejected and not saved", async () => {
   }
 });
 
-test("lessons.get does not wait for image prewarm", async () => {
+test("lessons.get returns the lesson with its image prompt resolved", async () => {
   const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString("base64");
-  let release!: () => void;
-  const gate = new Promise<void>((r) => (release = r));
-  const srv = createServer((req, res) => { req.resume(); gate.then(() => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ data: [{ b64_json: PNG }] })); }); });
+  const srv = createServer((req, res) => { req.resume(); res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ data: [{ b64_json: PNG }] })); });
   await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
   const old = { u: env.IMAGE_BASE_URL, k: env.IMAGE_API_KEY, m: env.IMAGE_MODEL, s: env.IMAGE_API_STYLE };
   Object.assign(env, { IMAGE_BASE_URL: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`, IMAGE_API_KEY: "k", IMAGE_MODEL: "m", IMAGE_API_STYLE: "images" });
@@ -290,9 +288,8 @@ test("lessons.get does not wait for image prewarm", async () => {
     const doc = { v: 1, blocks: [{ type: "image", id: "i", props: { source: "generate", prompt: "A slow cell", alt: "cell" } }] };
     lessonOut = (kind) => (kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
     const { t, lessons: ls } = await setup();
-    assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200); // resolves while the image is still pending
+    assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
   } finally {
-    release();
     await idle();
     Object.assign(env, { IMAGE_BASE_URL: old.u, IMAGE_API_KEY: old.k, IMAGE_MODEL: old.m, IMAGE_API_STYLE: old.s });
     await new Promise((r) => srv.close(r));

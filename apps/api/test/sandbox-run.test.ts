@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
 
-const { startRun, runStatus, sendRunInput, stopRun } = await import("../src/sandbox/run.ts");
+const { startRun, runStatus, sendRunInput, stopRun, setRmTimeoutForTests } = await import("../src/sandbox/run.ts");
 const tick = () => new Promise((r) => setImmediate(r));
 
 // A fake `docker` process. `onInput` decides what it prints and when it exits when a line arrives on stdin.
@@ -93,13 +93,18 @@ test("stopping a run removes its container by name, and frees the slot only afte
 });
 
 test("a docker rm that never closes is killed and frees the slot after the timeout", async () => {
-  const { spawn, calls } = fakeDocker(() => {});
-  const id = startRun("input()", "learner-rm", "python", spawn as never)!;
-  stopRun(id, "learner-rm");
-  assert.equal(runStatus(id, "learner-rm", 0)?.done, false, "held while rm hangs");
-  await new Promise((r) => setTimeout(r, 10_200));
-  assert.equal(runStatus(id, "learner-rm", 0)?.done, true, "freed after the timeout");
-  assert.ok(calls.rmChild);
+  setRmTimeoutForTests(200);
+  try {
+    const { spawn, calls } = fakeDocker(() => {});
+    const id = startRun("input()", "learner-rm", "python", spawn as never)!;
+    stopRun(id, "learner-rm");
+    assert.equal(runStatus(id, "learner-rm", 0)?.done, false, "held while rm hangs");
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(runStatus(id, "learner-rm", 0)?.done, true, "freed after the timeout");
+    assert.ok(calls.rmChild);
+  } finally {
+    setRmTimeoutForTests(10_000);
+  }
 });
 
 test("another learner cannot read or answer a run", async () => {

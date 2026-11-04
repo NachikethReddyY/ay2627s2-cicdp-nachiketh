@@ -11,7 +11,11 @@ const MAX_OUT = 8000;
 const MAX_LINE = 200;
 const LIMIT_S = 60; // wall-clock limit, long enough for a learner to type answers
 const MAX_ACTIVE = 2; // live runs per learner
-const RM_TIMEOUT_MS = 10_000; // bound on `docker rm -f`
+let rmTimeoutMs = 10_000; // bound on `docker rm -f`
+/** Tests shorten the bound instead of waiting on it. */
+export function setRmTimeoutForTests(ms: number): void {
+  rmTimeoutMs = ms;
+}
 const KEEP_S = 60; // a finished run stays readable this long
 
 type Spawn = typeof nodeSpawn;
@@ -48,7 +52,7 @@ function terminate(run: Run, error?: string) {
   const rm = run.spawn("docker", ["rm", "-f", containerName(run.id)], { stdio: "ignore" });
   const end = () => finish(run, error);
   // A hung docker CLI would never close; give up after RM_TIMEOUT_MS so the slot is not held forever.
-  const giveUp = setTimeout(() => { rm.kill("SIGKILL"); end(); }, RM_TIMEOUT_MS);
+  const giveUp = setTimeout(() => { rm.kill("SIGKILL"); end(); }, rmTimeoutMs);
   giveUp.unref();
   const done = () => { clearTimeout(giveUp); end(); };
   rm.on("close", done);

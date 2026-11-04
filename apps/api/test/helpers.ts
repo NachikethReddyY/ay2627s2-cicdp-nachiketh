@@ -12,12 +12,12 @@ process.env.PUBLIC_ORIGIN ??= "http://localhost:5173";
 process.env.TRUSTED_PROXY ??= "127.0.0.1";
 
 import { randomInt } from "node:crypto";
-import { beforeEach } from "node:test";
+import { after, beforeEach } from "node:test";
 import type { FastifyInstance } from "fastify";
 
 // Dynamic imports: static ones would hoist above the env assignments.
 const { sql } = await import("drizzle-orm");
-const { db } = await import("../src/db/client.ts");
+const { db, pool } = await import("../src/db/client.ts");
 const { runMigrations } = await import("../src/db/migrate.ts");
 const { seed } = await import("../src/db/seed.ts");
 const { idle } = await import("../src/ai/service.ts");
@@ -31,6 +31,11 @@ beforeEach(async () => {
   await db.execute(
     sql`TRUNCATE enrollments, generation_cache, lesson_media, part_completions, path_courses, paths, hint_events, attempts, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
   );
+});
+
+// Close the pool when the file's tests finish. Otherwise idle connections keep node alive for the pool's idle timeout.
+after(async () => {
+  try { await pool.end(); } catch { /* the app's onClose may have ended it already */ }
 });
 
 export const PASSWORD = "correct-horse-battery";

@@ -69,7 +69,8 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   );
 
   app.addHook("onClose", async () => {
-    await pool.end();
+    // A test helper may already have ended the pool; pg rejects a second end().
+    await pool.end().catch(() => undefined);
   });
 
   app.register(
