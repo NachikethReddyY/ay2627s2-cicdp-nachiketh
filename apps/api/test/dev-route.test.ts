@@ -16,3 +16,14 @@ test("POST /dev/visual is 404 in production", async () => {
   assert.equal(res.statusCode, 404);
   await app.close();
 });
+
+test("POST /dev/visual is 404 when NODE_ENV is unset", async () => {
+  const saved = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
+  const app = Fastify();
+  app.register(devRoutes);
+  const res = await app.inject({ method: "POST", url: "/dev/visual", payload: { prompt: "a chart" } });
+  process.env.NODE_ENV = saved;
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});

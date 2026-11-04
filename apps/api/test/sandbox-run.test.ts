@@ -92,6 +92,16 @@ test("stopping a run removes its container by name, and frees the slot only afte
   assert.ok(startRun("input()", "learner-h", "python", spawn as never), "slot freed after rm");
 });
 
+test("a docker rm that never closes is killed and frees the slot after the timeout", async () => {
+  const { spawn, calls } = fakeDocker(() => {});
+  const id = startRun("input()", "learner-rm", "python", spawn as never)!;
+  stopRun(id, "learner-rm");
+  assert.equal(runStatus(id, "learner-rm", 0)?.done, false, "held while rm hangs");
+  await new Promise((r) => setTimeout(r, 10_200));
+  assert.equal(runStatus(id, "learner-rm", 0)?.done, true, "freed after the timeout");
+  assert.ok(calls.rmChild);
+});
+
 test("another learner cannot read or answer a run", async () => {
   const { spawn } = fakeDocker(() => {}, "secret");
   const id = startRun("input()", "learner-c", "python", spawn as never)!;

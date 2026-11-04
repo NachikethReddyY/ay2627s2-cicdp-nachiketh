@@ -1,13 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { env } from "../env.ts";
 import { callEngine, EngineError } from "../engine-client/client.ts";
 
 const Body = z.object({ prompt: z.string().min(1).max(500) });
 
-// Dev playground only: in production the route is never registered, so it answers the normal 404.
+// Dev playground only: any env other than development/test (including unset NODE_ENV, as in app.ts) never registers it, so it answers the normal 404.
 export async function devRoutes(app: FastifyInstance) {
-  if (env.NODE_ENV === "production") return;
+  if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test") return;
 
   app.post("/dev/visual", async (req, reply) => {
     const body = Body.safeParse(req.body);
