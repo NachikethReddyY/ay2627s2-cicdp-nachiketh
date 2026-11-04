@@ -219,6 +219,22 @@ test("concurrent requests for one prompt share a single provider call", async ()
   assert.ok(results.every((r) => r.status === "ready"));
 });
 
+test("concurrent requests for one prompt from two learners share a single provider call", async () => {
+  const f = await fake("images");
+  configure(f.url, "images");
+  setStorage(memoryStorage());
+  const lessonVersionId = await versionId();
+  const a = await learnerId_();
+  await db.insert(user).values({ id: "u2", name: "T2", email: "t2@example.com" });
+  const b = (await db.insert(learners).values({ userId: "u2" }).returning({ id: learners.id }))[0]!.id;
+  const results = await Promise.all([
+    generateImage({ ...base, lessonVersionId, learnerId: a, tier: "max" as const }),
+    generateImage({ ...base, lessonVersionId, learnerId: b, tier: "max" as const }),
+  ]);
+  assert.equal(f.calls.length, 1);
+  assert.ok(results.every((r) => r.status === "ready"));
+});
+
 test("prewarm generates each image once, so a later read costs no provider call", async () => {
   const f = await fake("images");
   configure(f.url, "images");

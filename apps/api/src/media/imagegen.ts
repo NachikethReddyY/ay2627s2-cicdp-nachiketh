@@ -39,12 +39,13 @@ type ImageInput = {
   tier: keyof typeof tiers;
 };
 
-// Concurrent reads of the same prompt (prewarm racing a lesson read) share one provider call instead of paying twice.
+// Concurrent reads of the same prompt (any learner, prewarm racing a lesson read) share one provider call instead of paying twice.
 // shortcut: per process only; another API instance can still start its own call, the promptHash unique index stops a duplicate save.
+// shortcut: a learner who shares a call inherits the first caller's cap-refusal fallback, and is not charged a slot.
 const inFlight = new Map<string, Promise<ImageResult>>();
 
 export function generateImage(input: ImageInput, http: HttpClient = fetchHttp): Promise<ImageResult> {
-  const key = `${input.learnerId}:${createHash("sha256").update(input.prompt).digest("hex")}`;
+  const key = createHash("sha256").update(input.prompt).digest("hex");
   const pending = inFlight.get(key);
   if (pending) return pending;
   const run = generateImageOnce(input, http).finally(() => inFlight.delete(key));
