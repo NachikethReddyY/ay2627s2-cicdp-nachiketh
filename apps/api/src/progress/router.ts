@@ -413,7 +413,9 @@ const gameComplete = protectedProcedure
   .input(z.object({ lessonId: z.string().regex(/^[\w-]{1,64}$/), partIdx: z.number().int().min(0).max(100), blockId: z.string().regex(/^[\w-]{1,64}$/) }))
   .output(z.object({ awarded: z.boolean() }))
   .mutation(async ({ ctx, input }) => {
+    // A recorded win also completes the lesson's part, in the same statement.
     const { rows } = await db.execute(sql`
+      WITH win AS (
       INSERT INTO game_completions (learner_id, lesson_id, part_idx, block_id)
       SELECT ${ctx.learnerId}, l.id, ${input.partIdx}, ${input.blockId}
       FROM lessons l
@@ -428,7 +430,9 @@ const gameComplete = protectedProcedure
         AND EXISTS (SELECT 1 FROM jsonb_array_elements(v.content->'doc'->'blocks') b
           WHERE b->>'id' = ${input.blockId} AND b->>'type' = 'game')
       ON CONFLICT DO NOTHING
-      RETURNING 1`);
+      RETURNING lesson_id),
+      pc AS (INSERT INTO part_completions (learner_id, lesson_id) SELECT ${ctx.learnerId}, lesson_id FROM win ON CONFLICT DO NOTHING)
+      SELECT 1 FROM win`);
     return { awarded: rows.length > 0 };
   });
 export const gamesRouter = router({ complete: gameComplete });

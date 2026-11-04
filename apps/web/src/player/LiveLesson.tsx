@@ -35,8 +35,8 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     const t = setTimeout(() => setSlow(true), 1500);
     return () => clearTimeout(t);
   }, []);
-  // Reading or watching a part counts it as finished; practice counts on a correct Check instead. Errors are ignored.
-  const readKind = data?.kind === "learn" || data?.kind === "watch" || data?.kind === "game-practice";
+  // Reading or watching a part counts it as finished; practice and games are completed server-side. Errors are ignored.
+  const readKind = data?.kind === "learn" || data?.kind === "watch";
   useEffect(() => {
     if (data && readKind) void trpc.parts.complete.mutate({ lessonId: data.id }).catch(() => {});
   }, [data?.id, readKind]);
@@ -125,7 +125,6 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
   const [typed, setTyped] = useState("");
   const stdout = useRef(""); // program output only, without the echoed answers; Check compares this
   const checking = useRef(false);
-  const counted = useRef(false); // a lesson counts as complete once, on its first correct Check
   const runRef = useRef<HTMLButtonElement>(null);
   const timeline = useMemo(() => buildTimeline([{ beforeFiles: {}, hunks: [] }]), []);
   const python = part.language === "python";
@@ -134,10 +133,6 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
     if (!checking.current) return;
     const pass = !error && out.trim() === part.expectedOutput.trim();
     setOk(pass);
-    if (pass && !counted.current) {
-      counted.current = true;
-      void trpc.parts.complete.mutate({ lessonId }).catch(() => {});
-    }
   };
 
   useEffect(() => {
