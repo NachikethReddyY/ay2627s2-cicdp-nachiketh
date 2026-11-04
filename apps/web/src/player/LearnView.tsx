@@ -15,7 +15,11 @@ export function Markdown({ body }: { body: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
-        components={{ pre: ({ node, ...props }) => <pre tabIndex={0} className={`chunk overflow-x-auto bg-white p-4 text-sm ${FOCUS}`} {...props} /> }}
+        components={{
+          pre: ({ node, ...props }) => <pre tabIndex={0} className={`chunk overflow-x-auto bg-white p-4 text-sm ${FOCUS}`} {...props} />,
+          // Model-written image links could point at any host, so show the description instead of loading them.
+          img: ({ alt }) => <span className="italic">{alt}</span>,
+        }}
       >
         {markdown}
       </ReactMarkdown>
