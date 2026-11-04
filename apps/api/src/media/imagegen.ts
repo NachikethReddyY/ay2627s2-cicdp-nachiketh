@@ -58,12 +58,12 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
   const hash = createHash("sha256").update(input.prompt).digest("hex");
   const [cached] = await db.select({ key: lessonMedia.key, status: lessonMedia.status }).from(lessonMedia).where(eq(lessonMedia.promptHash, hash)).limit(1);
   if (cached?.status === "ready" && cached.key) return { status: "ready", key: cached.key };
-  // Moderation runs only for prompts we would send to the provider; a stored image already passed it when saved.
-  if (!(await isSafe(input.prompt))) return fallback;
   // A prompt that failed in the last 24 hours (for anyone) is not paid for again.
   const [failed] = await db.select({ id: imageGenerations.id }).from(imageGenerations)
     .where(and(eq(imageGenerations.promptHash, hash), eq(imageGenerations.status, "failed"), gt(imageGenerations.createdAt, sql`now() - interval '24 hours'`))).limit(1);
   if (failed) return fallback;
+  // Moderation runs only for prompts we would send to the provider; a stored image already passed it when saved.
+  if (!(await isSafe(input.prompt))) return fallback;
   // Take the learner's daily slot under a per-learner lock so parallel reads cannot both pass the cap.
   // The row is "ready" from the start (so it counts) and flips to "failed" if generation does not finish.
   const slot = await withTx(async (tx) => {
