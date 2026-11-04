@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// A blank value (e.g. `IMAGE_ESTIMATE_USD=` in .env) means unset, not 0 (which would reserve nothing).
+const blankIsUnset = (v: unknown) => (v === "" ? undefined : v);
+
 const schema = z
   .object({
     DATABASE_URL: z.string().min(1),
@@ -20,12 +23,12 @@ const schema = z
     IMAGE_API_KEY: z.string().min(1).optional(),
     IMAGE_MODEL: z.string().min(1).optional(),
     IMAGE_API_STYLE: z.enum(["images", "chat"]).default("images"),
-    IMAGE_ESTIMATE_USD: z.coerce.number().nonnegative().default(0.04),
+    IMAGE_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0.04)),
     TIERS_JSON: z.string().optional(),
-    AI_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(0),
-    AI_MONTHLY_BUDGET_USD: z.coerce.number().nonnegative().default(0),
+    AI_DAILY_BUDGET_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
+    AI_MONTHLY_BUDGET_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     // Estimated cost of one paid text call (outline, part, lesson), reserved before the call. A budget of 0 means unlimited.
-    AI_CALL_ESTIMATE_USD: z.coerce.number().nonnegative().default(0.01),
+    AI_CALL_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0.01)),
     AI_KILL_SWITCH: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     // Lesson media bucket (docs/media-storage-plan.md §2). Unset: media calls answer PRECONDITION_FAILED.
     S3_ENDPOINT: z.url().optional(),

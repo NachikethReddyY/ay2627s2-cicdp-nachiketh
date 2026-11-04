@@ -48,7 +48,8 @@ export async function isSafe(
   if (allowList.test(input.trim())) return true;
   try {
     const result = await client(input);
-    return !result.flagged && CATEGORIES.every((category) => (result.scores[category] ?? 1) < THRESHOLD);
+    // Only the categories the provider returned: omni-moderation has no jailbreak score, and a missing one must not block.
+    return !result.flagged && Object.values(result.scores).every((score) => score < THRESHOLD);
   } catch (error) {
     if (failOpen) console.warn("moderation unavailable; text allowed", error instanceof Error ? error.message : "");
     return failOpen;

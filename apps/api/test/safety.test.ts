@@ -26,6 +26,11 @@ test("low confidence passes and provider failures fail closed", async () => {
   assert.equal(await isSafe("learner supplied text", async () => { throw new Error("offline"); }), false);
 });
 
+test("a provider response without a jailbreak score still passes when values are low", async () => {
+  const { jailbreak: _unused, ...providerScores } = Object.fromEntries(CATEGORIES.map((c) => [c, 0.01]));
+  assert.equal(await isSafe("learner supplied text", async () => ({ flagged: false, scores: providerScores })), true);
+});
+
 test("a stalled moderation provider is aborted within the timeout and the failure policy applies", async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((_url: unknown, init?: RequestInit) =>
