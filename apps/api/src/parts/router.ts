@@ -4,7 +4,8 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 
-// Marks a learn/watch/practice/game-practice lesson complete. Predict lessons count steps, so they are a no-op here.
+// Marks a learn/watch lesson complete. Predict lessons count steps, so they are a no-op here.
+// Practice and game-practice need server evidence (no verified practice result exists yet; games.complete records game wins).
 const complete = protectedProcedure
   .input(z.object({ lessonId: z.string().regex(/^[\w-]{1,64}$/) }))
   .output(z.object({ ok: z.literal(true) }))
@@ -19,6 +20,8 @@ const complete = protectedProcedure
         AND l.status = 'published'
         AND (w.visibility = 'public' OR w.owner_id = me.user_id)`);
     if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+    if (lesson.kind === "practice" || lesson.kind === "game-practice")
+      throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is completed by playing it" });
     if (lesson.kind !== "predict") {
       await db.execute(sql`
         INSERT INTO part_completions (learner_id, lesson_id) VALUES (${ctx.learnerId}, ${lesson.id})

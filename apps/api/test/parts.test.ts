@@ -15,7 +15,7 @@ const m = (cookie: string, path: string, input?: unknown) => trpc(app, cookie).m
 const userId = async (email: string) => (await db.select({ id: user.id }).from(user).where(eq(user.email, email)))[0]!.id;
 
 // Adds a lesson with one current version holding `content`; the world defaults to codequest (seeded by signUp).
-async function addLesson(slug: string, kind: "learn" | "game-practice", content: PartSecret, worldId?: string, status: "published" | "draft" = "published") {
+async function addLesson(slug: string, kind: "learn" | "game-practice" | "practice", content: PartSecret, worldId?: string, status: "published" | "draft" = "published") {
   const world = worldId ?? (await db.select().from(worlds).where(eq(worlds.slug, "codequest")))[0]!.id;
   const [lesson] = await db.insert(lessons).values({ slug, title: slug, worldId: world, sourceKind: "authored", kind, status }).returning();
   const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, content }).returning();
@@ -82,10 +82,23 @@ test("games.complete: only a real game block of a game-practice lesson at partId
 
   assert.deepEqual(out(await m(cookie, "games.complete", { ...real, blockId: "made-up" })), { awarded: false });
   assert.deepEqual(out(await m(cookie, "games.complete", { ...real, partIdx: 1 })), { awarded: false });
+  assert.equal((await db.select().from(partCompletions)).length, 0, "no win, no completion");
   assert.deepEqual(out(await m(cookie, "games.complete", real)), { awarded: true });
+  assert.equal((await db.select().from(partCompletions)).length, 1, "a recorded win completes the part");
   assert.deepEqual(out(await m(cookie, "games.complete", real)), { awarded: false });
   assert.equal(out(await get(cookie)).stats.xp, 10);
 
   await addLesson("learn-1", "learn", learnPart);
   assert.deepEqual(out(await m(cookie, "games.complete", { lessonId: "learn-1", partIdx: 0, blockId: "sort-game" })), { awarded: false });
+});
+
+test("parts.complete rejects practice and game-practice without evidence", async () => {
+  const cookie = await signUp(app);
+  await addLesson("prac-1", "practice", { kind: "practice", instructions: "x", starterCode: "", expectedOutput: "1" });
+  await addLesson("game-1", "game-practice", gamePart);
+  for (const lessonId of ["prac-1", "game-1"]) {
+    const res = await m(cookie, "parts.complete", { lessonId });
+    assert.equal(code(res), "FORBIDDEN");
+  }
+  assert.equal((await db.select().from(partCompletions)).length, 0);
 });
