@@ -15,6 +15,7 @@ const provider: ModerationClient = async (input) => {
     method: "POST",
     headers: { authorization: `Bearer ${env.MODERATION_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({ model: "omni-moderation-latest", input }),
+    signal: AbortSignal.timeout(5000), // an abort throws, so isSafe applies its usual failOpen policy
   });
   if (!response.ok) throw new Error("Moderation provider unavailable");
   const json = (await response.json()) as { results?: Array<{ flagged?: boolean; category_scores?: Record<string, number> }> };
