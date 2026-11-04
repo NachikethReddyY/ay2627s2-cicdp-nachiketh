@@ -30,12 +30,15 @@ test("a stalled moderation provider is aborted within the timeout and the failur
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((_url: unknown, init?: RequestInit) =>
     new Promise((_res, rej) => init?.signal?.addEventListener("abort", () => rej(init.signal!.reason)))) as typeof fetch;
+  // AbortSignal.timeout's timer is unref'd, so keep the event loop alive while the call waits (CI otherwise cancels the test).
+  const keepAlive = setTimeout(() => {}, 15_000);
   try {
     const started = Date.now();
     assert.equal(await isSafe("learner supplied text"), false, "fails closed by default");
     assert.ok(Date.now() - started < 7000, "aborted near the 5s timeout");
     assert.equal(await isSafe("learner supplied text", undefined, { failOpen: true }), true, "fails open when asked");
   } finally {
+    clearTimeout(keepAlive);
     globalThis.fetch = realFetch;
   }
 });
