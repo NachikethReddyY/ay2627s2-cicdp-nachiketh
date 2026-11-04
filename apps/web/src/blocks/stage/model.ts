@@ -27,6 +27,11 @@ export function segment(step: number, animate: boolean, poses: number[]): [numbe
   return animate && step + 1 < poses.length ? [poses[step]!, poses[step + 1]!] : null;
 }
 
+/** Freezes or releases a GSAP tween. Accepts any tween-like object so the helper stays testable without a DOM. */
+export function holdTween(tween: { pause(): unknown; resume(): unknown } | null | undefined, paused: boolean): void {
+  if (paused) tween?.pause(); else tween?.resume();
+}
+
 export function bodyState(id: string, y: number): TimelineState {
   const state: TimelineState = Object.create(null);
   state[id] = { y };
