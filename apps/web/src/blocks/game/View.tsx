@@ -76,6 +76,8 @@ function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete
     if (i.type === "step") {
       if (!watch || idx >= watch.trace.length) return setLive(watch ? "End of the solution." : "");
       setIdx(idx + 1);
+      // Reaching the end of a watched solution is the win, so the Shell reports completion like any other win.
+      if (idx + 1 === watch.trace.length) setOutcome("win");
       return setLive(announceStep(watch, idx) + (idx + 1 === watch.trace.length ? " End of the solution." : ""));
     }
     if (!c.build) return;
