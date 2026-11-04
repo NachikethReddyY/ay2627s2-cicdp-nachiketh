@@ -16,6 +16,8 @@ function useTweened(target: TimelineState, duration: number, ease: string, reduc
   const [shown, setShown] = useState(target);
   const last = useRef<Map<string, number>>(new Map());
   const tweenRef = useRef<gsap.core.Tween | null>(null);
+  // Set when this commit created a tween for a new target, so the pause effect below leaves it running.
+  const fresh = useRef(false);
   useEffect(() => {
     const entries: [string, string, number][] = [];
     for (const id of Object.keys(target)) for (const prop of Object.keys(target[id]!)) {
@@ -42,15 +44,19 @@ function useTweened(target: TimelineState, duration: number, ease: string, reduc
     if (reduced || duration <= 0 || entries.length === 0) { Object.assign(obj, goal); render(); return; }
     const tween = gsap.to(obj, { ...goal, duration: duration / 1000, ease, onUpdate: render });
     tweenRef.current = tween;
+    fresh.current = true;
     return () => { tween.kill(); tweenRef.current = null; };
   }, [target, duration, ease, reduced, shapes]);
-  // Pause freezes the tween in flight, on a change only so a fresh mount is not frozen. A step jumped to while paused still plays.
+  // Pause freezes the tween in flight, on a change only so a fresh mount is not frozen. A new target in the same commit
+  // (the last step reached during playback, or a Next click) is not frozen: it runs to its target.
   const pausedSeen = useRef(paused);
   useEffect(() => {
+    const created = fresh.current;
+    fresh.current = false;
     if (pausedSeen.current === paused) return;
     pausedSeen.current = paused;
-    holdTween(tweenRef.current, paused);
-  }, [paused]);
+    if (!created) holdTween(tweenRef.current, paused);
+  }, [paused, target]);
   return shown;
 }
 

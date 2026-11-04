@@ -34,12 +34,17 @@ function Prim({ p, state, ms, paused, objs }: { p: Primitive; state?: TimelineSt
   const r = resolve(p, state);
   const invalidate = useThree((s) => s.invalidate);
   const cur = useRef<{ pos: Vec3; rot: Vec3 }>({ pos: [...r.position], rot: [...r.rotation] });
-  // Pause freezes the easing in flight; a new target (a step jumped to while paused) clears the freeze and eases in.
+  // Pause freezes the easing in flight; a new target in the same commit (a step reached during playback, or a Next click) clears the freeze and eases in.
   const frozen = useRef(false);
+  const seen = useRef({ state, ms });
   useEffect(() => { const o = g.current; if (o) objs.set(p.id, o); return () => { objs.delete(p.id); }; }, [objs, p.id]);
   // Frameloop is "demand": a new target needs one frame to start; the loop then keeps invalidating until it arrives.
-  useEffect(() => { frozen.current = false; invalidate(); }, [invalidate, state, ms]);
-  useEffect(() => { frozen.current = paused; invalidate(); }, [invalidate, paused]);
+  useEffect(() => {
+    const newTarget = seen.current.state !== state || seen.current.ms !== ms;
+    seen.current = { state, ms };
+    frozen.current = newTarget ? false : paused;
+    invalidate();
+  }, [invalidate, state, ms, paused]);
   // Ease towards the target; ms is 0 under reduced motion and without a timeline, which snaps instead.
   useFrame(({ invalidate: again }, dt) => {
     const o = g.current;
