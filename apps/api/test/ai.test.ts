@@ -1,6 +1,8 @@
 import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { eq, sql } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
@@ -10,6 +12,7 @@ import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { idle } from "../src/ai/service.ts";
+import { setModerationClient } from "../src/safety/moderation.ts";
 import photosynthesis from "../../../services/engine/tests/fixtures/outline_photosynthesis.json" with { type: "json" };
 
 const app = buildApp();
@@ -241,5 +244,57 @@ test("the AI budget stops a lesson with its own message, before the model call a
     env.AI_CALL_ESTIMATE_USD = old.estimate;
     await idle();
     await db.execute(sql`DELETE FROM spend_ledger`);
+  }
+});
+
+test("a budget refusal does not consume a daily AI path", async () => {
+  await db.execute(sql`DELETE FROM spend_ledger`);
+  const old = env.AI_DAILY_BUDGET_USD;
+  try {
+    env.AI_DAILY_BUDGET_USD = 0.001;
+    env.AI_CALL_ESTIMATE_USD = 0.01;
+    const t = trpc(app, await signUp(app, "budget@example.com"));
+    const [{ n: before }] = (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM ai_generations`)).rows;
+    assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
+    const [{ n: after }] = (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM ai_generations`)).rows;
+    assert.equal(after, before);
+  } finally {
+    env.AI_DAILY_BUDGET_USD = old;
+    await db.execute(sql`DELETE FROM spend_ledger`);
+  }
+});
+
+test("flagged generated lesson text is rejected and not saved", async () => {
+  const clean = { flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } };
+  setModerationClient(async (input) => ({ ...clean, flagged: input.includes("Variables hold values") }));
+  try {
+    const { t, lessons: ls } = await setup();
+    assert.equal(code(await t.q("lessons.get", { id: ls[0]!.slug })), "INTERNAL_SERVER_ERROR");
+    const rows = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));
+    assert.equal(rows[0]!.currentVersionId, null);
+  } finally {
+    setModerationClient(async () => clean);
+    await idle();
+  }
+});
+
+test("lessons.get does not wait for image prewarm", async () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString("base64");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const srv = createServer((req, res) => { req.resume(); gate.then(() => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ data: [{ b64_json: PNG }] })); }); });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const old = { u: env.IMAGE_BASE_URL, k: env.IMAGE_API_KEY, m: env.IMAGE_MODEL, s: env.IMAGE_API_STYLE };
+  Object.assign(env, { IMAGE_BASE_URL: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`, IMAGE_API_KEY: "k", IMAGE_MODEL: "m", IMAGE_API_STYLE: "images" });
+  try {
+    const doc = { v: 1, blocks: [{ type: "image", id: "i", props: { source: "generate", prompt: "A slow cell", alt: "cell" } }] };
+    lessonOut = (kind) => (kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
+    const { t, lessons: ls } = await setup();
+    assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200); // resolves while the image is still pending
+  } finally {
+    release();
+    await idle();
+    Object.assign(env, { IMAGE_BASE_URL: old.u, IMAGE_API_KEY: old.k, IMAGE_MODEL: old.m, IMAGE_API_STYLE: old.s });
+    await new Promise((r) => srv.close(r));
   }
 });

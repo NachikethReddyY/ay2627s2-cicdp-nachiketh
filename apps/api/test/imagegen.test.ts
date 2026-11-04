@@ -156,6 +156,20 @@ test("a failed generation is not retried for the same prompt", async () => {
   assert.equal(f.calls.length, 1);
 });
 
+test("a prompt with a recent failed row does not call moderation", async () => {
+  const f = await fake("images", { status: 500, body: {} });
+  configure(f.url, "images");
+  setStorage(memoryStorage());
+  const lessonVersionId = await versionId();
+  const learnerId = await learnerId_();
+  let moderated = 0;
+  setModerationClient(async () => { moderated++; return clean(); });
+  await generateImage({ ...base, lessonVersionId, learnerId });
+  const before = moderated;
+  assert.equal((await generateImage({ ...base, lessonVersionId, learnerId })).status, "fallback");
+  assert.equal(moderated, before);
+});
+
 test("an oversized provider response is rejected as a failure", async () => {
   const f = await fake("images", { body: JSON.stringify({ data: [{ b64_json: "A".repeat(4 * 1024 * 1024 + 1) }] }) });
   configure(f.url, "images");

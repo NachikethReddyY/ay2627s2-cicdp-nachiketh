@@ -80,18 +80,23 @@ export async function generatePath(learnerId: string, topic: string) {
   if (!env.ANTHROPIC_API_KEY && !env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
   // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
-  const allowed = await withTx(async (tx) => {
+  const slot = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me!.userId}))`);
     const {
       rows: [{ n }],
     } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me!.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= tiers[me!.tier as keyof typeof tiers].aiPathsPerDay) return false;
-    await tx.insert(aiGenerations).values({ userId: me!.userId });
-    return true;
+    if (n >= tiers[me!.tier as keyof typeof tiers].aiPathsPerDay) return null;
+    const [row] = await tx.insert(aiGenerations).values({ userId: me!.userId }).returning({ id: aiGenerations.id });
+    return row!.id;
   });
-  if (!allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me!.tier as keyof typeof tiers].aiPathsPerDay} AI paths for today` });
-  await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
+  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me!.tier as keyof typeof tiers].aiPathsPerDay} AI paths for today` });
+  try {
+    await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
+  } catch (e) {
+    await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)); // refused before any call: the daily path is not used
+    throw e;
+  }
 
   let outline;
   try {
@@ -152,14 +157,20 @@ function validate(raw: unknown): GeneratedStep[] {
   return steps;
 }
 
+// Generated text is moderated before it is saved; a flag throws so writeWith retries. Fails open like topics.
+async function moderated<T>(v: T): Promise<T> {
+  if (!(await isSafeText(JSON.stringify(v)))) throw new Error("Generated content refused by safety filter");
+  return v;
+}
+
 // Bump when a prompt or the engine's part shape changes, so stale cached parts are not reused.
 const PART_CACHE_VERSION = 1;
 
-async function writeWith<T>(produce: () => Promise<unknown>, check: (raw: unknown) => T): Promise<T> {
+async function writeWith<T>(produce: () => Promise<unknown>, check: (raw: unknown) => T | Promise<T>): Promise<T> {
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return check(await produce());
+      return await check(await produce());
     } catch (e) {
       // Budget and kill-switch errors are final: retrying would not help and would hide the message.
       if (e instanceof TRPCError) throw e;
@@ -210,7 +221,7 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
         part = await writeWith(async () => {
           await reserveAiSpend(env.AI_CALL_ESTIMATE_USD); // per attempt, so a retry is reserved too
           return measureGeneration("part", () => engineParts.lesson(partCtx));
-        }, validatePart);
+        }, async (raw) => moderated(validatePart(raw)));
         await tx.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
       }
     }
@@ -219,7 +230,7 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
       : await writeWith(async () => {
           await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
           return measureGeneration("lesson", () => generator.lesson(ctx));
-        }, validate);
+        }, async (raw) => moderated(validate(raw)));
 
     const [version] = await tx
       .insert(lessonVersions)
@@ -251,10 +262,12 @@ export async function ensureLesson(lessonId: string, learnerId: string) {
     return { lessonVersionId: version!.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
   });
   if (!written) return false;
-  // Best-effort: a failed image must not fail the lesson read.
+  // Best-effort and not awaited: the read must not wait on image generation.
   if (written.prewarm) {
-    await prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
-      .catch((e) => console.error("prewarm of lesson images failed", e));
+    const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
+      .catch((e) => console.error("prewarm of lesson images failed", e))
+      .finally(() => background.delete(p));
+    background.add(p);
   }
   return true;
 }
