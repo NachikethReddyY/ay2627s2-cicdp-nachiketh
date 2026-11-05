@@ -11,7 +11,7 @@ import { env } from "../src/env.ts";
 import { saveMedia } from "../src/media/service.ts";
 import { importNarration } from "../src/media/import-narration.ts";
 import { db } from "../src/db/client.ts";
-import { lessons, steps } from "../src/db/schema.ts";
+import { lessonMedia, lessons, steps } from "../src/db/schema.ts";
 import { eq } from "drizzle-orm";
 
 const live = process.env.S3_LIVE === "1" && !!env.S3_BUCKET;
@@ -44,7 +44,11 @@ test("real bucket: objects carry their type and cache headers, signed URLs work,
   const [first] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
 
   // Narration through the import command, an image straight through saveMedia.
+  // Each key is recorded for cleanup as soon as its object exists, before any check that could fail.
   const r = await importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }]);
+  const [narration] = await db.select({ key: lessonMedia.key }).from(lessonMedia).where(eq(lessonMedia.kind, "narration"));
+  const mp3Key = narration!.key!;
+  written.push(mp3Key);
   assert.deepEqual(r.saved, [first!.idx]);
   const pngKey = await saveMedia({ lessonVersionId: versionId, kind: "image", body: PNG, contentType: "image/png" });
   written.push(pngKey);
@@ -52,8 +56,7 @@ test("real bucket: objects carry their type and cache headers, signed URLs work,
   const body = out(await trpc(app, cookie).q("lessons.get", { id: "lesson-1" }));
   assert.equal(body.media.length, 1);
   const audioUrl: string = body.media[0].url;
-  const mp3Key = decodeURIComponent(new URL(audioUrl).pathname.split("/").slice(2).join("/"));
-  written.push(mp3Key);
+  assert.equal(decodeURIComponent(new URL(audioUrl).pathname.split("/").slice(2).join("/")), mp3Key);
 
   for (const [Key, type] of [[mp3Key, "audio/mpeg"], [pngKey, "image/png"]] as const) {
     const head = await client!.send(new HeadObjectCommand({ Bucket: env.S3_BUCKET, Key }));
