@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { db } from "../db/client.ts";
 import { lessonMedia } from "../db/schema.ts";
@@ -63,14 +63,15 @@ export async function saveMedia(input: {
   return key;
 }
 
-// Signed read URLs for a version's media. Access control is the caller's visibility check (lessons.get).
+// Signed narration URLs for a version. Images are not listed: resolveDocImages signs them inline in the doc.
+// Access control is the caller's visibility check (lessons.get).
 export async function listMedia(lessonVersionId: string) {
   const s = storage;
   if (!s) return [];
   const rows = await db
-    .select({ stepId: lessonMedia.stepId, kind: lessonMedia.kind, key: lessonMedia.key, status: lessonMedia.status })
+    .select({ stepId: lessonMedia.stepId, key: lessonMedia.key, status: lessonMedia.status })
     .from(lessonMedia)
-    .where(eq(lessonMedia.lessonVersionId, lessonVersionId))
+    .where(and(eq(lessonMedia.lessonVersionId, lessonVersionId), eq(lessonMedia.kind, "narration")))
     .orderBy(asc(lessonMedia.createdAt));
-  return Promise.all(rows.filter((r): r is typeof r & { key: string } => r.key !== null && r.status === "ready").map(async (r) => ({ stepId: r.stepId, kind: r.kind, url: await s.signGet(r.key) })));
+  return Promise.all(rows.filter((r): r is typeof r & { key: string } => r.key !== null && r.status === "ready").map(async (r) => ({ stepId: r.stepId, kind: "narration" as const, url: await s.signGet(r.key) })));
 }

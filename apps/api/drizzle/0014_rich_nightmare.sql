@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "lesson_media_one_narration" ON "lesson_media" USING btree ("lesson_version_id","step_id") WHERE "lesson_media"."kind" = 'narration' AND "lesson_media"."status" = 'ready';

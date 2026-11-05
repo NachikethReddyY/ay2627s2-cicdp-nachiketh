@@ -1,13 +1,14 @@
 import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { lessonMedia, lessons, worlds } from "../src/db/schema.ts";
+import { lessonMedia, lessons, steps, worlds } from "../src/db/schema.ts";
 import { memoryStorage, s3Storage, setStorage } from "../src/media/storage.ts";
 import { saveMedia } from "../src/media/service.ts";
+import { importNarration } from "../src/media/import-narration.ts";
 
 const app = buildApp();
 after(() => {
@@ -73,21 +74,73 @@ test("saveMedia writes the object, then the row, under a server-built key", asyn
   );
 });
 
-test("lessons.get returns signed media for a visible lesson", async () => {
+test("lessons.get returns signed narration, and no images, for a visible lesson", async () => {
   const cookie = await signUp(app);
   const { versionId, stepId } = await lessonVersion();
   setStorage(memoryStorage());
-  const key = await saveMedia({ lessonVersionId: versionId, stepId, kind: "image", body: PNG, contentType: "image/png" });
+  const key = await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: MP3, contentType: "audio/mpeg" });
+  // Images are signed inline in part.doc by resolveDocImages, so the media list leaves them out.
+  await saveMedia({ lessonVersionId: versionId, stepId, kind: "image", body: PNG, contentType: "image/png" });
 
   const body = out(await trpc(app, cookie).q("lessons.get", { id: "lesson-1" }));
-  assert.deepEqual(body.media, [{ stepId, kind: "image", url: `memory://${key}` }]);
+  assert.deepEqual(body.media, [{ stepId, kind: "narration", url: `memory://${key}` }]);
+});
+
+test("importNarration stores one MP3 per step and skips steps already stored", async () => {
+  await signUp(app);
+  const { versionId } = await lessonVersion();
+  const mem = memoryStorage();
+  setStorage(mem);
+  const stepRows = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
+  const [a, b] = stepRows;
+
+  assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }]), { saved: [a!.idx], skipped: [] });
+  assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }, { idx: b!.idx, body: MP3 }]), { saved: [b!.idx], skipped: [a!.idx] });
+
+  const rows = await db.select().from(lessonMedia).orderBy(asc(lessonMedia.createdAt));
+  assert.deepEqual(rows.map((r) => [r.stepId, r.kind, r.contentType]), [[a!.id, "narration", "audio/mpeg"], [b!.id, "narration", "audio/mpeg"]]);
+  assert.equal(mem.objects.size, 2);
+});
+
+test("the database allows only one ready narration per step, and the import treats a lost race as skipped", async () => {
+  await signUp(app);
+  const { versionId } = await lessonVersion();
+  setStorage(memoryStorage());
+  const [first] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
+  await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" });
+  await assert.rejects(saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" }));
+  // An image for the same step is still allowed.
+  await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "image", body: PNG, contentType: "image/png" });
+  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 1);
+
+  // Two overlapping imports of another step: exactly one stores it, neither throws.
+  const [, second] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
+  const runs = await Promise.all([1, 2].map(() => importNarration("lesson-1", [{ idx: second!.idx, body: MP3 }])));
+  assert.equal(runs.flatMap((r) => r.saved).length, 1);
+  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 2);
+});
+
+test("importNarration refuses unknown steps, bad bytes and missing storage before writing", async () => {
+  await signUp(app);
+  const mem = memoryStorage();
+  setStorage(mem);
+  await assert.rejects(importNarration("lesson-1", [{ idx: 999, body: MP3 }]), /no step with idx 999/);
+  await assert.rejects(importNarration("no-such-lesson", [{ idx: 0, body: MP3 }]), /not found/);
+  const [first] = await db.select({ idx: steps.idx }).from(steps).limit(1);
+  // e.g. `1.mp3` and `01.mp3` in one folder
+  await assert.rejects(importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }, { idx: first!.idx, body: MP3 }]), /More than one file for step idx/);
+  await rejects(importNarration("lesson-1", [{ idx: first!.idx, body: PNG }]), "Media bytes do not match type");
+  setStorage(null);
+  await rejects(importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }]), "Media storage is not configured");
+  assert.equal(mem.objects.size, 0);
+  assert.equal((await db.select().from(lessonMedia)).length, 0);
 });
 
 test("lessons.get leaks no media URL for a lesson the caller cannot see", async () => {
   const cookie = await signUp(app);
   const { versionId, stepId } = await lessonVersion();
   setStorage(memoryStorage());
-  await saveMedia({ lessonVersionId: versionId, stepId, kind: "image", body: PNG, contentType: "image/png" });
+  await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: MP3, contentType: "audio/mpeg" });
   await db.update(worlds).set({ visibility: "private", ownerId: null });
 
   const res = await trpc(app, cookie).q("lessons.get", { id: "lesson-1" });
