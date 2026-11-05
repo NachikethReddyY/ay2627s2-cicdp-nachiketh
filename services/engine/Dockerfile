@@ -1,5 +1,5 @@
 # Build from the repo root (see docker-compose.yml): the visual checker needs packages/ui-catalog.
-FROM node:22-slim AS checker
+FROM node:25-slim AS checker
 # Runtime deps only. Keep the zod pin equal to the version pnpm-lock.yaml resolves for
 # packages/ui-catalog (importers: packages/ui-catalog -> zod); bump both together.
 WORKDIR /repo/packages/ui-catalog
