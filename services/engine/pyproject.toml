@@ -5,7 +5,7 @@ description = "LearnQuest inference engine: LLM pipelines (outline, lesson) behi
 requires-python = ">=3.12"
 dependencies = [
     # Exact pin. See spikes/litellm-advisory/README.md before any bump.
-    "litellm==1.106.2",
+    "litellm==1.106.6",
     "pydantic>=2",
     "pydantic-settings>=2",
     "fastapi>=0.115",
