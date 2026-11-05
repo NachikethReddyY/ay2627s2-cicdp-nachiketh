@@ -103,7 +103,9 @@ jobs:
             const current = (await github.paginate(github.rest.issues.listLabelsOnIssue, {
               ...context.repo, issue_number: context.issue.number,
             })).map(l => l.name);
-            for (const name of current.filter(n => n.startsWith('type: ') && !labels.includes(n))) {
+            // Labels this step owns: drop any the current title no longer earns.
+            const owned = n => n.startsWith('type: ') || n === 'breaking change';
+            for (const name of current.filter(n => owned(n) && !labels.includes(n))) {
               await github.rest.issues.removeLabel({ ...context.repo, issue_number: context.issue.number, name });
             }
             const add = labels.filter(l => !current.includes(l));
