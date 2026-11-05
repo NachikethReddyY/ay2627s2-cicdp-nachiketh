@@ -1,10 +1,12 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { practiceCheck, type PracticeCheck } from "../parts/practice.ts";
+import { getBackend, type RunHandle } from "./backend.ts";
 
 // Live Python runs for practice lessons. Each run is a fresh, locked-down container, removed when the program ends or is stopped.
 export const MAX_CODE = 4000;
@@ -20,11 +22,22 @@ export function setRmTimeoutForTests(ms: number): void {
 const KEEP_S = 60; // a finished run stays readable this long
 
 type Spawn = typeof nodeSpawn;
+/** The slice of a child process this file uses, so a Daytona run can stand in for `docker run`. */
+type RunChild = {
+  stdout: { on(ev: "data", cb: (d: Buffer) => void): unknown } | null;
+  stderr: { on(ev: "data", cb: (d: Buffer) => void): unknown } | null;
+  stdin: { write(s: string): unknown; on(ev: "error", cb: () => void): unknown } | null;
+  kill(sig?: NodeJS.Signals): unknown;
+  on(ev: "error", cb: () => void): unknown;
+  on(ev: "close", cb: (exit: number | null) => void): unknown;
+};
 type Run = {
   id: string;
   learner: string;
-  child: ReturnType<Spawn>;
+  child: RunChild;
   spawn: Spawn;
+  /** Set for a run that does not live in a local `docker run` container: removes whatever it holds, then resolves. */
+  remove?: () => Promise<void>;
   out: string;
   done: boolean;
   stopping: boolean;
@@ -55,6 +68,12 @@ function terminate(run: Run, error?: string) {
   if (run.stopping || run.saving) return;
   run.stopping = true;
   run.child.kill("SIGKILL");
+  if (run.remove) {
+    const giveUp = setTimeout(() => finish(run, error), rmTimeoutMs);
+    giveUp.unref();
+    void run.remove().finally(() => { clearTimeout(giveUp); finish(run, error); });
+    return;
+  }
   const rm = run.spawn("docker", ["rm", "-f", containerName(run.id)], { stdio: "ignore" });
   const end = () => finish(run, error);
   // A hung docker CLI would never close; give up after RM_TIMEOUT_MS so the slot is not held forever.
@@ -78,6 +97,38 @@ export function atCapacity(): boolean {
   return live >= env.SANDBOX_MAX_RUNS;
 }
 
+/** Adapts a backend's RunHandle to the child-process shape startRun reads. The backend loads asynchronously, so early input and kills wait for it. */
+function backendChild(learner: string, language: Language, code: string): { child: RunChild; remove: () => Promise<void> } {
+  const ee = new EventEmitter();
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+  const stdin = Object.assign(new EventEmitter(), {
+    write: (s: string) => { if (handle) handle.writeLine(s.replace(/\n$/, "")); else queued.push(s.replace(/\n$/, "")); },
+  });
+  let handle: RunHandle | undefined;
+  let killed = false;
+  const queued: string[] = [];
+  const fail = () => { ee.emit("error", new Error("Could not run the code")); };
+  const ready = getBackend().then((b) => {
+    if (!b.runCode) throw new Error("backend cannot run code");
+    handle = b.runCode(learner, language, code, { timeoutS: LIMIT_S });
+    handle.onStdout((d) => stdout.emit("data", Buffer.from(d)));
+    handle.onStderr((d) => stderr.emit("data", Buffer.from(d)));
+    handle.onExit((exit, error) => {
+      // A failed start carries its message; a real exit code is handled like docker's.
+      if (exit === null && error) { ee.emit("error", new Error(error)); return; }
+      ee.emit("close", exit);
+    });
+    for (const l of queued.splice(0)) handle.writeLine(l);
+    if (killed) void handle.kill();
+  }).catch(fail);
+  const child = Object.assign(ee, {
+    stdout, stderr, stdin,
+    kill: () => { killed = true; void handle?.kill(); },
+  }) as unknown as RunChild;
+  return { child, remove: async () => { await ready; await handle?.kill(); } };
+}
+
 /**
  * Starts a program and returns its run id, or null when the learner already has too many live runs
  * or the server is at its global limit (check atCapacity() first to tell the two apart).
@@ -95,9 +146,11 @@ export function startRun(code: string, learner: string, language: Language, spaw
     "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "1001:1001",
     env.SANDBOX_IMAGE, "timeout", "-s", "KILL", String(LIMIT_S), ...INTERPRETER[language], code,
   ];
-  const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
+  // A custom `spawn` (tests) always means the Docker path; otherwise the configured backend decides.
+  const viaBackend = env.SANDBOX_BACKEND === "daytona" && spawn === nodeSpawn ? backendChild(learner, language, code) : null;
+  const child: RunChild = viaBackend?.child ?? (spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }) as unknown as RunChild);
   // Backstop in case the container hangs past the program's own limit.
-  const run: Run = { id, learner, child, spawn, out: "", done: false, stopping: false, saving: false, overflow: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000), check };
+  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000), check };
   runs.set(id, run);
   let err = "";
   child.stdout?.on("data", (d: Buffer) => {
