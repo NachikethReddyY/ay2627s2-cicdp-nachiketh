@@ -28,6 +28,8 @@ type Run = {
   out: string;
   done: boolean;
   stopping: boolean;
+  saving: boolean; // a checked run's completion is being saved; the program has already exited
+  overflow: boolean; // stdout went past MAX_OUT and the rest was dropped
   error?: string;
   timer: NodeJS.Timeout;
   check?: PracticeCheck; // set for a Check run of a practice lesson
@@ -49,7 +51,8 @@ const containerName = (id: string) => `lq-run-${id}`;
 
 /** Removes the run's container, then ends the run, so the learner's slot is freed only once it is gone. */
 function terminate(run: Run, error?: string) {
-  if (run.stopping) return;
+  // A run that is saving its completion already exited cleanly; stopping it now must not change its verdict.
+  if (run.stopping || run.saving) return;
   run.stopping = true;
   run.child.kill("SIGKILL");
   const rm = run.spawn("docker", ["rm", "-f", containerName(run.id)], { stdio: "ignore" });
@@ -86,10 +89,13 @@ export function startRun(code: string, learner: string, language: Language, spaw
   ];
   const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
   // Backstop in case the container hangs past the program's own limit.
-  const run: Run = { id, learner, child, spawn, out: "", done: false, stopping: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000), check };
+  const run: Run = { id, learner, child, spawn, out: "", done: false, stopping: false, saving: false, overflow: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000), check };
   runs.set(id, run);
   let err = "";
-  child.stdout?.on("data", (d: Buffer) => { if (run.out.length < MAX_OUT) run.out += d.toString(); });
+  child.stdout?.on("data", (d: Buffer) => {
+    if (run.out.length < MAX_OUT) run.out += d.toString();
+    else run.overflow = true;
+  });
   child.stderr?.on("data", (d: Buffer) => { if (err.length < MAX_OUT) err += d.toString(); });
   child.stdin?.on("error", () => {}); // the program may exit before a late answer arrives
   child.on("error", () => finish(run, "Could not run the code"));
@@ -106,7 +112,10 @@ export function startRun(code: string, learner: string, language: Language, spaw
 // Same rule the player used before: the program's output, without the typed answers, matches once trimmed.
 async function judge(run: Run, check: PracticeCheck) {
   run.passed = false;
-  if (run.out.trim() !== check.expected.trim()) return finish(run);
+  // Output cut off at MAX_OUT was not seen in full, so it cannot be judged a match.
+  if (run.overflow || run.out.trim() !== check.expected.trim()) return finish(run);
+  run.saving = true;
+  clearTimeout(run.timer); // the program has exited, so the backstop has nothing left to stop
   try {
     await check.record();
     run.passed = true;

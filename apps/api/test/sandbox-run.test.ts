@@ -195,3 +195,33 @@ test("a plain run carries no verdict", async () => {
   await tick();
   assert.equal("passed" in runStatus(id, "learner-k6", 0)!, false);
 });
+
+test("a checked run whose output overflowed the buffer fails, even if the kept part matches", async () => {
+  const kept = "x".repeat(8000);
+  const { spawn } = fakeDocker((child) => {
+    child.stdout.emit("data", Buffer.from("extra output the buffer dropped"));
+    child.emit("close", 0);
+  }, kept);
+  const check = fakeCheck(kept);
+  const id = startRun("print('x' * 8000); input(); print('extra')", "learner-k7", "python", spawn as never, check)!;
+  await tick();
+  sendRunInput(id, "learner-k7", "go");
+  await tick();
+  await tick();
+  assert.equal(runStatus(id, "learner-k7", 0)?.passed, false);
+  assert.equal(check.saved, 0);
+});
+
+test("stopping a run while its completion is saving does not change its verdict", async () => {
+  const { spawn, calls } = fakeDocker(() => {}, "1", 0);
+  let release!: () => void;
+  const check = { expected: "1", record: () => new Promise<void>((r) => { release = r; }) };
+  const id = startRun("print(1)", "learner-k8", "python", spawn as never, check)!;
+  await tick();
+  assert.equal(stopRun(id, "learner-k8"), true);
+  assert.deepEqual(calls.rm, [], "the program already exited, so there is no container to remove");
+  release();
+  await tick();
+  const s = runStatus(id, "learner-k8", 0)!;
+  assert.deepEqual([s.done, s.passed, s.error], [true, true, undefined]);
+});
