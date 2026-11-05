@@ -379,7 +379,11 @@ export const lessonMedia = pgTable(
     bytes: integer("bytes").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("lesson_media_version").on(t.lessonVersionId)],
+  (t) => [
+    index("lesson_media_version").on(t.lessonVersionId),
+    // One ready narration per step per version, so two overlapping imports cannot both store one.
+    uniqueIndex("lesson_media_one_narration").on(t.lessonVersionId, t.stepId).where(sql`${t.kind} = 'narration' AND ${t.status} = 'ready'`),
+  ],
 );
 
 // One row per image slot taken (reserved before the provider call, flipped to failed on error). The daily cap counts "ready" rows.

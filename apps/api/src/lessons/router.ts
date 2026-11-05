@@ -35,8 +35,8 @@ const Lesson = z.object({
       state: z.enum(["predicting", "hinting", "revealed", "skipped"]),
     }),
   ),
-  // Short-lived signed URLs; see media/storage.ts.
-  media: z.array(z.object({ stepId: z.string().nullable(), kind: z.enum(["narration", "image"]), url: z.string() })),
+  // Narration only, as short-lived signed URLs (media/storage.ts). Image URLs are inline in part.doc.
+  media: z.array(z.object({ stepId: z.string().nullable(), kind: z.literal("narration"), url: z.string() })),
 });
 
 export const lessonsRouter = router({

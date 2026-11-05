@@ -104,7 +104,7 @@ Access control stays in one place: the visibility check that already guards `les
 - Player renders `<audio src={url} preload="none">` for narration and `<img>` for step images from `media`.
 - If the player stays open past expiry, a failed `<audio>` load triggers a `lessons.get` refetch (the existing tRPC query invalidation) to get fresh URLs.
 - Remove the `audio/` exclusion from the SPA rewrite in `vercel.json` once nothing serves from `public/audio`.
-- If a CSP is added to the web app later, `img-src` and `media-src` must include the bucket endpoint host.
+- The web CSP (`apps/web/vercel.json`) allows the R2 endpoint in `media-src`; `img-src` already allows any `https:` host.
 
 ## 4. Tests (no live calls)
 `apps/api/test/media.test.ts`, using `memoryStorage()`:
