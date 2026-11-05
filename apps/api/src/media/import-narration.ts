@@ -24,6 +24,9 @@ export async function importNarration(slug: string, files: NarrationFile[]) {
   const byIdx = new Map(rows.map((r) => [r.idx, r.id]));
   const unknown = files.filter((f) => !byIdx.has(f.idx)).map((f) => f.idx);
   if (unknown.length) throw new Error(`Lesson ${slug} has no step with idx ${unknown.join(", ")}`);
+  // `1.mp3` and `01.mp3` both mean step 1; refuse before writing rather than store two narrations for it.
+  const dupes = [...new Set(files.map((f) => f.idx).filter((idx, i, all) => all.indexOf(idx) !== i))];
+  if (dupes.length) throw new Error(`More than one file for step idx ${dupes.join(", ")}`);
 
   const done = await db
     .select({ stepId: lessonMedia.stepId })

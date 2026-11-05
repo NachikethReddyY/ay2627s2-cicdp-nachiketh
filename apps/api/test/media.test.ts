@@ -109,6 +109,8 @@ test("importNarration refuses unknown steps, bad bytes and missing storage befor
   await assert.rejects(importNarration("lesson-1", [{ idx: 999, body: MP3 }]), /no step with idx 999/);
   await assert.rejects(importNarration("no-such-lesson", [{ idx: 0, body: MP3 }]), /not found/);
   const [first] = await db.select({ idx: steps.idx }).from(steps).limit(1);
+  // e.g. `1.mp3` and `01.mp3` in one folder
+  await assert.rejects(importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }, { idx: first!.idx, body: MP3 }]), /More than one file for step idx/);
   await rejects(importNarration("lesson-1", [{ idx: first!.idx, body: PNG }]), "Media bytes do not match type");
   setStorage(null);
   await rejects(importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }]), "Media storage is not configured");
