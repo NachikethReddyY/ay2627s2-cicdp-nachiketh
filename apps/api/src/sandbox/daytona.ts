@@ -15,11 +15,13 @@ export interface DaytonaSandbox {
   id: string;
   state?: string;
   start(timeout?: number): Promise<void>;
+  waitUntilStarted(timeout?: number): Promise<void>;
+  waitUntilStopped(timeout?: number): Promise<void>;
   setAutostopInterval(minutes: number): Promise<void>;
   process: {
     createPty(o: { id: string; cols: number; rows: number; onData: (d: Uint8Array) => void | Promise<void> }): Promise<DaytonaPty>;
     createSession(id: string): Promise<void>;
-    executeSessionCommand(session: string, req: { command: string; runAsync?: boolean }): Promise<{ cmdId?: string }>;
+    executeSessionCommand(session: string, req: { command: string; runAsync?: boolean; suppressInputEcho?: boolean }): Promise<{ cmdId?: string }>;
     getSessionCommandLogs(session: string, cmd: string, onStdout: (c: string) => void, onStderr: (c: string) => void): Promise<void>;
     getSessionCommand(session: string, cmd: string): Promise<{ exitCode?: number }>;
     sendSessionCommandInput(session: string, cmd: string, data: string): Promise<void>;
@@ -35,6 +37,7 @@ export interface DaytonaClient {
 export const APP_LABEL = { app: "learnquest" } as const;
 const SHELL_ROLE = "shell";
 const RUNNER_ROLE = "runner";
+const BROKEN = new Set(["error", "build_failed", "destroyed", "destroying"]);
 
 /** The label value for a learner: a hash, so no learner id is stored at Daytona. Same hash Docker uses for container names. */
 export const learnerHash = (learnerId: string) => createHash("sha256").update(learnerId).digest("hex");
@@ -57,7 +60,6 @@ export function daytonaBackend(opts: {
   const maxShells = opts.maxShells ?? (() => env.SANDBOX_MAX_SHELLS);
   const base = opts.snapshot ? { snapshot: opts.snapshot } : {};
   const finding = new Map<string, Promise<DaytonaSandbox>>();
-  const attached = new Map<string, number>(); // open terminals per learner on this API instance
   let openTerminals = 0;
 
   async function findOrCreate(learnerId: string): Promise<DaytonaSandbox> {
@@ -67,13 +69,25 @@ export function daytonaBackend(opts: {
       sbx = s;
       break;
     }
+    // A sandbox that failed to build or crashed can never start again: replace it rather than lock the learner out.
+    if (sbx && BROKEN.has(sbx.state ?? "")) {
+      await client.delete(sbx).catch(() => {});
+      sbx = undefined;
+    }
     sbx ??= await client.create({
       ...base,
       labels,
       // Daytona stops an idle sandbox itself, so this holds across restarts and several API instances.
       autoStopInterval: autoStop,
     });
-    if (sbx.state !== "started") await sbx.start();
+    const st = sbx.state ?? "";
+    if (st === "started") return sbx;
+    // Another API instance may be mid-transition; wait for it instead of asking Daytona to start a sandbox it is already moving.
+    if (st === "starting" || st === "creating" || st === "restoring") await sbx.waitUntilStarted();
+    else {
+      if (st === "stopping" || st === "archiving") await sbx.waitUntilStopped();
+      await sbx.start();
+    }
     return sbx;
   }
 
@@ -91,16 +105,11 @@ export function daytonaBackend(opts: {
     async openShell(learnerId, { cols, rows }) {
       if (openTerminals >= maxShells()) throw new SandboxBusyError();
       openTerminals++;
-      const key = learnerHash(learnerId);
-      attached.set(key, (attached.get(key) ?? 0) + 1);
       let released = false;
       const release = () => {
         if (released) return;
         released = true;
         openTerminals--;
-        const n = (attached.get(key) ?? 1) - 1;
-        if (n > 0) attached.set(key, n);
-        else attached.delete(key);
       };
       try {
         const sbx = await shellSandbox(learnerId);
@@ -170,6 +179,7 @@ function runInSandbox(
   const out: Array<(s: string) => void> = [];
   const err: Array<(s: string) => void> = [];
   const exits: Array<(c: number | null, e?: string) => void> = [];
+  const starts: Array<() => void> = [];
   let sbx: DaytonaSandbox | undefined;
   let cmd: string | undefined;
   const session = `run-${randomUUID()}`;
@@ -177,15 +187,16 @@ function runInSandbox(
   let ended = false;
   const pending: string[] = [];
   let sending = Promise.resolve(); // input lines go out in order
+  let cleaning: Promise<void> | undefined;
 
   const sendLine = (line: string) => {
     sending = sending.then(() => sbx!.process.sendSessionCommandInput(session, cmd!, `${line}\n`)).catch(() => {});
   };
-  const cleanup = async () => {
-    if (!sbx) return;
+  // One delete, shared: every caller waits on the same in-flight call, so "gone" means gone.
+  const cleanup = (): Promise<void> => {
+    if (!sbx) return cleaning ?? Promise.resolve();
     const s = sbx;
-    sbx = undefined;
-    await client.delete(s).catch(() => {});
+    return (cleaning ??= client.delete(s).catch(() => {}));
   };
   const end = (code: number | null, error?: string) => {
     if (ended) return;
@@ -194,7 +205,17 @@ function runInSandbox(
     void cleanup().finally(() => { for (const cb of exits) cb(code, error); });
   };
 
-  void (async () => {
+  // The exit code can lag the end of the log stream, so wait briefly for it.
+  const exitCodeOf = async (s: DaytonaSandbox, id: string) => {
+    for (let i = 0; i < 10; i++) {
+      const { exitCode } = await s.process.getSessionCommand(session, id);
+      if (exitCode !== undefined) return exitCode;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return undefined;
+  };
+
+  const creating = (async () => {
     try {
       const created = await client.create({
         ...(o.snapshot ? { snapshot: o.snapshot } : {}),
@@ -204,20 +225,25 @@ function runInSandbox(
         autoStopInterval: o.stopMinutes, // backstop if this process dies before deleting it
       });
       sbx = created;
-      if (killed) return void end(null);
+      if (killed) return void end(null); // stopped while it was being created: delete it now
       const f = FILE[language];
       await created.fs.uploadFile(Buffer.from(code), f.path);
       await created.process.createSession(session);
       const res = await created.process.executeSessionCommand(session, {
         command: `timeout -s KILL ${limits.timeoutS} ${f.cmd.join(" ")}`,
         runAsync: true,
+        suppressInputEcho: true, // typed answers must not come back as program output
       });
       cmd = res.cmdId;
       if (!cmd) throw new Error("no command id");
+      if (killed) return void end(null);
+      for (const cb of starts) cb();
       for (const l of pending.splice(0)) sendLine(l);
       await created.process.getSessionCommandLogs(session, cmd, (c) => out.forEach((cb) => cb(c)), (c) => err.forEach((cb) => cb(c)));
-      const info = await created.process.getSessionCommand(session, cmd);
-      end(killed ? null : (info.exitCode ?? null), killed ? undefined : info.exitCode === undefined ? "The code stopped with an error." : undefined);
+      const exitCode = await exitCodeOf(created, cmd);
+      if (killed) end(null);
+      else if (exitCode === undefined) end(null, "The code stopped with an error.");
+      else end(exitCode);
     } catch {
       end(null, killed ? undefined : "Could not run the code");
     }
@@ -226,10 +252,12 @@ function runInSandbox(
   return {
     onStdout: (cb) => void out.push(cb),
     onStderr: (cb) => void err.push(cb),
-    writeLine: (line) => (cmd && sbx ? sendLine(line) : void pending.push(line)),
+    onStart: (cb) => void starts.push(cb),
+    writeLine: (line) => (cmd && !ended ? sendLine(line) : void pending.push(line)),
     kill: async () => {
       killed = true;
-      if (ended) return;
+      // A create still in flight finishes first, so the sandbox it returns is deleted, not leaked.
+      await creating;
       await cleanup();
       end(null);
     },

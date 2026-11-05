@@ -19,6 +19,7 @@ let rmTimeoutMs = 10_000; // bound on `docker rm -f`
 export function setRmTimeoutForTests(ms: number): void {
   rmTimeoutMs = ms;
 }
+const SETUP_S = 120; // extra time a remote sandbox gets to be created before the program starts
 const KEEP_S = 60; // a finished run stays readable this long
 
 type Spawn = typeof nodeSpawn;
@@ -98,7 +99,7 @@ export function atCapacity(): boolean {
 }
 
 /** Adapts a backend's RunHandle to the child-process shape startRun reads. The backend loads asynchronously, so early input and kills wait for it. */
-function backendChild(learner: string, language: Language, code: string): { child: RunChild; remove: () => Promise<void> } {
+function backendChild(learner: string, language: Language, code: string, onStarted: () => void): { child: RunChild; remove: () => Promise<void> } {
   const ee = new EventEmitter();
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
@@ -112,6 +113,7 @@ function backendChild(learner: string, language: Language, code: string): { chil
   const ready = getBackend().then((b) => {
     if (!b.runCode) throw new Error("backend cannot run code");
     handle = b.runCode(learner, language, code, { timeoutS: LIMIT_S });
+    handle.onStart(onStarted);
     handle.onStdout((d) => stdout.emit("data", Buffer.from(d)));
     handle.onStderr((d) => stderr.emit("data", Buffer.from(d)));
     handle.onExit((exit, error) => {
@@ -147,10 +149,12 @@ export function startRun(code: string, learner: string, language: Language, spaw
     env.SANDBOX_IMAGE, "timeout", "-s", "KILL", String(LIMIT_S), ...INTERPRETER[language], code,
   ];
   // A custom `spawn` (tests) always means the Docker path; otherwise the configured backend decides.
-  const viaBackend = env.SANDBOX_BACKEND === "daytona" && spawn === nodeSpawn ? backendChild(learner, language, code) : null;
+  const viaBackend = env.SANDBOX_BACKEND === "daytona" && spawn === nodeSpawn ? backendChild(learner, language, code, () => armBackstop(LIMIT_S + 5)) : null;
   const child: RunChild = viaBackend?.child ?? (spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }) as unknown as RunChild);
-  // Backstop in case the container hangs past the program's own limit.
-  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000), check };
+  // Backstop in case the container hangs past the program's own limit. A backend run gets setup time on top,
+  // and the limit restarts once the program really starts, so a slow sandbox create never eats into the learner's 60 s.
+  const armBackstop = (s: number) => { clearTimeout(run.timer); run.timer = setTimeout(() => terminate(run, STOPPED), s * 1000); };
+  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + (viaBackend ? SETUP_S : 0) + 5) * 1000), check };
   runs.set(id, run);
   let err = "";
   child.stdout?.on("data", (d: Buffer) => {

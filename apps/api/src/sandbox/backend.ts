@@ -25,6 +25,8 @@ export interface RunHandle {
   kill(): Promise<void>;
   /** `code` is null when the run could not be started or was cut off; `error` then says why. */
   onExit(cb: (code: number | null, error?: string) => void): void;
+  /** Fires once the program itself is running, so a time limit can start then and not during sandbox setup. */
+  onStart(cb: () => void): void;
 }
 
 export interface RunLimits {
@@ -42,11 +44,11 @@ let backend: Promise<SandboxBackend> | null = null;
 // The chosen backend is imported on first use, so a disabled sandbox never loads node-pty, and Daytona never loads it at all.
 // The promise is cached so concurrent first calls share one backend.
 export function getBackend(): Promise<SandboxBackend> {
-  const load: Promise<SandboxBackend> =
-    env.SANDBOX_BACKEND === "daytona"
-      ? import("./daytona.ts").then(({ daytonaBackendFromEnv }) => daytonaBackendFromEnv())
-      : import("./docker.ts").then(({ dockerBackend }) => dockerBackend({ image: env.SANDBOX_IMAGE }));
-  backend ??= load.then(
+  // Loaded inside `??=` so a cached backend (or a test's fake) never triggers another import or client build.
+  backend ??= (env.SANDBOX_BACKEND === "daytona"
+    ? import("./daytona.ts").then(({ daytonaBackendFromEnv }) => daytonaBackendFromEnv())
+    : import("./docker.ts").then(({ dockerBackend }) => dockerBackend({ image: env.SANDBOX_IMAGE }))
+  ).then(
     (b) => b,
     (err) => {
       backend = null; // let the next call retry a failed load

@@ -4,14 +4,16 @@ import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
 import { SandboxBusyError } from "../src/sandbox/backend.ts";
 
-function fake(opts: { existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string] } = {}) {
-  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+function fake(opts: { createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string] } = {}) {
+  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
   const mk = (extra: Partial<DaytonaSandbox> = {}): DaytonaSandbox => ({
     id: "sbx1",
     state: "started",
     start: async () => void log.started++,
+    waitUntilStarted: async () => void log.waited++,
+    waitUntilStopped: async () => {},
     setAutostopInterval: async () => {},
     process: {
       createPty: async (o) => {
@@ -26,7 +28,7 @@ function fake(opts: { existing?: Partial<DaytonaSandbox>[]; exitCode?: number; l
         };
       },
       createSession: async () => {},
-      executeSessionCommand: async (_s, req) => (log.cmds.push(req.command), { cmdId: "c1" }),
+      executeSessionCommand: async (_s, req) => (log.cmds.push(req.command), log.reqs.push(req), { cmdId: "c1" }),
       getSessionCommandLogs: async (_s, _c, out, err) => {
         out(opts.logs?.[0] ?? "hi\n");
         err(opts.logs?.[1] ?? "");
@@ -38,7 +40,11 @@ function fake(opts: { existing?: Partial<DaytonaSandbox>[]; exitCode?: number; l
     ...extra,
   });
   const client: DaytonaClient = {
-    create: async (p) => (log.created.push(p), mk()),
+    create: async (p) => {
+      log.created.push(p);
+      if (opts.createDelay) await new Promise((r) => setTimeout(r, opts.createDelay));
+      return mk();
+    },
     list: async function* (q) {
       log.listed.push(q);
       for (const e of opts.existing ?? []) yield mk(e);
@@ -141,4 +147,37 @@ test("runCode reports a failed start", async () => {
   const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
   const r = await new Promise<[number | null, string | undefined]>((res) => run.onExit((c, e) => res([c, e])));
   assert.deepEqual(r, [null, "Could not run the code"]);
+});
+
+test("a run killed while its sandbox is still being created deletes it", async () => {
+  const f = fake({ createDelay: 30 });
+  const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
+  await run.kill();
+  assert.equal(f.log.deleted, 1);
+  assert.equal(f.log.cmds.length, 0);
+});
+
+test("a second kill waits for the same delete and deletes once", async () => {
+  const f = fake();
+  const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
+  await Promise.all([run.kill(), run.kill()]);
+  assert.equal(f.log.deleted, 1);
+});
+
+test("runCode suppresses input echo so typed answers stay out of the output", async () => {
+  const f = fake();
+  const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
+  await new Promise((res) => run.onExit(res));
+  assert.equal(f.log.reqs[0]!.suppressInputEcho, true);
+});
+
+test("a stopped shell sandbox is started; a broken one is replaced; a starting one is waited on", async () => {
+  const broken = fake({ existing: [{ state: "error" }] });
+  await daytonaBackend({ client: broken.client }).openShell("l", { cols: 80, rows: 24 });
+  assert.equal(broken.log.deleted, 1);
+  assert.equal(broken.log.created.length, 1);
+  const starting = fake({ existing: [{ state: "starting" }] });
+  await daytonaBackend({ client: starting.client }).openShell("l", { cols: 80, rows: 24 });
+  assert.equal(starting.log.waited, 1);
+  assert.equal(starting.log.started, 0);
 });
