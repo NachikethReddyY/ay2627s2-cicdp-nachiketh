@@ -110,16 +110,19 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const setVolume = (volume: number) => setVol({ volume, muted: false });
 
   const frame = useMemo(() => seek(timeline, r.t), [timeline, r.t]);
+  // Any pause of the replay (Play/Pause, picking a file in the explorer) pauses the narration too. When the replay
+  // just reaches its end, the narration is left to finish its sentence.
+  const ended = r.t >= timeline.duration;
+  useEffect(() => {
+    if (!r.playing && !ended) audioRef.current?.pause();
+  }, [r.playing, ended]);
   const paths = Object.keys(frame.files);
   const viewed = picked && picked in frame.files ? picked : frame.activePath;
   const toggle = () => {
     if (!r.playing) setPicked(null); // playing makes the view follow the replay again
     // Narration follows the Play/Pause control. Play is a user gesture, so it also recovers from a refused autoplay.
     const a = audioRef.current;
-    if (a) {
-      if (r.playing) a.pause();
-      else if (a.paused) void a.play().catch(() => {});
-    }
+    if (a && !r.playing && a.paused) void a.play().catch(() => {}); // pausing is handled by the effect below
     r.toggle();
   };
 
