@@ -128,3 +128,100 @@ test("a learner can have only a few live runs", () => {
   assert.ok(startRun("input()", "learner-f", "python", spawn as never));
   assert.equal(startRun("input()", "learner-f", "python", spawn as never), null);
 });
+
+// A Check run: `saved` counts recorded completions; `fail` makes saving throw.
+function fakeCheck(expected: string, fail = false) {
+  const check = { expected, saved: 0, record: async () => { if (fail) throw new Error("db down"); check.saved++; } };
+  return check;
+}
+
+test("a checked run that prints the expected output is recorded and passes", async () => {
+  const { spawn } = fakeDocker(() => {}, "Points: 17\n", 0);
+  const check = fakeCheck("Points: 17");
+  const id = startRun("print('Points:', 17)", "learner-k1", "python", spawn as never, check)!;
+  await tick();
+  await tick();
+  assert.equal(check.saved, 1);
+  assert.deepEqual(runStatus(id, "learner-k1", 0), { output: "Points: 17\n", next: 11, done: true, error: undefined, passed: true });
+});
+
+test("a checked run reports done only after its completion is saved", async () => {
+  const { spawn } = fakeDocker(() => {}, "1", 0);
+  let release!: () => void;
+  const check = { expected: "1", record: () => new Promise<void>((r) => { release = r; }) };
+  const id = startRun("print(1)", "learner-k2", "python", spawn as never, check)!;
+  await tick();
+  assert.equal(runStatus(id, "learner-k2", 0)?.done, false, "still saving");
+  assert.equal(runStatus(id, "learner-k2", 0)?.passed, undefined, "no verdict yet");
+  release();
+  await tick();
+  assert.equal(runStatus(id, "learner-k2", 0)?.passed, true);
+});
+
+test("a checked run with the wrong output, an error, or a stop records nothing", async () => {
+  const wrong = fakeCheck("2");
+  const a = startRun("print(1)", "learner-k3", "python", fakeDocker(() => {}, "1\n", 0).spawn as never, wrong)!;
+  const crashed = fakeCheck("");
+  const b = startRun("print(1/0)", "learner-k3", "python", fakeDocker(() => {}, "", 1).spawn as never, crashed)!;
+  await tick();
+  await tick();
+  assert.equal(runStatus(a, "learner-k3", 0)?.passed, false);
+  assert.equal(runStatus(b, "learner-k3", 0)?.passed, false);
+
+  const stopped = fakeCheck("");
+  const { spawn, calls } = fakeDocker(() => {});
+  const c = startRun("input()", "learner-k4", "python", spawn as never, stopped)!;
+  await tick();
+  stopRun(c, "learner-k4");
+  calls.rmChild!.emit("close", 0);
+  await tick();
+  assert.equal(runStatus(c, "learner-k4", 0)?.passed, false);
+  assert.equal(wrong.saved + crashed.saved + stopped.saved, 0);
+});
+
+test("a checked run whose result cannot be saved fails with a message", async () => {
+  const { spawn } = fakeDocker(() => {}, "1", 0);
+  const id = startRun("print(1)", "learner-k5", "python", spawn as never, fakeCheck("1", true))!;
+  await tick();
+  await tick();
+  const s = runStatus(id, "learner-k5", 0)!;
+  assert.equal(s.passed, false);
+  assert.match(s.error ?? "", /Could not save/);
+});
+
+test("a plain run carries no verdict", async () => {
+  const { spawn } = fakeDocker(() => {}, "1", 0);
+  const id = startRun("print(1)", "learner-k6", "python", spawn as never)!;
+  await tick();
+  assert.equal("passed" in runStatus(id, "learner-k6", 0)!, false);
+});
+
+test("a checked run whose output overflowed the buffer fails, even if the kept part matches", async () => {
+  const kept = "x".repeat(8000);
+  const { spawn } = fakeDocker((child) => {
+    child.stdout.emit("data", Buffer.from("extra output the buffer dropped"));
+    child.emit("close", 0);
+  }, kept);
+  const check = fakeCheck(kept);
+  const id = startRun("print('x' * 8000); input(); print('extra')", "learner-k7", "python", spawn as never, check)!;
+  await tick();
+  sendRunInput(id, "learner-k7", "go");
+  await tick();
+  await tick();
+  assert.equal(runStatus(id, "learner-k7", 0)?.passed, false);
+  assert.equal(check.saved, 0);
+});
+
+test("stopping a run while its completion is saving does not change its verdict", async () => {
+  const { spawn, calls } = fakeDocker(() => {}, "1", 0);
+  let release!: () => void;
+  const check = { expected: "1", record: () => new Promise<void>((r) => { release = r; }) };
+  const id = startRun("print(1)", "learner-k8", "python", spawn as never, check)!;
+  await tick();
+  assert.equal(stopRun(id, "learner-k8"), true);
+  assert.deepEqual(calls.rm, [], "the program already exited, so there is no container to remove");
+  release();
+  await tick();
+  const s = runStatus(id, "learner-k8", 0)!;
+  assert.deepEqual([s.done, s.passed, s.error], [true, true, undefined]);
+});

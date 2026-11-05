@@ -1,0 +1,31 @@
+# Area labels, applied by actions/labeler from the files a PR touches.
+"area: web":
+  - changed-files:
+      - any-glob-to-any-file: ["apps/web/**"]
+"area: api":
+  - changed-files:
+      - any-glob-to-any-file: ["apps/api/**"]
+"area: engine":
+  - changed-files:
+      - any-glob-to-any-file: ["services/engine/**"]
+"area: sandbox":
+  - changed-files:
+      - any-glob-to-any-file: ["services/sandbox/**"]
+"area: packages":
+  - changed-files:
+      - any-glob-to-any-file: ["packages/**"]
+"area: infra":
+  - changed-files:
+      - any-glob-to-any-file: ["infra/**", "docker-compose.yml", "**/Dockerfile", "turbo.json"]
+"area: ci":
+  - changed-files:
+      - any-glob-to-any-file: [".github/**"]
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file: ["docs/**", "*.md", "DESIGN.md"]
+"area: db":
+  - changed-files:
+      - any-glob-to-any-file: ["apps/api/drizzle/**", "apps/api/drizzle.config.ts"]
+"dependencies":
+  - changed-files:
+      - any-glob-to-any-file: ["pnpm-lock.yaml", "services/engine/uv.lock"]
