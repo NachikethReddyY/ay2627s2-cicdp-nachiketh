@@ -4,3 +4,4 @@ packages:
 allowBuilds:
   esbuild: true
   node-pty: true
+  protobufjs: false # postinstall only prints a version-scheme notice; pulled in by the Daytona SDK
