@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import websocket, { type WebSocket } from "@fastify/websocket";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
-import { getBackend } from "./backend.ts";
+import { getBackend, SandboxBusyError } from "./backend.ts";
 
 const dim = (v: unknown, fallback: number) =>
   Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 500 ? (v as number) : fallback;
@@ -70,6 +70,8 @@ export async function sandboxRoutes(app: FastifyInstance) {
           shell.onExit((code) => finish({ type: "exit", code }));
         },
         (err) => {
+          // The backend counts idle containers too, which this socket map can't see.
+          if (err instanceof SandboxBusyError) return reject(CLOSE_SERVER_BUSY, "The sandbox is busy, try again soon");
           req.log.error(err);
           finish({ type: "error", message: "Could not start the sandbox" });
         },

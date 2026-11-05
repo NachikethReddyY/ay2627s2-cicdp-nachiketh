@@ -12,6 +12,8 @@ const Home = z.object({
     todayXp: z.number(),
     dailyGoalXp: z.number(),
     streak: z.number(),
+    // The zone the stats above are counted in, so the client can tell when its own zone differs.
+    timezone: z.string(),
     week: z.array(z.object({ day: z.string(), solved: z.number() })),
   }),
   continue: z
@@ -80,8 +82,8 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         FROM game_completions gc JOIN learners l ON l.id = gc.learner_id
         WHERE gc.learner_id = ${me} GROUP BY 1
       ) activity GROUP BY day`);
-    const { rows: [clock] } = await db.execute<{ today: string; goal: number }>(sql`
-      SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS today, daily_goal_xp AS goal
+    const { rows: [clock] } = await db.execute<{ today: string; goal: number; timezone: string }>(sql`
+      SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS today, daily_goal_xp AS goal, timezone
       FROM learners WHERE id = ${me}`);
     const today = clock!.today;
     const solved = new Map(days.map((d) => [d.day, d.solved]));
@@ -138,6 +140,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         todayXp: days.find((d) => d.day === today)?.xp ?? 0,
         dailyGoalXp: clock!.goal,
         streak: streak(solved, today),
+        timezone: clock!.timezone,
         week: week(solved, today),
       },
       continue: next,

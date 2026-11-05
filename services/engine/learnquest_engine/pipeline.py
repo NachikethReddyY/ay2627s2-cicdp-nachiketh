@@ -48,7 +48,13 @@ def _game_issues(part: BaseModel) -> tuple[dict[str, Any] | None, list[str]]:
         ]
     doc = visual.unwrap(raw)
     # CheckerUnavailable propagates: fail closed, as /visual does.
-    return doc, visual.all_issues(doc)
+    found = visual.all_issues(doc)
+    # A valid text-only doc passes the catalog, but the API gate rejects
+    # a game-practice part without a game block.
+    blocks = doc.get("blocks", [])
+    if not any(isinstance(b, dict) and b.get("type") == "game" for b in blocks):
+        found.append('blocks: a game-practice doc needs a block with type "game"')
+    return doc, found
 
 
 def _checked_game(

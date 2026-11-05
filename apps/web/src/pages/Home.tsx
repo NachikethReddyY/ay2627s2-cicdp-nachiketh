@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { useApi, type PathCardData } from "../lib/api";
-import { authClient } from "../lib/auth";
 import { trpc } from "../lib/trpc";
 import { PipEmpty, Spinner } from "../components/Bits";
 import { Bolt, Flame } from "./home/art";
@@ -12,7 +11,6 @@ import Sidebar from "./home/Sidebar";
 import YourPath from "./home/YourPath";
 import "./home.css";
 
-const TZ_KEY = "lq.timezone";
 
 // Tilts repeat across the four community cards, as in the design.
 const commCards = [
@@ -24,32 +22,21 @@ const commCards = [
 
 export default function Home() {
   const { data, error, reload } = useApi("home", () => trpc.home.get.query());
-  const userId = authClient.useSession().data?.user.id;
+  const stored = data?.stats.timezone;
   useEffect(() => {
-    if (!userId) return;
-    // Stats are counted in the stored timezone. home.get does not return it, so remember what this user last saved
-    // and send only a change; refetch once it is saved (unless the page is already gone).
+    // Stats are counted in the stored timezone, which home.get returns. Send this browser's zone only when it
+    // differs (another device may have changed it), then refetch once it is saved, unless the page is already gone.
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const key = `${TZ_KEY}.${userId}`;
-    try {
-      if (localStorage.getItem(key) === tz) return;
-    } catch {
-      /* storage unavailable: send it */
-    }
+    if (!stored || stored === tz) return;
     let mounted = true;
     trpc.me.update.mutate({ timezone: tz }).then(
       () => {
-        try {
-          localStorage.setItem(key, tz);
-        } catch {
-          /* ignore */
-        }
         if (mounted) reload();
       },
       () => {},
     );
     return () => { mounted = false; };
-  }, [userId, reload]);
+  }, [stored, reload]);
 
   const stats = data?.stats;
 

@@ -13,7 +13,7 @@ import { validatePart } from "../visuals/gate.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
 import { tiers } from "../config/tiers.ts";
 import { ENGINE_CALLS_PER_PART, reserveAiSpend } from "../config/budget.ts";
-import { isSafeText } from "../safety/moderation.ts";
+import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
 
@@ -168,9 +168,11 @@ function validate(raw: unknown): GeneratedStep[] {
   return steps;
 }
 
-// Generated text is moderated before it is saved; a flag throws so writeWith retries. Fails open like topics.
-async function moderated<T>(v: T): Promise<T> {
-  if (!(await isSafeText(JSON.stringify(v)))) throw new Error("Generated content refused by safety filter");
+// Generated text is moderated before it is saved; a flag throws so writeLesson retries. It fails open like topics,
+// except for a lesson in a public course: everyone can read that, so it fails closed, as publishing does.
+async function moderated<T>(v: T, isPublic: boolean): Promise<T> {
+  const text = JSON.stringify(v);
+  if (!(await (isPublic ? isSafe(text) : isSafeText(text)))) throw new Error("Generated content refused by safety filter");
   return v;
 }
 
@@ -213,16 +215,17 @@ async function lessonContext(l: LessonRow): Promise<LessonContext> {
 type Generated = { part: PartSecret | null; generated: GeneratedStep[] };
 
 // Model calls: no transaction or pooled connection is held while these run.
-async function generate(ctx: LessonContext, key: string | null, cached: PartSecret | null): Promise<Generated> {
+async function generate(ctx: LessonContext, key: string | null, cached: PartSecret | null, isPublic: boolean): Promise<Generated> {
   // A part keeps its content on the version; a predict lesson keeps one steps row per step.
   // Parts come from the engine and are cached by what produced them, so a repeat lesson makes no model call.
-  let part = cached;
+  // A cached part may have been cleared fail-open for a private course, so a public one checks it again.
+  let part = cached && isPublic ? await moderated(cached, true) : cached;
   if (key && !part) {
     const partCtx: PartContext = { ...ctx, missedConcepts: [] };
-    part = await moderated(validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx))));
+    part = await moderated(validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx))), isPublic);
     await db.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
   }
-  const generated = key ? [] : await moderated(validate(await measureGeneration("lesson", () => generator.lesson(ctx))));
+  const generated = key ? [] : await moderated(validate(await measureGeneration("lesson", () => generator.lesson(ctx))), isPublic);
   return { part, generated };
 }
 
@@ -284,6 +287,8 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
   const ctx = await lessonContext(pre);
+  const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
+  const isPublic = world?.visibility === "public";
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
   const cached = key ? await cachedPart(key) : null; // a cache hit makes no model call and reserves nothing
 
@@ -292,7 +297,7 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
     // Before each attempt (a retry is reserved too). An engine part can make several model calls.
     if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : 1));
     try {
-      const result = await generate(ctx, key, cached);
+      const result = await generate(ctx, key, cached, isPublic);
       const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));
       if (!written) return false;
       // Best-effort and not awaited: the read must not wait on image generation.

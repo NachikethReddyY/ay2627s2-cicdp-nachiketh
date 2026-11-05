@@ -96,7 +96,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
     a.muted = vol.muted;
   }, [vol, narration]);
   useEffect(() => {
-    // A browser may refuse autoplay before the learner has touched the page; that is fine, there is no replay to sync.
+    // A browser may refuse autoplay before the learner has touched the page; pressing Play retries it (see toggle).
     void audioRef.current?.play().catch(() => {});
   }, [narration]);
   useEffect(() => {
@@ -114,6 +114,12 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const viewed = picked && picked in frame.files ? picked : frame.activePath;
   const toggle = () => {
     if (!r.playing) setPicked(null); // playing makes the view follow the replay again
+    // Narration follows the Play/Pause control. Play is a user gesture, so it also recovers from a refused autoplay.
+    const a = audioRef.current;
+    if (a) {
+      if (r.playing) a.pause();
+      else if (a.paused) void a.play().catch(() => {});
+    }
     r.toggle();
   };
 

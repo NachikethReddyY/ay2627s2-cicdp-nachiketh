@@ -209,6 +209,8 @@ test("me.update: validates timezone and goal, empty body is a no-op", async () =
   const [row] = await db.select().from(learners);
   assert.deepEqual({ timezone: row!.timezone, goal: row!.dailyGoalXp }, { timezone: "Asia/Kolkata", goal: 100 });
   assert.equal(out(await get(cookie)).stats.dailyGoalXp, 100);
+  // home.get reports the stored zone so another device's browser can tell its own zone differs.
+  assert.equal(out(await get(cookie)).stats.timezone, "Asia/Kolkata");
 
   assert.equal((await m(cookie, "me.update", null)).statusCode, 200);
   assert.equal((await m(cookie, "me.update", { dailyGoalXp: 30 })).statusCode, 200);

@@ -3,8 +3,11 @@ import { TRPCError } from "@trpc/server";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 
-/** An engine lesson part can make up to three model calls (see ENGINE_TIMEOUT_MS), so its reservation is this many estimates. */
-export const ENGINE_CALLS_PER_PART = 3;
+/**
+ * Most model calls one engine lesson part can make: the reply and its JSON repair, then for a game-practice part
+ * the game repair and its JSON repair. The part's reservation is this many estimates.
+ */
+export const ENGINE_CALLS_PER_PART = 4;
 
 export async function reserveAiSpend(estimatedUsd = 0) {
   if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });

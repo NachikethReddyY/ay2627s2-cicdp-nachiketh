@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import pty from "node-pty";
 import { env } from "../env.ts";
-import type { SandboxBackend } from "./backend.ts";
+import { SandboxBusyError, type SandboxBackend } from "./backend.ts";
 
 type Exec = (cmd: string, args: string[]) => Promise<{ stdout: string; stderr?: string }>;
 const run: Exec = promisify(execFile);
@@ -53,9 +53,24 @@ export function shellRunArgs(name: string, opts: { image: string; network: strin
   ];
 }
 
-export function dockerBackend(opts: { image: string; idleMs?: number; network?: string; runtime?: string; exec?: Exec }): SandboxBackend {
+type Spawn = typeof pty.spawn;
+
+export function dockerBackend(opts: {
+  image: string;
+  idleMs?: number;
+  network?: string;
+  runtime?: string;
+  exec?: Exec;
+  spawn?: Spawn;
+  maxContainers?: () => number;
+}): SandboxBackend {
   const idleMs = opts.idleMs ?? IDLE_MS;
   const exec = opts.exec ?? run;
+  const spawn = opts.spawn ?? pty.spawn;
+  const maxContainers = opts.maxContainers ?? (() => env.SANDBOX_MAX_SHELLS);
+  // Containers that are running or being started. A closed terminal leaves its container up until the idle stop,
+  // so the server-wide cap counts these, not open sockets.
+  const live = new Set<string>();
   const network = opts.network ?? env.SANDBOX_NETWORK;
   const runtime = opts.runtime ?? env.SANDBOX_RUNTIME;
   const attached = new Map<string, number>();
@@ -81,6 +96,13 @@ export function dockerBackend(opts: { image: string; idleMs?: number; network?: 
     await exec("docker", shellRunArgs(name, { image: opts.image, network, runtime }));
   }
 
+  // Counted from the moment a start is decided, so concurrent first connects can't overshoot the cap.
+  function claim(name: string) {
+    if (live.has(name)) return;
+    if (live.size >= maxContainers()) throw new SandboxBusyError();
+    live.add(name);
+  }
+
   // Concurrent connects for one learner share a single create/start.
   function ensure(name: string) {
     let p = starting.get(name);
@@ -94,6 +116,7 @@ export function dockerBackend(opts: { image: string; idleMs?: number; network?: 
   return {
     async openShell(learnerId, { cols, rows }) {
       const name = `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
+      claim(name); // before anything else, so a refused learner holds nothing
       clearTimeout(timers.get(name));
       attached.set(name, (attached.get(name) ?? 0) + 1);
       const release = () => {
@@ -103,7 +126,10 @@ export function dockerBackend(opts: { image: string; idleMs?: number; network?: 
         attached.delete(name);
         // Only the open-shell count is watched: a process left running in the background does not keep the container up.
         const t = setTimeout(() => {
-          const p = exec("docker", ["stop", "-t", "2", name]).then(() => {}, () => {}).finally(() => stopping.delete(name));
+          // A failed stop leaves the container counted: better to refuse a shell than to overshoot the cap.
+          const p = exec("docker", ["stop", "-t", "2", name])
+            .then(() => void live.delete(name), () => {})
+            .finally(() => stopping.delete(name));
           stopping.set(name, p);
         }, idleMs);
         t.unref();
@@ -112,14 +138,16 @@ export function dockerBackend(opts: { image: string; idleMs?: number; network?: 
       try {
         // A stop already in flight can't be cancelled, so let it finish before starting the container again.
         await stopping.get(name);
+        claim(name); // a stop that just finished uncounted it
         await ensure(name);
       } catch (err) {
         release();
+        if (!attached.has(name)) live.delete(name); // nothing started, or the start failed: it holds no slot
         throw err;
       }
       let term: ReturnType<typeof pty.spawn>;
       try {
-        term = pty.spawn("docker", ["exec", "-it", name, "bash", "-l"], {
+        term = spawn("docker", ["exec", "-it", name, "bash", "-l"], {
           name: "xterm-256color",
           cols,
           rows,

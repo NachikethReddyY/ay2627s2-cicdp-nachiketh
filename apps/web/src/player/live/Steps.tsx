@@ -60,7 +60,9 @@ export default function Steps({ lesson }: { lesson: Lesson }) {
     }
   }, [step, reveal]);
 
-  const narration = lesson.media.find((m) => m.stepId === stepId && m.kind === "narration")?.url;
+  // Narration explains the change, so it plays only once the learner has answered or skipped, never while predicting.
+  const answered = state === "revealed" || state === "skipped";
+  const narration = answered ? lesson.media.find((m) => m.stepId === stepId && m.kind === "narration")?.url : undefined;
 
   const id = stepId ?? "";
   let panel: ReactNode;

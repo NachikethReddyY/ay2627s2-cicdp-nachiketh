@@ -1,6 +1,5 @@
 import { buildApp } from "./app.ts";
 import { env, startupWarnings } from "./env.ts";
-import { idle } from "./ai/service.ts";
 
 const SHUTDOWN_MS = 25_000; // under Render's 30s SIGTERM grace
 
@@ -21,8 +20,7 @@ async function shutdown(signal: string) {
     process.exit(1);
   }, SHUTDOWN_MS).unref();
   try {
-    // Background prefetches still need the database, and close() ends the pool (app.ts onClose), so drain them first.
-    await idle();
+    // close() waits for in-flight requests, then app.ts's onClose drains background prefetches before ending the pool.
     await app.close();
     process.exit(0);
   } catch (err) {

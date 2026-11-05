@@ -54,6 +54,9 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         if (!live) return;
         if (++failures < MAX_POLL_FAILURES) { timer = setTimeout(poll, 300 * failures); return; }
         setTerm((t) => `${t}\n${msg(e)}\n`);
+        // Giving up hides Stop, and a cleared sid can't be stopped on unmount, so stop the run now:
+        // otherwise it holds one of the learner's two run slots until the server times it out.
+        void stopPython(sid).catch(() => {});
         setSid(null);
         return;
       }

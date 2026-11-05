@@ -255,7 +255,7 @@ test("the AI budget stops a lesson with its own message, before the model call a
   const old = { daily: env.AI_DAILY_BUDGET_USD, estimate: env.AI_CALL_ESTIMATE_USD };
   try {
     env.AI_CALL_ESTIMATE_USD = 0.01;
-    env.AI_DAILY_BUDGET_USD = 0.045; // outline 0.01, first part 0.03 (three engine calls); the second part would reach 0.07
+    env.AI_DAILY_BUDGET_USD = 0.055; // outline 0.01, first part 0.04 (four engine calls); the second part would reach 0.09
     const { t, lessons: ls } = await setup();
     assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
     assert.equal(lessonCalls, 1);

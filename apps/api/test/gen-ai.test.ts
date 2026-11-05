@@ -4,11 +4,12 @@ import assert from "node:assert/strict";
 import { eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db, pool } from "../src/db/client.ts";
-import { lessons, lessonVersions } from "../src/db/schema.ts";
+import { lessons, lessonVersions, worlds } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
+import { setModerationClient } from "../src/safety/moderation.ts";
 
 const app = buildApp();
 after(() => app.close());
@@ -93,7 +94,7 @@ test("concurrent first plays produce exactly one version", async () => {
   assert.equal((await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id))).length, 1);
 });
 
-test("an engine part reserves three calls' worth of spend", async () => {
+test("an engine part reserves four calls' worth of spend", async () => {
   const { lesson, learnerId } = await firstLesson();
   env.AI_CALL_ESTIMATE_USD = 0.5;
   env.AI_DAILY_BUDGET_USD = 0;
@@ -102,14 +103,20 @@ test("an engine part reserves three calls' worth of spend", async () => {
   engineParts.lesson = async () => ({ kind: "learn", body: "Variables hold values." });
   assert.equal(await ensureLesson(lesson.id, learnerId), true);
   const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
-  assert.equal(Number(r!.s), 1.5);
+  assert.equal(Number(r!.s), 2);
 });
 
 test("a predict lesson stored for everyone is generated without the learner's missed concepts", async () => {
   const { lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
-  await db.execute(sql`INSERT INTO attempts (id, learner_id, lesson_id, missed_concepts, created_at)
-    SELECT gen_random_uuid()::text, ${learnerId}, ${lesson.id}, ARRAY['secret-concept'], now() WHERE false`).catch(() => undefined);
+  // A real missed concept in this learner's history: the old lessonContext would have sent it to the generator.
+  const { rows: [step] } = await db.execute<{ id: string }>(sql`SELECT id FROM steps LIMIT 1`);
+  assert.ok(step, "the seed should provide a step to attach an attempt to");
+  await db.execute(sql`INSERT INTO attempts (id, learner_id, step_id, kind, observed, correct, missed_concepts)
+    VALUES (gen_random_uuid()::text, ${learnerId}, ${step.id}, 'mcq', true, false, ARRAY['secret-concept'])`);
+  const { rows: [has] } = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM attempts
+    WHERE learner_id = ${learnerId} AND 'secret-concept' = ANY(missed_concepts)`);
+  assert.equal(has!.n, 1);
   let seen: any;
   generator.lesson = async (ctx) => {
     seen = ctx;
@@ -117,4 +124,25 @@ test("a predict lesson stored for everyone is generated without the learner's mi
   };
   await assert.rejects(ensureLesson(lesson.id, learnerId));
   assert.deepEqual(seen.missedConcepts, []);
+});
+
+test("moderation down: a lesson in a public course is refused, a private one still generates", async () => {
+  const safe = async () => ({ flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } });
+  const { lesson, learnerId } = await firstLesson();
+  engineParts.lesson = async () => ({ kind: "learn", body: "Variables hold values." });
+  setModerationClient(async () => {
+    throw new Error("moderation unavailable");
+  });
+  try {
+    // Published: everyone can read what gets saved, so an unchecked lesson must not be written.
+    await db.update(worlds).set({ visibility: "public" }).where(eq(worlds.id, lesson.worldId));
+    await assert.rejects(ensureLesson(lesson.id, learnerId));
+    assert.equal((await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id))).length, 0);
+
+    // Private: generation keeps failing open, as before.
+    await db.update(worlds).set({ visibility: "private" }).where(eq(worlds.id, lesson.worldId));
+    assert.equal(await ensureLesson(lesson.id, learnerId), true);
+  } finally {
+    setModerationClient(safe);
+  }
 });

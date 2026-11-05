@@ -11,7 +11,7 @@ test("same-origin paths survive with their query and hash", () => {
 });
 
 test("anything that could leave the site falls back to home", () => {
-  for (const bad of [null, undefined, "", "https://evil.example/", "//evil.example/x", "/\\evil.example", "\\\\evil.example", "javascript:alert(1)", "/ok\u0000", "explore"]) {
+  for (const bad of [null, undefined, "", "https://evil.example/", "//evil.example/x", "/\\evil.example", "\\\\evil.example", "javascript:alert(1)", "/ok\u0000", "explore", "/a/..//evil.example", "/%2e%2e//evil.example", "/a/b/../..//evil.example/x"]) {
     assert.equal(safeRedirect(bad), "/", String(bad));
   }
 });

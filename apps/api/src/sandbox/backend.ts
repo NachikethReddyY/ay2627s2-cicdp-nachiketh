@@ -8,6 +8,13 @@ export interface ShellHandle {
   onExit(cb: (code: number) => void): void;
 }
 
+/** The server already runs as many shell containers as SANDBOX_MAX_SHELLS allows. */
+export class SandboxBusyError extends Error {
+  constructor() {
+    super("sandbox at its container limit");
+  }
+}
+
 export interface SandboxBackend {
   openShell(learnerId: string, size: { cols: number; rows: number }): Promise<ShellHandle>;
 }

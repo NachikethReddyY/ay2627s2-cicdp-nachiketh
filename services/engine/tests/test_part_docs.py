@@ -72,3 +72,19 @@ def test_game_checker_unavailable_fails_closed(fake_llm: FakeLLM, monkeypatch: A
     monkeypatch.setattr(visual, "ts_issues", boom)
     with pytest.raises(visual.CheckerUnavailable):
         pipeline.lesson(ctx("game-practice"))
+
+
+def test_game_doc_without_a_game_block_gets_repaired(fake_llm: FakeLLM, monkeypatch: Any) -> None:
+    import pytest
+
+    from learnquest_engine import visual
+
+    calls = fake_llm("part_game_practice_1")
+    monkeypatch.setattr(visual, "all_issues", lambda doc: [])
+    text_only = {"v": 1, "blocks": [{"type": "text", "id": "t"}]}
+    monkeypatch.setattr(visual, "unwrap", lambda doc: text_only)
+    # A valid but game-less doc must still trigger the repair call, not pass to the API gate.
+    with pytest.raises(AssertionError, match="no recorded reply"):
+        pipeline.lesson(ctx("game-practice"))
+    assert len(calls) == 2
+    assert "needs a block with type" in calls[1]["messages"][1]["content"]

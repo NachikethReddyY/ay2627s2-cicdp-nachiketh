@@ -5,6 +5,7 @@ import { z } from "zod";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { env } from "./env.ts";
 import { pool } from "./db/client.ts";
+import { idle } from "./ai/service.ts";
 import { authRoutes } from "./auth/routes.ts";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
 import { appRouter, type AppRouter } from "./trpc/router.ts";
@@ -75,6 +76,9 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   );
 
   app.addHook("onClose", async () => {
+    // onClose runs after in-flight requests finish, so no read can start a new prefetch now.
+    // Let background prefetches save what they generated before the pool goes away.
+    await idle();
     // A test helper may already have ended the pool; pg rejects a second end().
     await pool.end().catch(() => undefined);
   });

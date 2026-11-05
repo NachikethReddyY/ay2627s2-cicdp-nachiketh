@@ -24,5 +24,5 @@ test("a zero estimate at exactly the limit is refused; an exact fit is allowed",
 });
 
 test("an engine part reserves several model calls' worth", () => {
-  assert.equal(ENGINE_CALLS_PER_PART, 3);
+  assert.equal(ENGINE_CALLS_PER_PART, 4);
 });
