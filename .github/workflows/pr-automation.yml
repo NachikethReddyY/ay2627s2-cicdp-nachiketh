@@ -15,6 +15,9 @@ concurrency:
 jobs:
   size:
     name: Size label
+    # The labeler (sync-labels) writes back the whole label set, so it runs first and cannot undo these.
+    needs: area
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -64,6 +67,9 @@ jobs:
 
   title:
     name: Title check and type label
+    # The labeler (sync-labels) writes back the whole label set, so it runs first and cannot undo these.
+    needs: area
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -115,6 +121,9 @@ jobs:
 
   housekeeping:
     name: Assignee and draft state
+    # The labeler (sync-labels) writes back the whole label set, so it runs first and cannot undo these.
+    needs: area
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
