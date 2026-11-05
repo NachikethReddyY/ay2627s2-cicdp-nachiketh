@@ -2,7 +2,7 @@
 // shortcut: not a real TypeScript scanner (no regex/template nesting, no unicode identifiers), enough for one-token answers; upgrade if cloze answers grow to expressions.
 const IDENT_OR_NUMBER = /[A-Za-z_$][\w$]*|\d[\w.]*/y;
 
-export function tokenize(src: string): string[] {
+function tokenize(src: string): string[] {
   const out: string[] = [];
   let i = 0;
   while (i < src.length) {

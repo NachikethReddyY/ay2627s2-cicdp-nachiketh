@@ -1,4 +1,5 @@
 import { and, asc, eq, or, sql } from "drizzle-orm";
+import { lessonRef, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
@@ -22,7 +23,7 @@ const Lesson = z.object({
         beforeFiles: z.record(z.string(), z.string()),
         hunks: z.array(z.object({ id: z.string(), file: z.string(), oldStart: z.number(), lines: z.array(z.string()) })),
       }),
-      z.object({ kind: z.literal("practice"), instructions: z.string(), language: z.enum(["python", "javascript"]).default("javascript"), starterCode: z.string(), expectedOutput: z.string() }),
+      z.object({ kind: z.literal("practice"), instructions: z.string(), language: z.enum(["python", "javascript"]).default("javascript"), starterCode: z.string() }),
       z.object({ kind: z.literal("game-practice"), intro: z.string(), doc: z.unknown() }),
     ])
     .nullable(),
@@ -53,9 +54,9 @@ export const lessonsRouter = router({
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
         .where(
           and(
-            or(eq(lessons.id, id), eq(lessons.slug, id)),
+            lessonRef(id, lessons),
             or(eq(lessons.status, "published"), and(eq(lessons.sourceKind, "ai"), eq(lessons.status, "draft"))),
-            or(eq(worlds.visibility, "public"), eq(worlds.ownerId, learners.userId)),
+            visibleWorld(learners.userId, worlds),
           ),
         );
       let lesson = found?.lesson;
@@ -81,6 +82,11 @@ export const lessonsRouter = router({
       const media = await listMedia(lesson.currentVersionId);
       // Generated images are resolved per read: the prompt is stripped here and never reaches the learner.
       let part = version?.content ?? null;
+      // Never send a practice lesson's expected output: the sandbox Check compares stdout to it server-side (parts/practice.ts).
+      if (part?.kind === "practice") {
+        const { expectedOutput: _hidden, ...visible } = part;
+        part = visible as typeof part;
+      }
       if (part && (part.kind === "learn" || part.kind === "game-practice") && part.doc) {
         const doc = await resolveDocImages(part.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId, tier: found!.tier as keyof typeof tiers });
         part = { ...part, doc } as typeof part; // resolveDocImages keeps the catalog shape; its return type is unknown

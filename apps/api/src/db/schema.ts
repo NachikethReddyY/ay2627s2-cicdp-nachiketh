@@ -101,7 +101,9 @@ const origin = () =>
 const ownerId = () => text("owner_id").references(() => user.id, { onDelete: "cascade" });
 
 // A world is a course in the UI.
-export const worlds = pgTable("worlds", {
+export const worlds = pgTable(
+  "worlds",
+  {
   id: id(),
   slug: text("slug").notNull().unique(),
   title: text("title").notNull().default(""),
@@ -110,7 +112,9 @@ export const worlds = pgTable("worlds", {
   visibility: visibility(),
   origin: origin(),
   config: jsonb("config").notNull().default({}),
-});
+  },
+  (t) => [index("worlds_owner").on(t.ownerId)],
+);
 
 // One row per paths.generate call that reached the AI, rejected topics included; the daily limit counts these.
 export const aiGenerations = pgTable(
@@ -132,7 +136,9 @@ export const spendLedger = pgTable("spend_ledger", {
   createdAt: createdAt(),
 });
 
-export const paths = pgTable("paths", {
+export const paths = pgTable(
+  "paths",
+  {
   id: id(),
   slug: text("slug").notNull().unique(),
   title: text("title").notNull(),
@@ -141,7 +147,9 @@ export const paths = pgTable("paths", {
   visibility: visibility(),
   origin: origin(),
   createdAt: createdAt(),
-});
+  },
+  (t) => [index("paths_owner").on(t.ownerId)],
+);
 
 export const pathCourses = pgTable(
   "path_courses",
@@ -154,7 +162,7 @@ export const pathCourses = pgTable(
       .references(() => worlds.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.pathId, t.worldId] })],
+  (t) => [primaryKey({ columns: [t.pathId, t.worldId] }), index("path_courses_world").on(t.worldId)],
 );
 
 export const enrollments = pgTable(
@@ -168,7 +176,7 @@ export const enrollments = pgTable(
       .references(() => paths.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.learnerId, t.pathId] })],
+  (t) => [primaryKey({ columns: [t.learnerId, t.pathId] }), index("enrollments_path").on(t.pathId)],
 );
 
 export const concepts = pgTable(
@@ -194,7 +202,9 @@ export type PartSecret =
   | { kind: "practice"; instructions: string; language?: "python" | "javascript"; starterCode: string; expectedOutput: string }
   | { kind: "game-practice"; intro: string; doc: Spec };
 
-export const lessons = pgTable("lessons", {
+export const lessons = pgTable(
+  "lessons",
+  {
   id: id(),
   slug: text("slug").notNull().unique(),
   worldId: text("world_id")
@@ -217,7 +227,9 @@ export const lessons = pgTable("lessons", {
   // No FK to lesson_versions: it would be circular; the app keeps it consistent.
   currentVersionId: text("current_version_id"),
   createdAt: createdAt(),
-});
+  },
+  (t) => [index("lessons_world_order").on(t.worldId, t.level, t.position)],
+);
 
 export const lessonVersions = pgTable(
   "lesson_versions",
@@ -308,6 +320,7 @@ export const attempts = pgTable(
       .on(t.learnerId, t.stepId)
       .where(sql`${t.observed}`),
     index("attempts_step").on(t.stepId),
+    index("attempts_learner_time").on(t.learnerId, t.createdAt),
   ],
 );
 
@@ -381,8 +394,8 @@ export const lessonMedia = pgTable(
   },
   (t) => [
     index("lesson_media_version").on(t.lessonVersionId),
-    // One ready narration per step per version, so two overlapping imports cannot both store one.
-    uniqueIndex("lesson_media_one_narration").on(t.lessonVersionId, t.stepId).where(sql`${t.kind} = 'narration' AND ${t.status} = 'ready'`),
+    // One ready narration per step per version (a null step_id counts as one value; drizzle 0.45 has no NULLS NOT DISTINCT for indexes), so two overlapping imports cannot both store one.
+    uniqueIndex("lesson_media_one_narration").on(t.lessonVersionId, sql`coalesce(${t.stepId}, '')`).where(sql`${t.kind} = 'narration' AND ${t.status} = 'ready'`),
   ],
 );
 

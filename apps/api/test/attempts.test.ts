@@ -177,3 +177,46 @@ test("JSON with a __proto__ key is neutralised", async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(({} as Record<string, unknown>).polluted, undefined);
 });
+
+test("a step of a superseded lesson version is not playable", async () => {
+  const { lessons, lessonVersions, steps } = await import("../src/db/schema.ts");
+  const c = await signUp(app);
+  const [lesson] = await db.select().from(lessons).where(eq(lessons.slug, "lesson-1"));
+  const [old] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 99, content: null }).returning();
+  const [stale] = await db
+    .insert(steps)
+    .values({
+      lessonVersionId: old!.id,
+      idx: 0,
+      public: { title: "old", prompt: "old", kind: "mcq", options: ["a", "b"] },
+      secret: { beforeFiles: {}, hunks: [], answer: 0, hints: [], explanations: { workedExample: "", practice: "" } },
+    })
+    .returning();
+  // lesson.current_version_id still points at the seeded version, so the new version's step is not current.
+  assert.equal((await get(c, stale!.id)).statusCode, 404);
+  assert.equal((await attempt(c, stale!.id, { kind: "mcq", choice: 0 })).statusCode, 404);
+  assert.equal((await get(c, "s1")).statusCode, 200);
+});
+
+test("mcq choice is validated against the step's option count", async () => {
+  const { lessons, lessonVersions, steps } = await import("../src/db/schema.ts");
+  const c = await signUp(app);
+  const [lesson] = await db.select().from(lessons).where(eq(lessons.slug, "lesson-1"));
+  const [v] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson!.currentVersionId!));
+  const [two] = await db
+    .insert(steps)
+    .values({
+      lessonVersionId: v!.id,
+      idx: 50,
+      public: { title: "two", prompt: "two", kind: "mcq", options: ["a", "b"] },
+      secret: { beforeFiles: {}, hunks: [], answer: 1, hints: [], explanations: { workedExample: "", practice: "" } },
+    })
+    .returning();
+  assert.equal((await attempt(c, two!.id, { kind: "mcq", choice: 2 })).statusCode, 400);
+  assert.equal((await attempt(c, two!.id, { kind: "mcq", choice: 3 })).statusCode, 400);
+  const r = out(await attempt(c, two!.id, { kind: "mcq", choice: 0 }));
+  assert.equal(r.correct, false);
+  // No hints on this step: the wrong answer leaves a retry instead of a dead end.
+  assert.equal(r.attemptAllowed, true);
+  assert.equal(out(await attempt(c, two!.id, { kind: "mcq", choice: 1 })).correct, true);
+});

@@ -61,3 +61,19 @@ test("predicting + skip -> skipped", () => {
 test("hinting + skip -> skipped", () => {
   assert.equal(ok(P({ state: "hinting", rungsTaken: 1 }), { type: "skip" }).progress.state, "skipped");
 });
+
+test("no hints: predicting + wrong -> retry offered, attempt allowed (not stuck)", () => {
+  const r = next(P({}), wrong, { hintCount: 0 });
+  assert.ok("progress" in r);
+  assert.deepEqual(r.progress, { state: "hinting", rungsTaken: 0, attemptAllowed: true, retryAllowed: true });
+});
+test("no hints: the retry ends the step either way", () => {
+  const first = next(P({}), wrong, { hintCount: 0 });
+  assert.ok("progress" in first);
+  const second = next(first.progress, wrong, { hintCount: 0 });
+  assert.ok("progress" in second);
+  assert.equal(second.progress.state, "revealed");
+  const ok2 = next(first.progress, right, { hintCount: 0 });
+  assert.ok("progress" in ok2);
+  assert.equal(ok2.progress.state, "revealed");
+});
