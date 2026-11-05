@@ -3,7 +3,7 @@ import type { GameProps, QuizProps } from "@learnquest/ui-catalog";
 import Shell, { btn } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
 
-export default function QuizGame({ p, kind, onComplete }: { p: GameProps; kind: QuizProps; onComplete?: () => void }) {
+export default function QuizGame({ p, kind, onComplete }: { p: GameProps; kind: QuizProps; onComplete?: () => void | Promise<unknown> }) {
   const maxLives = p.shell.lives;
   const [index, setIndex] = useState(0);
   const [lives, setLives] = useState(maxLives);

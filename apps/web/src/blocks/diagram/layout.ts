@@ -9,7 +9,7 @@ export type DiagramProps = {
 };
 export type Pt = { x: number; y: number };
 export type PlacedNode = { id: string; lines: string[]; x: number; y: number; w: number; h: number };
-export type PlacedEdge = { points: Pt[]; label?: string; lx: number; ly: number; lw: number; lh: number };
+type PlacedEdge = { points: Pt[]; label?: string; lx: number; ly: number; lw: number; lh: number };
 export type Layout = { nodes: PlacedNode[]; edges: PlacedEdge[]; width: number; height: number };
 
 export const FONT = 14;
@@ -59,7 +59,7 @@ export function clipToShape(n: { x: number; y: number; w: number; h: number }, t
   return { x: n.x + dx * t, y: n.y + dy * t };
 }
 
-export const WIDE = 640; // container px at which flow and cycle diagrams switch to left-to-right
+const WIDE = 640; // container px at which flow and cycle diagrams switch to left-to-right
 
 /** Rank direction: timelines always run across; flow and cycle run across on a wide container; everything else (and unmeasured) stays top-to-bottom. */
 export function directionFor(kind: string, width: number): "TB" | "LR" {

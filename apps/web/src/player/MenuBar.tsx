@@ -9,6 +9,7 @@ type Props = {
   playing: boolean;
   speed: Speed;
   muted: boolean;
+  audio: boolean; // false: no narration, so no Mute item
   explorer: boolean;
   desktop: boolean;
   full: boolean;
@@ -119,7 +120,7 @@ export default function MenuBar(p: Props) {
             </M.SubContent>
           </M.Portal>
         </M.Sub>
-        <Item label={p.muted ? "Unmute" : "Mute"} hint="M" keys="M" onSelect={on.mute} />
+        {p.audio && <Item label={p.muted ? "Unmute" : "Mute"} hint="M" keys="M" onSelect={on.mute} />}
       </Menu>}
 
       {(p.replay || p.desktop) && <Menu name="View">

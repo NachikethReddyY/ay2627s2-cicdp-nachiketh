@@ -6,9 +6,9 @@ import type { CourseData } from "../../lib/api";
 
 type Lesson = CourseData["lessons"][number];
 
-export const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game" };
+const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game" };
 
-export function Pill({ kind }: { kind: Lesson["kind"] }) {
+function Pill({ kind }: { kind: Lesson["kind"] }) {
   if (kind === "predict") return null;
   return <span className="lesson-kind">{kinds[kind]}</span>;
 }
@@ -68,7 +68,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
             {face}
           </button>
         ) : (
-          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={`${l.title}${state === "done" ? " (complete)" : ""}`} aria-expanded={open} className="lesson-hit" onClick={click}>
+          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={`${l.title}${state === "done" ? " (complete)" : ""}`} className="lesson-hit" onClick={click}>
             {face}
           </Link>
         )}

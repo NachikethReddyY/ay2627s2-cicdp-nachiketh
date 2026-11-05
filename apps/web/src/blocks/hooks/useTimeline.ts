@@ -29,7 +29,8 @@ export function useTimeline(timeline: Timeline) {
   }, []);
 
   // Memoized so the state object keeps its identity between renders; a new one each frame would restart every tween.
-  const view = useMemo(() => viewState(timeline, s), [timeline, s.step]);
+  const { step } = s;
+  const view = useMemo(() => viewState(timeline, { step }), [timeline, step]);
   const running = s.playing && onScreen && !tabHidden && !reduced;
   useEffect(() => {
     if (!running) return;

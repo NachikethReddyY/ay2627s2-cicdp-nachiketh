@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { authClient } from "../lib/auth";
 
@@ -5,6 +6,18 @@ const nav = "pill bg-white px-4 py-1.5 text-sm";
 
 export default function TopNav({ streak, xp }: { streak?: number; xp?: number }) {
   const { data } = authClient.useSession();
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  // Leave only once the server has ended the session; otherwise the learner would look signed out while still signed in.
+  const signOut = async () => {
+    setSignOutFailed(false);
+    try {
+      const { error } = await authClient.signOut();
+      if (error) throw error;
+      location.assign("/");
+    } catch {
+      setSignOutFailed(true);
+    }
+  };
   return (
     <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
       <Link to="/" className="font-display text-3xl font-black tracking-tight">
@@ -18,12 +31,13 @@ export default function TopNav({ streak, xp }: { streak?: number; xp?: number })
         <button
           type="button"
           aria-label={`Sign out${data ? ` ${data.user.email}` : ""}`}
-          onClick={() => void authClient.signOut().finally(() => location.assign("/"))}
+          onClick={() => void signOut()}
           className="pill grid size-9 place-items-center bg-green text-sm"
         >
           {(data?.user.name || data?.user.email || "?")[0].toUpperCase()}
         </button>
       </nav>
+      {signOutFailed && <p role="alert" className="w-full text-right text-sm font-bold">Couldn't sign out. Check your connection and try again.</p>}
     </header>
   );
 }

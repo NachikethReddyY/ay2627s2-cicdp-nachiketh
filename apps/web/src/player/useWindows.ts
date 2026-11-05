@@ -16,7 +16,7 @@ export type Fill = { id: WinId; kind: "zoom" | "full" } | null;
 
 const bounds = (s: Size): Size => ({ w: s.w, h: Math.max(0, s.h - DOCK) });
 
-export type Dir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+type Dir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 export type Kind = "move" | Dir;
 
 /** Resizes from the edges or corners named in `dir`; the opposite side stays put and the size stops at the minimum. */
@@ -61,6 +61,8 @@ export function useWindows(desktop: RefObject<HTMLElement | null>, task: boolean
   const [fill, setFill] = useState<Fill>(null);
   const [dragging, setDragging] = useState(false);
   const zTop = useRef(10);
+  const dragEnd = useRef<(() => void) | null>(null); // detaches the window listeners of a drag in progress
+  useEffect(() => () => dragEnd.current?.(), []);
 
   useEffect(() => {
     const el = desktop.current;
@@ -139,7 +141,12 @@ export function useWindows(desktop: RefObject<HTMLElement | null>, task: boolean
       const y0 = e.clientY;
       const move = (ev: PointerEvent) => change(id, kind, ev.clientX - x0, ev.clientY - y0, b, start, zoomed);
       const up = () => {
+        dragEnd.current?.();
         setDragging(false);
+      };
+      dragEnd.current?.();
+      dragEnd.current = () => {
+        dragEnd.current = null;
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         window.removeEventListener("pointercancel", up);

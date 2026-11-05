@@ -7,7 +7,7 @@ import type { Outcome } from "./model.ts";
 const W = 400;
 const H = 160;
 
-export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kind: PhysicsProps; onComplete?: () => void }) {
+export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kind: PhysicsProps; onComplete?: () => void | Promise<unknown> }) {
   const reduced = useReducedMotion();
   const maxLives = p.shell.lives;
   const [angle, setAngle] = useState(45);

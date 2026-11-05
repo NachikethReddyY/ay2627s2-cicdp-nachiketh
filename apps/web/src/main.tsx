@@ -6,9 +6,11 @@ import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
 import { blip } from "./lib/sound";
 import Loader from "./components/Loader";
+import { NotFound, RouteError } from "./components/RouteStates";
+import { clearReloadGuard, reloadOnce } from "./lib/chunkReload";
 
 const PlayerPage = lazy(() => import("./player/PlayerPage"));
-const DiffPage = lazy(() => import("./player/DiffPage"));
+const DiffPage = import.meta.env.DEV ? lazy(() => import("./player/DiffPage")) : null;
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
@@ -26,11 +28,20 @@ function Root() {
   );
 }
 
-// Sends signed-out visitors to /login before the route renders.
-async function requireSession() {
-  const { data } = await authClient.getSession();
-  if (!data) throw redirect({ to: "/login" });
+// Sends signed-out visitors to /login (and back here afterwards) before the route renders.
+// A failed check is not "signed out": it throws, so the route's error screen offers a retry.
+async function requireSession(here: string) {
+  let result: Awaited<ReturnType<typeof authClient.getSession>>;
+  try {
+    result = await authClient.getSession();
+  } catch {
+    throw new Error("Couldn't check your session. Check your connection and try again.");
+  }
+  const { data, error } = result;
+  if (error && error.status !== 401 && error.status !== 403) throw new Error("Couldn't check your session. Check your connection and try again.");
+  if (!data) throw redirect({ to: "/login", search: { redirect: here } });
 }
+const guard = ({ location }: { location: { href: string } }) => requireSession(location.href);
 
 function Index(): React.ReactElement | null {
   const { data, isPending } = authClient.useSession();
@@ -41,24 +52,35 @@ const root = createRootRoute({ component: Root });
 const r = { getParentRoute: () => root };
 const routeTree = root.addChildren([
   createRoute({ ...r, path: "/", component: Index }),
-  createRoute({ ...r, path: "/login", component: () => <Login /> }),
+  createRoute({
+    ...r,
+    path: "/login",
+    component: () => <Login />,
+    validateSearch: (s: Record<string, unknown>): { redirect?: string } => ({ redirect: typeof s.redirect === "string" ? s.redirect : undefined }),
+  }),
   createRoute({
     ...r,
     path: "/play",
     component: () => <PlayerPage />,
-    beforeLoad: requireSession,
+    beforeLoad: guard,
     validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string } => ({
       lesson: typeof s.lesson === "string" ? s.lesson : undefined,
       course: typeof s.course === "string" ? s.course : undefined,
     }),
   }),
-  createRoute({ ...r, path: "/diff", component: () => <DiffPage /> }),
-  createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: requireSession }),
-  createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: requireSession }),
+  createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
+  createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
+  ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
 ]);
 
-const router = createRouter({ routeTree });
+const router = createRouter({ routeTree, defaultNotFoundComponent: NotFound, defaultErrorComponent: RouteError });
+
+// Vite reports a failed chunk preload (a deploy replaced the files under a stale tab): reload once.
+window.addEventListener("vite:preloadError", (e) => {
+  if (reloadOnce()) e.preventDefault();
+});
+window.addEventListener("load", () => setTimeout(clearReloadGuard, 10_000));
 declare module "@tanstack/react-router" {
   interface Register { router: typeof router }
 }

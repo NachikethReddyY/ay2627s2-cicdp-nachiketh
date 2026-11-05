@@ -52,7 +52,7 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
   );
 }
 
-function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete?: () => void }) {
+function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete?: () => void | Promise<unknown> }) {
   const reduced = useReducedMotion();
   const c = controls(g.mode);
   const start: At = { x: g.start.x, y: g.start.y, dir: g.start.dir, collected: [] };
@@ -163,7 +163,10 @@ function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete
 
 export default function GameView({ block, gameCompletion }: BlockViewProps<GameProps>) {
   const p = block.props;
-  const onComplete = gameCompletion ? () => { void trpc.games.complete.mutate({ ...gameCompletion, blockId: block.id }).catch(() => {}); } : undefined;
+  const onComplete = useMemo(
+    () => (gameCompletion ? () => trpc.games.complete.mutate({ ...gameCompletion, blockId: block.id }) : undefined),
+    [gameCompletion, block.id],
+  );
   if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} onComplete={onComplete} />;
   if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} onComplete={onComplete} />;
   if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} onComplete={onComplete} />;

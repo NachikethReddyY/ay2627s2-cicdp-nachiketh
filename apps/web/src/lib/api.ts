@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RouterOutputs } from "./trpc";
 
 export type HomeData = RouterOutputs["home"]["get"];
 export type PathCardData = HomeData["official"][number];
-export type CourseProgress = HomeData["paths"][number]["courses"][number];
 export type CourseData = RouterOutputs["courses"]["get"];
 export type ExplorePath = RouterOutputs["paths"]["list"][number];
 
@@ -13,16 +12,19 @@ export type ApiState<T> = { data?: T; error?: unknown; loading: boolean; reload:
 export function useApi<T>(key: string, run: () => Promise<T>): ApiState<T> {
   const [state, setState] = useState<{ key: string; tick: number; data?: T; error?: unknown }>({ key: "", tick: -1 });
   const [tick, setTick] = useState(0);
+  const runRef = useRef(run); // the latest `run`; it closes over the inputs that `key` encodes
+  useEffect(() => {
+    runRef.current = run;
+  });
   useEffect(() => {
     let live = true;
-    run().then(
+    runRef.current().then(
       (data) => live && setState({ key, tick, data }),
       (error) => live && setState({ key, tick, error }),
     );
     return () => {
       live = false;
     };
-    // `run` closes over the inputs that `key` encodes.
   }, [key, tick]);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   // Data stays on screen while the same key reloads, never for a different key; an error only counts for its own request.
