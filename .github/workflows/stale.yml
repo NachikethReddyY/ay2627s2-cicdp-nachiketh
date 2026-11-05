@@ -1,0 +1,28 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-stale: 30
+          days-before-close: 14
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: pinned,help wanted
+          exempt-pr-labels: pinned,work in progress
+          stale-pr-message: >
+            No activity for 30 days. Closing in 14 days unless there is an update.
+            Add the `pinned` label to keep it open.
+          stale-issue-message: >
+            No activity for 30 days. Closing in 14 days unless there is an update.

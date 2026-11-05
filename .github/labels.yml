@@ -1,0 +1,38 @@
+# Source of truth for repo labels. Synced by .github/workflows/labels.yml.
+# Size
+- {name: "size/XS",  color: "3cbf00", description: "Under 10 changed lines"}
+- {name: "size/S",   color: "5d9801", description: "10-49 changed lines"}
+- {name: "size/M",   color: "7f7203", description: "50-199 changed lines"}
+- {name: "size/L",   color: "a14c05", description: "200-499 changed lines"}
+- {name: "size/XL",  color: "c32607", description: "500-999 changed lines (consider splitting)"}
+- {name: "size/XXL", color: "e50009", description: "1000+ changed lines (split this PR)"}
+# Type (from the Conventional Commit prefix in the PR title)
+- {name: "type: feat",     color: "a2eeef", description: "New feature"}
+- {name: "type: fix",      color: "d73a4a", description: "Bug fix"}
+- {name: "type: refactor", color: "fbca04", description: "Code change that is not a fix or feature"}
+- {name: "type: docs",     color: "0075ca", description: "Documentation only"}
+- {name: "type: test",     color: "bfd4f2", description: "Tests only"}
+- {name: "type: perf",     color: "d4c5f9", description: "Performance improvement"}
+- {name: "type: ci",       color: "ededed", description: "CI/CD changes"}
+- {name: "type: chore",    color: "c5def5", description: "Maintenance"}
+- {name: "type: build",    color: "c5def5", description: "Build system or dependencies"}
+- {name: "type: style",    color: "c5def5", description: "Formatting, no code change"}
+- {name: "type: revert",   color: "e99695", description: "Reverts a previous change"}
+- {name: "breaking change", color: "b60205", description: "Breaking change (type! or BREAKING CHANGE footer)"}
+# Area
+- {name: "area: web",     color: "1d76db", description: "apps/web"}
+- {name: "area: api",     color: "1d76db", description: "apps/api"}
+- {name: "area: engine",  color: "1d76db", description: "services/engine"}
+- {name: "area: sandbox", color: "1d76db", description: "services/sandbox"}
+- {name: "area: packages",color: "1d76db", description: "packages/*"}
+- {name: "area: infra",   color: "1d76db", description: "Docker, compose, infra"}
+- {name: "area: ci",      color: "1d76db", description: ".github"}
+- {name: "area: docs",    color: "1d76db", description: "Documentation"}
+- {name: "area: db",      color: "1d76db", description: "Schema and migrations"}
+# Status and housekeeping
+- {name: "dependencies", color: "0366d6", description: "Dependency updates"}
+- {name: "github-actions", color: "000000", description: "GitHub Actions updates"}
+- {name: "needs-review", color: "fef2c0", description: "Ready for review"}
+- {name: "work in progress", color: "fbca04", description: "Draft, not ready"}
+- {name: "stale", color: "cfd3d7", description: "No recent activity"}
+- {name: "pinned", color: "5319e7", description: "Exempt from stale automation"}
