@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
 import { SandboxBusyError } from "../src/sandbox/backend.ts";
 
-function fake(opts: { createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string] } = {}) {
-  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string] } = {}) {
+  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
   const mk = (extra: Partial<DaytonaSandbox> = {}): DaytonaSandbox => ({
@@ -30,6 +30,7 @@ function fake(opts: { createDelay?: number;  existing?: Partial<DaytonaSandbox>[
       createSession: async () => {},
       executeSessionCommand: async (_s, req) => (log.cmds.push(req.command), log.reqs.push(req), { cmdId: "c1" }),
       getSessionCommandLogs: async (_s, _c, out, err) => {
+        if (opts.hangLogs) return new Promise(() => {});
         out(opts.logs?.[0] ?? "hi\n");
         err(opts.logs?.[1] ?? "");
       },
@@ -49,7 +50,10 @@ function fake(opts: { createDelay?: number;  existing?: Partial<DaytonaSandbox>[
       log.listed.push(q);
       for (const e of opts.existing ?? []) yield mk(e);
     },
-    delete: async () => void log.deleted++,
+    delete: async () => {
+      if (log.failedDeletes < (opts.failDeletes ?? 0)) { log.failedDeletes++; throw new Error("boom"); }
+      log.deleted++;
+    },
   };
   return { client, log, emit: (s: string) => onData(Buffer.from(s)), end: (code: number) => endPty({ exitCode: code }) };
 }
@@ -180,4 +184,19 @@ test("a stopped shell sandbox is started; a broken one is replaced; a starting o
   await daytonaBackend({ client: starting.client }).openShell("l", { cols: 80, rows: 24 });
   assert.equal(starting.log.waited, 1);
   assert.equal(starting.log.started, 0);
+});
+
+test("killing a program that is still running (blocked on input) deletes the sandbox without waiting for it", async () => {
+  const f = fake({ hangLogs: true });
+  const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "input()", { timeoutS: 60 });
+  await new Promise<void>((res) => run.onStart(res));
+  await run.kill();
+  assert.equal(f.log.deleted, 1);
+});
+
+test("a failed sandbox delete is retried", async () => {
+  const f = fake({ failDeletes: 2 });
+  const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
+  await new Promise((res) => run.onExit(res));
+  assert.equal(f.log.deleted, 1);
 });

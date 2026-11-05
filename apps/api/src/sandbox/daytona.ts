@@ -196,7 +196,19 @@ function runInSandbox(
   const cleanup = (): Promise<void> => {
     if (!sbx) return cleaning ?? Promise.resolve();
     const s = sbx;
-    return (cleaning ??= client.delete(s).catch(() => {}));
+    // Bounded retries; a delete that still fails is logged and left to the sandbox's auto-stop + ephemeral delete,
+    // and `cleaning` is cleared so a later call tries again.
+    return (cleaning ??= (async () => {
+      for (let i = 0; i < 3; i++) {
+        try {
+          return await client.delete(s);
+        } catch (err) {
+          if (i === 2) console.error(`daytona: could not delete runner sandbox ${s.id}`, err);
+          else await new Promise((r) => setTimeout(r, 200 * (i + 1)));
+        }
+      }
+      cleaning = undefined;
+    })());
   };
   const end = (code: number | null, error?: string) => {
     if (ended) return;
@@ -215,16 +227,18 @@ function runInSandbox(
     return undefined;
   };
 
-  const creating = (async () => {
-    try {
-      const created = await client.create({
+  // Settles when the sandbox exists (or failed to), so a stop only ever waits for that, never for the program.
+  const createP = client.create({
         ...(o.snapshot ? { snapshot: o.snapshot } : {}),
         labels: { ...APP_LABEL, role: RUNNER_ROLE, learner: o.learner },
         networkBlockAll: true,
         ephemeral: true, // deleted as soon as it stops
         autoStopInterval: o.stopMinutes, // backstop if this process dies before deleting it
-      });
-      sbx = created;
+      }).then((c) => (sbx = c));
+  const createSettled = createP.then(() => {}, () => {});
+  void (async () => {
+    try {
+      const created = await createP;
       if (killed) return void end(null); // stopped while it was being created: delete it now
       const f = FILE[language];
       await created.fs.uploadFile(Buffer.from(code), f.path);
@@ -256,9 +270,9 @@ function runInSandbox(
     writeLine: (line) => (cmd && !ended ? sendLine(line) : void pending.push(line)),
     kill: async () => {
       killed = true;
-      // A create still in flight finishes first, so the sandbox it returns is deleted, not leaked.
-      await creating;
-      await cleanup();
+      // A create still in flight finishes first, so the sandbox it returns is deleted, not leaked; the program is not waited on.
+      await createSettled;
+      await cleanup(); // deleting the sandbox stops the program, even one blocked on input
       end(null);
     },
     onExit: (cb) => void exits.push(cb),
