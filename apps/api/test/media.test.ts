@@ -102,6 +102,24 @@ test("importNarration stores one MP3 per step and skips steps already stored", a
   assert.equal(mem.objects.size, 2);
 });
 
+test("the database allows only one ready narration per step, and the import treats a lost race as skipped", async () => {
+  await signUp(app);
+  const { versionId } = await lessonVersion();
+  setStorage(memoryStorage());
+  const [first] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
+  await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" });
+  await assert.rejects(saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" }));
+  // An image for the same step is still allowed.
+  await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "image", body: PNG, contentType: "image/png" });
+  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 1);
+
+  // Two overlapping imports of another step: exactly one stores it, neither throws.
+  const [, second] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
+  const runs = await Promise.all([1, 2].map(() => importNarration("lesson-1", [{ idx: second!.idx, body: MP3 }])));
+  assert.equal(runs.flatMap((r) => r.saved).length, 1);
+  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 2);
+});
+
 test("importNarration refuses unknown steps, bad bytes and missing storage before writing", async () => {
   await signUp(app);
   const mem = memoryStorage();

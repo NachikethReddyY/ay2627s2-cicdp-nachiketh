@@ -42,11 +42,24 @@ export async function importNarration(slug: string, files: NarrationFile[]) {
       skipped.push(f.idx);
       continue;
     }
-    await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: f.body, contentType: "audio/mpeg" });
+    try {
+      await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: f.body, contentType: "audio/mpeg" });
+    } catch (e) {
+      // Another import stored this step first (lesson_media_one_narration). Its object is kept; ours is a harmless orphan.
+      if (isUniqueViolation(e)) {
+        skipped.push(f.idx);
+        continue;
+      }
+      throw e;
+    }
     saved.push(f.idx);
   }
   return { saved, skipped };
 }
+
+// drizzle wraps the pg error, so the code can be on the error or its cause.
+const isUniqueViolation = (e: unknown) =>
+  [e, (e as { cause?: unknown })?.cause].some((x) => (x as { code?: string } | undefined)?.code === "23505");
 
 /** Reads `<step idx>.mp3` files from a folder. Other files are ignored. */
 export async function readNarrationDir(dir: string): Promise<NarrationFile[]> {
