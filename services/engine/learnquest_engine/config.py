@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: SecretStr | None = None
     LLM_JSON_MODE: Literal["schema", "object", "off"] | None = None
     LLM_TIMEOUT_S: int = 120
+    # Total budget per request incl. repair; keep below the API ENGINE_TIMEOUT_MS (400s).
+    LLM_DEADLINE_S: int = 300
     LLM_MAX_TOKENS: int = 8000
     ENGINE_TOKEN: SecretStr = Field(min_length=32)
     PORT: int = 8000

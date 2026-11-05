@@ -31,7 +31,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("LLM_API_KEY", KEY)
     monkeypatch.setenv("ENGINE_TOKEN", "x" * 32)
     monkeypatch.delenv("LLM_JSON_MODE", raising=False)
-    monkeypatch.setattr(llm, "_auto_mode", None)
+    monkeypatch.setattr(llm, "_auto_modes", {})
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -125,3 +125,78 @@ def test_key_never_logged(
         generate("sys", {"secret": "prompt-body"}, Lesson)
     assert "attempts=2" in caplog.text
     assert KEY not in caplog.text and "prompt-body" not in caplog.text
+
+
+def test_unrelated_bad_request_does_not_poison_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    err = BadRequestError("invalid temperature value", "m", "openai")
+    fake(monkeypatch, err)
+    with pytest.raises(BadRequestError):
+        generate("sys", {}, Lesson)
+    assert llm._auto_modes == {}
+
+
+def test_fallback_is_remembered_per_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    err = BadRequestError("response_format json_schema unsupported", "m", "openai")
+    calls = fake(monkeypatch, err, reply(GOOD), reply(GOOD))
+    generate("sys", {}, Lesson)
+    assert llm._auto_modes == {"openai/test": "object"}
+    monkeypatch.setenv("LLM_MODEL", "openai/other")
+    get_settings.cache_clear()
+    generate("sys", {}, Lesson)
+    assert calls[2]["response_format"]["type"] == "json_schema"
+
+
+def test_truncated_reply_fails_fast_without_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    cut = reply('{"steps": [')
+    cut.choices[0].finish_reason = "length"
+    calls = fake(monkeypatch, cut)
+    with pytest.raises(GenerationError, match="truncated|validation"):
+        generate("sys", {}, Lesson)
+    assert len(calls) == 1
+
+
+def test_litellm_retries_are_off_and_timeout_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_DEADLINE_S", "10")
+    get_settings.cache_clear()
+    calls = fake(monkeypatch, reply(GOOD))
+    generate("sys", {}, Lesson)
+    assert calls[0]["num_retries"] == 0
+    assert calls[0]["timeout"] <= 10
+
+
+def test_deadline_stops_the_repair_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    from litellm.exceptions import Timeout
+
+    monkeypatch.setenv("LLM_DEADLINE_S", "5")
+    get_settings.cache_clear()
+    now = [0.0]
+    monkeypatch.setattr(llm.time, "monotonic", lambda: now[0])
+    calls: list[Any] = []
+
+    def slow(**kw: Any) -> Any:
+        calls.append(kw)
+        now[0] += 100  # the first call eats the whole budget
+        return reply("not json")
+
+    monkeypatch.setattr(litellm, "completion", slow)
+    with pytest.raises(Timeout):
+        generate("sys", {}, Lesson)
+    assert len(calls) == 1
+
+
+def test_deadline_is_shared_by_all_calls_in_a_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_DEADLINE_S", "100")
+    get_settings.cache_clear()
+    now = [0.0]
+    monkeypatch.setattr(llm.time, "monotonic", lambda: now[0])
+    calls = fake(monkeypatch, reply(GOOD), reply(GOOD))
+    token = llm._deadline.set(None)
+    llm.start_request_deadline()
+    try:
+        generate("sys", {}, Lesson)
+        now[0] = 70.0  # the first generate() used 70s of the request budget
+        generate("sys", {}, Lesson)
+    finally:
+        llm._deadline.reset(token)
+    assert calls[0]["timeout"] == 100
+    assert calls[1]["timeout"] == 30

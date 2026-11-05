@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { BlockModule } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
 
-export const MAX_MD = 2000;
+const MAX_MD = 2000;
 
 type Props = { md: string };
 

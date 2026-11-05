@@ -9,13 +9,17 @@ from litellm.exceptions import (
     APIConnectionError,
     APIError,
     AuthenticationError,
+    BadRequestError,
+    ContextWindowExceededError,
+    NotFoundError,
+    PermissionDeniedError,
     RateLimitError,
     ServiceUnavailableError,
     Timeout,
 )
 from pydantic import BaseModel, Field
 
-from learnquest_engine import pipeline, visual
+from learnquest_engine import llm, pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.schemas import LessonContext
@@ -50,19 +54,57 @@ def _body(key: str, result: Result[Any]) -> dict[str, Any]:
     }
 
 
-@app.middleware("http")
-async def cap_body(request: Request, call_next: Any) -> Any:
-    # shortcut: only Content-Length is checked, chunked bodies are uncapped,
-    # upgrade to a streaming size check if the engine is ever exposed publicly.
-    length = request.headers.get("content-length", "0")
-    if length.isdigit() and int(length) > MAX_BODY_BYTES:
-        return JSONResponse(status_code=413, content={"error": "too_large"})
-    return await call_next(request)
+class CapBody:
+    """Pure ASGI middleware: refuse bodies over MAX_BODY_BYTES, counting the bytes actually read.
+
+    Content-Length is only a hint (chunked bodies have none), so the stream is capped too.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        length = dict(scope["headers"]).get(b"content-length", b"")
+        too_large = JSONResponse(status_code=413, content={"error": "too_large"})
+        if length.isdigit() and int(length) > MAX_BODY_BYTES:
+            await too_large(scope, receive, send)
+            return
+        llm.start_request_deadline()
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                break  # client went away
+            size += len(message.get("body", b""))
+            if size > MAX_BODY_BYTES:
+                await too_large(scope, receive, send)
+                return
+            chunks.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+        body = b"".join(chunks)
+        replayed = False
+
+        async def replay() -> Any:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+
+app.add_middleware(CapBody)
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, Any]:
-    return {"ok": True, "model": get_settings().LLM_MODEL}
+def healthz() -> dict[str, bool]:
+    return {"ok": True}
 
 
 @app.post("/v1/pipeline/outline", dependencies=[Depends(require_token)])
@@ -77,12 +119,6 @@ def lesson_route(body: LessonContext) -> dict[str, Any]:
 
 @app.post("/v1/pipeline/visual", dependencies=[Depends(require_token)])
 def visual_route(body: VisualRequest) -> JSONResponse:
-    key = get_settings().LLM_API_KEY
-    if key is None or not key.get_secret_value():
-        return JSONResponse(
-            status_code=503,
-            content={"error": "LLM not configured (LLM_API_KEY is empty)", "issues": []},
-        )
     t0 = time.monotonic()
     first = visual.generate_visual(body.prompt)
     t1 = time.monotonic()
@@ -146,6 +182,10 @@ def provider_auth(_: Request, exc: AuthenticationError) -> JSONResponse:
 @app.exception_handler(RateLimitError)
 @app.exception_handler(ServiceUnavailableError)
 @app.exception_handler(APIConnectionError)
+@app.exception_handler(BadRequestError)
+@app.exception_handler(NotFoundError)
+@app.exception_handler(ContextWindowExceededError)
+@app.exception_handler(PermissionDeniedError)
 @app.exception_handler(APIError)
 def upstream(_: Request, exc: Exception) -> JSONResponse:
     log.error("LLM upstream failure: %s", type(exc).__name__)

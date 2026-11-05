@@ -6,7 +6,7 @@ import { EASES, MAX_STEPS, timelineSchema, type Timeline } from "../../core/time
 import { bodyBelow } from "./bounce.ts";
 
 export const MAX_SHAPES = 60;
-export const KINDS = ["rect", "circle", "ellipse", "line", "text", "path"] as const;
+const KINDS = ["rect", "circle", "ellipse", "line", "text", "path"] as const;
 /** Props a timeline may set. Anything else is rejected. */
 export const ANIMATABLE = ["x", "y", "opacity", "fill", "stroke", "w", "h", "r", "rotation", "scale", "draw"] as const;
 
@@ -27,7 +27,7 @@ type Shape = {
   stroke?: (typeof THEME_COLORS)[number];
   label?: string;
 };
-export type StagePhysics = { kind: "bounce"; body: string; floor: number; restitution: number; autoplay?: boolean };
+type StagePhysics = { kind: "bounce"; body: string; floor: number; restitution: number; autoplay?: boolean };
 export type StageProps = { alt: string; shapes: Shape[]; timeline?: Timeline; physics?: StagePhysics };
 
 // Geometry each kind needs (and may use) beyond x and y. rect x,y is the top-left corner; the others are centred or anchored at x,y.

@@ -2,7 +2,7 @@ import DiffMatchPatch from "diff-match-patch";
 import type { Files, ReplayEvent, StepInput, StepSpan, Snapshot, Timeline, TypingConfig } from "./types.ts";
 
 export const K = 200;
-export const DEFAULT_TYPING: TypingConfig = { msPerChar: 200, lineEndPauseMs: 300, blockThresholdLines: 20 };
+const DEFAULT_TYPING: TypingConfig = { msPerChar: 200, lineEndPauseMs: 300, blockThresholdLines: 20 };
 
 /** Applies one edit event to a text. */
 export function applyEdit(text: string, e: ReplayEvent): string {
@@ -46,7 +46,8 @@ export function buildTimeline(steps: StepInput[], config: TypingConfig = DEFAULT
       const newL: string[] = [];
       let changed = 0;
       for (const line of h.lines) {
-        const p = line[0];
+        // LLMs often emit a blank context line as "" instead of " ".
+        const p = line === "" ? " " : line[0];
         if (p === "\\") continue;
         if (p !== " " && p !== "-" && p !== "+") throw new Error(`hunk ${h.id}: bad line prefix in "${line}"`);
         if (p !== "+") oldL.push(line.slice(1));

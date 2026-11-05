@@ -117,3 +117,8 @@ test("property: end state and seek equal naive replay", () => {
     { numRuns: 200 },
   );
 });
+
+test("an empty hunk line is treated as a blank context line", () => {
+  const tl = buildTimeline([{ beforeFiles: { f: "a\n\nb" }, hunks: [hunk("f", 1, [" a", "", "-b", "+c"])] }]);
+  assert.equal(filesAtEnd(tl).f, "a\n\nc");
+});
