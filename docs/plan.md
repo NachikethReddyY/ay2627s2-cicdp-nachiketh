@@ -90,6 +90,8 @@ Full flows: `docs/sdlc/use-cases.md` (WP0).
 
 ## 5. Architecture
 
+> **Status (2026-11-05):** Not built yet: the SSE endpoint, the pg-boss background worker and the `WORKER_IN_PROCESS` switch. `apps/api` has no pg-boss dependency. Lesson generation runs in-process on the request. The diagram below is the target design.
+
 ```
 Browser: apps/web (React + Vite + TS): bundled Monaco, XState player, player-core, MP3 narration
    │ REST + SSE, same-site via Vercel rewrites
