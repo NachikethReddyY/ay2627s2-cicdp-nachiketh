@@ -108,8 +108,9 @@ test("parts.complete rejects practice and game-practice without evidence", async
 });
 
 const pracPart: PartSecret = { kind: "practice", instructions: "Print 17.", language: "python", starterCode: "", expectedOutput: "17\n" };
-const learnerOf = async (email: string) =>
-  (await db.execute<{ id: string }>(sql`SELECT l.id FROM learners l JOIN "user" u ON u.id = l.user_id WHERE u.email = ${email}`)).rows[0]!.id;
+// The learner row is created on the first signed-in request, so make one before looking it up.
+const learnerOf = async (cookie: string, email: string) =>
+  (await get(cookie), await db.execute<{ id: string }>(sql`SELECT l.id FROM learners l JOIN "user" u ON u.id = l.user_id WHERE u.email = ${email}`)).rows[0]!.id;
 
 // A fake `docker run` that prints `output` and exits 0, so a checked run can end without a container.
 const printing = (output: string) => (() => {
@@ -123,7 +124,7 @@ test("a practice lesson completes only after a matching server-checked run", asy
   const cookie = await signUp(app, "p@example.com");
   await enroll(cookie, "js-foundations");
   await addLesson("prac-1", "practice", pracPart);
-  const me = await learnerOf("p@example.com");
+  const me = await learnerOf(cookie, "p@example.com");
 
   assert.equal(code(await m(cookie, "parts.complete", { lessonId: "prac-1" })), "FORBIDDEN");
   assert.equal((await db.select().from(partCompletions)).length, 0, "an unplayed practice lesson has no row");
@@ -145,9 +146,9 @@ test("a practice lesson completes only after a matching server-checked run", asy
 });
 
 test("a checked run needs a published practice lesson the learner can see", async () => {
-  await signUp(app, "a@example.com");
+  const cookie = await signUp(app, "a@example.com");
   await signUp(app, "b@example.com");
-  const me = await learnerOf("a@example.com");
+  const me = await learnerOf(cookie, "a@example.com");
   await addLesson("prac-1", "practice", pracPart);
   await addLesson("learn-1", "learn", learnPart);
   await addLesson("draft-prac", "practice", pracPart, undefined, "draft");
