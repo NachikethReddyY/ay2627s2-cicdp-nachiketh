@@ -13,7 +13,8 @@
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/db/migrate.ts",
-    "db:seed": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/db/seed.ts"
+    "db:seed": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/db/seed.ts",
+    "media:narration": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/media/import-narration.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
