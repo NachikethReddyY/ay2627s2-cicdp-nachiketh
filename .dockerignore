@@ -1,6 +1,8 @@
 **/node_modules
 **/.turbo
-**/.env
+# Every env file (.env, .env.local, .env.render, ...) stays out of images; only the checked-in examples go in.
+**/.env*
+!**/.env.example
 .git
 .claude
 .macroscope

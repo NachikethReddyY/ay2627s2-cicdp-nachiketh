@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
 
-const { startRun, runStatus, sendRunInput, stopRun, setRmTimeoutForTests } = await import("../src/sandbox/run.ts");
+const { startRun, runStatus, sendRunInput, stopRun, setRmTimeoutForTests, atCapacity } = await import("../src/sandbox/run.ts");
+const { env } = await import("../src/env.ts");
 const tick = () => new Promise((r) => setImmediate(r));
 
 // A fake `docker` process. `onInput` decides what it prints and when it exits when a line arrives on stdin.
@@ -127,6 +128,21 @@ test("a learner can have only a few live runs", () => {
   assert.ok(startRun("input()", "learner-f", "python", spawn as never));
   assert.ok(startRun("input()", "learner-f", "python", spawn as never));
   assert.equal(startRun("input()", "learner-f", "python", spawn as never), null);
+});
+
+test("the server caps live runs across all learners", () => {
+  const { spawn } = fakeDocker(() => {});
+  const max = env.SANDBOX_MAX_RUNS;
+  try {
+    env.SANDBOX_MAX_RUNS = 1000;
+    assert.ok(startRun("input()", "learner-g1", "python", spawn as never));
+    assert.equal(atCapacity(), false);
+    env.SANDBOX_MAX_RUNS = 1; // at least the run above is live
+    assert.equal(atCapacity(), true);
+    assert.equal(startRun("input()", "learner-g2", "python", spawn as never), null, "a learner with no runs is still refused");
+  } finally {
+    env.SANDBOX_MAX_RUNS = max;
+  }
 });
 
 // A Check run: `saved` counts recorded completions; `fail` makes saving throw.

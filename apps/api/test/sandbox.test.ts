@@ -173,6 +173,57 @@ test("an invalid tab id is refused with 400 before the upgrade", async () => {
   await assert.rejects(connect(cookie, "bad.tab"), /handshake refused/);
 });
 
+test("a learner can open only SANDBOX_MAX_TABS terminals; reconnecting a tab does not count", async () => {
+  const cookie = await signUp(app);
+  const fake = fakeBackend();
+  const max = env.SANDBOX_MAX_TABS;
+  env.SANDBOX_MAX_TABS = 2;
+  try {
+    const a = await connect(cookie, "a");
+    const b = await connect(cookie, "b");
+    const c = await connect(cookie, "c");
+    assert.deepEqual(JSON.parse((await c.next()).data as string), { type: "error", message: "At most 2 terminals at once" });
+    assert.equal(await c.closed, 4029);
+    const a2 = await connect(cookie, "a");
+    assert.equal(await a.closed, 4000, "the same tab still takes over");
+    assert.equal(a2.sock.readyState, WebSocket.OPEN);
+    // Another learner has their own allowance.
+    const other = await connect(await signUp(app, "tabs-other@example.com"), "a");
+    assert.equal(other.sock.readyState, WebSocket.OPEN);
+    assert.equal(fake.calls.open.length, 4, "the refused tab never started a shell");
+    for (const s of [a2, b, other]) s.sock.close();
+    await Promise.all([a2.closed, b.closed, other.closed]);
+  } finally {
+    env.SANDBOX_MAX_TABS = max;
+  }
+});
+
+test("the server refuses new shells past SANDBOX_MAX_SHELLS", async () => {
+  fakeBackend();
+  await new Promise((r) => setTimeout(r, 50)); // earlier tests' server-side close handlers have run
+  const max = env.SANDBOX_MAX_SHELLS;
+  env.SANDBOX_MAX_SHELLS = 1;
+  try {
+    const first = await connect(await signUp(app));
+    const second = await connect(await signUp(app, "shells-second@example.com"));
+    assert.equal(JSON.parse((await second.next()).data as string).type, "error");
+    assert.equal(await second.closed, 4503);
+    first.sock.close();
+    await first.closed;
+  } finally {
+    env.SANDBOX_MAX_SHELLS = max;
+  }
+});
+
+test("a frame over 64 KiB closes the socket", async () => {
+  const cookie = await signUp(app);
+  const fake = fakeBackend();
+  const { sock, closed } = await connect(cookie);
+  sock.send(Buffer.alloc(64 * 1024 + 1));
+  assert.equal(await closed, 1009, "message too big");
+  assert.deepEqual(fake.calls.written, []);
+});
+
 test("concurrent first getBackend calls share one backend", async () => {
   setBackend(null);
   const [a, b] = await Promise.all([getBackend(), getBackend()]);

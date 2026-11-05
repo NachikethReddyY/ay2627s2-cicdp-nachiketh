@@ -4,9 +4,11 @@ import { chmodSync } from "node:fs";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import pty from "node-pty";
+import { env } from "../env.ts";
 import type { SandboxBackend } from "./backend.ts";
 
-const run = promisify(execFile);
+type Exec = (cmd: string, args: string[]) => Promise<{ stdout: string; stderr?: string }>;
+const run: Exec = promisify(execFile);
 const IDLE_MS = 15 * 60_000;
 
 // pnpm unpacks node-pty's prebuilt spawn-helper without the exec bit, which makes every spawn fail with posix_spawnp.
@@ -17,35 +19,66 @@ try {
   // Not present on this platform (Linux builds compile it with the right mode).
 }
 
-export function dockerBackend(opts: { image: string; idleMs?: number }): SandboxBackend {
+/**
+ * Creates the shell network if it is missing. Inter-container traffic is off, so learners cannot reach each other.
+ * Egress to the internet stays open for pip/npm. Docker cannot block the cloud metadata address or private ranges
+ * on its own: the host needs the DOCKER-USER rules in services/sandbox/README.md.
+ */
+export async function ensureNetwork(name: string, exec: Exec = run): Promise<void> {
+  if (await exec("docker", ["network", "inspect", name]).then(() => true, () => false)) return;
+  try {
+    await exec("docker", ["network", "create", "--driver", "bridge", "-o", "com.docker.network.bridge.enable_icc=false", name]);
+  } catch (err) {
+    // Another API process created it between our inspect and create.
+    const msg = `${(err as { stderr?: string }).stderr ?? ""} ${(err as Error).message ?? ""}`;
+    if (!/already exists/i.test(msg)) throw err;
+  }
+}
+
+/** The `docker run` call for a learner's shell container. */
+export function shellRunArgs(name: string, opts: { image: string; network: string; runtime?: string }): string[] {
+  return [
+    "run", "-d", "--name", name,
+    "--network", opts.network,
+    ...(opts.runtime ? ["--runtime", opts.runtime] : []),
+    "--cpus", "1", "--memory", "1g", "--pids-limit", "256",
+    "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+    // Read-only root plus RAM-backed home and /tmp caps disk use (tmpfs also counts against --memory); files are lost on idle stop, the editor re-syncs them.
+    "--read-only",
+    "--tmpfs", "/home/learner:rw,exec,size=512m,uid=1001,gid=1001,mode=0700",
+    "--tmpfs", "/tmp:rw,exec,size=64m",
+    // The venv under /opt is read-only now, so pip installs into home.
+    "-e", "PIP_TARGET=/home/learner/.pip", "-e", "PYTHONPATH=/home/learner/.pip",
+    opts.image, "sleep", "infinity",
+  ];
+}
+
+export function dockerBackend(opts: { image: string; idleMs?: number; network?: string; runtime?: string; exec?: Exec }): SandboxBackend {
   const idleMs = opts.idleMs ?? IDLE_MS;
+  const exec = opts.exec ?? run;
+  const network = opts.network ?? env.SANDBOX_NETWORK;
+  const runtime = opts.runtime ?? env.SANDBOX_RUNTIME;
   const attached = new Map<string, number>();
   const timers = new Map<string, NodeJS.Timeout>();
   const starting = new Map<string, Promise<void>>();
   const stopping = new Map<string, Promise<void>>();
+  let netReady: Promise<void> | null = null;
 
   async function ensureRunning(name: string) {
-    const state = await run("docker", ["inspect", "-f", "{{.State.Running}}", name]).then(
+    const state = await exec("docker", ["inspect", "-f", "{{.State.Running}}", name]).then(
       (r) => r.stdout.trim(),
       () => null,
     );
     if (state === "true") return;
-    if (state === "false") {
-      await run("docker", ["start", name]);
-      return;
-    }
-    await run("docker", [
-      "run", "-d", "--name", name,
-      "--cpus", "1", "--memory", "1g", "--pids-limit", "256",
-      "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-      // Read-only root plus RAM-backed home and /tmp caps disk use (tmpfs also counts against --memory); files are lost on idle stop, the editor re-syncs them.
-      "--read-only",
-      "--tmpfs", "/home/learner:rw,exec,size=512m,uid=1001,gid=1001,mode=0700",
-      "--tmpfs", "/tmp:rw,exec,size=64m",
-      // The venv under /opt is read-only now, so pip installs into home.
-      "-e", "PIP_TARGET=/home/learner/.pip", "-e", "PYTHONPATH=/home/learner/.pip",
-      opts.image, "sleep", "infinity",
-    ]);
+    // A stopped container holds nothing (root is read-only, home is tmpfs), so it is recreated rather than restarted:
+    // that way one created before a flag change (network, runtime) never comes back with the old settings.
+    if (state === "false") await exec("docker", ["rm", "-f", name]);
+    netReady ??= ensureNetwork(network, exec).catch((err) => {
+      netReady = null; // retry on the next connect
+      throw err;
+    });
+    await netReady;
+    await exec("docker", shellRunArgs(name, { image: opts.image, network, runtime }));
   }
 
   // Concurrent connects for one learner share a single create/start.
@@ -70,7 +103,7 @@ export function dockerBackend(opts: { image: string; idleMs?: number }): Sandbox
         attached.delete(name);
         // Only the open-shell count is watched: a process left running in the background does not keep the container up.
         const t = setTimeout(() => {
-          const p = run("docker", ["stop", "-t", "2", name]).then(() => {}, () => {}).finally(() => stopping.delete(name));
+          const p = exec("docker", ["stop", "-t", "2", name]).then(() => {}, () => {}).finally(() => stopping.delete(name));
           stopping.set(name, p);
         }, idleMs);
         t.unref();

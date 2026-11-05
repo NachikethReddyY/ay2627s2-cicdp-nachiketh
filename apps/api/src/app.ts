@@ -22,10 +22,16 @@ const CODES: Record<number, string> = {
   429: "rate_limited",
 };
 
+// A client-sent request id lands in every log line, so only a short plain token is kept (no log forging or huge values).
+const REQ_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
 export function buildApp(opts: { trustProxy?: string | false } = {}) {
   const app = Fastify({
     logger: env.NODE_ENV === "test" ? false : { level: "info" },
-    genReqId: (req) => String(req.headers["x-request-id"] ?? randomUUID()),
+    genReqId: (req) => {
+      const id = req.headers["x-request-id"];
+      return typeof id === "string" && REQ_ID.test(id) ? id : randomUUID();
+    },
     trustProxy: opts.trustProxy ?? env.TRUSTED_PROXY ?? false,
   });
 

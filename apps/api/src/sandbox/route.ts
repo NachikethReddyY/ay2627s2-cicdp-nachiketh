@@ -10,9 +10,14 @@ const dim = (v: unknown, fallback: number) =>
 // One shell per learner and tab: a new connection for the same tab takes over from the old one, so a reload never locks the learner out.
 const open = new Map<string, WebSocket>();
 const TAB = /^[A-Za-z0-9_-]{1,64}$/;
+// Terminal input is keystrokes and pastes; the plugin's 100 MiB default would let one frame tie up memory.
+const MAX_PAYLOAD = 64 * 1024;
+// Close codes the client can show: too many tabs for this learner, or the server is at its shell limit.
+export const CLOSE_TOO_MANY_TABS = 4029;
+export const CLOSE_SERVER_BUSY = 4503;
 
 export async function sandboxRoutes(app: FastifyInstance) {
-  await app.register(websocket);
+  await app.register(websocket, { options: { maxPayload: MAX_PAYLOAD } });
 
   app.get(
     "/sandbox/shell",
@@ -43,6 +48,17 @@ export async function sandboxRoutes(app: FastifyInstance) {
         sendJson(m);
         socket.close();
       };
+
+      // A reconnect of the same tab replaces its old socket, so it never counts against the caps.
+      const replacing = open.has(key);
+      let tabs = 0;
+      for (const k of open.keys()) if (k !== key && k.startsWith(`${learnerId}:`)) tabs++;
+      const reject = (code: number, message: string) => {
+        sendJson({ type: "error", message });
+        socket.close(code, message);
+      };
+      if (tabs >= env.SANDBOX_MAX_TABS) return reject(CLOSE_TOO_MANY_TABS, `At most ${env.SANDBOX_MAX_TABS} terminals at once`);
+      if (!replacing && open.size >= env.SANDBOX_MAX_SHELLS) return reject(CLOSE_SERVER_BUSY, "The sandbox is busy, try again soon");
 
       open.get(key)?.close(4000, "replaced");
       open.set(key, socket);
