@@ -13,12 +13,12 @@ test("TIERS_JSON parses overrides and merges them over defaults", () => {
     cwd: new URL("..", import.meta.url).pathname,
     env: { ...process.env, TIERS_JSON: tiers }, encoding: "utf8",
   });
-  const good = run(JSON.stringify({ free: { aiPathsPerDay: 9, visualsPerDay: 2, imagesPerDay: 3 } }));
+  const good = run(JSON.stringify({ free: { aiPathsPerDay: 9, imagesPerDay: 3 } }));
   assert.equal(good.status, 0, good.stderr);
   assert.deepEqual(JSON.parse(good.stdout), {
-    free: { aiPathsPerDay: 9, visualsPerDay: 2, imagesPerDay: 3 },
-    pro: { aiPathsPerDay: 20, visualsPerDay: 4, imagesPerDay: 4 },
-    max: { aiPathsPerDay: 50, visualsPerDay: 10, imagesPerDay: 10 },
+    free: { aiPathsPerDay: 9, imagesPerDay: 3 },
+    pro: { aiPathsPerDay: 20, imagesPerDay: 4 },
+    max: { aiPathsPerDay: 50, imagesPerDay: 10 },
   });
   const bad = run("{");
   assert.notEqual(bad.status, 0);

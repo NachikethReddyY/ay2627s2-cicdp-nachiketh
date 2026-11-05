@@ -12,7 +12,7 @@ import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
 import { tiers } from "../config/tiers.ts";
-import { reserveAiSpend } from "../config/budget.ts";
+import { ENGINE_CALLS_PER_PART, reserveAiSpend } from "../config/budget.ts";
 import { isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
@@ -67,16 +67,13 @@ const Lesson = z.object({ steps: z.array(Step).min(3).max(5) });
 type GeneratedStep = z.infer<typeof Step>;
 
 const slugify = (s: string, max: number) =>
-  `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(3).toString("hex")}`;
+  `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(6).toString("hex")}`;
 
 function assertAiEnabled() {
   if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });
 }
 
 // ---- paths.generate ----
-
-// Daily AI path limit per plan tier, counted over a rolling 24 hours.
-export const DAILY_AI_PATHS = { free: 5, pro: 20, max: 100 } as const;
 
 export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
@@ -112,8 +109,18 @@ export async function generatePath(learnerId: string, topic: string) {
   }
   if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
 
+  try {
+    return await persistPath(me!.userId, learnerId, outline);
+  } catch (e) {
+    // Nothing was saved (e.g. a slug collision): give the daily slot back.
+    await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
+    throw e;
+  }
+}
+
+async function persistPath(ownerId: string, learnerId: string, outline: Exclude<z.infer<typeof Outline>, { refused: true }>) {
   return withTx(async (tx) => {
-    const owned = { ownerId: me!.userId, visibility: "private", origin: "ai" } as const;
+    const owned = { ownerId, visibility: "private", origin: "ai" } as const;
     const [path] = await tx
       .insert(paths)
       .values({ slug: slugify(outline.title, 40), title: outline.title, tagline: outline.tagline, ...owned })
@@ -186,7 +193,8 @@ async function cachedPart(key: string): Promise<PartSecret | null> {
   }
 }
 
-async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonContext> {
+// The result is stored once on the shared lesson (and can become public), so the learner's missed concepts are never part of it.
+async function lessonContext(l: LessonRow): Promise<LessonContext> {
   const [world] = await db.select().from(worlds).where(eq(worlds.id, l.worldId));
   const [path] = await db
     .select({ title: paths.title, tagline: paths.tagline })
@@ -194,31 +202,34 @@ async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonCon
     .innerJoin(paths, eq(paths.id, pathCourses.pathId))
     .where(eq(pathCourses.worldId, l.worldId))
     .limit(1);
-  const { rows } = await db.execute<{ c: string }>(sql`
-    SELECT DISTINCT c FROM (SELECT unnest(missed_concepts) AS c, created_at FROM attempts
-      WHERE learner_id = ${learnerId} ORDER BY created_at DESC LIMIT 40) t LIMIT 10`);
   return {
     path: path ?? { title: world!.title, tagline: "" },
     course: { title: world!.title, description: world!.description },
     lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
-    missedConcepts: rows.map((r) => r.c),
+    missedConcepts: [],
   };
 }
 
-// Runs under the lesson row lock. It takes no pool connection of its own: the budget was reserved before the lock.
-async function writeOnce(tx: Db, lessonId: string, learnerId: string, ctx: LessonContext, key: string | null, cached: PartSecret | null) {
-  const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
-  if (!l || l.currentVersionId || l.sourceKind !== "ai") return null; // another caller wrote it while this one waited
+type Generated = { part: PartSecret | null; generated: GeneratedStep[] };
 
+// Model calls: no transaction or pooled connection is held while these run.
+async function generate(ctx: LessonContext, key: string | null, cached: PartSecret | null): Promise<Generated> {
   // A part keeps its content on the version; a predict lesson keeps one steps row per step.
   // Parts come from the engine and are cached by what produced them, so a repeat lesson makes no model call.
   let part = cached;
   if (key && !part) {
     const partCtx: PartContext = { ...ctx, missedConcepts: [] };
     part = await moderated(validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx))));
-    await tx.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
+    await db.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
   }
   const generated = key ? [] : await moderated(validate(await measureGeneration("lesson", () => generator.lesson(ctx))));
+  return { part, generated };
+}
+
+// The only transaction: lock the lesson row, re-check it is still unwritten, insert. Short, no network calls.
+async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, generated }: Generated) {
+  const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
+  if (!l || l.currentVersionId || l.sourceKind !== "ai") return null; // another caller wrote it first: this result is dropped
 
   const [version] = await tx
     .insert(lessonVersions)
@@ -250,10 +261,12 @@ async function writeOnce(tx: Db, lessonId: string, learnerId: string, ctx: Lesso
   return { lessonVersionId: version!.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
 }
 
-// Lock design: the lesson row lock dedupes writes, and the Claude call runs under it, so one generation per lesson.
-// Budget is reserved before the lock is taken, so a lock holder never waits for a pool connection. Each retry is a
-// new reservation and a new transaction, so the lock is never held across a retry's reservation.
-// shortcut: a caller that loses the lock race reserves a call it never makes (budget over-counted, never under).
+// Concurrency design: generation (context, engine/model calls, moderation) runs outside any transaction, so a slow
+// model never pins a pooled connection or a row lock. Only the final write locks the lesson row, re-checks
+// currentVersionId and inserts, so exactly one version is ever written. Within a process `inflight` shares one
+// generation per lesson. Across instances we accept the rare duplicate generation (the loser's result is dropped and
+// its reserved budget stays counted: over-counted, never under) rather than hold a dedicated connection for an
+// advisory lock for the whole generation, which would reintroduce the pool exhaustion this avoids.
 const inflight = new Map<string, Promise<boolean>>();
 
 // Writes the lesson's steps once. Concurrent callers in this process share one in-flight write.
@@ -270,15 +283,17 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   const [pre] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
-  const ctx = await lessonContext(pre, learnerId);
+  const ctx = await lessonContext(pre);
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
   const cached = key ? await cachedPart(key) : null; // a cache hit makes no model call and reserves nothing
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD); // before the lock; a retry is reserved too
+    // Before each attempt (a retry is reserved too). An engine part can make several model calls.
+    if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : 1));
     try {
-      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, ctx, key, cached));
+      const result = await generate(ctx, key, cached);
+      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));
       if (!written) return false;
       // Best-effort and not awaited: the read must not wait on image generation.
       if (written.prewarm) {
@@ -304,7 +319,16 @@ export const idle = () => Promise.allSettled([...background]);
 
 // Fire-and-forget: generate the lesson right after `lesson` in its course so it is usually ready.
 // Parts are written only when opened (the course page promises no AI is wasted), so only predict lessons prefetch.
+// Each lesson read calls this; a learner+lesson pair is checked at most once a minute per process.
+const PREFETCH_THROTTLE_MS = 60_000;
+const prefetchedAt = new Map<string, number>();
+
 export function prefetchNext(lesson: typeof lessons.$inferSelect, learnerId: string) {
+  const now = Date.now();
+  const tag = `${learnerId}:${lesson.id}`;
+  if (now - (prefetchedAt.get(tag) ?? 0) < PREFETCH_THROTTLE_MS) return;
+  if (prefetchedAt.size > 5000) for (const [k, t] of prefetchedAt) if (now - t >= PREFETCH_THROTTLE_MS) prefetchedAt.delete(k);
+  prefetchedAt.set(tag, now);
   const p = (async () => {
     const [next] = await db
       .select({ id: lessons.id, v: lessons.currentVersionId, kind: lessons.kind })

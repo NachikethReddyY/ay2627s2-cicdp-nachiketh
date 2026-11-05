@@ -149,7 +149,8 @@ test("two concurrent plays write the part once", async () => {
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
   assert.equal(out(a).kind, "practice");
-  assert.deepEqual(out(a).part, { ...parts.practice, language: "javascript" }); // the router defaults the language
+  const { expectedOutput: _hidden, ...visiblePractice } = parts.practice; // the router hides the expected output
+  assert.deepEqual(out(a).part, { ...visiblePractice, language: "javascript" }); // and defaults the language
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
@@ -254,7 +255,7 @@ test("the AI budget stops a lesson with its own message, before the model call a
   const old = { daily: env.AI_DAILY_BUDGET_USD, estimate: env.AI_CALL_ESTIMATE_USD };
   try {
     env.AI_CALL_ESTIMATE_USD = 0.01;
-    env.AI_DAILY_BUDGET_USD = 0.025; // outline 0.01, first part 0.02; the second part would reach 0.03
+    env.AI_DAILY_BUDGET_USD = 0.045; // outline 0.01, first part 0.03 (three engine calls); the second part would reach 0.07
     const { t, lessons: ls } = await setup();
     assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
     assert.equal(lessonCalls, 1);
