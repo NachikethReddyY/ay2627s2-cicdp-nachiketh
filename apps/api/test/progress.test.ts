@@ -199,11 +199,18 @@ test("me.update: validates timezone and goal, empty body is a no-op", async () =
   const cookie = await signUp(app, "a@example.com");
   assert.equal((await m(cookie, "me.update", { timezone: "Mars/Olympus" })).statusCode, 400);
   assert.equal((await m(cookie, "me.update", { dailyGoalXp: 25 })).statusCode, 400);
+  // Intl accepts offsets; Postgres reads them with the opposite sign, so they are rejected.
+  for (const tz of ["+05:00", "-03:30", "UTC+5", "Mars/Olympus", ""]) {
+    assert.equal((await m(cookie, "me.update", { timezone: tz })).statusCode, 400, tz);
+  }
+  assert.equal((await db.select().from(learners))[0]!.timezone, "UTC");
 
   assert.equal((await m(cookie, "me.update", { timezone: "Asia/Kolkata", dailyGoalXp: 100 })).statusCode, 200);
   const [row] = await db.select().from(learners);
   assert.deepEqual({ timezone: row!.timezone, goal: row!.dailyGoalXp }, { timezone: "Asia/Kolkata", goal: 100 });
   assert.equal(out(await get(cookie)).stats.dailyGoalXp, 100);
+  // home.get reports the stored zone so another device's browser can tell its own zone differs.
+  assert.equal(out(await get(cookie)).stats.timezone, "Asia/Kolkata");
 
   assert.equal((await m(cookie, "me.update", null)).statusCode, 200);
   assert.equal((await m(cookie, "me.update", { dailyGoalXp: 30 })).statusCode, 200);
@@ -230,4 +237,34 @@ test("paths never list another user's private course", async () => {
   // The owner still sees it.
   const mine = out(await q(other, "paths.get", { slug: "js-foundations" }));
   assert.equal(mine.courses.length, 2);
+});
+
+test("paths.publish fails closed when moderation is unavailable or flags the path", async () => {
+  const { setModerationClient } = await import("../src/safety/moderation.ts");
+  const clean = { flagged: false, scores: {} };
+  const cookie = await signUp(app, "pub@example.com");
+  const id = await userId("pub@example.com");
+  await db.insert(paths).values({ slug: "pub-me", title: "Pub Me", visibility: "private", ownerId: id, origin: "ai" });
+  const [world] = await db.insert(worlds).values({ slug: "pub-course", title: "Pub Course", visibility: "private", ownerId: id, origin: "ai" }).returning();
+  await db.insert(pathCourses).values({ pathId: await pathId("pub-me"), worldId: world!.id, position: 0 });
+  try {
+    // Provider down (the same error the real provider throws without MODERATION_API_KEY).
+    setModerationClient(async () => {
+      throw new Error("Moderation is not configured");
+    });
+    let res = await m(cookie, "paths.publish", { slug: "pub-me" });
+    assert.equal(code(res), "PRECONDITION_FAILED");
+    setModerationClient(async () => ({ flagged: true, scores: {} }));
+    res = await m(cookie, "paths.publish", { slug: "pub-me" });
+    assert.equal(code(res), "PRECONDITION_FAILED");
+    const [still] = await db.select().from(paths).where(eq(paths.slug, "pub-me"));
+    assert.equal(still!.visibility, "private");
+    assert.equal((await db.select().from(worlds).where(eq(worlds.slug, "pub-course")))[0]!.visibility, "private");
+
+    setModerationClient(async () => clean);
+    assert.equal((await m(cookie, "paths.publish", { slug: "pub-me" })).statusCode, 200);
+    assert.equal((await db.select().from(paths).where(eq(paths.slug, "pub-me")))[0]!.visibility, "public");
+  } finally {
+    setModerationClient(async () => clean);
+  }
 });

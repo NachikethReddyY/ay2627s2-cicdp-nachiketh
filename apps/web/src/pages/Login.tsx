@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
+import { safeRedirect } from "../lib/redirect";
 
 const field =
   "w-full rounded-xl border-[3px] border-ink bg-white px-4 py-3 font-semibold outline-none transition placeholder:text-ink/60 focus:-translate-y-0.5 focus:bg-sun/30 focus:shadow-[0_4px_0_var(--color-ink)]";
@@ -24,7 +25,7 @@ export default function Login() {
           ? await authClient.signIn.email({ email, password })
           : await authClient.signUp.email({ email, password, name });
       if (result.error) setError(result.error.message ?? "Something went wrong. Try again.");
-      else location.assign("/");
+      else location.assign(safeRedirect(new URLSearchParams(location.search).get("redirect")));
     } catch {
       setError("Can't reach the server. Check your connection and try again.");
     } finally {

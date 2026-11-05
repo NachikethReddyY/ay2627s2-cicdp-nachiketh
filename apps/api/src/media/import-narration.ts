@@ -8,7 +8,7 @@ import { lessonMedia, lessons, steps } from "../db/schema.ts";
 import { saveMedia } from "./service.ts";
 import { storage } from "./storage.ts";
 
-export type NarrationFile = { idx: number; body: Uint8Array };
+type NarrationFile = { idx: number; body: Uint8Array };
 
 /**
  * Stores one narration MP3 per step of a lesson's current version.
@@ -62,7 +62,7 @@ const isUniqueViolation = (e: unknown) =>
   [e, (e as { cause?: unknown })?.cause].some((x) => (x as { code?: string } | undefined)?.code === "23505");
 
 /** Reads `<step idx>.mp3` files from a folder. Other files are ignored. */
-export async function readNarrationDir(dir: string): Promise<NarrationFile[]> {
+async function readNarrationDir(dir: string): Promise<NarrationFile[]> {
   const names = (await readdir(dir)).filter((n) => /^\d+\.mp3$/.test(n));
   return Promise.all(names.map(async (n) => ({ idx: Number(n.slice(0, -4)), body: new Uint8Array(await readFile(join(dir, n))) })));
 }

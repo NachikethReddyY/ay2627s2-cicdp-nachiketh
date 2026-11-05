@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
+import { lessonRef, meUser, visibleWorld } from "../access.ts";
 
 // Marks a learn/watch lesson complete. Predict lessons count steps, so they are a no-op here.
 // Practice and game-practice need server evidence: a checked sandbox run records practice, games.complete records game wins.
@@ -16,9 +17,9 @@ const complete = protectedProcedure
       SELECT l.id, l.kind FROM lessons l
       JOIN worlds w ON w.id = l.world_id
       JOIN learners me ON me.id = ${ctx.learnerId}
-      WHERE (l.id = ${input.lessonId} OR l.slug = ${input.lessonId})
+      WHERE ${lessonRef(input.lessonId)}
         AND l.status = 'published'
-        AND (w.visibility = 'public' OR w.owner_id = me.user_id)`);
+        AND ${visibleWorld(meUser)}`);
     if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
     if (lesson.kind === "practice" || lesson.kind === "game-practice")
       throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is completed by playing it" });

@@ -7,7 +7,7 @@ import { text } from "../../core/sanitize.ts";
 export const MAX_SERIES = 4;
 export const MAX_POINTS = 60;
 export const MAX_SLIDERS = 2;
-export const KINDS = ["bar", "line", "scatter", "function"] as const;
+const KINDS = ["bar", "line", "scatter", "function"] as const;
 export const DEFAULT_DOMAIN = [-10, 10] as const;
 
 const num = () => z.number().min(-1e9).max(1e9);

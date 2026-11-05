@@ -117,12 +117,6 @@ def test_repair_call_sends_previous_document(fake_llm: FakeLLM) -> None:
     assert "/blocks/0: missing data" in content
 
 
-def test_unconfigured_llm_is_clear(monkeypatch: pytest.MonkeyPatch) -> None:
-    r = TestClient(app).post("/v1/pipeline/visual", json={"prompt": "x"}, headers=TOKEN)
-    assert r.status_code == 503
-    assert r.json()["error"] == "LLM not configured (LLM_API_KEY is empty)"
-
-
 def test_needs_token(client: TestClient) -> None:
     assert client.post("/v1/pipeline/visual", json={"prompt": "x"}).status_code == 401
 

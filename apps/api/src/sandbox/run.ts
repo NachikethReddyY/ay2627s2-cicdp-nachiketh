@@ -71,14 +71,22 @@ const INTERPRETER: Record<Language, string[]> = {
   javascript: ["node", "-e"],
 };
 
+/** True when the server already has env.SANDBOX_MAX_RUNS live runs across all learners. */
+export function atCapacity(): boolean {
+  let live = 0;
+  for (const r of runs.values()) if (!r.done) live++;
+  return live >= env.SANDBOX_MAX_RUNS;
+}
+
 /**
- * Starts a program and returns its run id, or null when the learner already has too many live runs.
+ * Starts a program and returns its run id, or null when the learner already has too many live runs
+ * or the server is at its global limit (check atCapacity() first to tell the two apart).
  * With `check`, a clean exit whose output matches is saved as the lesson's completion before the run ends.
  */
 export function startRun(code: string, learner: string, language: Language, spawn: Spawn = nodeSpawn, check?: PracticeCheck): string | null {
   let active = 0;
   for (const r of runs.values()) if (r.learner === learner && !r.done) active++;
-  if (active >= MAX_ACTIVE) return null;
+  if (active >= MAX_ACTIVE || atCapacity()) return null;
   const id = randomUUID();
   const args = [
     "run", "--rm", "-i", "--name", containerName(id), "--network", "none",
@@ -183,6 +191,7 @@ export async function sandboxRunRoute(app: FastifyInstance) {
       if (!found) return reply.status(404).send(fail("not_found", "Practice lesson not found"));
       check = found;
     }
+    if (atCapacity()) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     const id = startRun(body.data.code, learner, body.data.language, nodeSpawn, check);
     if (!id) return reply.status(429).send(fail("busy", "Finish your running programs first"));
     return { id };

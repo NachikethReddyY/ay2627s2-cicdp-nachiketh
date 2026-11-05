@@ -1,7 +1,7 @@
 // Pure helpers for the renderer shell. No React or DOM, so node --test can run them.
 import { parseSpec, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
 
-export type Item = { kind: "block"; block: Block } | { kind: "rejected"; alt: string; reasons: string[] };
+type Item = { kind: "block"; block: Block } | { kind: "rejected"; alt: string; reasons: string[] };
 export type Plan = { items: Item[]; issues: Issue[]; fatal: boolean };
 
 const altOf = (raw: unknown): string => {
@@ -64,7 +64,7 @@ export function keyAction(key: string, targetTag = "", mods: { alt?: boolean; ct
 /** Reduced motion beats the spec's autoplay flag: start paused, in step mode. */
 export const initialPlaying = (autoplay: boolean | undefined, reducedMotion: boolean): boolean => !!autoplay && !reducedMotion;
 
-export const viewState = (t: Timeline, s: Stepper): { state: TimelineState; caption: string; count: number } => ({
+export const viewState = (t: Timeline, s: Pick<Stepper, "step">): { state: TimelineState; caption: string; count: number } => ({
   state: stateAt(t, s.step),
   caption: t.steps[clampStep(t, s.step)]!.caption,
   count: stepCount(t),

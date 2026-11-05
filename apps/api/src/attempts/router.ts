@@ -1,4 +1,5 @@
-import { and, count, eq, or } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
+import { visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
@@ -13,6 +14,7 @@ const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
 const State = z.enum(["predicting", "hinting", "revealed", "skipped"]);
 const Hint = z.object({ rung: z.number(), text: z.string(), eliminate: z.number().optional() });
 const Body = z.discriminatedUnion("kind", [
+  // Upper bound is checked against the step's real option count in `attempt`.
   z.object({ kind: z.literal("mcq"), choice: z.number().int().min(0).max(3) }),
   z.object({ kind: z.literal("cloze"), text: z.string().max(200) }),
 ]);
@@ -39,7 +41,9 @@ async function loadStep(id: string, learnerId: string) {
       and(
         eq(steps.id, id),
         eq(lessons.status, "published"),
-        or(eq(worlds.visibility, "public"), eq(worlds.ownerId, learners.userId)),
+        // Only the lesson's current version is playable; steps of superseded versions are gone.
+        eq(lessons.currentVersionId, steps.lessonVersionId),
+        visibleWorld(learners.userId, worlds),
       ),
     );
   return row;
@@ -161,6 +165,9 @@ export const stepsRouter = router({
       const step = await mustStep(input.id, ctx.learnerId);
       const b = input.answer;
       if (b.kind !== step.pub.kind) throw new TRPCError({ code: "BAD_REQUEST", message: `kind must be ${step.pub.kind}` });
+      if (b.kind === "mcq" && b.choice >= (step.pub.options?.length ?? 0)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "choice is out of range" });
+      }
       const { answer, accepted } = step.secret;
       const correct =
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);

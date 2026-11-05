@@ -9,3 +9,6 @@ dist/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# macOS Finder metadata
+.DS_Store

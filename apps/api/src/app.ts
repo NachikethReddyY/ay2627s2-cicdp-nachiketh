@@ -5,6 +5,7 @@ import { z } from "zod";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { env } from "./env.ts";
 import { pool } from "./db/client.ts";
+import { idle } from "./ai/service.ts";
 import { authRoutes } from "./auth/routes.ts";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
 import { appRouter, type AppRouter } from "./trpc/router.ts";
@@ -22,10 +23,16 @@ const CODES: Record<number, string> = {
   429: "rate_limited",
 };
 
+// A client-sent request id lands in every log line, so only a short plain token is kept (no log forging or huge values).
+const REQ_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
 export function buildApp(opts: { trustProxy?: string | false } = {}) {
   const app = Fastify({
     logger: env.NODE_ENV === "test" ? false : { level: "info" },
-    genReqId: (req) => String(req.headers["x-request-id"] ?? randomUUID()),
+    genReqId: (req) => {
+      const id = req.headers["x-request-id"];
+      return typeof id === "string" && REQ_ID.test(id) ? id : randomUUID();
+    },
     trustProxy: opts.trustProxy ?? env.TRUSTED_PROXY ?? false,
   });
 
@@ -69,6 +76,9 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   );
 
   app.addHook("onClose", async () => {
+    // onClose runs after in-flight requests finish, so no read can start a new prefetch now.
+    // Let background prefetches save what they generated before the pool goes away.
+    await idle();
     // A test helper may already have ended the pool; pg rejects a second end().
     await pool.end().catch(() => undefined);
   });

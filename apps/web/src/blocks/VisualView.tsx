@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { BLOCKS, type Block, type Spec } from "@learnquest/ui-catalog";
 import BlockFrame from "./BlockFrame.tsx";
 import { plan } from "./model.ts";
@@ -17,7 +18,7 @@ function describe(mod: (typeof BLOCKS)[number] | undefined, block: Block): strin
 
 /** Renders a visual doc. Always re-parses first, so nothing unvalidated reaches a block. */
 export default function VisualView({ doc, gameCompletion }: { doc: unknown | Spec; gameCompletion?: GameCompletionContext }) {
-  const p = plan(doc);
+  const p = useMemo(() => plan(doc), [doc]);
   if (p.fatal) return <Rejected alt="" />;
   return (
     <div className="flex w-full min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">

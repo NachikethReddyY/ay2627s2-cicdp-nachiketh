@@ -10,6 +10,7 @@ type Props = {
   speed: Speed;
   volume: number; // 0-100
   muted: boolean;
+  audio: boolean; // false: nothing to hear, so no volume controls
   onVolume(v: number): void;
   onMute(): void;
   onHover(over: boolean): void;
@@ -38,7 +39,7 @@ const icons = {
 const btn =
   `grid size-9 place-items-center pill ${FOCUS}`;
 
-export default function TransportBar({ timeline, t, playing, speed, volume, muted, onVolume, onMute, onHover, faded, playRef, onToggle, onSeek, onStep, onSpeed }: Props) {
+export default function TransportBar({ timeline, t, playing, speed, volume, muted, audio, onVolume, onMute, onHover, faded, playRef, onToggle, onSeek, onStep, onSpeed }: Props) {
   const { steps } = timeline;
   const n = steps.length;
 
@@ -101,7 +102,7 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
         <span className="ml-1 font-mono text-sm font-bold" aria-hidden="true">
           {mmss(t)} / {mmss(timeline.duration)}
         </span>
-        <div className="group/vol ml-auto flex items-center gap-1">
+        {audio && <div className="group/vol ml-auto flex items-center gap-1">
           <button type="button" aria-label={muted ? "Unmute" : "Mute"} className={`grid size-8 place-items-center rounded-lg ${FOCUS}`} onClick={onMute}>
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 fill-ink stroke-ink stroke-2 [stroke-linecap:round] [stroke-linejoin:round]">
               {icons.vol}
@@ -125,12 +126,12 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
               className="block size-6 rounded-full border-[3px] border-ink bg-sun focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-blue"
             />
           </Slider.Root>
-        </div>
+        </div>}
         <select
           aria-label="Playback speed"
           value={String(speed)}
           onChange={(e) => onSpeed(SPEEDS.find((s) => String(s) === e.target.value) ?? 1)}
-          className={`min-h-8 min-w-9 cursor-pointer appearance-none rounded-lg border-[3px] border-ink bg-white px-1.5 text-center text-sm font-extrabold ${FOCUS}`}
+          className={`${audio ? "" : "ml-auto "}min-h-8 min-w-9 cursor-pointer appearance-none rounded-lg border-[3px] border-ink bg-white px-1.5 text-center text-sm font-extrabold ${FOCUS}`}
         >
           {SPEEDS.map((s) => (
             <option key={s} value={String(s)}>

@@ -166,23 +166,6 @@ const source = {
   path: "apps/web/src/player/fixtures/lesson1.ts",
 };
 
-/** Strings that must not reach the browser before step `id` is revealed. */
-export function secretsOf(id: string): string[] {
-  const step = steps.find((s) => s.id === id);
-  if (!step) throw new Error(`unknown step ${id}`);
-  const added = step.input.hunks
-    .flatMap((h) => h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1).trim()))
-    .filter((l) => l.length >= 8);
-  const accepted = step.kind === "cloze" ? step.accepted : [];
-  return [
-    ...added,
-    ...accepted,
-    step.explanations.workedExample,
-    step.explanations.practice,
-    source.sha,
-  ];
-}
-
 export default {
   id: "lesson-1",
   title: "Build a shopping cart total",

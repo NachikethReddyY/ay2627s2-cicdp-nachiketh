@@ -37,6 +37,7 @@ function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
 
 function Row({ p, onDone, scope, tone }: { p: ExplorePath; onDone: () => void; scope: string; tone: string }) {
   const [busy, setBusy] = useState(false);
+  const [joinFailed, setJoinFailed] = useState(false);
   return (
     <li className={`lq-card lq-cc lq-lift explore-card ${tone}`}>
       <div className="explore-card-head">
@@ -53,10 +54,13 @@ function Row({ p, onDone, scope, tone }: { p: ExplorePath; onDone: () => void; s
         ) : p.enrolled ? (
           <span className="lq-sticker lq-bg-mint explore-joined">Joined ✓</span>
         ) : (
-          <button type="button" disabled={busy} className="lq-btn lq-btn-surface lq-btn-sm"
-            onClick={() => { setBusy(true); trpc.paths.enroll.mutate({ slug: p.slug }).then(onDone).catch(() => {}).finally(() => setBusy(false)); }}>
-            Join
-          </button>
+          <div>
+            <button type="button" disabled={busy} className="lq-btn lq-btn-surface lq-btn-sm"
+              onClick={() => { setBusy(true); setJoinFailed(false); trpc.paths.enroll.mutate({ slug: p.slug }).then(onDone, () => setJoinFailed(true)).finally(() => setBusy(false)); }}>
+              Join
+            </button>
+            {joinFailed && <p role="alert" className="mt-1 text-sm font-bold">Couldn't join. Try again.</p>}
+          </div>
         )}
       </div>
       <ul className="explore-courses">
@@ -76,7 +80,7 @@ export default function Explore() {
     const t = setTimeout(() => setDq(q.trim()), 300);
     return () => clearTimeout(t);
   }, [q]);
-  const { data, error, loading, reload } = useApi(`paths:${scope}:${dq}`, () => trpc.paths.list.query({ scope, q: dq || undefined }));
+  const { data, error, reload } = useApi(`paths:${scope}:${dq}`, () => trpc.paths.list.query({ scope, q: dq || undefined }));
 
   return (
     <div className="lq lq-explore">
@@ -103,7 +107,7 @@ export default function Explore() {
                 <img src="/img/pip-oops.png" alt="" />
                 <div><p>Couldn't load paths.</p></div>
               </div>
-            ) : loading || !data ? <Spinner /> : data.length === 0 ? (
+            ) : !data ? <Spinner /> : data.length === 0 ? (
               <div className="lq-empty-card">
                 <img src="/img/pip-think.png" alt="" />
                 <div><p>{scope === "mine" ? "You haven't joined or made any paths yet." : "Nothing here yet."}</p></div>

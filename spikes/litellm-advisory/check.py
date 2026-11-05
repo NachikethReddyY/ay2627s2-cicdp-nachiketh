@@ -32,6 +32,9 @@ bad = False
 for v in (sys.argv[1:] or DEFAULT):
     status = pypi(v)
     note = COMPROMISED.get(v, "")
+    # PyPI removes compromised releases, so a pin that is gone is caught even before the list above is updated.
+    if not note and status.startswith("HTTP"):
+        note = f"not downloadable from PyPI ({status})"
     if note:
         bad = True
     print(f"{v:10} pypi={status:32} {'COMPROMISED: ' + note if note else 'not on the advisory list'}")

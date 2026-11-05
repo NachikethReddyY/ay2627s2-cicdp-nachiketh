@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
+import httpx
 import litellm
 import pytest
 from fastapi.testclient import TestClient
@@ -24,7 +25,7 @@ def client() -> TestClient:
 def test_healthz_needs_no_token(client: TestClient) -> None:
     r = client.get("/healthz")
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "model": "openai/test"}
+    assert r.json() == {"ok": True}
 
 
 @pytest.mark.parametrize("headers", [{}, {"X-Engine-Token": "y" * 32}])
@@ -80,4 +81,49 @@ def test_oversize_body_is_413(client: TestClient) -> None:
 
 def test_topic_length_is_validated(client: TestClient) -> None:
     r = client.post("/v1/pipeline/outline", json={"topic": "x" * 201}, headers=TOKEN)
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        litellm.exceptions.BadRequestError("bad key sk-secret", "openai/test", "openai"),
+        litellm.exceptions.NotFoundError("no model", "openai/test", "openai"),
+        litellm.exceptions.ContextWindowExceededError("too long", "openai/test", "openai"),
+        litellm.exceptions.PermissionDeniedError(
+            "denied",
+            "openai",
+            "openai/test",
+            response=httpx.Response(403, request=httpx.Request("POST", "http://x")),
+        ),
+    ],
+)
+def test_other_litellm_errors_are_502_without_details(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, exc: Exception
+) -> None:
+    def fail(**_: Any) -> None:
+        raise exc
+
+    monkeypatch.setattr(litellm, "completion", fail)
+    r = client.post("/v1/pipeline/outline", json={"topic": "rust"}, headers=TOKEN)
+    assert r.status_code == 502
+    assert r.json() == {"error": "upstream"}
+
+
+def test_chunked_oversize_body_is_413(client: TestClient) -> None:
+    def chunks() -> Any:
+        for _ in range(70):
+            yield b" " * 1024
+
+    r = client.post(
+        "/v1/pipeline/outline",
+        content=chunks(),
+        headers={**TOKEN, "content-type": "application/json"},
+    )
+    assert r.status_code == 413
+
+
+def test_lesson_context_fields_are_capped(client: TestClient) -> None:
+    ctx = {**CTX, "missedConcepts": ["x"] * 51}
+    r = client.post("/v1/pipeline/lesson", json=ctx, headers=TOKEN)
     assert r.status_code == 422

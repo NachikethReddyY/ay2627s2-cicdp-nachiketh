@@ -4,12 +4,12 @@ import type { BlockModule } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
 import { MAX_STEPS, timelineSchema, type Timeline } from "../../core/timeline.ts";
 
-export const MAX_NODES = 30;
-export const MAX_EDGES = 50;
-export const KINDS = ["flow", "tree", "cycle", "timeline", "graph", "labelled"] as const;
+const MAX_NODES = 30;
+const MAX_EDGES = 50;
+const KINDS = ["flow", "tree", "cycle", "timeline", "graph", "labelled"] as const;
 /** Props a timeline may set on a node. */
-export const ANIMATABLE = ["active"] as const;
-export const SHAPES = ["rect", "round", "diamond", "circle"] as const;
+const ANIMATABLE = ["active"] as const;
+const SHAPES = ["rect", "round", "diamond", "circle"] as const;
 
 type Props = {
   kind: (typeof KINDS)[number];

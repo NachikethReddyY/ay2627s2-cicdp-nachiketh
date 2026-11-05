@@ -11,7 +11,7 @@ Out of scope: the Pip images in `apps/web/public/img`. They are brand assets shi
 - Plain S3 API, so the code uses the standard AWS SDK and we can move to Neon storage, S3 or MinIO by changing four env vars.
 - Bucket-scoped API tokens (needed for "credentials scoped per environment").
 
-Alternative kept open: **Neon object storage** (one vendor fewer, already in `neon.ts`). Pick it instead if its pricing/egress checks out; nothing in §3 changes.
+Alternative kept open: **Neon object storage** (one vendor fewer). Nothing in the repo configures it yet: the root `neon.ts` declares only Neon auth and a branch TTL policy. Pick it instead if its pricing/egress checks out; nothing in §3 changes.
 
 ## 2. Cloud setup
 

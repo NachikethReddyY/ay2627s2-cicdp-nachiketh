@@ -3,7 +3,7 @@ import { parts, type Primitive } from "./model.ts";
 
 export const MAX_OBJECTS = 60;
 export const MAX_DRAW_CALLS = 100;
-export const MAX_TRIANGLES = 100_000;
+const MAX_TRIANGLES = 100_000;
 export const MAX_DPR = 2;
 
 // shortcut: triangle counts are derived from the segment args in model.parts() by formula, not measured from three; recheck if parts() changes.

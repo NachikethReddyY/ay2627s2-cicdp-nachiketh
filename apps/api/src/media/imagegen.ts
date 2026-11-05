@@ -8,10 +8,10 @@ import { storage } from "./storage.ts";
 import { db } from "../db/client.ts";
 import { imageGenerations, lessonMedia } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 
-export type ImageResult = { status: "fallback"; description: string; marked: true } | { status: "ready"; key: string };
-export type HttpClient = (url: string, init: RequestInit) => Promise<Response>;
+type ImageResult = { status: "fallback"; description: string; marked: true } | { status: "ready"; key: string };
+type HttpClient = (url: string, init: RequestInit) => Promise<Response>;
 const fetchHttp: HttpClient = (url, init) => fetch(url, init);
 const ready = () => !!(env.IMAGE_BASE_URL && env.IMAGE_API_KEY && env.IMAGE_MODEL);
 
@@ -44,8 +44,13 @@ type ImageInput = {
 // shortcut: a learner who shares a call inherits the first caller's cap-refusal fallback, and is not charged a slot.
 const inFlight = new Map<string, Promise<ImageResult>>();
 
-export function generateImage(input: ImageInput, http: HttpClient = fetchHttp): Promise<ImageResult> {
-  const key = createHash("sha256").update(input.prompt).digest("hex");
+const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
+
+/** `known` maps prompt hashes to stored image keys already looked up in one batch, so no per-image cache query is made. */
+export function generateImage(input: ImageInput, http: HttpClient = fetchHttp, known?: ReadonlyMap<string, string>): Promise<ImageResult> {
+  const key = promptHash(input.prompt);
+  const hit = known?.get(key);
+  if (hit && ready()) return Promise.resolve({ status: "ready", key: hit });
   const pending = inFlight.get(key);
   if (pending) return pending;
   const run = generateImageOnce(input, http).finally(() => inFlight.delete(key));
@@ -56,7 +61,7 @@ export function generateImage(input: ImageInput, http: HttpClient = fetchHttp): 
 async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<ImageResult> {
   const fallback: ImageResult = { status: "fallback", description: input.description, marked: true };
   if (!ready()) return fallback;
-  const hash = createHash("sha256").update(input.prompt).digest("hex");
+  const hash = promptHash(input.prompt);
   const [cached] = await db.select({ key: lessonMedia.key, status: lessonMedia.status }).from(lessonMedia).where(eq(lessonMedia.promptHash, hash)).limit(1);
   if (cached?.status === "ready" && cached.key) return { status: "ready", key: cached.key };
   // A prompt that failed in the last 24 hours (for anyone) is not paid for again.
@@ -98,8 +103,7 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
     const bytes = Buffer.from(encoded, "base64");
     const contentType = sniff(bytes);
     if (!contentType) throw new Error("not a supported image");
-    // Moderation errors/refusals fail closed before persistence.
-    if (!(await isSafe(input.prompt))) throw new Error("refused");
+    // The prompt was moderated once above, before the provider call; the bytes are checked by type only.
     const key = await saveMedia({ lessonVersionId: input.lessonVersionId, stepId: input.stepId, kind: "image", body: bytes, contentType, promptHash: hash });
     return { status: "ready", key };
   } catch {
@@ -147,6 +151,8 @@ export async function prewarmDocImages(doc: unknown, opts: { lessonVersionId: st
   }
 }
 
+const IMAGE_CONCURRENCY = 4;
+
 export async function resolveDocImages(
   doc: unknown,
   opts: { lessonVersionId: string; learnerId: string; tier: keyof typeof tiers; stepId?: string },
@@ -154,19 +160,36 @@ export async function resolveDocImages(
 ): Promise<unknown> {
   const blocks = (doc as { blocks?: unknown } | null)?.blocks;
   if (!Array.isArray(blocks)) return doc;
-  const out: unknown[] = [];
-  for (const b of blocks as DocBlock[]) {
-    if (b?.type !== "image") { out.push(b); continue; }
+  // One query finds every already-stored image; the rest are resolved with bounded parallelism.
+  const prompts = [...new Set((blocks as DocBlock[]).flatMap((b) => (b?.type === "image" && b.props?.source === "generate" && typeof b.props.prompt === "string" ? [promptHash(b.props.prompt)] : [])))];
+  const known = new Map<string, string>();
+  if (prompts.length && ready()) {
+    try {
+      const rows = await db.select({ hash: lessonMedia.promptHash, key: lessonMedia.key }).from(lessonMedia).where(and(inArray(lessonMedia.promptHash, prompts), eq(lessonMedia.status, "ready")));
+      for (const r of rows) if (r.hash && r.key) known.set(r.hash, r.key);
+    } catch { /* fall back to per-image lookups */ }
+  }
+  const resolveBlock = async (b: DocBlock): Promise<unknown> => {
+    if (b?.type !== "image") return b;
     const p = b.props;
-    if (p?.source === "asset") { out.push(b); continue; }
-    if (p?.source !== "generate" || typeof p.prompt !== "string" || typeof p.alt !== "string") continue;
+    if (p?.source === "asset") return b;
+    if (p?.source !== "generate" || typeof p.prompt !== "string" || typeof p.alt !== "string") return undefined;
     const base = { alt: p.alt, ...(typeof p.caption === "string" ? { caption: p.caption } : {}) };
     let props: Record<string, unknown> = { source: "generated-pending", ...base };
     try {
-      const r = await generateImage({ ...opts, prompt: p.prompt, description: p.alt }, http);
+      const r = await generateImage({ ...opts, prompt: p.prompt, description: p.alt }, http, known);
       if (r.status === "ready" && storage) props = { source: "generated", url: await storage.signGet(r.key), ...base };
     } catch { /* provider, storage or db failure: keep the description card */ }
-    out.push({ type: "image", id: b.id, props });
-  }
+    return { type: "image", id: b.id, props };
+  };
+  const results: unknown[] = new Array(blocks.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, blocks.length) }, async () => {
+    while (next < blocks.length) {
+      const i = next++;
+      results[i] = await resolveBlock(blocks[i] as DocBlock);
+    }
+  }));
+  const out = results.filter((r) => r !== undefined);
   return { ...(doc as object), blocks: out };
 }

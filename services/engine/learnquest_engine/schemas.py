@@ -142,20 +142,24 @@ class Lesson(BaseModel):
     steps: list[Step] = Field(min_length=3, max_length=5)
 
 
+_Loose200 = Annotated[str, StringConstraints(max_length=200)]
+
+
+# Request-side caps: the API sends model-written text back to us, so bound it generously.
 class _Path(BaseModel):
-    title: str
-    tagline: str
+    title: str = Field(max_length=200)
+    tagline: str = Field(max_length=400)
 
 
 class _Course(BaseModel):
-    title: str
-    description: str
+    title: str = Field(max_length=200)
+    description: str = Field(max_length=1000)
 
 
 class _LessonRef(BaseModel):
-    title: str
-    level: int
-    concepts: list[str]
+    title: str = Field(max_length=200)
+    level: int = Field(ge=1, le=5)
+    concepts: list[_Loose200] = Field(max_length=12)
     kind: Literal["predict", "learn", "watch", "practice", "game-practice"] = "predict"
 
 
@@ -207,7 +211,7 @@ class LessonContext(BaseModel):
     path: _Path
     course: _Course
     lesson: _LessonRef
-    missedConcepts: list[str]
+    missedConcepts: list[_Loose200] = Field(max_length=50)
 
 
 def json_schema(model: type[BaseModel]) -> dict[str, Any]:

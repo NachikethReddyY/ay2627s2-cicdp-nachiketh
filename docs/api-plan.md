@@ -2,7 +2,7 @@
 
 > Source of truth: `docs/plan.md` §5, §7, §8, §9, §15. This file turns those into small task cards that a cheaper model can finish one at a time.
 > When this file and `plan.md` disagree, this file wins for **how**; `plan.md` wins for **what**. Deviations are listed in §2.
-> Status: draft 2026-10-28. Nothing here is built yet: `apps/api` holds only empty folders, and `apps/web` uses fixtures only (no backend calls).
+> Status: draft 2026-10-28. Nothing here is built yet: `apps/api` has no SSE, worker or pg-boss code, and `apps/web` uses fixtures only (no backend calls).
 
 ---
 
@@ -24,6 +24,8 @@ Rules:
 **Model per task** (column "Model" in §4): **H** = Claude Haiku 5.5 is fine (mechanical, fully specified). **S** = Claude Sonnet 5.5 (some judgement). **S+R** = Sonnet writes it, then a stronger model or you review it (security or state logic).
 
 ---
+
+> **Status (2026-11-05):** The SSE module, the background worker and pg-boss are not built yet. `apps/api` has no pg-boss dependency. Generation runs in-process on the request, not in a queue. The task cards below describe the planned design.
 
 ## 1. Fixed decisions (the cheap model must not re-decide these)
 
@@ -76,7 +78,7 @@ packages/lesson-schema/src/index.ts   Zod contracts (T0)
 ```
 
 **Env vars** (`src/env.ts`, validated at boot; the process exits if one is missing):
-`DATABASE_URL` (direct connection, **not** a transaction pooler: no `-pooler` in a Neon host), `SESSION_SECRET`, `PUBLIC_ORIGIN` (e.g. `http://localhost:5173`), `PORT` (default 3000), `NODE_ENV`, `WORKER_IN_PROCESS` (default `true`), `WORLDS` (default `codequest`), `ENGINE_URL`, `ENGINE_TOKEN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`. The last four are optional until T9/T10; routes that need them return 503 when they're unset.
+`DATABASE_URL` (direct connection, **not** a transaction pooler: no `-pooler` in a Neon host), `BETTER_AUTH_SECRET` (32+ chars), `PUBLIC_ORIGIN` (e.g. `http://localhost:5173`), `PORT` (default 3000), `NODE_ENV`, `ENGINE_URL`, `ENGINE_TOKEN`. Planned, not read by the API yet: `WORKER_IN_PROCESS` (default `true`), `WORLDS` (default `codequest`), `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`. The GitHub pair is for T9/T10; their routes should return 503 when they're unset.
 
 **Transaction + enqueue helper** (`src/db/tx.ts`). Every write path uses this, so the job and the rows commit together (proven by `spikes/pgboss-enqueue`):
 ```ts

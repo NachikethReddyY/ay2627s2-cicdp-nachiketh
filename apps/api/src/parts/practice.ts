@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
+import { lessonRef, meUser, visibleWorld } from "../access.ts";
 
 /** What a checked run is judged against, and how a pass is saved. */
 export type PracticeCheck = { expected: string; record: () => Promise<void> };
@@ -16,11 +17,11 @@ export async function practiceCheck(learnerId: string, lessonId: string): Promis
     JOIN worlds w ON w.id = l.world_id
     JOIN learners me ON me.id = ${learnerId}
     JOIN lesson_versions v ON v.id = l.current_version_id
-    WHERE (l.id = ${lessonId} OR l.slug = ${lessonId})
+    WHERE ${lessonRef(lessonId)}
       AND l.status = 'published'
       AND l.kind = 'practice'
       AND v.content->>'kind' = 'practice'
-      AND (w.visibility = 'public' OR w.owner_id = me.user_id)`);
+      AND ${visibleWorld(meUser)}`);
   if (!lesson || lesson.expected === null) return null;
   return {
     expected: lesson.expected,

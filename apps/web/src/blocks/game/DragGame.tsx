@@ -50,7 +50,7 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
   );
 }
 
-function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void }) {
+function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void | Promise<unknown> }) {
   const setup = useMemo(() => setupFor(kind), [kind]);
   const maxLives = p.shell.lives;
   const [placed, setPlaced] = useState<Placed>(setup.start);
@@ -144,6 +144,6 @@ function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onCo
   );
 }
 
-export default function DragGame({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void }) {
+export default function DragGame({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void | Promise<unknown> }) {
   return <DragBoard p={p} kind={kind} onComplete={onComplete} />;
 }

@@ -1,5 +1,5 @@
 export * from "./types.ts";
-export { K, DEFAULT_TYPING, buildTimeline } from "./events.ts";
+export { K, buildTimeline } from "./events.ts";
 export { seek } from "./seek.ts";
 import { seek } from "./seek.ts";
 import type { Files, Timeline } from "./types.ts";

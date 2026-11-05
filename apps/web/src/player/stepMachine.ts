@@ -129,6 +129,7 @@ export const stepMachine = setup({
           { guard: { type: "isState", params: { s: "hinting" } }, target: "hinting", actions: "storeLoaded" },
           { guard: { type: "isState", params: { s: "revealed" } }, target: "revealed", actions: "storeLoaded" },
           { guard: { type: "isState", params: { s: "skipped" } }, target: "skipped", actions: "storeLoaded" },
+          { target: "predicting", actions: "storeLoaded" }, // an unknown state must not leave the step loading forever
         ],
       },
     },

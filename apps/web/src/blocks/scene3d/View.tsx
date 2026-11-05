@@ -11,7 +11,7 @@ import { cameraPreset, lightPreset, orbitPosition, parts, resolve, type Primitiv
 type Props = Scene3dProps;
 type Orbit = { yaw: number; pitch: number; zoom: number };
 // shortcut: three has no types here (@types/three is not a dependency), so scene objects are untyped; add @types/three to tighten.
-type Object3D = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Object3D = any;
 type Objs = Map<string, Object3D>;
 
 // Perf budget: <=60 objects, <=100 draw calls, <=100k triangles (budget.ts), dpr <= 2, frameloop "demand".
@@ -166,7 +166,7 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
     <div ref={root} className="min-w-0 max-w-full">
       <div className="relative">
         <div
-          role="img" aria-label={p.alt} tabIndex={orbiting ? 0 : undefined}
+          role={orbiting ? "application" : "img"} aria-label={p.alt} tabIndex={orbiting ? 0 : undefined}
           className="relative w-full min-w-0 max-w-full select-none overflow-hidden rounded-2xl border-2 border-ink bg-white"
           style={{ aspectRatio: "4 / 3", touchAction: "pan-y" }}
           onPointerDown={orbiting ? (e) => {

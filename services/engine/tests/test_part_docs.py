@@ -26,3 +26,65 @@ def test_invalid_learn_doc_is_dropped_and_body_kept(fake_llm: FakeLLM) -> None:
     assert isinstance(res.value, LearnPart)
     assert res.value.doc is None
     assert res.value.body.startswith("Variables")
+
+
+def test_part_prompt_puts_the_doc_in_the_doc_field(fake_llm: FakeLLM) -> None:
+    calls = fake_llm("part_game_practice_1")
+    pipeline.lesson(ctx("game-practice"))
+    system = calls[0]["messages"][0]["content"]
+    assert "Put it inside the `doc` field" in system
+    assert "Return ONE JSON object shaped" not in system
+
+
+def test_visual_route_prompt_is_unchanged() -> None:
+    from learnquest_engine import visual
+
+    assert "Return ONE JSON object shaped" in visual._system()
+    assert "`doc` field" not in visual._system()
+
+
+def test_game_doc_semantic_failure_gets_one_repair_then_422(
+    fake_llm: FakeLLM, monkeypatch: Any
+) -> None:
+    import pytest
+
+    from learnquest_engine import visual
+
+    calls = fake_llm("part_game_practice_1")
+    monkeypatch.setattr(visual, "ts_issues", lambda doc: ["grid: unsolvable"])
+    # The fixture has one reply; a second call must fail the test loudly if the repair is skipped.
+    with pytest.raises(AssertionError, match="no recorded reply"):
+        pipeline.lesson(ctx("game-practice"))
+    assert len(calls) == 2
+    assert "grid: unsolvable" in calls[1]["messages"][1]["content"]
+
+
+def test_game_checker_unavailable_fails_closed(fake_llm: FakeLLM, monkeypatch: Any) -> None:
+    import pytest
+
+    from learnquest_engine import visual
+
+    fake_llm("part_game_practice_1")
+
+    def boom(doc: Any) -> list[str]:
+        raise visual.CheckerUnavailable("no node")
+
+    monkeypatch.setattr(visual, "ts_issues", boom)
+    with pytest.raises(visual.CheckerUnavailable):
+        pipeline.lesson(ctx("game-practice"))
+
+
+def test_game_doc_without_a_game_block_gets_repaired(fake_llm: FakeLLM, monkeypatch: Any) -> None:
+    import pytest
+
+    from learnquest_engine import visual
+
+    calls = fake_llm("part_game_practice_1")
+    monkeypatch.setattr(visual, "all_issues", lambda doc: [])
+    text_only = {"v": 1, "blocks": [{"type": "text", "id": "t"}]}
+    monkeypatch.setattr(visual, "unwrap", lambda doc: text_only)
+    # A valid but game-less doc must still trigger the repair call, not pass to the API gate.
+    with pytest.raises(AssertionError, match="no recorded reply"):
+        pipeline.lesson(ctx("game-practice"))
+    assert len(calls) == 2
+    assert "needs a block with type" in calls[1]["messages"][1]["content"]

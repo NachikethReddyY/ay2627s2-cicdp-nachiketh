@@ -5,7 +5,7 @@ import { db } from "../db/client.ts";
 import { lessonMedia } from "../db/schema.ts";
 import { storage } from "./storage.ts";
 
-export type MediaKind = "narration" | "image";
+type MediaKind = "narration" | "image";
 
 const MiB = 1024 * 1024;
 const starts = (b: Uint8Array, sig: number[], at = 0) => sig.every((x, i) => b[at + i] === x);

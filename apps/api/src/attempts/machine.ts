@@ -1,4 +1,4 @@
-export type State = "predicting" | "hinting" | "revealed" | "skipped";
+type State = "predicting" | "hinting" | "revealed" | "skipped";
 export type Progress = { state: State; rungsTaken: number; attemptAllowed: boolean; retryAllowed: boolean };
 export type Action = { type: "attempt"; correct: boolean } | { type: "hint" } | { type: "skip" };
 export type Outcome = { type: "attempt"; correct: boolean } | { type: "hint"; rung: number } | { type: "skip" };
@@ -27,6 +27,10 @@ export function next(
   if (p.state === "hinting" && !p.attemptAllowed) return { conflict: "Take the next hint first" };
   const outcome: Outcome = { type: "attempt", correct: a.correct };
   if (a.correct) return { progress: { ...p, state: "revealed" }, outcome };
+  // With no hints to take, a wrong first answer goes straight to the retry (otherwise only skip would be left).
+  if (p.state === "predicting" && step.hintCount === 0) {
+    return { progress: { ...p, state: "hinting", attemptAllowed: true, retryAllowed: true }, outcome };
+  }
   if (p.state === "predicting") return { progress: { ...p, state: "hinting", attemptAllowed: false }, outcome };
   if (p.retryAllowed) return { progress: { ...p, state: "revealed", retryAllowed: false }, outcome };
   if (p.rungsTaken >= step.hintCount) {

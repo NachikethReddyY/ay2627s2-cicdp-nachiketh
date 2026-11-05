@@ -4,7 +4,7 @@ import { text } from "./sanitize.ts";
 
 export const MAX_STEPS = 30;
 export const MAX_SET = 20;
-export const MAX_CAPTION = 200;
+const MAX_CAPTION = 200;
 export const MIN_STEP_MS = 300;
 export const MAX_STEP_MS = 4000;
 /** Motion curves a step may use (GSAP ease names). */

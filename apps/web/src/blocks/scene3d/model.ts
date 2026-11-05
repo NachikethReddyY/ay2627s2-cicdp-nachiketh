@@ -5,7 +5,7 @@ export type Vec3 = [number, number, number];
 export type Primitive = Scene3dProps["primitives"][number];
 
 // Hex copies of the --color-* tokens in index.css (three cannot read CSS variables).
-export const HEX: Record<string, string> = {
+const HEX: Record<string, string> = {
   ink: "#1b1b1f", paper: "#fffdf8", green: "#22c55e", "green-deep": "#15803d", blue: "#3b5bff",
   sun: "#ffd23f", pink: "#ff8fb1", lilac: "#b9a4ff", mint: "#b6f0cf",
 };

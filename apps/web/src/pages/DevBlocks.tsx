@@ -11,7 +11,7 @@ const examples = [
 ];
 
 /** "blocks.1.props.timeline.steps.2.set.0.value" -> "Block 2, step 3, set 1, value". Falls back to the raw path. */
-export function plainIssue({ path, message }: { path: string; message: string }): string {
+function plainIssue({ path, message }: { path: string; message: string }): string {
   const m = /^blocks\.(\d+)(?:\.props)?\.?(.*)$/.exec(path);
   if (!m) return `${path}: ${message}`;
   const rest = m[2].replace(/timeline\.steps\.(\d+)/, (_, n) => `step ${+n + 1}`).replace(/\.?set\.(\d+)/, (_, n) => `, set ${+n + 1}`).replace(/\./g, ", ").replace(/^, /, "");

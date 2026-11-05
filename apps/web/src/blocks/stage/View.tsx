@@ -1,6 +1,6 @@
 import type { StageProps, TimelineState } from "@learnquest/ui-catalog";
 import { bodyBelow, bounceTimeline, bounceY, simulateBounce } from "@learnquest/ui-catalog";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import type { BlockViewProps } from "../registry.ts";
@@ -61,20 +61,24 @@ function useTweened(target: TimelineState, duration: number, ease: string, reduc
 }
 
 function Scene({ p, state }: { p: Props; state?: TimelineState }) {
+  // Several stages can share a page, and SVG ids are document-wide.
+  const uid = useId().replace(/:/g, "");
+  const dots = `stage-dots-${uid}`;
+  const arrow = `stage-arrowhead-${uid}`;
   return (
     <svg role="img" aria-label={p.alt} viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"
       style={{ width: "100%", maxWidth: "100%", height: "auto", aspectRatio: "1 / 1" }}
       className="block rounded-2xl border-2 border-ink bg-paper" fontSize={4}>
-      <defs><pattern id="stage-dots" width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.25" fill="var(--dot, var(--color-ink))" opacity="0.22" /></pattern></defs>
-      <rect width="100" height="100" fill="url(#stage-dots)" />
-      <defs><marker id="stage-arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--color-ink)" /></marker></defs>
+      <defs><pattern id={dots} width="5" height="5" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.25" fill="var(--dot, var(--color-ink))" opacity="0.22" /></pattern></defs>
+      <rect width="100" height="100" fill={`url(#${dots})`} />
+      <defs><marker id={arrow} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--color-ink)" /></marker></defs>
       {p.shapes.map((s) => {
         const a = resolve(s, state);
         const body =
           s.kind === "rect" ? <rect x={s.x} y={s.y} width={a.w} height={a.h} fill={a.fill} stroke={a.stroke} strokeWidth={2.5} />
           : s.kind === "circle" ? <circle cx={s.x} cy={s.y} r={a.r} fill={a.fill} stroke={a.stroke} strokeWidth={2.5} />
           : s.kind === "ellipse" ? <ellipse cx={s.x} cy={s.y} rx={a.w / 2} ry={a.h / 2} fill={a.fill} stroke={a.stroke} strokeWidth={2.5} />
-          : s.kind === "line" ? <line x1={s.x} y1={s.y} x2={s.x2} y2={s.y2} stroke={a.stroke} strokeWidth={2.5} strokeLinecap="round" markerEnd={s.arrow ? "url(#stage-arrowhead)" : undefined} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - a.draw} />
+          : s.kind === "line" ? <line x1={s.x} y1={s.y} x2={s.x2} y2={s.y2} stroke={a.stroke} strokeWidth={2.5} strokeLinecap="round" markerEnd={s.arrow ? `url(#${arrow})` : undefined} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - a.draw} />
           : s.kind === "path" ? <path d={s.d} fill={a.fill} stroke={a.stroke} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - a.draw} />
           : null;
         // Rotation and scale turn about the shape's own x,y; the offset from the state moves it first.
@@ -152,7 +156,7 @@ function Bouncing({ p }: { p: Props }) {
     const [start, to] = range;
     const from = stepChanged ? start : Math.max(start, Math.min(to, timeRef.current));
     const duration = simulation.timeline.steps[tl.step]!.durationMs;
-    const remaining = duration * ((to - from) / (to - start));
+    const remaining = to > start ? duration * ((to - from) / (to - start)) : 0; // a zero-length segment has nothing to animate
     let frame = 0;
     let started: number | null = null;
     const animate = (now: number) => {

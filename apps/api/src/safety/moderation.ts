@@ -3,7 +3,7 @@ import { env } from "../env.ts";
 export const CATEGORIES = [
   "hate", "harassment", "self-harm", "sexual", "violence", "illicit", "jailbreak",
 ] as const;
-export type ModerationResult = { flagged: boolean; scores: Partial<Record<(typeof CATEGORIES)[number], number>> };
+type ModerationResult = { flagged: boolean; scores: Partial<Record<(typeof CATEGORIES)[number], number>> };
 export type ModerationClient = (input: string) => Promise<ModerationResult>;
 
 const THRESHOLD = 0.8;

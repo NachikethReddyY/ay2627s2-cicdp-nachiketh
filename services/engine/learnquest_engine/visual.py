@@ -60,9 +60,32 @@ def _validator() -> Draft202012Validator:
     return Draft202012Validator(json.loads((PROMPTS / "visual.schema.json").read_text("utf-8")))
 
 
+_RETURN_LINE = (
+    '- Return ONE JSON object shaped {"v": 1, "blocks": [...]} that matches the catalog below.'
+)
+_FIX_LINE = (
+    '- If the user message has a "fix_these_issues" field, correct exactly those\n'
+    '  problems in "previous_document" and return the full corrected JSON, keeping\n'
+    "  the rest unchanged."
+)
+_PART_RETURN_LINE = (
+    '- The visual document is a JSON object shaped {"v": 1, "blocks": [...]} that matches the\n'
+    "  catalog below. Put it inside the `doc` field of your reply, never at the top level; the\n"
+    "  other fields of your reply are described above this section."
+)
+_PART_FIX_LINE = (
+    '- If the user message has a "fix_these_issues" field, correct exactly those problems in the\n'
+    '  `doc` of "previous_part" and return the full corrected reply, keeping the rest unchanged.'
+)
+assert _RETURN_LINE in RULES and _FIX_LINE in RULES  # the part variant below edits these lines
+
+PART_RULES = RULES.replace(_RETURN_LINE, _PART_RETURN_LINE).replace(_FIX_LINE, _PART_FIX_LINE)
+
+
 @cache
-def _system() -> str:
-    return RULES + (PROMPTS / "visual.catalog.md").read_text("utf-8")
+def _system(embedded: bool = False) -> str:
+    """The /visual prompt, or with embedded=True the variant appended to a lesson-part prompt."""
+    return (PART_RULES if embedded else RULES) + (PROMPTS / "visual.catalog.md").read_text("utf-8")
 
 
 def generate_visual(

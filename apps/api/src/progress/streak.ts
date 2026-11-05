@@ -1,4 +1,4 @@
-export const SOLVES_PER_DAY = 3;
+const SOLVES_PER_DAY = 3;
 
 const prev = (day: string) => {
   const d = new Date(`${day}T00:00:00Z`);
