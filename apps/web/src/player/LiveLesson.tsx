@@ -6,7 +6,7 @@ import { trpc, isNotFound, type RouterOutputs } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import EditorPane from "./EditorPane";
 import { Player } from "./PlayerPage";
-import { pollPython, sendPythonLine, startPython, stopPython, type PyPoll } from "./runPython";
+import { checkPassed, pollPython, sendPythonLine, startPython, stopPython, type PyPoll } from "./runPython";
 import { FOCUS } from "./ui";
 import { Bar } from "../components/Bits";
 import { PredictPanel, RevealPanel } from "./LivePanels";
@@ -123,16 +123,16 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
   const sidRef = useRef<string | null>(null); // mirrors sid so the unmount cleanup can stop the run
   const live = useRef(true); // false once the page is gone, so a late startPython result is stopped
   const [typed, setTyped] = useState("");
-  const stdout = useRef(""); // program output only, without the echoed answers; Check compares this
+  const stdout = useRef(""); // program output only, without the echoed answers
   const checking = useRef(false);
   const runRef = useRef<HTMLButtonElement>(null);
   const timeline = useMemo(() => buildTimeline([{ beforeFiles: {}, hunks: [] }]), []);
   const python = part.language === "python";
   const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
-  const judge = (out: string, error?: string) => {
+  // The server judges a Check run and records the completion; the player only shows its verdict.
+  const judge = (p: Pick<PyPoll, "error" | "passed">) => {
     if (!checking.current) return;
-    const pass = !error && out.trim() === part.expectedOutput.trim();
-    setOk(pass);
+    setOk(checkPassed(p));
   };
 
   useEffect(() => {
@@ -164,7 +164,7 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
       if (!p.done) { timer = setTimeout(poll, 300); return; }
       if (p.error) setTerm((t) => `${t}${t && !t.endsWith("\n") ? "\n" : ""}${p.error}\n`);
       else if (!stdout.current) setTerm((t) => t || "The program ran and printed nothing.");
-      judge(stdout.current, p.error);
+      judge(p);
       setSid(null);
     };
     void poll();
@@ -179,12 +179,12 @@ function PracticeView({ lessonId, title, part, next }: { lessonId: string; title
     setStarting(true);
     let id: string;
     try {
-      id = (await startPython(code, python ? "python" : "javascript")).id;
+      id = (await startPython(code, python ? "python" : "javascript", check ? lessonId : undefined)).id;
     } catch (e) {
       if (!live.current) return;
       setStarting(false);
       setTerm(msg(e));
-      judge("", msg(e));
+      judge({ error: msg(e) });
       return;
     }
     if (!live.current) { void stopPython(id).catch(() => {}); return; } // the page closed while the request was pending

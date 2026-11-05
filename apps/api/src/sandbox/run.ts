@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
+import { practiceCheck, type PracticeCheck } from "../parts/practice.ts";
 
 // Live Python runs for practice lessons. Each run is a fresh, locked-down container, removed when the program ends or is stopped.
 export const MAX_CODE = 4000;
@@ -29,6 +30,8 @@ type Run = {
   stopping: boolean;
   error?: string;
   timer: NodeJS.Timeout;
+  check?: PracticeCheck; // set for a Check run of a practice lesson
+  passed?: boolean; // true once a checked run matched and its completion was saved
 };
 const runs = new Map<string, Run>();
 const STOPPED = `Stopped: the code ran longer than ${LIMIT_S} seconds.`;
@@ -65,8 +68,11 @@ const INTERPRETER: Record<Language, string[]> = {
   javascript: ["node", "-e"],
 };
 
-/** Starts a program and returns its run id, or null when the learner already has too many live runs. */
-export function startRun(code: string, learner: string, language: Language, spawn: Spawn = nodeSpawn): string | null {
+/**
+ * Starts a program and returns its run id, or null when the learner already has too many live runs.
+ * With `check`, a clean exit whose output matches is saved as the lesson's completion before the run ends.
+ */
+export function startRun(code: string, learner: string, language: Language, spawn: Spawn = nodeSpawn, check?: PracticeCheck): string | null {
   let active = 0;
   for (const r of runs.values()) if (r.learner === learner && !r.done) active++;
   if (active >= MAX_ACTIVE) return null;
@@ -80,7 +86,7 @@ export function startRun(code: string, learner: string, language: Language, spaw
   ];
   const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
   // Backstop in case the container hangs past the program's own limit.
-  const run: Run = { id, learner, child, spawn, out: "", done: false, stopping: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000) };
+  const run: Run = { id, learner, child, spawn, out: "", done: false, stopping: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + 5) * 1000), check };
   runs.set(id, run);
   let err = "";
   child.stdout?.on("data", (d: Buffer) => { if (run.out.length < MAX_OUT) run.out += d.toString(); });
@@ -89,11 +95,25 @@ export function startRun(code: string, learner: string, language: Language, spaw
   child.on("error", () => finish(run, "Could not run the code"));
   child.on("close", (exit) => {
     if (run.stopping) return; // the container's removal ends the run
-    if (exit === 0) finish(run);
+    if (exit === 0 && run.check) void judge(run, run.check);
+    else if (exit === 0) finish(run);
     else if (exit === 124 || exit === 137) finish(run, STOPPED);
     else finish(run, err.trim() || "The code stopped with an error.");
   });
   return id;
+}
+
+// Same rule the player used before: the program's output, without the typed answers, matches once trimmed.
+async function judge(run: Run, check: PracticeCheck) {
+  run.passed = false;
+  if (run.out.trim() !== check.expected.trim()) return finish(run);
+  try {
+    await check.record();
+    run.passed = true;
+    finish(run);
+  } catch {
+    finish(run, "Could not save your result. Check again.");
+  }
 }
 
 const own = (id: string, learner: string) => {
@@ -105,7 +125,9 @@ const own = (id: string, learner: string) => {
 export function runStatus(id: string, learner: string, from: number) {
   const r = own(id, learner);
   if (!r) return null;
-  return { output: r.out.slice(from), next: r.out.length, done: r.done, error: r.error };
+  // `passed` is only sent for a checked run, once it has ended.
+  const passed = r.check && r.done ? r.passed === true && !r.error : undefined;
+  return { output: r.out.slice(from), next: r.out.length, done: r.done, error: r.error, ...(passed !== undefined && { passed }) };
 }
 
 export function sendRunInput(id: string, learner: string, line: string): boolean {
@@ -123,7 +145,11 @@ export function stopRun(id: string, learner: string): boolean {
 }
 
 export async function sandboxRunRoute(app: FastifyInstance) {
-  const Start = z.object({ code: z.string().max(MAX_CODE), language: z.enum(["python", "javascript"]).default("python") });
+  const Start = z.object({
+    code: z.string().max(MAX_CODE),
+    language: z.enum(["python", "javascript"]).default("python"),
+    lessonId: z.string().regex(/^[\w-]{1,64}$/).optional(), // a Check run: the server judges it against this lesson
+  });
   const Line = z.object({ line: z.string().max(MAX_LINE) });
   const Id = z.uuid();
   const From = z.object({ from: z.coerce.number().int().min(0).default(0) });
@@ -142,7 +168,13 @@ export async function sandboxRunRoute(app: FastifyInstance) {
     if (!learner) return reply;
     const body = Start.safeParse(req.body);
     if (!body.success) return reply.status(400).send(fail("bad_request", "Code is too long"));
-    const id = startRun(body.data.code, learner, body.data.language);
+    let check: PracticeCheck | undefined;
+    if (body.data.lessonId) {
+      const found = await practiceCheck(learner, body.data.lessonId);
+      if (!found) return reply.status(404).send(fail("not_found", "Practice lesson not found"));
+      check = found;
+    }
+    const id = startRun(body.data.code, learner, body.data.language, nodeSpawn, check);
     if (!id) return reply.status(429).send(fail("busy", "Finish your running programs first"));
     return { id };
   });
