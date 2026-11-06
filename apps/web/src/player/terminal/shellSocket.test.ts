@@ -562,3 +562,14 @@ test("without a wsOrigin the ticket is never fetched", async () => {
   s.dispose();
   e.dispose();
 });
+
+test("connect() without a size reuses the last known size, including one set by resize", () => {
+  reset();
+  const s = make(async () => 404);
+  s.connect(100, 30);
+  FakeWS.last.drop(4029);
+  s.resize(120, 40);
+  s.connect();
+  assert.ok(FakeWS.last.url.includes("cols=120&rows=40"), FakeWS.last.url);
+  s.dispose();
+});

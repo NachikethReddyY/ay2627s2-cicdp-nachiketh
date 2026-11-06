@@ -113,7 +113,7 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
         <div role="status" aria-live="polite" className="flex flex-none items-center gap-2 px-3 py-1 text-xs">
           {line && <span>{line.text}</span>}
           {line?.retry && (
-            <button type="button" onClick={() => shell.connect(80, 24)} className={`underline ${FOCUS}`}>Try again</button>
+            <button type="button" onClick={() => shell.connect()} className={`underline ${FOCUS}`}>Try again</button>
           )}
           {note && <span className="opacity-80">{note}</span>}
         </div>

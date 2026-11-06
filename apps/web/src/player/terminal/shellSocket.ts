@@ -74,8 +74,8 @@ export class ShellNotReadyError extends Error {
 }
 
 export interface ShellSocket {
-  /** No-op unless idle, closed or exited. */
-  connect(cols: number, rows: number): void;
+  /** No-op unless idle, closed or exited. Without a size it reuses the last one (set by connect or resize). */
+  connect(cols?: number, rows?: number): void;
   /** Binary frame; dropped unless open. "\r" while exited reconnects. */
   send(data: string): void;
   /** {type:"resize"} text frame when open. */
@@ -276,7 +276,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     connect(cols, rows) {
       if (disposed) return;
       if (state.kind !== "idle" && state.kind !== "closed" && state.kind !== "exited") return;
-      size = { cols, rows };
+      if (cols !== undefined && rows !== undefined) size = { cols, rows };
       attempt = 0;
       open();
     },
