@@ -1,5 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
+import { sql } from "drizzle-orm";
+import { db } from "../db/client.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 
 export const createContext = ({ req }: CreateFastifyContextOptions) => ({ req });
@@ -20,4 +22,11 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   const learnerId = await resolveLearnerId(ctx.req.headers);
   if (!learnerId) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required" });
   return next({ ctx: { learnerId } });
+});
+
+// Admin-only calls (curation). The flag lives on the learner row and is set only in the database.
+export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const { rows } = await db.execute(sql`SELECT 1 FROM learners WHERE id = ${ctx.learnerId} AND is_admin`);
+  if (rows.length === 0) throw new TRPCError({ code: "FORBIDDEN", message: "Admins only" });
+  return next();
 });

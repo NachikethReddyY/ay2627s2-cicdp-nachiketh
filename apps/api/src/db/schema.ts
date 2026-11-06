@@ -88,6 +88,8 @@ export const learners = pgTable("learners", {
   // IANA name; streak days are counted in this zone.
   timezone: text("timezone").notNull().default("UTC"),
   dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
+  // Admins curate Explore collections. Granted only in the database (never by a request or a self-chosen field).
+  isAdmin: boolean("is_admin").notNull().default(false),
 });
 
 const visibility = () =>
@@ -163,6 +165,32 @@ export const pathCourses = pgTable(
     position: integer("position").notNull(),
   },
   (t) => [primaryKey({ columns: [t.pathId, t.worldId] }), index("path_courses_world").on(t.worldId)],
+);
+
+// Hand-picked groups of paths shown on Explore. Only `featured` ones are visible to learners.
+export const collections = pgTable("collections", {
+  id: id(),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  featured: boolean("featured").notNull().default(false),
+  // Lower first among featured collections.
+  position: integer("position").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+export const collectionPaths = pgTable(
+  "collection_paths",
+  {
+    collectionId: text("collection_id")
+      .notNull()
+      .references(() => collections.id, { onDelete: "cascade" }),
+    pathId: text("path_id")
+      .notNull()
+      .references(() => paths.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.collectionId, t.pathId] }), index("collection_paths_path").on(t.pathId)],
 );
 
 export const enrollments = pgTable(
