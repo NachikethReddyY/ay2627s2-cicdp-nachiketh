@@ -33,7 +33,8 @@ export function shellUrl(
 
 /** Trim, drop trailing slashes and map http(s):// to ws(s)://. Empty or missing means same-origin. */
 export function normalizeWsOrigin(raw: string | undefined): string | undefined {
-  let v = (raw ?? "").trim().replace(/\/+$/, "");
+  let v = (raw ?? "").trim();
+  while (v.endsWith("/")) v = v.slice(0, -1); // a loop, not /\/+$/, which backtracks super-linearly
   if (/^https:\/\//i.test(v)) v = "wss://" + v.slice(8);
   else if (/^http:\/\//i.test(v)) v = "ws://" + v.slice(7);
   return v || undefined;
