@@ -29,6 +29,20 @@ export interface RunHandle {
   onStart(cb: () => void): void;
 }
 
+/** The only files the editor may write into a learner's sandbox home. */
+export const SANDBOX_FILES = ["solution.py", "solution.js"] as const;
+export type SandboxFileName = (typeof SANDBOX_FILES)[number];
+export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; size: number };
+export type DirListing = { entries: DirEntry[]; truncated: boolean };
+export const LIST_MAX_ENTRIES = 200;
+
+/** The learner has no open shell, so there is no sandbox to read or write. */
+export class SandboxNotRunningError extends Error {
+  constructor() {
+    super("no running shell");
+  }
+}
+
 export interface RunLimits {
   timeoutS: number;
 }
@@ -36,6 +50,10 @@ export interface RunLimits {
 export interface SandboxBackend {
   openShell(learnerId: string, size: { cols: number; rows: number }): Promise<ShellHandle>;
   /** Backends that can run practice code themselves. Without it, run.ts keeps its own `docker run` path. */
+  /** Writes one allowlisted file into the learner's running sandbox. Throws SandboxNotRunningError without a shell. */
+  writeFile?(learnerId: string, name: SandboxFileName, content: string): Promise<void>;
+  /** relDir is "" for home or a validated "a/b"; null when it does not exist or is not a directory. */
+  listDir?(learnerId: string, relDir: string): Promise<DirListing | null>;
   runCode?(learnerId: string, language: "python" | "javascript", code: string, limits: RunLimits): RunHandle;
 }
 

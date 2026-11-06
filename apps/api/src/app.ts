@@ -12,6 +12,7 @@ import { appRouter, type AppRouter } from "./trpc/router.ts";
 import { createContext } from "./trpc/trpc.ts";
 import { sandboxRoutes } from "./sandbox/route.ts";
 import { sandboxRunRoute } from "./sandbox/run.ts";
+import { sandboxFilesRoute } from "./sandbox/files.ts";
 import { devRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
@@ -98,6 +99,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       });
       api.register(sandboxRoutes);
       api.register(sandboxRunRoute);
+      api.register(sandboxFilesRoute);
       api.register(devRoutes);
       api.get(
         "/healthz",
