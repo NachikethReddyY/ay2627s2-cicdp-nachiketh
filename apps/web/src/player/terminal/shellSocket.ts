@@ -233,8 +233,9 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   };
 
   const connectSocket = (gen: number, ticket?: string) => {
+    const urlSize = size; // the PTY is created at this size; a resize() before onopen cannot be sent yet
     const socket = new WS(
-      shellUrl(deps.location ?? globalThis.location, size.cols, size.rows, ticket ? { wsOrigin, ticket } : undefined),
+      shellUrl(deps.location ?? globalThis.location, urlSize.cols, urlSize.rows, ticket ? { wsOrigin, ticket } : undefined),
     );
     ws = socket;
     socket.binaryType = "arraybuffer";
@@ -242,6 +243,9 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
       if (gen !== generation) return;
       opened = true;
       setState({ kind: "open", ready: false });
+      if (size.cols !== urlSize.cols || size.rows !== urlSize.rows) {
+        socket.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
+      }
     };
     socket.onmessage = (ev) => {
       if (gen !== generation) return;

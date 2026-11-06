@@ -579,3 +579,22 @@ test("connect() without a size reuses the last known size, including one set by 
   assert.ok(FakeWS.last.url.includes("cols=120&rows=40"), FakeWS.last.url);
   s.dispose();
 });
+
+test("a resize between connect and open is sent on open; an unchanged size sends nothing extra", () => {
+  reset();
+  const s = make();
+  s.connect(80, 24);
+  s.resize(100, 30); // not open yet, so the frame cannot go out now
+  assert.equal(FakeWS.last.sent.length, 0);
+  FakeWS.last.open();
+  assert.equal(FakeWS.last.sent.length, 1);
+  assert.deepEqual(JSON.parse(FakeWS.last.sent[0] as string), { type: "resize", cols: 100, rows: 30 });
+  s.dispose();
+
+  reset();
+  const u = make();
+  u.connect(80, 24);
+  FakeWS.last.open();
+  assert.equal(FakeWS.last.sent.length, 0);
+  u.dispose();
+});
