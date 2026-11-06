@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, listFiles, type DirEntry } from "../runPython";
 import { FOCUS } from "../ui";
+import { canExpand } from "./canExpand";
 import { toggleExpanded } from "./expanded";
 
 type FileTreeProps = { refreshKey: number };
@@ -43,7 +44,7 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
     <ul>
       {listing.entries.map((en) => {
         const p = join(path, en.name);
-        const isDir = en.type === "dir";
+        const isDir = en.type === "dir" && canExpand(path, en.name);
         return (
           <li key={en.name}>
             {isDir ? (
@@ -58,7 +59,7 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
                 {en.name}
               </button>
             ) : (
-              <div style={pad} className="py-0.5 pl-3 text-xs opacity-80">{en.name}{en.type === "link" ? " →" : ""}</div>
+              <div style={pad} className="py-0.5 pl-3 text-xs opacity-80">{en.name}{en.type === "link" ? " →" : en.type === "dir" ? "/" : ""}</div>
             )}
             {isDir && open.has(en.name) && <Dir path={p} refreshKey={refreshKey} depth={depth + 1} />}
           </li>
