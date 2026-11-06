@@ -59,7 +59,7 @@ export default function Login() {
 
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <a href="/" className="font-display text-3xl font-black tracking-tight">
-          Learn<span className="text-blue">Quest</span>
+          Learn<span className="text-blue">Slop</span>
         </a>
         <a href="/" className="pill bg-white px-4 py-2 text-sm">Back to home</a>
       </header>

@@ -17,7 +17,7 @@ export default function DiffPage() {
   return (
     <div className="lq diff-page mx-auto max-w-6xl px-4 py-5 sm:px-6">
       <a href="/" className="lq-logo font-display text-2xl font-black">
-        Learn<span className="text-blue">Quest</span>
+        Learn<span className="text-blue">Slop</span>
       </a>
       <main>
         <h1 className="mt-4 font-display text-2xl font-black">{lesson.title}: diffs</h1>
