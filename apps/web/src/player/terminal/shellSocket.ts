@@ -31,10 +31,18 @@ export function shellUrl(
   return `${scheme}//${loc.host}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}`;
 }
 
+/** Trim, drop trailing slashes and map http(s):// to ws(s)://. Empty or missing means same-origin. */
+export function normalizeWsOrigin(raw: string | undefined): string | undefined {
+  let v = (raw ?? "").trim().replace(/\/+$/, "");
+  if (/^https:\/\//i.test(v)) v = "wss://" + v.slice(8);
+  else if (/^http:\/\//i.test(v)) v = "ws://" + v.slice(7);
+  return v || undefined;
+}
+
 /** Absolute ws(s) origin of the API host (VITE_SHELL_WS_ORIGIN); undefined means same-origin (dev proxy). */
 export function defaultWsOrigin(): string | undefined {
   const v = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SHELL_WS_ORIGIN;
-  return v ? v : undefined;
+  return normalizeWsOrigin(v);
 }
 
 /** POST /api/sandbox/shell-ticket. Throws an error carrying `status` on a non-2xx answer. Never logs the ticket. */
@@ -85,7 +93,7 @@ interface Deps {
   location: { protocol: string; host: string };
   probe: () => Promise<number>;
   /** Origin to connect to directly with a ticket; unset or empty keeps the same-origin behaviour. */
-  wsOrigin: string;
+  wsOrigin?: string;
   fetchTicket: () => Promise<string>;
 }
 
@@ -100,7 +108,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   const probe =
     deps.probe ?? (() => fetch("/api/sandbox/files", { credentials: "include" }).then((r) => r.status));
   const fetchTicket = deps.fetchTicket ?? defaultFetchTicket;
-  const wsOrigin = "wsOrigin" in deps ? deps.wsOrigin : defaultWsOrigin();
+  const wsOrigin = "wsOrigin" in deps ? normalizeWsOrigin(deps.wsOrigin) : defaultWsOrigin();
   const encoder = new TextEncoder();
 
   let state: ShellState = { kind: "idle" };
@@ -196,7 +204,13 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     fetchTicket().then(
       (ticket) => {
         if (gen !== generation || disposed) return;
-        connectSocket(gen, ticket);
+        try {
+          connectSocket(gen, ticket);
+        } catch {
+          // e.g. a malformed origin makes the WebSocket constructor throw.
+          ws = null;
+          scheduleRetry();
+        }
       },
       (err: unknown) => {
         if (gen !== generation || disposed) return;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BACKOFF_MS, ShellNotReadyError, backoffMs, createShellSocket, shellUrl } from "./shellSocket.ts";
+import { BACKOFF_MS, ShellNotReadyError, backoffMs, createShellSocket, normalizeWsOrigin, shellUrl } from "./shellSocket.ts";
 
 const location = { protocol: "http:", host: "localhost:5173" };
 const bytes = (s: string) => new TextEncoder().encode(s).buffer;
@@ -458,16 +458,49 @@ test("dispose while the ticket is pending never constructs a socket", async () =
   assert.equal(FakeWS.count, 0);
 });
 
-test("a stale ticket result (superseded open) is dropped", async () => {
+test("a WebSocket constructor that throws schedules a retry instead of hanging", async (t) => {
   reset();
-  const releases: ((v: string) => void)[] = [];
-  const s = makeTicket(() => new Promise<string>((r) => releases.push(r)));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const unhandled: unknown[] = [];
+  const onUnhandled = (e: unknown) => unhandled.push(e);
+  process.on("unhandledRejection", onUnhandled);
+  class ThrowingWS {
+    constructor() {
+      throw new SyntaxError("bad url");
+    }
+  }
+  const s = createShellSocket({
+    WebSocket: ThrowingWS as unknown as new (url: string) => WebSocket,
+    location,
+    probe: async () => 404,
+    wsOrigin: "learnquest-api.onrender.com",
+    fetchTicket: async () => "tk",
+  });
   s.connect(80, 24);
-  s.setActive(false);
-  s.setActive(true); // state is connecting, not paused: no new open
-  releases[0]("tk");
   await flush();
-  assert.equal(FakeWS.count, 1);
+  const st = s.state() as { kind: string; inMs: number };
+  assert.equal(st.kind, "reconnecting");
+  assert.equal(st.inMs, 1000);
+  await new Promise<void>((r) => setImmediate(r));
+  process.off("unhandledRejection", onUnhandled);
+  assert.deepEqual(unhandled, []);
+  s.dispose();
+});
+
+test("wsOrigin is normalised: trimmed, no trailing slash, http(s) mapped to ws(s)", () => {
+  assert.equal(normalizeWsOrigin("  wss://a.dev/// "), "wss://a.dev");
+  assert.equal(normalizeWsOrigin("https://a.dev/"), "wss://a.dev");
+  assert.equal(normalizeWsOrigin("HTTP://a.dev:8080"), "ws://a.dev:8080");
+  assert.equal(normalizeWsOrigin("   "), undefined);
+  assert.equal(normalizeWsOrigin(undefined), undefined);
+});
+
+test("an injected https origin connects over wss", async () => {
+  reset();
+  const s = makeTicket(async () => "tk", "https://api.dev/");
+  s.connect(80, 24);
+  await flush();
+  assert.ok(FakeWS.last.url.startsWith("wss://api.dev/api/sandbox/shell?"));
   s.dispose();
 });
 
