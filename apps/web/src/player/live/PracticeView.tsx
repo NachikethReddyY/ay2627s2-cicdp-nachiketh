@@ -4,9 +4,11 @@ import EditorPane from "../EditorPane";
 import { createShellSocket, type ShellSocket } from "../terminal/shellSocket";
 import TerminalPanel from "../terminal/TerminalPanel";
 import { isToggleKey, usePanel } from "../terminal/usePanel";
-import { checkPassed, pollPython, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
+import { RunInShellError, runInShell } from "../terminal/runInShell";
+import { checkPassed, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
+import { practiceActions } from "./practiceActions";
 import type { Part } from "./types";
 
 const MAX_POLL_FAILURES = 4;
@@ -36,6 +38,18 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       setShell(null);
     };
   }, []);
+  const [sandboxEnabled, setSandboxEnabled] = useState(true);
+  const [shellRun, setShellRun] = useState(false); // a Run is copying the code into the shell
+  const [runNote, setRunNote] = useState<string | undefined>();
+  useEffect(() => {
+    if (!shell) return;
+    const track = () => {
+      const s = shell.state();
+      setSandboxEnabled(!(s.kind === "closed" && s.reason === "disabled"));
+    };
+    track();
+    return shell.onState(track);
+  }, [shell]);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
   const panel = usePanel(bodyRef);
@@ -112,7 +126,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     return () => { live = false; clearTimeout(timer); };
   }, [sid]);
 
-  const run = async (check: boolean) => {
+  const oneShot = async (args: Parameters<typeof startPython>, check: boolean) => {
     checking.current = check;
     setOk(null); // clearing first remounts the badge, so its animation plays on every check
     stdout.current = "";
@@ -120,7 +134,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     setStarting(true);
     let id: string;
     try {
-      id = (await startPython(code, python ? "python" : "javascript", check ? lessonId : undefined)).id;
+      id = (await startPython(...args)).id;
     } catch (e) {
       if (!live.current) return;
       setStarting(false);
@@ -131,6 +145,35 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     if (!live.current) { void stopPython(id).catch(() => {}); return; } // the page closed while the request was pending
     setStarting(false);
     setSid(id);
+  };
+  const actionsFor = (enabled: boolean) => practiceActions({ language: python ? "python" : "javascript", code, lessonId, sandboxEnabled: enabled });
+  const check = () => void oneShot(actionsFor(sandboxEnabled).check.args, true);
+  const run = async () => {
+    const a = actionsFor(sandboxEnabled).run;
+    if (a.via === "oneshot") { await oneShot(a.args, false); return; }
+    if (!shell) return;
+    setRunNote(undefined);
+    setShellRun(true);
+    try {
+      await runInShell({
+        language: python ? "python" : "javascript",
+        code,
+        panel: { open: () => panelDispatch({ type: "open" }) },
+        socket: shell,
+        putFile,
+        refreshTree: () => setTreeKey((k) => k + 1),
+      });
+    } catch (e) {
+      if (!live.current) return;
+      if (e instanceof RunInShellError && e.kind === "disabled") {
+        setShellRun(false);
+        const fb = actionsFor(false).run;
+        if (fb.via === "oneshot") await oneShot(fb.args, false);
+        return;
+      }
+      setRunNote(msg(e));
+    }
+    if (live.current) setShellRun(false);
   };
   const stop = () => {
     if (!sid) return;
@@ -146,23 +189,35 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     setTerm((t) => `${t}${line}\n`);
     void sendPythonLine(sid, line).catch(() => setTerm((t) => `${t}[could not send that line]\n`));
   };
+  const badge = (
+    <span role="status" aria-live="polite" className="ml-auto">
+      {ok !== null && (
+        <span className={`inline-block rounded-lg border-2 border-ink px-2 py-0.5 font-sans text-sm font-extrabold text-ink ${ok ? "verdict-ok bg-green" : "verdict-no bg-pink"}`}>
+          {ok ? "Correct!" : "Not quite. Compare your output with the task."}
+        </span>
+      )}
+    </span>
+  );
+  const panelShown = panel.state.open; // a closed panel is hidden, so the badge lives in the Check output block then
+  const showCheckOutput = sid !== null || starting || term !== "" || (ok !== null && !panelShown);
   const file = python ? "solution.py" : "solution.js";
   const body = (
     <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
       <EditorPane transportRef={runRef} edit={{ value: code, language: part.language ?? "javascript", onChange: setCode }} />
-      {shell && <TerminalPanel shell={shell} panel={panel} badge={null} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />}
+      {shell && <TerminalPanel shell={shell} panel={panel} badge={panelShown ? badge : null} note={runNote} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />}
+      {showCheckOutput && (
       <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-32 flex-none flex-col border-t-[3px] border-ink bg-ink font-mono text-white">
         <div className="flex flex-none items-center gap-2 border-b-2 border-white/20 px-3 py-1">
-          <h3 id="out-h" className="text-sm font-extrabold">Terminal</h3>
-          <span role="status" aria-live="polite" className="ml-auto">
-            {ok !== null && (
-              <span className={`inline-block rounded-lg border-2 border-ink px-2 py-0.5 font-sans text-sm font-extrabold text-ink ${ok ? "verdict-ok bg-green" : "verdict-no bg-pink"}`}>
-                {ok ? "Correct!" : "Not quite. Compare your output with the task."}
-              </span>
-            )}
-          </span>
+          <h3 id="out-h" className="text-sm font-extrabold">Check output</h3>
+          <span className="text-xs opacity-80">Checked in a clean sandbox</span>
+          {!panelShown && badge}
+          {sid && (
+            <button type="button" onClick={stop} className={`pill ml-auto flex min-h-7 items-center gap-1 bg-pink px-3 text-sm font-extrabold text-ink ${FOCUS}`}>
+              <span aria-hidden="true">■</span> Stop
+            </button>
+          )}
         </div>
-        <pre aria-label="Output" tabIndex={0} className={`min-h-0 flex-1 overflow-auto p-3 text-sm whitespace-pre-wrap ${FOCUS}`}>{term || "Run your code to see its output."}</pre>
+        <pre aria-label="Output" tabIndex={0} className={`min-h-0 flex-1 overflow-auto p-3 text-sm whitespace-pre-wrap ${FOCUS}`}>{term}</pre>
         {sid && (
           <form onSubmit={answer} className="flex flex-none items-center gap-2 border-t-2 border-white/20 px-3 py-2 text-sm">
             <span aria-hidden="true" className="font-extrabold">{">"}</span>
@@ -179,6 +234,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
           </form>
         )}
       </section>
+      )}
     </div>
   );
   return (
@@ -193,18 +249,14 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         footer: (
           <>
             <button ref={toggleRef} type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
-            <button type="button" disabled={starting || sid !== null} onClick={() => run(true)} className={`btn check ${FOCUS}`}>Check</button>
+            <button type="button" disabled={starting || sid !== null || shellRun} onClick={check} className={`btn check ${FOCUS}`}>Check</button>
             {next}
           </>
         ),
         code: {
           title: file,
-          tool: sid ? (
-            <button ref={runRef} type="button" onClick={stop} className={`pill flex min-h-7 items-center gap-1 bg-pink px-3 text-sm font-extrabold ${FOCUS}`}>
-              <span aria-hidden="true">■</span> Stop
-            </button>
-          ) : (
-            <button ref={runRef} type="button" disabled={starting} onClick={() => run(false)} className={`pill flex min-h-7 items-center gap-1 bg-green px-3 text-sm font-extrabold ${FOCUS}`}>
+          tool: (
+            <button ref={runRef} type="button" disabled={starting || sid !== null || shellRun} onClick={() => void run()} className={`pill flex min-h-7 items-center gap-1 bg-green px-3 text-sm font-extrabold ${FOCUS}`}>
               <span aria-hidden="true">▶</span> Run
             </button>
           ),
