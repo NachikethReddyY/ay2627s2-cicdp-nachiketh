@@ -93,7 +93,7 @@ export async function sandboxTicketRoute(app: FastifyInstance) {
     try {
       return { ticket: mintTicket(learner), expiresInMs: TICKET_TTL_MS };
     } catch (e) {
-      if (e instanceof TicketCapacityError) return reply.status(503).send(err("unavailable", "Try again shortly"));
+      if (e instanceof TicketCapacityError) return reply.status(503).send(err("busy", "Try again shortly"));
       throw e;
     }
   });

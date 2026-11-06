@@ -45,10 +45,19 @@ export function defaultWsOrigin(): string | undefined {
   return normalizeWsOrigin(v);
 }
 
-/** POST /api/sandbox/shell-ticket. Throws an error carrying `status` on a non-2xx answer. Never logs the ticket. */
+/** POST /api/sandbox/shell-ticket. Throws an error carrying `status` (and the server's `error.code` when the body has one) on a non-2xx answer. Never logs the ticket. */
 async function defaultFetchTicket(): Promise<string> {
   const res = await fetch("/api/sandbox/shell-ticket", { method: "POST", credentials: "include" });
-  if (!res.ok) throw Object.assign(new Error(`Shell ticket failed (${res.status})`), { status: res.status });
+  if (!res.ok) {
+    let code: string | undefined;
+    try {
+      const b = (await res.json()) as { error?: { code?: unknown } } | null;
+      if (typeof b?.error?.code === "string") code = b.error.code;
+    } catch {
+      // Unparsable body: no code, treated as a transient failure.
+    }
+    throw Object.assign(new Error(`Shell ticket failed (${res.status})`), { status: res.status, code });
+  }
   const body: unknown = await res.json();
   const ticket = (body as { ticket?: unknown } | null)?.ticket;
   if (typeof ticket !== "string" || !ticket) throw new Error("Shell ticket response had no ticket");
@@ -214,8 +223,9 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
       },
       (err: unknown) => {
         if (gen !== generation || disposed) return;
-        const status = (err as { status?: unknown } | null)?.status;
-        if (status === 503) return closed("disabled", "The sandbox is disabled");
+        const { status, code } = (err ?? {}) as { status?: unknown; code?: unknown };
+        // Only the explicit "sandbox disabled" answer is final; a full ticket store is "busy" and retries.
+        if (status === 503 && code === "unavailable") return closed("disabled", "The sandbox is disabled");
         if (status === 401) return closed("signed_out", "Sign in to use the terminal");
         scheduleRetry();
       },

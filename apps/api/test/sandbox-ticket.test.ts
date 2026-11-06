@@ -38,7 +38,9 @@ test("the mint route rejects anonymous, disabled and cross-origin callers", asyn
   assert.equal((await post({ cookie, origin: "https://evil.example" })).statusCode, 403);
   env.SANDBOX_ENABLED = false;
   try {
-    assert.equal((await post({ cookie, origin: env.PUBLIC_ORIGIN })).statusCode, 503);
+    const off = await post({ cookie, origin: env.PUBLIC_ORIGIN });
+    assert.equal(off.statusCode, 503);
+    assert.equal(off.json().error.code, "unavailable", "disabled is distinguishable from a full store");
   } finally {
     env.SANDBOX_ENABLED = true;
   }
@@ -55,7 +57,7 @@ test("minting stops at the pending cap and resumes once expired tickets are swep
   for (let i = 0; i < TICKET_MAX_PENDING; i++) mintTicket(`filler-${i}`);
   const full = await post({ cookie, origin: env.PUBLIC_ORIGIN });
   assert.equal(full.statusCode, 503);
-  assert.deepEqual(full.json(), { error: { code: "unavailable", message: "Try again shortly" } });
+  assert.deepEqual(full.json(), { error: { code: "busy", message: "Try again shortly" } });
 
   _resetForTests();
   for (let i = 0; i < TICKET_MAX_PENDING; i++) mintTicket(`filler-${i}`, past);

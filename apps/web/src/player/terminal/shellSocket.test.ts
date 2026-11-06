@@ -352,7 +352,8 @@ const makeTicket = (fetchTicket: () => Promise<string>, wsOrigin: string | undef
     wsOrigin,
     fetchTicket,
   });
-const statusErr = (status: number) => Object.assign(new Error(`HTTP ${status}`), { name: "ApiError", status });
+const statusErr = (status: number, code?: string) =>
+  Object.assign(new Error(`HTTP ${status}`), { name: "ApiError", status, code });
 
 test("shellUrl with a wsOrigin and ticket targets the API host and encodes the ticket", () => {
   assert.equal(
@@ -404,15 +405,15 @@ test("every reconnect fetches a fresh ticket", async (t) => {
 
 test("ticket failures: 503 disabled, 401 signed out, anything else retries with backoff", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  for (const [status, reason] of [
-    [503, "disabled"],
-    [401, "signed_out"],
+  for (const [status, reason, code] of [
+    [503, "disabled", "unavailable"],
+    [401, "signed_out", undefined],
   ] as const) {
     reset();
     let calls = 0;
     const s = makeTicket(async () => {
       calls++;
-      throw statusErr(status);
+      throw statusErr(status, code);
     });
     s.connect(80, 24);
     await flush();
@@ -425,7 +426,7 @@ test("ticket failures: 503 disabled, 401 signed out, anything else retries with 
     assert.equal(calls, 1, "no retry");
     s.dispose();
   }
-  for (const err of [new Error("offline"), statusErr(429)]) {
+  for (const err of [new Error("offline"), statusErr(429), statusErr(503, "busy"), statusErr(503)]) {
     reset();
     let calls = 0;
     const s = makeTicket(async () => {
@@ -444,6 +445,35 @@ test("ticket failures: 503 disabled, 401 signed out, anything else retries with 
     assert.equal(calls, 2);
     assert.equal(FakeWS.count, 1);
     s.dispose();
+  }
+});
+
+test("the default ticket fetch keeps the server error code; a 503 with a bad body retries", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const real = globalThis.fetch;
+  try {
+    for (const [body, expectClosed] of [
+      [JSON.stringify({ error: { code: "unavailable", message: "x" } }), true],
+      [JSON.stringify({ error: { code: "busy", message: "x" } }), false],
+      ["<html>bad gateway</html>", false],
+    ] as const) {
+      reset();
+      globalThis.fetch = (async () => new Response(body, { status: 503 })) as typeof fetch;
+      const s = createShellSocket({
+        WebSocket: FakeWS as unknown as new (url: string) => WebSocket,
+        location,
+        probe: async () => 404,
+        wsOrigin: ORIGIN,
+      });
+      s.connect(80, 24);
+      await flush();
+      const st = s.state() as { kind: string; inMs?: number };
+      assert.equal(st.kind, expectClosed ? "closed" : "reconnecting");
+      if (!expectClosed) assert.equal(st.inMs, 1000);
+      s.dispose();
+    }
+  } finally {
+    globalThis.fetch = real;
   }
 });
 
