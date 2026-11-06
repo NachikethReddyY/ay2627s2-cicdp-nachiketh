@@ -46,6 +46,15 @@ const schema = z
     // Per-learner Docker shell (docs/plans/sandbox-editor-plan.md). Off: /sandbox/shell answers 503 and Docker is never touched.
     SANDBOX_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     SANDBOX_IMAGE: z.string().min(1).default("lq-sandbox:dev"),
+    // Where shells and practice runs execute. "daytona" uses Daytona's hosted sandboxes and never loads Docker or node-pty (docs/configuration.md).
+    SANDBOX_BACKEND: z.enum(["docker", "daytona"]).default("docker"),
+    DAYTONA_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    DAYTONA_API_URL: z.preprocess(blankIsUnset, z.url().optional()),
+    DAYTONA_TARGET: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    // Snapshot to create learner sandboxes from. Unset: Daytona's default image.
+    DAYTONA_SNAPSHOT: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    // Minutes without activity before a learner's shell sandbox stops itself (Daytona enforces it, so it survives API restarts).
+    DAYTONA_AUTO_STOP_MINUTES: z.coerce.number().int().positive().default(15),
     // Shell containers join this bridge (created on demand, inter-container traffic off) instead of Docker's default one.
     SANDBOX_NETWORK: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/).default("lq-sbx"),
     // Optional OCI runtime for shell containers, e.g. "runsc" (gVisor). Unset: Docker's default runtime.
@@ -54,6 +63,10 @@ const schema = z
     SANDBOX_MAX_TABS: z.coerce.number().int().positive().default(4), // terminal tabs per learner
     SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50), // live shell sessions in all
     SANDBOX_MAX_RUNS: z.coerce.number().int().positive().default(20), // live code runs in all
+  })
+  .refine((e) => !e.SANDBOX_ENABLED || e.SANDBOX_BACKEND !== "daytona" || !!e.DAYTONA_API_KEY, {
+    message: "SANDBOX_BACKEND=daytona needs DAYTONA_API_KEY",
+    path: ["DAYTONA_API_KEY"],
   })
   .refine(
     (e) => {
