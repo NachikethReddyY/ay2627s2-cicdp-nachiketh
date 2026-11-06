@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
 import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
 
-function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean } | "fail" } = {}) {
-  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean } = {}) {
+  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
   const mk = (extra: Partial<DaytonaSandbox> = {}): DaytonaSandbox => ({
@@ -39,9 +39,14 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
     },
     getUserHomeDir: async () => (log.homeCalls++, "home" in opts ? opts.home : "/home/daytona"),
     fs: {
-      uploadFile: async (_f, p) => void log.uploaded.push(p),
+      uploadFile: async (_f, p) => (log.fsOps.push(`upload ${p}`), void log.uploaded.push(p)),
+      deleteFile: async (p) => {
+        if (opts.deleteFails) throw new Error("delete refused");
+        log.fsOps.push(`delete ${p}`);
+      },
       getFileDetails: async () => {
-        if (!opts.details || opts.details === "fail") throw new Error("no details");
+        if (opts.details === "fail") throw new Error("no details");
+        if (!opts.details) throw Object.assign(new Error("not found"), { statusCode: 404 });
         return opts.details;
       },
       listFiles: async (p) => {
@@ -212,6 +217,24 @@ test("a failed sandbox delete is retried", async () => {
   const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
   await new Promise((res) => run.onExit(res));
   assert.equal(f.log.deleted, 1);
+});
+
+test("writeFile removes a symlink or non-regular file before uploading, and leaves regular or missing files alone", async () => {
+  const run = async (o: Parameters<typeof fake>[0]) => {
+    const f = fake({ ...o, existing: [{ state: "started" }] });
+    const b = daytonaBackend({ client: f.client });
+    await b.writeFile!("learner-1", "solution.py", "x");
+    return f.log.fsOps;
+  };
+  const p = "/home/daytona/solution.py";
+  assert.deepEqual(await run({ details: { isDir: false, mode: "Lrwxrwxrwx" } }), [`delete ${p}`, `upload ${p}`]);
+  assert.deepEqual(await run({ details: { isDir: true, mode: "drwxr-xr-x" } }), [`delete ${p}`, `upload ${p}`]);
+  assert.deepEqual(await run({ details: { isDir: false, mode: "-rw-r--r--" } }), [`upload ${p}`]);
+  assert.deepEqual(await run({}), [`upload ${p}`], "404 means nothing to clean up");
+  const f = fake({ details: { isDir: false, mode: "Lrwxrwxrwx" }, deleteFails: true, existing: [{ state: "started" }] });
+  const b = daytonaBackend({ client: f.client });
+  await assert.rejects(b.writeFile!("learner-1", "solution.py", "x"), /delete refused/);
+  assert.deepEqual(f.log.fsOps, [], "no upload after a failed delete");
 });
 
 test("writeFile uploads to <home>/solution.py and never creates a sandbox", async () => {

@@ -33,9 +33,10 @@ Set `SANDBOX_RUNTIME=runsc` to run shell containers under [gVisor](https://gviso
 
 ## File endpoint
 
-`PUT /api/sandbox/files/:name` writes one file into the learner's sandbox home, and `GET /api/sandbox/files?dir=<rel>` lists a folder there. Only `solution.py` and `solution.js` can be written, with content up to 16 KiB. A listing returns at most 200 entries and sets `truncated` when there are more. `dir` is up to four plain segments, with no `.` or `..`.
+`PUT /api/sandbox/files/:name` writes one file into the learner's sandbox home, and `GET /api/sandbox/files?dir=<rel>` lists a folder there. Only `solution.py` and `solution.js` can be written, with content up to 4000 characters (16 KiB is only the request body limit). A listing returns at most 200 entries and sets `truncated` when there are more. `dir` is up to four plain segments, with no `.` or `..`.
 
 - The endpoints never create or start a sandbox. Without an open shell they answer `409 no_shell`, so the editor opens the terminal first.
 - `501 not_implemented` means the active backend has no file support.
 - Docker writes and lists as uid 1001 (the `learner` user), so the files belong to the shell user. On Daytona the home is the sandbox user's home (`/home/learner` if the SDK reports none).
+- Daytona writes check the target first: if `<home>/<name>` is a symlink or not a regular file it is deleted (a delete does not follow links) before the upload, so a learner-made `ln -sf /etc/passwd ~/solution.py` is not followed by a toolbox running as root. A TOCTOU window remains between that check and the upload. The real fix is to confirm the Daytona toolbox runs as the `learner` user; this needs a real Daytona key and is a manual pre-release check.
 - A missing or non-directory folder answers 404. On Daytona a missing folder is a 404 from the SDK; a file path is confirmed with a second `getFileDetails` call (`isDir === false`). If that call also fails, the original error is surfaced as a failure.

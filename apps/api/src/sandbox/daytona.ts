@@ -30,7 +30,9 @@ export interface DaytonaSandbox {
   fs: {
     uploadFile(file: Buffer, remotePath: string): Promise<void>;
     listFiles(path: string): Promise<Array<{ name: string; isDir: boolean; size: number; mode: string }>>;
-    getFileDetails(path: string): Promise<{ isDir: boolean }>;
+    getFileDetails(path: string): Promise<{ isDir: boolean; mode?: string }>;
+    /** Removes the path itself; like unlink, it does not follow a symlink. */
+    deleteFile(path: string, recursive?: boolean): Promise<void>;
   };
 }
 export interface DaytonaClient {
@@ -189,7 +191,21 @@ export function daytonaBackend(opts: {
 
     async writeFile(learnerId, name, content) {
       const sbx = await findShell(learnerId);
-      await sbx.fs.uploadFile(Buffer.from(content), `${await homeOf(sbx)}/${name}`);
+      const path = `${await homeOf(sbx)}/${name}`;
+      // The toolbox may run as root, and the learner can leave a symlink at this name (ln -sf /etc/passwd ~/solution.py)
+      // that an upload would follow. Remove anything that is not a plain file first (delete does not follow links).
+      // A TOCTOU window remains between this check and the upload; the real fix is confirming the toolbox runs as
+      // the `learner` user (manual check against a real Daytona key, see services/sandbox/README.md).
+      let info: { isDir: boolean; mode?: string } | undefined;
+      try {
+        info = await sbx.fs.getFileDetails(path);
+      } catch (err) {
+        if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
+      }
+      if (info && (info.isDir || info.mode?.startsWith("L") || (info.mode !== undefined && !info.mode.startsWith("-")))) {
+        await sbx.fs.deleteFile(path);
+      }
+      await sbx.fs.uploadFile(Buffer.from(content), path);
     },
 
     async listDir(learnerId, relDir) {
