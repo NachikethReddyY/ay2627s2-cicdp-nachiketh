@@ -16,10 +16,13 @@ export function practiceActions(o: { language: "python" | "javascript"; code: st
 }
 
 // Run falls back to the one-shot path when the shell cannot be reached at all (sandbox off, or the socket is
-// failing, e.g. a proxy that drops WebSocket upgrades). A plain cold start keeps the "press Run again" note.
-export function shouldFallBack(kind: "starting" | "disabled" | "unavailable" | "copy", state: { kind: string }): boolean {
+// failing, e.g. a proxy that drops WebSocket upgrades). A plain cold start keeps the "press Run again" note once;
+// a second readiness timeout in a row (`timeouts`, reset when the shell is ready) while still connecting means the
+// host is unreachable, so it falls back too.
+export function shouldFallBack(kind: "starting" | "disabled" | "unavailable" | "copy", state: { kind: string }, timeouts = 0): boolean {
   if (kind === "disabled") return true;
   if (kind !== "starting" && kind !== "unavailable") return false;
+  if (kind === "starting" && state.kind === "connecting" && timeouts >= 2) return true;
   return state.kind === "reconnecting" || state.kind === "closed";
 }
 

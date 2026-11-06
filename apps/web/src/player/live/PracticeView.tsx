@@ -42,6 +42,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const [shellRun, setShellRun] = useState(false); // a Run is copying the code into the shell
   const [runNote, setRunNote] = useState<string | undefined>();
   const shellUnreachable = useRef(false); // a Run fell back because the socket is failing; cleared once the shell is ready again
+  const readyTimeouts = useRef(0); // consecutive Run waits that hit the readiness timeout; reset once the shell is ready
   useEffect(() => {
     if (!shell) return;
     const track = () => {
@@ -53,6 +54,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       track();
       if (st.kind === "open" && st.ready) {
         shellUnreachable.current = false;
+        readyTimeouts.current = 0;
         setRunNote(undefined);
       }
     });
@@ -184,7 +186,8 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       });
     } catch (e) {
       if (!live.current) return;
-      if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state())) {
+      if (e instanceof RunInShellError && e.kind === "starting") readyTimeouts.current += 1;
+      if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state(), readyTimeouts.current)) {
         shellUnreachable.current = true;
         setShellRun(false);
         const fb = actionsFor(false).run;

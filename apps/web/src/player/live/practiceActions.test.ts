@@ -26,6 +26,15 @@ test("shouldFallBack: disabled always; starting/unavailable only when the socket
   assert.equal(shouldFallBack("copy", { kind: "closed" }), false);
 });
 
+test("shouldFallBack: a second readiness timeout in a row while connecting falls back; the first keeps the note", () => {
+  assert.equal(shouldFallBack("starting", { kind: "connecting" }, 1), false);
+  assert.equal(shouldFallBack("starting", { kind: "connecting" }, 2), true);
+  assert.equal(shouldFallBack("starting", { kind: "connecting" }, 3), true);
+  assert.equal(shouldFallBack("starting", { kind: "open" }, 2), false, "an open shell is a slow start, not unreachable");
+  assert.equal(shouldFallBack("unavailable", { kind: "connecting" }, 2), false);
+  assert.equal(shouldFallBack("copy", { kind: "connecting" }, 2), false);
+});
+
 test("skipShellWait: reconnecting or closed skip the wait; replaced, exited and a cold start keep it", () => {
   assert.equal(skipShellWait(false, { kind: "reconnecting" }), true);
   assert.equal(skipShellWait(false, { kind: "closed", reason: "busy" }), true);
