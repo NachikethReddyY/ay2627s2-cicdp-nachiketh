@@ -9,6 +9,7 @@ const WINDOW_MS = 60_000;
 const MAX_WRITES = 30;
 const MAX_LISTS = 60;
 const MAX_NAME = 64;
+const MAX_WINDOWS = 1000;
 const SEGMENT = /^[A-Za-z0-9._-]{1,64}$/;
 
 /** "" for an absent or empty dir, null for an invalid one: up to 4 safe segments, no "." or ".." and no empty ones. */
@@ -22,11 +23,12 @@ export function parseDir(raw: unknown): string | null {
 
 const fail = (code: string, message: string) => ({ error: { code, message } });
 
-/** Fixed window per learner: true while the learner is within `max` calls in the current minute. */
-function limiter(max: number) {
+/** Fixed window per learner: true while the learner is within `max` calls in the current minute. Expired windows are pruned once the map is large. */
+export function limiter(max: number, clock: () => number = Date.now) {
   const windows = new Map<string, { start: number; n: number }>();
-  return (learner: string): boolean => {
-    const now = Date.now();
+  const check = (learner: string): boolean => {
+    const now = clock();
+    if (windows.size >= MAX_WINDOWS) for (const [l, w] of windows) if (now - w.start >= WINDOW_MS) windows.delete(l);
     const w = windows.get(learner);
     if (!w || now - w.start >= WINDOW_MS) {
       windows.set(learner, { start: now, n: 1 });
@@ -35,6 +37,7 @@ function limiter(max: number) {
     w.n += 1;
     return w.n <= max;
   };
+  return Object.assign(check, { size: () => windows.size });
 }
 
 // One backend call at a time per learner. The entry is dropped once the chain is idle.

@@ -3,6 +3,7 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
+import { limiter } from "../src/sandbox/files.ts";
 import { SandboxNotRunningError, setBackend, type DirEntry, type SandboxFileName } from "../src/sandbox/backend.ts";
 
 const app = buildApp();
@@ -153,4 +154,20 @@ test("a learner's backend calls run one at a time", async () => {
   const f = fakeFiles();
   await Promise.all([1, 2, 3].map(() => put(cookie, "solution.py", { content: "x" })));
   assert.equal(f.maxInFlight, 1);
+});
+
+test("the rate limiter prunes expired windows once the map is large, and still limits an active one", () => {
+  let now = 1_000_000;
+  const allowed = limiter(2, () => now);
+  for (let i = 0; i < 1000; i++) assert.equal(allowed(`old-${i}`), true);
+  now += 30_000;
+  assert.equal(allowed("active"), true);
+  assert.equal(allowed("active"), true);
+  assert.equal(allowed("active"), false);
+  now += 31_000; // the old windows are over a minute old, the active one is not
+  assert.equal(allowed.size(), 1001);
+  assert.equal(allowed("new"), true); // map is over the threshold, so this call prunes the expired windows
+  assert.equal(allowed.size(), 2, "only the active and the new window remain");
+  assert.equal(allowed("active"), false, "a window still inside its minute keeps limiting after a prune");
+  assert.equal(allowed("old-0"), true, "a pruned learner starts a fresh window");
 });
