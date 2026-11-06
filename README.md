@@ -1,5 +1,5 @@
-# LearnQuest
-LearnQuest turns a real code change into an adaptive lesson: the learner predicts the outcome before being told, and the system models what they understand and adapts the next step. This monorepo holds the Fastify + tRPC API (`apps/api`), the React/Vite web app (`apps/web`), the Python LLM engine (`services/engine`), and the shared `packages/player-core` and `packages/ui-catalog` packages. The product plan is in `docs/plan.md`.
+# LearnSlop
+LearnSlop turns a real code change into an adaptive lesson: the learner predicts the outcome before being told, and the system models what they understand and adapts the next step. This monorepo holds the Fastify + tRPC API (`apps/api`), the React/Vite web app (`apps/web`), the Python LLM engine (`services/engine`), and the shared `packages/player-core` and `packages/ui-catalog` packages. The product plan is in `docs/plan.md`.
 
 ## Local development
 

@@ -1,4 +1,4 @@
-# LearnQuest — Project Plan
+# LearnSlop — Project Plan
 
 > Status: **v2 final (2026-10-27), after 6 review passes.** WP0 (spikes) and WP1 (repo skeleton) may start now. Before Week 1 ends, answer Q3, Q5, Q8, Q9 and decide Rec-2 (§17). Every other open question has a working default.
 > Changes from v1: 6-week core with a Wk-3 cut gate and an ordered cut line; adaptivity redefined (steps keep commit order); answers, hints and source served server-side only; World seam defined; one queue (pg-boss on Postgres); data model and API made consistent; KidsQuest, sandbox, embed and SDK publish moved to stretch (Appendix A).
@@ -9,7 +9,7 @@
 
 ## 1. The idea
 
-**LearnQuest turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.**
+**LearnSlop turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.**
 
 Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example / practice; the visual style is KidsQuest-only, stretch), hint depth, skip offer and next-lesson recommendation come from a learner model. **No free-chat tutor in core.**
 

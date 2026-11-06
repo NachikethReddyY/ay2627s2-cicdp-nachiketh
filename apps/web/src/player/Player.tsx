@@ -214,7 +214,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   return (
     <div className={`lq player-page flex flex-col ${code ? "h-dvh overflow-hidden" : "min-h-dvh lg:h-dvh lg:overflow-hidden"}`} onKeyDown={onKeyDown}>
       <header className="flex min-h-8 flex-none flex-wrap items-center gap-x-3 border-b-[3px] border-ink bg-white px-3 py-0.5 text-sm">
-        <a href="/" aria-label="LearnQuest home" className={`grid min-h-6 min-w-6 place-items-center rounded-md ${FOCUS}`}>
+        <a href="/" aria-label="LearnSlop home" className={`grid min-h-6 min-w-6 place-items-center rounded-md ${FOCUS}`}>
           <img src="/img/pip-wave.png" alt="" className="size-6 object-contain" />
         </a>
         <h1 className="flex-none font-sans text-sm font-extrabold">{title}</h1>

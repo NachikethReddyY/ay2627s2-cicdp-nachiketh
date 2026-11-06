@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: LearnQuest-design
+name: LearnSlop-design
 description: A playful, sticker-style design system for learning code. Cream canvas (`#FFF4E0`) on a dot grid, ink (`#15121F`) outlines on every shape, hard offset shadows with no blur, flat bright fills. Pip, the mint sprout mascot, appears in every illustration. Lilita One for display, DM Sans for body, system monospace for code.
 
 colors:
@@ -48,7 +48,7 @@ shadows:
   sticker: "2px 2px 0 ink"
 ---
 
-# LearnQuest Design System
+# LearnSlop Design System
 
 Visual spec for this revision: the Design artifact `d3d3f532-517a-44bb-85c9-0c2d43642bef`, screens Main, Desktop-New, Phone-Returning, Phone-New, Generator-States and Empty-States. The implementation in [apps/web/src/index.css](apps/web/src/index.css) still uses the previous palette and fonts (Fraunces, Nunito) and does not match this spec yet.
 

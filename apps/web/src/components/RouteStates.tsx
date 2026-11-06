@@ -29,7 +29,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
       <div className={card}>
         <img src="/img/pip-oops.png" alt="" className="float w-20 shrink-0" />
         <div role="alert" className="font-bold">
-          <p>{stale ? "LearnQuest was updated. Reload to get the latest version." : "Something went wrong loading this page."}</p>
+          <p>{stale ? "LearnSlop was updated. Reload to get the latest version." : "Something went wrong loading this page."}</p>
           <div className="mt-3 flex gap-2">
             <button type="button" className="btn" onClick={() => (stale ? location.reload() : reset())}>{stale ? "Reload" : "Try again"}</button>
             <a href="/" className="pill bg-white px-4 py-2">Home</a>

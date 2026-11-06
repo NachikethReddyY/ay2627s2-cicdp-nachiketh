@@ -133,7 +133,7 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="bg-ink py-8 text-center text-sm font-bold text-paper/70">LearnQuest · a CICDP course project</footer>
+      <footer className="bg-ink py-8 text-center text-sm font-bold text-paper/70">LearnSlop · a CICDP course project</footer>
     </div>
   );
 }

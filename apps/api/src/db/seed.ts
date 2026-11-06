@@ -19,7 +19,7 @@ export async function seed() {
       .values({ slug: "js-foundations", ...path })
       .onConflictDoUpdate({ target: paths.slug, set: path });
     const [jsPath] = await tx.select().from(paths).where(eq(paths.slug, "js-foundations"));
-    const startHere = { title: "Start here", description: "New to LearnQuest? Begin with these.", featured: true };
+    const startHere = { title: "Start here", description: "New to LearnSlop? Begin with these.", featured: true };
     // Only a fresh database gets the starter collection and link; later admin edits (retitle, unfeature, setPaths) survive a reseed.
     const [created] = await tx
       .insert(collections)

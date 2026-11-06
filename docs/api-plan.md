@@ -11,7 +11,7 @@
 One task card = one session = one PR. Paste this prompt, filling in the task ID:
 
 ```
-You are implementing task <T#> from docs/api-plan.md in the LearnQuest repo.
+You are implementing task <T#> from docs/api-plan.md in the LearnSlop repo.
 Read: docs/api-plan.md §1–§3 and the <T#> card. Read the plan.md sections the card names. Nothing else unless stuck.
 Rules:
 - Touch only the files the card lists. Add only the dependencies the card lists.

@@ -1,7 +1,7 @@
 [project]
 name = "learnquest-engine"
 version = "0.1.0"
-description = "LearnQuest inference engine: LLM pipelines (outline, lesson) behind LiteLLM"
+description = "LearnSlop inference engine: LLM pipelines (outline, lesson) behind LiteLLM"
 requires-python = ">=3.12"
 dependencies = [
     # Exact pin. See spikes/litellm-advisory/README.md before any bump.

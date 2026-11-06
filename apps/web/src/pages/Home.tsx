@@ -59,7 +59,7 @@ export default function Home() {
       </header>
 
       <main className="lq-wrap">
-        <h1 className="sr">LearnQuest home</h1>
+        <h1 className="sr">LearnSlop home</h1>
         <div className="lq-layout">
           <div className="lq-main">
             <Generator />
