@@ -53,7 +53,11 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     return () => window.removeEventListener("keydown", onKey, true);
   }, [panelDispatch]);
   useEffect(() => {
-    if (wasOpen.current && !panel.state.open) toggleRef.current?.focus();
+    if (wasOpen.current && !panel.state.open) {
+      // Only reclaim focus if it was in the panel (or already lost); never pull it from the editor.
+      const a = document.activeElement;
+      if (!a || a === document.body || a.closest('[aria-label="Terminal panel"]')) toggleRef.current?.focus();
+    }
     wasOpen.current = panel.state.open;
   }, [panel.state.open]);
   const python = part.language === "python";

@@ -58,20 +58,25 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
     shell.setActive(state.open);
   }, [shell, state.open]);
 
+  // Focus xterm only after an explicit open, not when a restored-open page loads.
+  const mountedOpen = useRef(state.open);
+  const interacted = useRef(false);
+  if (state.open !== mountedOpen.current) interacted.current = true;
+
   if (!state.everOpened) return null;
 
-  const container = (el: HTMLElement) => el.parentElement?.clientHeight || window.innerHeight;
+  const container = () => sectionRef.current?.parentElement?.clientHeight || window.innerHeight;
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => e.currentTarget.setPointerCapture(e.pointerId);
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     const rect = sectionRef.current!.getBoundingClientRect();
-    dispatch({ type: "resize", px: rect.bottom - e.clientY, container: container(e.currentTarget) });
+    dispatch({ type: "resize", px: rect.bottom - e.clientY, container: container() });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
     e.preventDefault();
     const delta = e.key === "ArrowUp" ? KEY_STEP : -KEY_STEP;
-    dispatch({ type: "resize", px: state.height + delta, container: container(e.currentTarget) });
+    dispatch({ type: "resize", px: state.height + delta, container: container() });
   };
 
   const line = stateLine(shellState);
@@ -119,7 +124,7 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
         </div>
         <div className="min-w-0 flex-1">
           <Suspense fallback={<p className="p-3 text-sm">Loading terminal…</p>}>
-            <TerminalView shell={shell} active={state.open} />
+            <TerminalView shell={shell} active={state.open && interacted.current} />
           </Suspense>
         </div>
       </div>
