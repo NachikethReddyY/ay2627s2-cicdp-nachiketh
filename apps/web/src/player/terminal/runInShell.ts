@@ -44,7 +44,14 @@ export async function runInShell(o: {
     if (e instanceof ShellNotReadyError) {
       if (e.why === "timeout") throw new RunInShellError("starting", "The sandbox is still starting, press Run again");
       if (e.why === "disabled") throw new RunInShellError("disabled", "The sandbox is disabled");
-      throw new RunInShellError("unavailable", "The terminal is unavailable");
+      const why: Record<string, string> = {
+        exited: "The shell ended. Press Enter in the terminal to start a new shell, then Run again",
+        replaced: "The terminal is open in another window",
+        busy: "The sandbox is busy, try again in a moment",
+        too_many_tabs: "Too many terminal tabs are open",
+        signed_out: "Sign in to use the terminal",
+      };
+      throw new RunInShellError("unavailable", why[e.why] ?? "The terminal is unavailable");
     }
     throw e;
   }

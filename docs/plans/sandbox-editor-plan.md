@@ -1,6 +1,6 @@
 # Lesson sandbox, editor and chapter generation
 
-Status: decided, not started. Written from the owner's answers in the planning thread.
+Status: phases 1 and 2 are built (sandbox service, shell WebSocket and terminal panel); phases 3 to 5 are not started. Written from the owner's answers in the planning thread.
 
 ## Decisions
 
@@ -11,6 +11,8 @@ Status: decided, not started. Written from the owner's answers in the planning t
 - **Lesson content:** each lesson has its own `instructions.txt`, which is plain text shown in the instructions window.
 - **Checks run in the container.** A lesson's check runs its command and compares output or rules. When the check passes, the step is approved automatically.
 
+Caveat: production WebSockets are blocked by the Vercel rewrite, so Run falls back to the one-shot path there until the proxy is fixed.
+
 ## Look and feel
 
 - A macOS-style desktop: a menu bar at the top, file icons on the desktop, windows with traffic-light title bars, and a dock.
@@ -20,7 +22,7 @@ Status: decided, not started. Written from the owner's answers in the planning t
 
 ## Phases
 
-1. **Sandbox service:** a Docker image with bash, Python and Node, one container per learner session, CPU, memory and time limits, idle shutdown, and a WebSocket endpoint that attaches to the shell.
+1. **Sandbox service (done):** a Docker image with bash, Python and Node, one container per learner session, CPU, memory and time limits, idle shutdown, and a WebSocket endpoint that attaches to the shell.
 2. **Terminal (done, LQ-80):** xterm.js in a bottom panel of the practice view, connected to phase 1. Run copies the editor code to `solution.py` or `solution.js` and runs it in the learner's shell; Check stays a one-shot, server-judged run. Design: `docs/superpowers/specs/2026-11-06-sandbox-terminal-design.md`.
 3. **Files and editor:** the lesson's files live in the container; the explorer gets create, rename, delete, context menus and Command+P. Already in place from phase 2 (LQ-80, LQ-39): a read-only file tree in the terminal panel, and file sync of the editor code to `solution.*` on every Run.
 4. **Checks and auto-approval:** run the lesson's check in the container and mark the step done.

@@ -8,7 +8,7 @@ import { RunInShellError, runInShell } from "../terminal/runInShell";
 import { checkPassed, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
-import { practiceActions } from "./practiceActions";
+import { practiceActions, shouldFallBack } from "./practiceActions";
 import type { Part } from "./types";
 
 const MAX_POLL_FAILURES = 4;
@@ -48,7 +48,10 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       setSandboxEnabled(!(s.kind === "closed" && s.reason === "disabled"));
     };
     track();
-    return shell.onState(track);
+    return shell.onState((st) => {
+      track();
+      if (st.kind === "open" && st.ready) setRunNote(undefined);
+    });
   }, [shell]);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -126,8 +129,10 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     return () => { live = false; clearTimeout(timer); };
   }, [sid]);
 
+  const [lastWasCheck, setLastWasCheck] = useState(false);
   const oneShot = async (args: Parameters<typeof startPython>, check: boolean) => {
     checking.current = check;
+    setLastWasCheck(check);
     setOk(null); // clearing first remounts the badge, so its animation plays on every check
     stdout.current = "";
     setTerm("");
@@ -154,6 +159,10 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     if (!shell) return;
     setRunNote(undefined);
     setShellRun(true);
+    checking.current = false;
+    setOk(null);
+    stdout.current = "";
+    setTerm("");
     try {
       await runInShell({
         language: python ? "python" : "javascript",
@@ -165,7 +174,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       });
     } catch (e) {
       if (!live.current) return;
-      if (e instanceof RunInShellError && e.kind === "disabled") {
+      if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state())) {
         setShellRun(false);
         const fb = actionsFor(false).run;
         if (fb.via === "oneshot") await oneShot(fb.args, false);
@@ -208,8 +217,8 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       {showCheckOutput && (
       <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-32 flex-none flex-col border-t-[3px] border-ink bg-ink font-mono text-white">
         <div className="flex flex-none items-center gap-2 border-b-2 border-white/20 px-3 py-1">
-          <h3 id="out-h" className="text-sm font-extrabold">Check output</h3>
-          <span className="text-xs opacity-80">Checked in a clean sandbox</span>
+          <h3 id="out-h" className="text-sm font-extrabold">{lastWasCheck ? "Check output" : "Output"}</h3>
+          {lastWasCheck && <span className="text-xs opacity-80">Checked in a clean sandbox</span>}
           {!panelShown && badge}
           {sid && (
             <button type="button" onClick={stop} className={`pill ml-auto flex min-h-7 items-center gap-1 bg-pink px-3 text-sm font-extrabold text-ink ${FOCUS}`}>
