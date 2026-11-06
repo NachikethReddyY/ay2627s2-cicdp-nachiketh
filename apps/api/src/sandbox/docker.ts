@@ -1,11 +1,18 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn as spawnProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync } from "node:fs";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import pty from "node-pty";
 import { env } from "../env.ts";
-import { SandboxBusyError, type SandboxBackend } from "./backend.ts";
+import {
+  LIST_MAX_ENTRIES,
+  SandboxBusyError,
+  SandboxNotRunningError,
+  type DirEntry,
+  type DirListing,
+  type SandboxBackend,
+} from "./backend.ts";
 
 type Exec = (cmd: string, args: string[]) => Promise<{ stdout: string; stderr?: string }>;
 const run: Exec = promisify(execFile);
@@ -54,6 +61,32 @@ export function shellRunArgs(name: string, opts: { image: string; network: strin
 }
 
 type Spawn = typeof pty.spawn;
+type SpawnChild = typeof spawnProcess;
+
+const HOME = "/home/learner";
+const LEARNER_UID = "1001";
+const PIPE_MAX_BYTES = 64 * 1024;
+const PIPE_TIMEOUT_MS = 10_000;
+
+export function containerName(learnerId: string): string {
+  return `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
+}
+
+const FIND_TYPES: Record<string, DirEntry["type"]> = { f: "file", d: "dir", l: "link" };
+
+/** Parses `find -printf '%y\t%s\t%f\0'` output. Names may hold tabs and newlines, so records split on NUL and only the first two tabs. */
+export function parseFindOutput(out: string, max: number): DirListing {
+  const records = out.split("\0");
+  records.pop(); // after the last NUL: empty, or a record cut off by the output cap
+  const entries: DirEntry[] = [];
+  for (const rec of records) {
+    const a = rec.indexOf("\t");
+    const b = a < 0 ? -1 : rec.indexOf("\t", a + 1);
+    if (b < 0) continue;
+    entries.push({ name: rec.slice(b + 1), type: FIND_TYPES[rec.slice(0, a)] ?? "other", size: Number(rec.slice(a + 1, b)) || 0 });
+  }
+  return { entries: entries.slice(0, max), truncated: entries.length > max };
+}
 
 export function dockerBackend(opts: {
   image: string;
@@ -62,11 +95,13 @@ export function dockerBackend(opts: {
   runtime?: string;
   exec?: Exec;
   spawn?: Spawn;
+  spawnChild?: SpawnChild;
   maxContainers?: () => number;
 }): SandboxBackend {
   const idleMs = opts.idleMs ?? IDLE_MS;
   const exec = opts.exec ?? run;
   const spawn = opts.spawn ?? pty.spawn;
+  const spawnChild = opts.spawnChild ?? spawnProcess;
   const maxContainers = opts.maxContainers ?? (() => env.SANDBOX_MAX_SHELLS);
   // Containers that are running or being started. A closed terminal leaves its container up until the idle stop,
   // so the server-wide cap counts these, not open sockets.
@@ -113,9 +148,72 @@ export function dockerBackend(opts: {
     return p;
   }
 
+  // Never starts a container: only one this process already counts as live and docker still reports running.
+  async function isRunning(name: string) {
+    if (!live.has(name)) return false;
+    const state = await exec("docker", ["inspect", "-f", "{{.State.Running}}", name]).then((r) => r.stdout.trim(), () => null);
+    return state === "true";
+  }
+
+  // Argv only, never a shell string. Stdout is capped: past the cap the child is killed and the result flagged.
+  function pipe(args: string[], input?: string) {
+    return new Promise<{ code: number | null; stdout: string; capped: boolean }>((resolve, reject) => {
+      const child = spawnChild("docker", args, { stdio: ["pipe", "pipe", "ignore"] });
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      let capped = false;
+      let done = false;
+      const finish = (code: number | null) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ code, stdout: Buffer.concat(chunks).toString("utf8"), capped });
+      };
+      const timer = setTimeout(() => child.kill(), PIPE_TIMEOUT_MS);
+      timer.unref();
+      child.stdout!.on("data", (d: Buffer) => {
+        if (capped) return;
+        const room = PIPE_MAX_BYTES - bytes;
+        chunks.push(d.length > room ? d.subarray(0, room) : d);
+        bytes += Math.min(d.length, room);
+        if (d.length >= room) {
+          capped = true;
+          child.kill();
+          finish(null);
+        }
+      });
+      child.on("error", (err) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("close", (code) => finish(code));
+      child.stdin!.on("error", () => {}); // the child may exit before reading its input
+      child.stdin!.end(input);
+    });
+  }
+
   return {
+    async writeFile(learnerId, fileName, content) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const r = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'cat > "$1"', "sh", `${HOME}/${fileName}`], content);
+      if (r.code !== 0) throw new Error(`writing ${fileName} failed (exit ${r.code})`);
+    },
+
+    async listDir(learnerId, relDir) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const dir = relDir ? `${HOME}/${relDir}` : HOME;
+      const r = await pipe(["exec", "-u", LEARNER_UID, name, "find", "-P", dir, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\t%s\\t%f\\0"]);
+      if (r.code !== 0 && !r.capped && r.stdout === "") return null;
+      const listing = parseFindOutput(r.stdout, LIST_MAX_ENTRIES);
+      return r.capped ? { ...listing, truncated: true } : listing;
+    },
+
     async openShell(learnerId, { cols, rows }) {
-      const name = `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
+      const name = containerName(learnerId);
       claim(name); // before anything else, so a refused learner holds nothing
       clearTimeout(timers.get(name));
       attached.set(name, (attached.get(name) ?? 0) + 1);
