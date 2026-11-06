@@ -70,7 +70,7 @@ export async function sandboxRoutes(app: FastifyInstance) {
           shell.onExit((code) => finish({ type: "exit", code }));
         },
         (err) => {
-          // The backend counts idle containers too, which this socket map can't see.
+          // The Docker backend counts idle containers too, which this socket map can't see.
           if (err instanceof SandboxBusyError) return reject(CLOSE_SERVER_BUSY, "The sandbox is busy, try again soon");
           req.log.error(err);
           finish({ type: "error", message: "Could not start the sandbox" });
