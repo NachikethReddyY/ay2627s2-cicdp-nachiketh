@@ -180,7 +180,8 @@ export function dockerBackend(opts: {
         timedOut = true;
         child.kill();
       }, timeoutMs);
-      timer.unref();
+      // Not unref'd: a command in flight is bounded by timeoutMs, and an unref'd timer lets a runtime with
+      // nothing else alive (such as a test with a stub child that never exits) end before the timeout fires.
       child.stdout!.on("data", (d: Buffer) => {
         if (capped) return;
         const room = PIPE_MAX_BYTES - bytes;
