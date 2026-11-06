@@ -13,7 +13,7 @@ import { createContext } from "./trpc/trpc.ts";
 import { sandboxRoutes } from "./sandbox/route.ts";
 import { sandboxRunRoute } from "./sandbox/run.ts";
 import { sandboxFilesRoute } from "./sandbox/files.ts";
-import { sandboxTicketRoute } from "./sandbox/ticket.ts";
+import { redactUrl, sandboxTicketRoute } from "./sandbox/ticket.ts";
 import { devRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
@@ -36,7 +36,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
             // Same fields as Fastify's default, but the shell ticket in the query string must never reach the logs.
             req: (req: FastifyRequest) => ({
               method: req.method,
-              url: req.url?.replace(/([?&]ticket=)[^&]*/, "$1[redacted]"),
+              url: redactUrl(req.url),
               host: req.host,
               remoteAddress: req.ip,
               remotePort: req.socket?.remotePort,

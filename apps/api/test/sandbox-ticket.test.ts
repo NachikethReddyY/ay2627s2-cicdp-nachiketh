@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
 import { setBackend, type ShellHandle } from "../src/sandbox/backend.ts";
-import { mintTicket, redeemTicket, TICKET_MAX_PENDING, TICKET_TTL_MS } from "../src/sandbox/ticket.ts";
+import { _resetForTests, mintTicket, redactUrl, redeemTicket, TICKET_MAX_PENDING, TICKET_MAX_PER_LEARNER, TICKET_TTL_MS } from "../src/sandbox/ticket.ts";
 
 const app = buildApp();
 env.SANDBOX_ENABLED = true;
@@ -49,34 +49,41 @@ test("the mint route rejects anonymous, disabled and cross-origin callers", asyn
 });
 
 test("minting stops at the pending cap and resumes once expired tickets are swept", async () => {
+  _resetForTests();
   const cookie = await signUp(app);
   const past = Date.now() - TICKET_TTL_MS - 1000;
-  const live: string[] = [];
-  // Tickets from earlier tests are still pending, so fill up to the cap rather than by a fixed count.
-  for (;;) {
-    try {
-      live.push(mintTicket("filler"));
-    } catch {
-      break;
-    }
-  }
-  assert.ok(live.length <= TICKET_MAX_PENDING && live.length > TICKET_MAX_PENDING - 10);
-  assert.equal((await post({ cookie, origin: env.PUBLIC_ORIGIN })).statusCode, 429);
-  for (const t of live) redeemTicket(t);
+  for (let i = 0; i < TICKET_MAX_PENDING; i++) mintTicket(`filler-${i}`);
+  const full = await post({ cookie, origin: env.PUBLIC_ORIGIN });
+  assert.equal(full.statusCode, 503);
+  assert.deepEqual(full.json(), { error: { code: "unavailable", message: "Try again shortly" } });
 
-  const stale: string[] = [];
-  for (;;) {
-    try {
-      stale.push(mintTicket("filler", past));
-    } catch {
-      break;
-    }
-  }
+  _resetForTests();
+  for (let i = 0; i < TICKET_MAX_PENDING; i++) mintTicket(`filler-${i}`, past);
   assert.equal((await post({ cookie, origin: env.PUBLIC_ORIGIN })).statusCode, 200, "expired entries are swept first");
-  for (const t of stale) redeemTicket(t);
+  _resetForTests();
+});
+
+test("a learner keeps at most four live tickets; the oldest are revoked", () => {
+  _resetForTests();
+  const ts = Array.from({ length: TICKET_MAX_PER_LEARNER + 2 }, () => mintTicket("a"));
+  const other = mintTicket("b");
+  assert.equal(redeemTicket(ts[0]!), null);
+  assert.equal(redeemTicket(ts[1]!), null);
+  for (const t of ts.slice(2)) assert.equal(redeemTicket(t), "a");
+  assert.equal(redeemTicket(other), "b");
+});
+
+test("logged URLs lose the shell query and any ticket value", () => {
+  assert.equal(redactUrl("/api/sandbox/shell?ticket=SECRET&tab=1"), "/api/sandbox/shell");
+  assert.equal(redactUrl("/api/sandbox/shell?ticket=A&ticket=B"), "/api/sandbox/shell");
+  assert.equal(redactUrl("/api/sandbox/shell?%74icket=SECRET"), "/api/sandbox/shell");
+  assert.equal(redactUrl("/api/other?ticket=A&x=1&ticket=B&%74icket=C"), "/api/other?ticket=[redacted]&x=1&ticket=[redacted]&%74icket=[redacted]");
+  assert.equal(redactUrl("/api/other?x=1"), "/api/other?x=1");
+  assert.equal(redactUrl("/api/other"), "/api/other");
 });
 
 test("the 21st mint within a minute is rate limited", async () => {
+  _resetForTests();
   const cookie = await signUp(app);
   for (let i = 0; i < 20; i++) assert.equal((await post({ cookie, origin: env.PUBLIC_ORIGIN })).statusCode, 200);
   const res = await post({ cookie, origin: env.PUBLIC_ORIGIN });
