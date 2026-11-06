@@ -154,7 +154,7 @@ export default function Course() {
             <rect x="2" y="2" width="36" height="36" rx="10" fill="#2257FF" stroke="#15121F" strokeWidth={3} />
             <path d="M15 13l-6 7 6 7M25 13l6 7-6 7" fill="none" stroke="#FFD23F" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="lq-logo-word">Learn<span className="lq-logo-q">Quest</span></span>
+          <span className="lq-logo-word">Learn<span className="lq-logo-q">Slop</span></span>
         </Link>
         <nav aria-label="Main" className="course-nav">
           <Link to="/" className="lq-pill lq-navlink">Home</Link>

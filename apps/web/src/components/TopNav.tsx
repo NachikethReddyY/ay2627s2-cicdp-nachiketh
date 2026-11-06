@@ -21,7 +21,7 @@ export default function TopNav({ streak, xp }: { streak?: number; xp?: number })
   return (
     <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
       <Link to="/" className="font-display text-3xl font-black tracking-tight">
-        Learn<span className="text-blue">Quest</span>
+        Learn<span className="text-blue">Slop</span>
       </Link>
       <nav aria-label="Main" className="flex flex-wrap items-center gap-2 sm:gap-3">
         <Link to="/" className={nav} activeOptions={{ exact: true }} activeProps={{ className: "pill bg-sun px-4 py-1.5 text-sm" }}>Home</Link>
