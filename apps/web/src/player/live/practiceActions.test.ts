@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { practiceActions, shouldFallBack } from "./practiceActions.ts";
+import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions.ts";
 
 test("Run uses the shell when the sandbox is on, and the one-shot path without a lessonId when it is off", () => {
   assert.deepEqual(practiceActions({ language: "python", code: "c", lessonId: "prac-1", sandboxEnabled: true }).run, { via: "shell" });
@@ -24,4 +24,23 @@ test("shouldFallBack: disabled always; starting/unavailable only when the socket
     assert.equal(shouldFallBack(kind, { kind: "open" }), false);
   }
   assert.equal(shouldFallBack("copy", { kind: "closed" }), false);
+});
+
+test("skipShellWait: reconnecting or closed skip the wait; replaced, exited and a cold start keep it", () => {
+  assert.equal(skipShellWait(false, { kind: "reconnecting" }), true);
+  assert.equal(skipShellWait(false, { kind: "closed", reason: "busy" }), true);
+  assert.equal(skipShellWait(false, { kind: "closed", reason: "replaced" }), false);
+  assert.equal(skipShellWait(false, { kind: "exited" }), false);
+  assert.equal(skipShellWait(false, { kind: "connecting" }), false);
+  assert.equal(skipShellWait(false, { kind: "open", ready: false }), false);
+  assert.equal(skipShellWait(false, { kind: "open", ready: true }), false);
+});
+
+test("skipShellWait: after a fallback the shell stays skipped until it is open and ready again", () => {
+  assert.equal(skipShellWait(true, { kind: "connecting" }), true);
+  assert.equal(skipShellWait(true, { kind: "open", ready: false }), true);
+  assert.equal(skipShellWait(true, { kind: "paused" }), true);
+  assert.equal(skipShellWait(true, { kind: "open", ready: true }), false);
+  assert.equal(skipShellWait(true, { kind: "exited" }), false);
+  assert.equal(skipShellWait(true, { kind: "closed", reason: "replaced" }), false);
 });

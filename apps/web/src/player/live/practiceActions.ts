@@ -22,3 +22,14 @@ export function shouldFallBack(kind: "starting" | "disabled" | "unavailable" | "
   if (kind !== "starting" && kind !== "unavailable") return false;
   return state.kind === "reconnecting" || state.kind === "closed";
 }
+
+// Run skips the shell (and its 15 s ready wait) when it is clearly unreachable: an earlier Run already fell back and
+// the shell has not been ready since, or the socket is reconnecting or closed right now. A closed-as-replaced
+// terminal and an exited shell keep the normal copy path with its own explanation; connecting and open-but-not-ready
+// are a genuine cold start and keep the wait.
+export function skipShellWait(unreachable: boolean, state: { kind: string; reason?: string; ready?: boolean }): boolean {
+  if (state.kind === "open" && state.ready) return false;
+  if (state.kind === "reconnecting") return true;
+  if (state.kind === "closed") return state.reason !== "replaced";
+  return unreachable && state.kind !== "exited";
+}

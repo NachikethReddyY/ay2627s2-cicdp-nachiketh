@@ -8,7 +8,7 @@ import { RunInShellError, runInShell } from "../terminal/runInShell";
 import { checkPassed, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
-import { practiceActions, shouldFallBack } from "./practiceActions";
+import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
 import type { Part } from "./types";
 
 const MAX_POLL_FAILURES = 4;
@@ -41,6 +41,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const [sandboxEnabled, setSandboxEnabled] = useState(true);
   const [shellRun, setShellRun] = useState(false); // a Run is copying the code into the shell
   const [runNote, setRunNote] = useState<string | undefined>();
+  const shellUnreachable = useRef(false); // a Run fell back because the socket is failing; cleared once the shell is ready again
   useEffect(() => {
     if (!shell) return;
     const track = () => {
@@ -50,7 +51,10 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     track();
     return shell.onState((st) => {
       track();
-      if (st.kind === "open" && st.ready) setRunNote(undefined);
+      if (st.kind === "open" && st.ready) {
+        shellUnreachable.current = false;
+        setRunNote(undefined);
+      }
     });
   }, [shell]);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -157,6 +161,12 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     const a = actionsFor(sandboxEnabled).run;
     if (a.via === "oneshot") { await oneShot(a.args, false); return; }
     if (!shell) return;
+    if (skipShellWait(shellUnreachable.current, shell.state())) {
+      setRunNote(undefined);
+      const fb = actionsFor(false).run;
+      if (fb.via === "oneshot") await oneShot(fb.args, false);
+      return;
+    }
     setRunNote(undefined);
     setShellRun(true);
     checking.current = false;
@@ -175,6 +185,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     } catch (e) {
       if (!live.current) return;
       if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state())) {
+        shellUnreachable.current = true;
         setShellRun(false);
         const fb = actionsFor(false).run;
         if (fb.via === "oneshot") await oneShot(fb.args, false);
