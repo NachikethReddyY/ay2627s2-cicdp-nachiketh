@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import websocket, { type WebSocket } from "@fastify/websocket";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
+import { redeemTicket } from "./ticket.ts";
 import { getBackend, SandboxBusyError } from "./backend.ts";
 
 const dim = (v: unknown, fallback: number) =>
@@ -30,7 +31,10 @@ export async function sandboxRoutes(app: FastifyInstance) {
         if (req.headers.origin !== env.PUBLIC_ORIGIN) return fail(403, "forbidden", "Bad origin");
         const tab = (req.query as Record<string, unknown>).tab;
         if (tab !== undefined && !(typeof tab === "string" && TAB.test(tab))) return fail(400, "bad_request", "Invalid tab id");
-        const learnerId = await resolveLearnerId(req.headers);
+        // A ticket (direct browser-to-API connection, no cookie) wins; an invalid one never falls back to the cookie.
+        const ticket = (req.query as Record<string, unknown>).ticket;
+        const learnerId =
+          ticket === undefined ? await resolveLearnerId(req.headers) : typeof ticket === "string" ? redeemTicket(ticket) : null;
         if (!learnerId) return fail(401, "unauthorized", "Sign in required");
         (req as unknown as { learnerId: string }).learnerId = learnerId;
       },

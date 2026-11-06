@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkPassed, startPython } from "./runPython.ts";
+import { checkPassed, listFiles, startPython } from "./runPython.ts";
 
 test("Check sends the lesson id so the server judges the run; Run does not", async () => {
   const bodies: unknown[] = [];
@@ -26,4 +26,11 @@ test("a Check passes only on the server's verdict", () => {
   assert.equal(checkPassed({ passed: false }), false);
   assert.equal(checkPassed({}), false, "no verdict is a fail");
   assert.equal(checkPassed({ passed: true, error: "Could not save your result. Check again." }), false);
+});
+
+test("listFiles asks for one directory level and encodes dir", async () => {
+  const urls: string[] = []; const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => { urls.push(url); return new Response(JSON.stringify({ entries: [], truncated: false }), { status: 200 }); }) as typeof fetch;
+  try { await listFiles(); await listFiles("my dir/sub"); } finally { globalThis.fetch = real; }
+  assert.deepEqual(urls, ["/api/sandbox/files", "/api/sandbox/files?dir=my%20dir%2Fsub"]);
 });

@@ -27,7 +27,7 @@ from learnquest_engine.schemas import LessonContext
 log = logging.getLogger(__name__)
 MAX_BODY_BYTES = 64 * 1024
 
-app = FastAPI(title="LearnQuest engine", docs_url=None, redoc_url=None)
+app = FastAPI(title="LearnSlop engine", docs_url=None, redoc_url=None)
 
 
 class OutlineRequest(BaseModel):

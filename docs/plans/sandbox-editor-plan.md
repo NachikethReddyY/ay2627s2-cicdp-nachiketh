@@ -1,6 +1,6 @@
 # Lesson sandbox, editor and chapter generation
 
-Status: decided, not started. Written from the owner's answers in the planning thread.
+Status: phases 1 and 2 are built (sandbox service, shell WebSocket and terminal panel); phases 3 to 5 are not started. Written from the owner's answers in the planning thread.
 
 ## Decisions
 
@@ -11,6 +11,10 @@ Status: decided, not started. Written from the owner's answers in the planning t
 - **Lesson content:** each lesson has its own `instructions.txt`, which is plain text shown in the instructions window.
 - **Checks run in the container.** A lesson's check runs its command and compares output or rules. When the check passes, the step is approved automatically.
 
+Production WebSockets: Vercel rewrites cannot proxy them, so in production the browser connects straight to the API host. The web app sets `VITE_SHELL_WS_ORIGIN` (for example `wss://learnquest-api.onrender.com`); the client first calls `POST /api/sandbox/shell-ticket` (session cookie, returns a single-use ticket valid for 30 s), then opens `GET /api/sandbox/shell?ticket=...`. A fresh ticket is fetched for every connection attempt, and the CSP `connect-src` allows the `wss:` origin. This variable is baked in at build time, so set it in the Vercel build environment and redeploy; the API's WebSocket Origin check requires `PUBLIC_ORIGIN` to equal the Vercel web origin. Unset, the client uses the same-origin socket (dev proxy) with no ticket.
+
+Deploy notes for ticket auth: tickets live in an in-process map, so Render must run a single API instance (or tickets need a shared store). `PUBLIC_ORIGIN` is a single value, so preview deploys on a different origin get 403 from the Origin check. Render access logs record the request URL including the ticket query; a ticket is single use with a 30 s TTL, so a logged value is already dead.
+
 ## Look and feel
 
 - A macOS-style desktop: a menu bar at the top, file icons on the desktop, windows with traffic-light title bars, and a dock.
@@ -20,9 +24,9 @@ Status: decided, not started. Written from the owner's answers in the planning t
 
 ## Phases
 
-1. **Sandbox service:** a Docker image with bash, Python and Node, one container per learner session, CPU, memory and time limits, idle shutdown, and a WebSocket endpoint that attaches to the shell.
-2. **Terminal:** xterm.js in a window, connected to phase 1.
-3. **Files and editor:** the lesson's files live in the container; the explorer gets create, rename, delete, context menus and Command+P.
+1. **Sandbox service (done):** a Docker image with bash, Python and Node, one container per learner session, CPU, memory and time limits, idle shutdown, and a WebSocket endpoint that attaches to the shell.
+2. **Terminal (done, LQ-80):** xterm.js in a bottom panel of the practice view, connected to phase 1. Run copies the editor code to `solution.py` or `solution.js` and runs it in the learner's shell; Check stays a one-shot, server-judged run. Design: `docs/superpowers/specs/2026-11-06-sandbox-terminal-design.md`.
+3. **Files and editor:** the lesson's files live in the container; the explorer gets create, rename, delete, context menus and Command+P. Already in place from phase 2 (LQ-80, LQ-39): a read-only file tree in the terminal panel, and file sync of the editor code to `solution.*` on every Run.
 4. **Checks and auto-approval:** run the lesson's check in the container and mark the step done.
 5. **Chapter generation:** generate one course at a time with its lessons; generate the next chapter when the current one is complete.
 

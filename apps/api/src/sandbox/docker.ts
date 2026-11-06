@@ -1,11 +1,18 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn as spawnProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync } from "node:fs";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import pty from "node-pty";
 import { env } from "../env.ts";
-import { SandboxBusyError, type SandboxBackend } from "./backend.ts";
+import {
+  LIST_MAX_ENTRIES,
+  SandboxBusyError,
+  SandboxNotRunningError,
+  type DirEntry,
+  type DirListing,
+  type SandboxBackend,
+} from "./backend.ts";
 
 type Exec = (cmd: string, args: string[]) => Promise<{ stdout: string; stderr?: string }>;
 const run: Exec = promisify(execFile);
@@ -54,6 +61,35 @@ export function shellRunArgs(name: string, opts: { image: string; network: strin
 }
 
 type Spawn = typeof pty.spawn;
+type SpawnChild = typeof spawnProcess;
+
+const HOME = "/home/learner";
+const LEARNER_UID = "1001";
+const PIPE_MAX_BYTES = 64 * 1024;
+const PIPE_TIMEOUT_MS = 10_000;
+// Exit code the listing script uses for "not a directory", distinct from the docker exec codes (125 to 127).
+const NOT_A_DIR = 3;
+const LIST_SCRIPT = `test -d "$1" && ! test -L "$1" || exit ${NOT_A_DIR}; exec find -P "$1" -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%f\\0'`;
+
+export function containerName(learnerId: string): string {
+  return `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
+}
+
+const FIND_TYPES: Record<string, DirEntry["type"]> = { f: "file", d: "dir", l: "link" };
+
+/** Parses `find -printf '%y\t%s\t%f\0'` output. Names may hold tabs and newlines, so records split on NUL and only the first two tabs. */
+export function parseFindOutput(out: string, max: number): DirListing {
+  const records = out.split("\0");
+  records.pop(); // after the last NUL: empty, or a record cut off by the output cap
+  const entries: DirEntry[] = [];
+  for (const rec of records) {
+    const a = rec.indexOf("\t");
+    const b = a < 0 ? -1 : rec.indexOf("\t", a + 1);
+    if (b < 0) continue;
+    entries.push({ name: rec.slice(b + 1), type: FIND_TYPES[rec.slice(0, a)] ?? "other", size: Number(rec.slice(a + 1, b)) || 0 });
+  }
+  return { entries: entries.slice(0, max), truncated: entries.length > max };
+}
 
 export function dockerBackend(opts: {
   image: string;
@@ -62,11 +98,15 @@ export function dockerBackend(opts: {
   runtime?: string;
   exec?: Exec;
   spawn?: Spawn;
+  spawnChild?: SpawnChild;
+  timeoutMs?: number;
   maxContainers?: () => number;
 }): SandboxBackend {
   const idleMs = opts.idleMs ?? IDLE_MS;
   const exec = opts.exec ?? run;
   const spawn = opts.spawn ?? pty.spawn;
+  const spawnChild = opts.spawnChild ?? spawnProcess;
+  const timeoutMs = opts.timeoutMs ?? PIPE_TIMEOUT_MS;
   const maxContainers = opts.maxContainers ?? (() => env.SANDBOX_MAX_SHELLS);
   // Containers that are running or being started. A closed terminal leaves its container up until the idle stop,
   // so the server-wide cap counts these, not open sockets.
@@ -113,9 +153,86 @@ export function dockerBackend(opts: {
     return p;
   }
 
+  // Never starts a container: only one this process already counts as live and docker still reports running.
+  async function isRunning(name: string) {
+    if (!live.has(name)) return false;
+    const state = await exec("docker", ["inspect", "-f", "{{.State.Running}}", name]).then((r) => r.stdout.trim(), () => null);
+    return state === "true";
+  }
+
+  // Argv only, never a shell string. Stdout is capped: past the cap the child is killed and the result flagged.
+  function pipe(args: string[], input?: string) {
+    return new Promise<{ code: number | null; stdout: string; capped: boolean }>((resolve, reject) => {
+      const child = spawnChild("docker", args, { stdio: ["pipe", "pipe", "ignore"] });
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      let capped = false;
+      let done = false;
+      let timedOut = false;
+      const finish = (code: number | null) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (timedOut) return reject(new Error("sandbox command timed out"));
+        resolve({ code, stdout: Buffer.concat(chunks).toString("utf8"), capped });
+      };
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, timeoutMs);
+      // Not unref'd: a command in flight is bounded by timeoutMs, and an unref'd timer lets a runtime with
+      // nothing else alive (such as a test with a stub child that never exits) end before the timeout fires.
+      child.stdout!.on("data", (d: Buffer) => {
+        if (capped) return;
+        const room = PIPE_MAX_BYTES - bytes;
+        chunks.push(d.length > room ? d.subarray(0, room) : d);
+        bytes += Math.min(d.length, room);
+        if (d.length > room) {
+          capped = true;
+          child.kill();
+          finish(null);
+        }
+      });
+      child.on("error", (err) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("close", (code) => finish(code));
+      child.stdin!.on("error", () => {}); // the child may exit before reading its input
+      child.stdin!.end(input);
+    });
+  }
+
+  // A non-zero exit is an error, never "missing". If the container stopped meanwhile (docker exec then exits 1 or 125),
+  // the shell is gone rather than the command broken.
+  async function failed(name: string, what: string, code: number | null): Promise<Error> {
+    if (!(await isRunning(name))) return new SandboxNotRunningError();
+    return new Error(`${what} failed (exit ${code})`);
+  }
+
   return {
+    async writeFile(learnerId, fileName, content) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const r = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'cat > "$1"', "sh", `${HOME}/${fileName}`], content);
+      if (r.code !== 0) throw await failed(name, `writing ${fileName}`, r.code);
+    },
+
+    async listDir(learnerId, relDir) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const dir = relDir ? `${HOME}/${relDir}` : HOME;
+      const r = await pipe(["exec", "-u", LEARNER_UID, name, "sh", "-c", LIST_SCRIPT, "sh", dir]);
+      if (r.capped) return { ...parseFindOutput(r.stdout, LIST_MAX_ENTRIES), truncated: true };
+      if (r.code === NOT_A_DIR) return null;
+      if (r.code !== 0) throw await failed(name, "listing", r.code);
+      return parseFindOutput(r.stdout, LIST_MAX_ENTRIES);
+    },
+
     async openShell(learnerId, { cols, rows }) {
-      const name = `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
+      const name = containerName(learnerId);
       claim(name); // before anything else, so a refused learner holds nothing
       clearTimeout(timers.get(name));
       attached.set(name, (attached.get(name) ?? 0) + 1);

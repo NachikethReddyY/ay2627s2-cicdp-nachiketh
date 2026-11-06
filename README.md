@@ -1,5 +1,5 @@
-# LearnQuest
-LearnQuest is an interactive tool for learning to program. Pick a concept or a real code change and it builds a short, adaptive lesson with diagrams, code replays, quizzes, games and practice. Learners predict the outcome before they see it, and the engine adapts the next step to what they understand. The target learners are beginner and early-career developers, starting with JavaScript and TypeScript.
+# LearnSlop
+LearnSlop is an interactive tool for learning to program. Pick a concept or a real code change and it builds a short, adaptive lesson with diagrams, code replays, quizzes, games and practice. Learners predict the outcome before they see it, and the engine adapts the next step to what they understand. The target learners are beginner and early-career developers, starting with JavaScript and TypeScript.
 
 The monorepo holds the Fastify + tRPC API (`apps/api`), the React/Vite web app (`apps/web`), the Python LLM engine (`services/engine`), the sandbox (`services/sandbox`), and the shared `packages/player-core` and `packages/ui-catalog` packages. The product direction is in [AGENTS.md](AGENTS.md). The detailed plan is in `docs/plan.md`.
 

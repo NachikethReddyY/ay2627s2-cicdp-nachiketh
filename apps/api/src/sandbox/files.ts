@@ -1,0 +1,111 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
+import { env } from "../env.ts";
+import { resolveLearnerId } from "../auth/guards.ts";
+import { MAX_CODE } from "./run.ts";
+import { getBackend, LIST_MAX_ENTRIES, SANDBOX_FILES, SandboxNotRunningError, type SandboxFileName } from "./backend.ts";
+
+const WINDOW_MS = 60_000;
+const MAX_WRITES = 30;
+const MAX_LISTS = 60;
+const MAX_NAME = 64;
+const MAX_WINDOWS = 1000;
+const SEGMENT = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** "" for an absent or empty dir, null for an invalid one: up to 4 safe segments, no "." or ".." and no empty ones. */
+export function parseDir(raw: unknown): string | null {
+  if (raw === undefined || raw === "") return "";
+  if (typeof raw !== "string") return null;
+  const parts = raw.split("/");
+  if (parts.length > 4) return null;
+  return parts.every((p) => SEGMENT.test(p) && p !== "." && p !== "..") ? raw : null;
+}
+
+const fail = (code: string, message: string) => ({ error: { code, message } });
+
+/** Fixed window per learner: true while the learner is within `max` calls in the current minute. Expired windows are pruned once the map is large. */
+export function limiter(max: number, clock: () => number = Date.now) {
+  const windows = new Map<string, { start: number; n: number }>();
+  const check = (learner: string): boolean => {
+    const now = clock();
+    if (windows.size >= MAX_WINDOWS) for (const [l, w] of windows) if (now - w.start >= WINDOW_MS) windows.delete(l);
+    const w = windows.get(learner);
+    if (!w || now - w.start >= WINDOW_MS) {
+      windows.set(learner, { start: now, n: 1 });
+      return true;
+    }
+    w.n += 1;
+    return w.n <= max;
+  };
+  return Object.assign(check, { size: () => windows.size });
+}
+
+// One backend call at a time per learner. The entry is dropped once the chain is idle.
+const chains = new Map<string, Promise<unknown>>();
+function serial<T>(learner: string, fn: () => Promise<T>): Promise<T> {
+  const run = (chains.get(learner) ?? Promise.resolve()).then(fn, fn);
+  const tail = run.catch(() => {});
+  chains.set(learner, tail);
+  void tail.then(() => {
+    if (chains.get(learner) === tail) chains.delete(learner);
+  });
+  return run;
+}
+
+export async function sandboxFilesRoute(app: FastifyInstance) {
+  const Body = z.object({ content: z.string().max(MAX_CODE) });
+  const writeAllowed = limiter(MAX_WRITES);
+  const listAllowed = limiter(MAX_LISTS);
+
+  const learnerFor = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!env.SANDBOX_ENABLED) { reply.status(503).send(fail("unavailable", "Sandbox is disabled")); return null; }
+    const learner = await resolveLearnerId(req.headers);
+    if (!learner) { reply.status(401).send(fail("unauthorized", "Sign in required")); return null; }
+    return learner;
+  };
+  const tooMany = (reply: FastifyReply) => reply.status(429).send(fail("rate_limited", "Slow down"));
+  const noShell = (reply: FastifyReply) => reply.status(409).send(fail("no_shell", "Open the terminal first"));
+  const notImplemented = (reply: FastifyReply) => reply.status(501).send(fail("not_implemented", "Not supported by this sandbox"));
+
+  app.put<{ Params: { name: string } }>("/sandbox/files/:name", { bodyLimit: 16 * 1024 }, async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!writeAllowed(learner)) return tooMany(reply);
+    const name = (SANDBOX_FILES as readonly string[]).includes(req.params.name) ? (req.params.name as SandboxFileName) : null;
+    const body = Body.safeParse(req.body);
+    if (!name || !body.success) return reply.status(400).send(fail("bad_request", "Unknown file or content too long"));
+    const backend = await getBackend();
+    if (!backend.writeFile) return notImplemented(reply);
+    const write = backend.writeFile.bind(backend);
+    try {
+      await serial(learner, () => write(learner, name, body.data.content));
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      throw err;
+    }
+    return reply.status(204).send();
+  });
+
+  app.get<{ Querystring: { dir?: unknown } }>("/sandbox/files", async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!listAllowed(learner)) return tooMany(reply);
+    const dir = parseDir(req.query.dir);
+    if (dir === null) return reply.status(400).send(fail("bad_request", "Invalid directory"));
+    const backend = await getBackend();
+    if (!backend.listDir) return notImplemented(reply);
+    const list = backend.listDir.bind(backend);
+    let listing;
+    try {
+      listing = await serial(learner, () => list(learner, dir));
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      throw err;
+    }
+    if (!listing) return reply.status(404).send(fail("not_found", "No such directory"));
+    return {
+      entries: listing.entries.slice(0, LIST_MAX_ENTRIES).map((e) => ({ ...e, name: e.name.slice(0, MAX_NAME) })),
+      truncated: listing.truncated || listing.entries.length > LIST_MAX_ENTRIES,
+    };
+  });
+}

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { env } from "../env.ts";
-import { SandboxBusyError, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
+import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
 
 // Narrow views of @daytonaio/sdk, so tests pass a fake and nothing here depends on SDK internals.
 export interface DaytonaPty {
@@ -26,7 +26,14 @@ export interface DaytonaSandbox {
     getSessionCommand(session: string, cmd: string): Promise<{ exitCode?: number }>;
     sendSessionCommandInput(session: string, cmd: string, data: string): Promise<void>;
   };
-  fs: { uploadFile(file: Buffer, remotePath: string): Promise<void> };
+  getUserHomeDir(): Promise<string | undefined>;
+  fs: {
+    uploadFile(file: Buffer, remotePath: string): Promise<void>;
+    listFiles(path: string): Promise<Array<{ name: string; isDir: boolean; size: number; mode: string }>>;
+    getFileDetails(path: string): Promise<{ isDir: boolean; mode?: string }>;
+    /** Removes the path itself; like unlink, it does not follow a symlink. */
+    deleteFile(path: string, recursive?: boolean): Promise<void>;
+  };
 }
 export interface DaytonaClient {
   create(params: Record<string, unknown>, options?: { timeout?: number }): Promise<DaytonaSandbox>;
@@ -62,8 +69,11 @@ export function daytonaBackend(opts: {
   const finding = new Map<string, Promise<DaytonaSandbox>>();
   let openTerminals = 0;
 
+  // One label set for finding and creating shell sandboxes, so the two cannot drift.
+  const shellLabels = (learnerId: string) => ({ ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) });
+
   async function findOrCreate(learnerId: string): Promise<DaytonaSandbox> {
-    const labels = { ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) };
+    const labels = shellLabels(learnerId);
     let sbx: DaytonaSandbox | undefined;
     for await (const s of client.list({ labels })) {
       sbx = s;
@@ -89,6 +99,29 @@ export function daytonaBackend(opts: {
       await sbx.start();
     }
     return sbx;
+  }
+
+  /** The learner's running shell sandbox. Never creates or starts one: a missing or non-started sandbox is "no shell". */
+  async function findShell(learnerId: string): Promise<DaytonaSandbox> {
+    const it = client.list({ labels: shellLabels(learnerId) });
+    try {
+      const first = await it.next();
+      if (first.done || first.value.state !== "started") throw new SandboxNotRunningError();
+      return first.value;
+    } finally {
+      await it.return?.(); // only the first match matters; release the iterator
+    }
+  }
+
+  // Home directory per sandbox id: it does not change for a sandbox's life.
+  const homes = new Map<string, string>();
+  async function homeOf(sbx: DaytonaSandbox): Promise<string> {
+    let h = homes.get(sbx.id);
+    if (!h) {
+      h = (await sbx.getUserHomeDir()) ?? "/home/learner";
+      homes.set(sbx.id, h);
+    }
+    return h;
   }
 
   function shellSandbox(learnerId: string) {
@@ -157,6 +190,48 @@ export function daytonaBackend(opts: {
         release();
         throw err;
       }
+    },
+
+    async writeFile(learnerId, name, content) {
+      const sbx = await findShell(learnerId);
+      const path = `${await homeOf(sbx)}/${name}`;
+      // The toolbox may run as root, and the learner can leave a symlink at this name (ln -sf /etc/passwd ~/solution.py)
+      // that an upload would follow. Remove anything that is not a plain file first (delete does not follow links).
+      // A TOCTOU window remains between this check and the upload; the real fix is confirming the toolbox runs as
+      // the `learner` user (manual check against a real Daytona key, see services/sandbox/README.md).
+      let info: { isDir: boolean; mode?: string } | undefined;
+      try {
+        info = await sbx.fs.getFileDetails(path);
+      } catch (err) {
+        if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
+      }
+      if (info && (info.isDir || info.mode?.startsWith("L") || (info.mode !== undefined && !info.mode.startsWith("-")))) {
+        await sbx.fs.deleteFile(path);
+      }
+      await sbx.fs.uploadFile(Buffer.from(content), path);
+    },
+
+    async listDir(learnerId, relDir) {
+      const sbx = await findShell(learnerId);
+      const home = await homeOf(sbx);
+      const path = relDir ? `${home}/${relDir}` : home;
+      let files;
+      try {
+        files = await sbx.fs.listFiles(path);
+      } catch (err) {
+        // Missing folder: 404 (duck-typed so the SDK is not imported).
+        if ((err as { statusCode?: number } | null)?.statusCode === 404) return null;
+        // A file path fails listFiles with some other error: confirm it is a file, else it is a real failure.
+        const info = await sbx.fs.getFileDetails(path).catch(() => undefined);
+        if (info && info.isDir === false) return null;
+        throw err;
+      }
+      const entries = files.slice(0, LIST_MAX_ENTRIES).map((f): DirEntry => ({
+        name: f.name,
+        type: f.mode.startsWith("L") ? "link" : f.isDir ? "dir" : "file",
+        size: f.size,
+      }));
+      return { entries, truncated: files.length > LIST_MAX_ENTRIES };
     },
 
     runCode(learnerId, language, code, limits: RunLimits): RunHandle {

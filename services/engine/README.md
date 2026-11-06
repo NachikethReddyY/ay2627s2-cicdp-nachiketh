@@ -1,4 +1,4 @@
-# LearnQuest engine
+# LearnSlop engine
 
 The inference engine: the LLM pipelines behind "Learn anything" (path outline and lesson
 generation). `learnquest_engine` is importable on its own; the FastAPI app is a thin layer on top.
