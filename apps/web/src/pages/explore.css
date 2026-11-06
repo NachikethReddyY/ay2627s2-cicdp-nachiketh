@@ -69,6 +69,12 @@
 }
 .lq-explore .explore-results { margin-top: 24px; }
 
+/* featured collections, above the path list */
+.lq-explore .explore-collections { margin-top: 24px; display: grid; gap: 28px; }
+.lq-explore .explore-col-h { font-size: clamp(26px, 6vw, 34px); line-height: 1.1; }
+.lq-explore .explore-col-desc { margin: 4px 0 14px; font-weight: 600; }
+.lq-explore .explore-collection .explore-list { margin-top: 14px; }
+
 /* path cards, matching the home page community cards */
 .lq.lq-explore .lq-comm.explore-list {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

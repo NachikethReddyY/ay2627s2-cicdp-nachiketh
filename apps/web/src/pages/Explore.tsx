@@ -72,6 +72,27 @@ function Row({ p, onDone, scope, tone }: { p: ExplorePath; onDone: () => void; s
   );
 }
 
+// Hand-picked collections, shown above the community list. Stays quiet (renders nothing) if there are none or the load fails,
+// so a curation problem never hides the paths below it.
+function Collections({ onDone }: { onDone: () => void }) {
+  const { data, error, reload } = useApi("collections", () => trpc.collections.list.query());
+  if (error || (data && data.length === 0)) return null;
+  if (!data) return <div className="explore-collections" aria-busy="true"><Spinner /></div>;
+  return (
+    <div className="explore-collections">
+      {data.map((c) => (
+        <section key={c.slug} aria-labelledby={`col-${c.slug}`} className="explore-collection">
+          <h2 id={`col-${c.slug}`} className="explore-col-h">{c.title}</h2>
+          {c.description && <p className="explore-col-desc">{c.description}</p>}
+          <ul className="lq-comm explore-list">
+            {c.paths.map((p, i) => <Row key={p.slug} p={p} onDone={() => { reload(); onDone(); }} scope="official" tone={tones[i % 4]} />)}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export default function Explore() {
   const [scope, setScope] = useState<(typeof tabs)[number][0]>("official");
   const [q, setQ] = useState("");
@@ -101,6 +122,7 @@ export default function Explore() {
                 className="explore-search" />
             </div>
           </div>
+          {scope !== "mine" && !dq && <Collections onDone={reload} />}
           <div className="explore-results">
             {error ? (
               <div className="lq-empty-card">

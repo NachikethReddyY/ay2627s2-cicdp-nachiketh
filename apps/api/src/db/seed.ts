@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import lesson1 from "../../../web/src/player/fixtures/lesson1.ts";
 import { db, pool } from "./client.ts";
-import { lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
+import { collectionPaths, collections, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 // shortcut: seeds from the web fixture, switch to reading worlds/codequest JSON once WP11 content exists.
 export async function seed() {
@@ -19,6 +19,13 @@ export async function seed() {
       .values({ slug: "js-foundations", ...path })
       .onConflictDoUpdate({ target: paths.slug, set: path });
     const [jsPath] = await tx.select().from(paths).where(eq(paths.slug, "js-foundations"));
+    const startHere = { title: "Start here", description: "New to LearnQuest? Begin with these.", featured: true };
+    await tx
+      .insert(collections)
+      .values({ slug: "start-here", ...startHere })
+      .onConflictDoNothing(); // an admin may have retitled or unfeatured it since
+    const [col] = await tx.select().from(collections).where(eq(collections.slug, "start-here"));
+    await tx.insert(collectionPaths).values({ collectionId: col!.id, pathId: jsPath!.id, position: 0 }).onConflictDoNothing();
     await tx
       .insert(pathCourses)
       .values({ pathId: jsPath!.id, worldId: world!.id, position: 0 })

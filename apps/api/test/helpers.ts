@@ -29,7 +29,7 @@ await runMigrations();
 beforeEach(async () => {
   await idle(); // prefetch left running by the previous test would deadlock the truncate
   await db.execute(
-    sql`TRUNCATE enrollments, generation_cache, lesson_media, part_completions, path_courses, paths, hint_events, attempts, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
+    sql`TRUNCATE collection_paths, collections, enrollments, generation_cache, lesson_media, part_completions, path_courses, paths, hint_events, attempts, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
   );
 });
 

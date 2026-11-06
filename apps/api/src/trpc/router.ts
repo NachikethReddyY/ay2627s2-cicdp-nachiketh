@@ -1,12 +1,13 @@
 import { router } from "./trpc.ts";
 import { lessonsRouter } from "../lessons/router.ts";
 import { stepsRouter } from "../attempts/router.ts";
-import { coursesRouter, gamesRouter, homeRouter, meRouter, pathsRouter } from "../progress/router.ts";
+import { collectionsRouter, coursesRouter, gamesRouter, homeRouter, meRouter, pathsRouter } from "../progress/router.ts";
 import { partsRouter } from "../parts/router.ts";
 
 export const appRouter = router({
   home: homeRouter,
   paths: pathsRouter,
+  collections: collectionsRouter,
   courses: coursesRouter,
   me: meRouter,
   games: gamesRouter,

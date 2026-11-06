@@ -5,7 +5,7 @@ import { db } from "../db/client.ts";
 import { generatePath } from "../ai/service.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { TRPCError } from "@trpc/server";
-import { complete, lessonDone, lessonTotal, listed, myUser, notFound, Origin, PathCard, Slug, visibleCourse } from "./shared.ts";
+import { complete, lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
 
 const Lesson = z.object({
   slug: z.string(),
@@ -21,11 +21,6 @@ const CourseDetail = z.object({
   description: z.string(),
   origin: Origin,
   lessons: z.array(Lesson),
-});
-const PathListItem = PathCard.extend({
-  enrolled: z.boolean(),
-  visibility: z.enum(["private", "public"]),
-  courses: z.array(z.object({ slug: z.string(), title: z.string() })),
 });
 const PathDetail = z.object({
   slug: z.string(),
@@ -98,19 +93,7 @@ const pathList = protectedProcedure
       }[scope];
       // Escape LIKE wildcards so q matches literally.
       const search = q ? sql`AND p.title ILIKE ${`%${q.replace(/[\\%_]/g, "\\$&")}%`}` : sql``;
-      const { rows } = await db.execute<z.infer<typeof PathListItem>>(sql`
-        SELECT p.slug, p.title, p.tagline, p.origin, p.visibility,
-          (SELECT count(*) FROM path_courses pc JOIN worlds w ON w.id = pc.world_id
-            WHERE pc.path_id = p.id AND ${visibleCourse(me)})::int AS "courseCount",
-          (SELECT count(*) FROM enrollments e WHERE e.path_id = p.id)::int AS learners,
-          EXISTS (SELECT 1 FROM enrollments e WHERE e.path_id = p.id AND e.learner_id = ${me}) AS enrolled,
-          (SELECT COALESCE(json_agg(json_build_object('slug', w.slug, 'title', w.title) ORDER BY pc.position), '[]')
-            FROM path_courses pc JOIN worlds w ON w.id = pc.world_id WHERE pc.path_id = p.id AND ${visibleCourse(me)}) AS courses
-        FROM paths p
-        WHERE ${scoped} ${search}
-        ORDER BY learners DESC, p.created_at DESC
-        LIMIT 50`);
-      return rows;
+      return pathCards(me, sql`${scoped} ${search}`, sql`learners DESC, p.created_at DESC`, 50);
   });
 
 const pathGet = protectedProcedure.input(Slug).output(PathDetail).query(async ({ ctx, input }) => {
