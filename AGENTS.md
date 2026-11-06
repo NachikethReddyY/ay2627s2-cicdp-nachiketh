@@ -57,7 +57,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 
 ## Working rules
 
-- **Run the full CI locally before pushing a PR**: `turbo run lint test build` with a test Postgres on port 5433. Do not push on partial checks.
+- **Run the full CI locally before pushing a PR**: `turbo run lint test build` against a test Postgres. The repo default is port 5432 (`docker-compose.yml`, CI and the test helper). If you run a separate test Postgres on another port, such as 5433, set `TEST_DATABASE_URL` to it. Do not push on partial checks.
 - **Keep the change set small.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits: `type(scope): description`, with body lines wrapped at 72 characters.
 - **Do not add learner or child data** beyond what a lesson needs (account email, attempts, mastery). No new personal data categories without asking.

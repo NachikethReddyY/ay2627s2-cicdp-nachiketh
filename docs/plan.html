@@ -140,7 +140,7 @@ svg .dash { stroke-dasharray: 4 3; }
 </head>
 <body>
 <main>
-<h1>LearnQuest — Project Plan</h1>
+<h1 id="learnquest-project-plan">LearnQuest — Project Plan<a class="headerlink" href="#learnquest-project-plan" title="Permanent link">&para;</a></h1>
 <blockquote>
 <p>Status: <strong>v2 final (2026-10-27), after 6 review passes.</strong> WP0 (spikes) and WP1 (repo skeleton) may start now. Before Week 1 ends, answer Q3, Q5, Q8, Q9 and decide Rec-2 (§17). Every other open question has a working default.
 Changes from v1: 6-week core with a Wk-3 cut gate and an ordered cut line; adaptivity redefined (steps keep commit order); answers, hints and source served server-side only; World seam defined; one queue (pg-boss on Postgres); data model and API made consistent; KidsQuest, sandbox, embed and SDK publish moved to stretch (Appendix A).</p>
@@ -149,7 +149,7 @@ Date: 2026-10-27 · Owner: Nachikethreddyy · CICDP course project, solo, <stron
 Source: <code>docs/idea.md</code>, <code>docs/notes/</code>.</p>
 </blockquote>
 <hr>
-<h2>1. The idea</h2>
+<h2 id="1-the-idea">1. The idea<a class="headerlink" href="#1-the-idea" title="Permanent link">&para;</a></h2>
 <p><strong>LearnQuest turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.</strong></p>
 <p>Core AI, stated plainly: (a) <strong>generated lessons</strong>: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) <strong>adaptive choices</strong>: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. <strong>No free-chat tutor in core.</strong></p>
 <p>Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.</p>
@@ -161,7 +161,7 @@ Source: <code>docs/idea.md</code>, <code>docs/notes/</code>.</p>
 <li><strong>&quot;Video injection&quot;</strong> (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won&#39;t.</li>
 </ul>
 <hr>
-<h2>2. Goals, non-goals, success criteria</h2>
+<h2 id="2-goals-non-goals-success-criteria">2. Goals, non-goals, success criteria<a class="headerlink" href="#2-goals-non-goals-success-criteria" title="Permanent link">&para;</a></h2>
 <p><strong>Goals</strong></p>
 <ul>
 <li>G1. A permissively licensed JS/TS commit becomes a replayable lesson with predictions, hints and narration.</li>
@@ -181,9 +181,9 @@ Source: <code>docs/idea.md</code>, <code>docs/notes/</code>.</p>
 <li>S5 (stretch, Rec-1): a second language track (default: Python basics) with no change to engine core logic. Expected touched paths: <code>worlds/python/</code>, <code>services/engine/worlds/python.py</code>, <code>apps/web/src/worlds/python/</code>, <code>e2e/python/</code>, one <code>WORLDS</code> entry, and the step-kind enum migration only if a new kind is needed (§8.4). CI path check (WP14) flags anything else.</li>
 </ul>
 <hr>
-<h2>3. Users and use cases</h2>
+<h2 id="3-users-and-use-cases">3. Users and use cases<a class="headerlink" href="#3-users-and-use-cases" title="Permanent link">&para;</a></h2>
 <p>Core actors: <strong>learner (student or junior developer)</strong>, author, admin.</p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>ID</th>
@@ -226,10 +226,10 @@ Source: <code>docs/idea.md</code>, <code>docs/notes/</code>.</p>
 <td>Sandbox; provider config; SDK; embed</td>
 <td>stretch (cuts 4, 5, 9, 11, 12)</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p>Full flows: <code>docs/sdlc/use-cases.md</code> (WP0).</p>
 <hr>
-<h2>4. Requirements</h2>
+<h2 id="4-requirements">4. Requirements<a class="headerlink" href="#4-requirements" title="Permanent link">&para;</a></h2>
 <p><strong>Must</strong> (= 6-week core, §11.1)</p>
 <ul>
 <li>FR1 Accounts: email+password, GitHub OAuth, sessions, roles author/admin/learner. No password reset.</li>
@@ -255,7 +255,7 @@ Source: <code>docs/idea.md</code>, <code>docs/notes/</code>.</p>
 <li>NFR8 Maintainability: strict TS; mypy-strict engine; coverage gates (§15.10); ADRs.</li>
 </ul>
 <hr>
-<h2>5. Architecture</h2>
+<h2 id="5-architecture">5. Architecture<a class="headerlink" href="#5-architecture" title="Permanent link">&para;</a></h2>
 <blockquote>
 <p><strong>Status (2026-11-05):</strong> Not built yet: the SSE endpoint, the pg-boss background worker and the <code>WORKER_IN_PROCESS</code> switch. <code>apps/api</code> has no pg-boss dependency. Lesson generation runs in-process on the request. The diagram below is the target design.</p>
 </blockquote>
@@ -289,14 +289,14 @@ revealed|skipped --&gt; replay plays --&gt; next step | finished              (r
 attempts in revealed or skipped: 409
 </code></pre>
 <hr>
-<h2>6. Stack</h2>
+<h2 id="6-stack">6. Stack<a class="headerlink" href="#6-stack" title="Permanent link">&para;</a></h2>
 <p><strong>6.1 Tooling:</strong> pnpm workspaces; Node 22, strict, ESM; Python 3.12, <code>uv</code>, ruff, mypy --strict, pytest; ESLint + Prettier; pre-commit + commitlint; Dependabot only.</p>
 <p><strong>6.2 Frontend:</strong> React + Vite + TS · Monaco via <code>loader.config({ monaco })</code> with bundled <code>monaco-editor</code> (no CDN) · XState · TanStack Query · React Router · Tailwind + Radix · <code>diff-match-patch</code> (char diff in <code>player-core</code>) · DOMPurify · Jest + Testing Library (jsdom) + fast-check. <strong>Worlds registry</strong> is a generated file, <code>apps/web/src/worlds/registry.gen.ts</code>, written by <code>scripts/gen-registry.ts</code> before test and build. Jest works with no <code>import.meta.glob</code>.</p>
 <p><strong>6.3 API:</strong> Fastify 5 · Zod via <code>fastify-type-provider-zod</code> · <code>@fastify/swagger</code> · Drizzle + drizzle-kit · <code>pg</code> · argon2id (<code>@node-rs/argon2</code>) + cookie sessions · GitHub OAuth · <strong>pg-boss</strong> (queue on Postgres) · SSE via Postgres LISTEN/NOTIFY · pino · <code>@fastify/rate-limit</code> (in-memory) · helmet, cors, CSRF · <code>typescript</code> scanner for T2. The API holds no GitHub token.</p>
 <p><strong>6.4 Engine:</strong> FastAPI · Pydantic v2 (hand-written models) · <code>unidiff</code> · <code>httpx</code> (GitHub, read-only token) · BKT in pure Python · tenacity · structlog. <strong>LiteLLM</strong> in core: one provider (Anthropic), pedagogy only. Pin it; check LiteLLM advisories in WP0 (a compromised PyPI release was reported in 2026; verify). tree-sitter is not used.</p>
 <p><strong>6.5 Data:</strong> PostgreSQL 16+ (Neon or Supabase in cloud; compose locally). pg-boss uses the same database. Redis is not in core (Rec-2). Media: MP3s are static files in the Vercel build. Cloudflare R2 is stretch (sandbox snapshots).</p>
 <p><strong>6.6 AI and media</strong></p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Capability</th>
@@ -324,11 +324,11 @@ attempts in revealed or skipped: 409
 <td>—</td>
 <td>OpenUI (cut 10); WebContainers, Sandpack fallback (cut 9)</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p>Details of the stretch items: Appendix A.</p>
 <p><strong>6.7 SDKs (stretch, cuts 4, 11):</strong> generated from the Fastify OpenAPI. Pure API clients; no World code. The engine&#39;s internal client is generated from the engine&#39;s OpenAPI and not published.</p>
 <p><strong>6.8 Testing</strong></p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Layer</th>
@@ -359,7 +359,7 @@ attempts in revealed or skipped: 409
 <td>Security</td>
 <td><code>pnpm audit</code>, <code>pip-audit</code>, gitleaks, Trivy</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p><strong>6.9 CI/CD and infrastructure</strong></p>
 <ul>
 <li><code>pr.yml</code>: install → lint → unit (Jest, pytest) → API integration → build → Playwright e2e on <code>docker compose</code> → scans. <code>main.yml</code>: all of the above → GHCR images (SHA tag) → Vercel web deploy → Render api and engine → smoke (warm-up), staging then prod. WP1 owns root workflows; other WPs add reusable workflows (<code>workflow_call</code>) in <code>.github/workflows/jobs/</code>, called with <code>uses:</code> from <code>pr.yml</code> and <code>main.yml</code>.</li>
@@ -371,7 +371,7 @@ attempts in revealed or skipped: 409
 <li><strong>Environments:</strong> local (compose) → staging → prod. Previews, if any, use staging data only.</li>
 </ul>
 <hr>
-<h2>7. Data model (PostgreSQL 16+, Drizzle)</h2>
+<h2 id="7-data-model-postgresql-16-drizzle">7. Data model (PostgreSQL 16+, Drizzle)<a class="headerlink" href="#7-data-model-postgresql-16-drizzle" title="Permanent link">&para;</a></h2>
 <p>Principles: <code>steps</code> is the only home of step content. Published <code>lesson_versions</code> are immutable. Attempts reference <code>steps.id</code>. <code>steps.secret</code> is never returned by a read endpoint. Source (repo, SHA) is returned only with the reveal payload.</p>
 <p><strong>Core tables</strong></p>
 <pre><code>users(id, email UNIQUE, password_hash null, role enum[learner,author,admin], created_at)
@@ -406,8 +406,8 @@ llm_calls(id, lesson_job_id→lesson_jobs null, provider, model, purpose, prompt
 <p><strong>Stretch tables and columns</strong> (added by their WP&#39;s migration): <code>review_schedule(learner_id, step_id)</code>, <code>badges(learner_id, badge_slug)</code>, <code>usage_quotas</code>, <code>provider_settings</code>, <code>lessons.embed_allowed_origins</code>.</p>
 <p><strong>Lesson response</strong> (<code>GET /lessons/:id</code>): <code>{id, title, concepts[], steps:[{id, idx, title, conceptIds, hintCount, state}], labels:{reconstructed:true}}</code>. <code>state</code> is the active learner&#39;s <code>step_progress.state</code> (<code>predicting</code> if no row), so the player can resume in one call. No source, no file states, no prompts.</p>
 <hr>
-<h2>8. Key components</h2>
-<h3>8.1 Lesson generation</h3>
+<h2 id="8-key-components">8. Key components<a class="headerlink" href="#8-key-components" title="Permanent link">&para;</a></h2>
+<h3 id="81-lesson-generation">8.1 Lesson generation<a class="headerlink" href="#81-lesson-generation" title="Permanent link">&para;</a></h3>
 <p>Import (<code>POST /lessons/import</code>) → pg-boss job <code>import</code> in the API process:</p>
 <ol>
 <li>Import body is <code>{repo, sha}</code>. The API rejects repos not in <code>worlds/codequest/repos.yml</code> (400); the engine resolves the parent SHA. <code>POST /v1/pipeline/ingest</code> (engine) fetches the commit. Checks licence and vendored code, and scans for secrets. Returns whole-file before/after per changed file and hunks. The engine applies hunks in order with <code>unidiff</code> to compute one <code>beforeFiles</code>/<code>afterFiles</code> state per step (WP6 deliverable, with a test). Commits over the §15.4 limits fail with <code>lesson_jobs.error = &quot;split this lesson&quot;</code>.</li>
@@ -416,7 +416,7 @@ llm_calls(id, lesson_job_id→lesson_jobs null, provider, model, purpose, prompt
 </ol>
 <p><strong>Fallback</strong> (LLM off or invalid): synthetic lessons use hand-written content (WP11). The OSS lesson uses the LLM, with the deterministic fallback below. Imported lessons get a deterministic prediction. Cloze: one identifier or literal token of an added line with ≥ 3 tokens (§15.1). MCQ: the added line as the answer; distractors are drawn only from lines absent from the visible <code>beforeFiles</code> (added lines from other hunks, or mutated variants of the answer), so the answer is not the only absent option. Hints are generic (§15.1). The explanation is the commit title, labelled <code>inferred</code>.</p>
 <p>Replay is built in <code>player-core</code> from hunks; no LLM is involved. Narration: <code>scripts/narrate.ts|py</code> (WP11) renders one MP3 per step into <code>apps/web/public/audio/&lt;lesson&gt;/</code>, run locally by the author. Narration plays on reveal; a missing MP3 falls back to browser speech.</p>
-<h3>8.2 Learner model and adaptivity (engine: <code>bkt</code>, <code>policy</code>)</h3>
+<h3 id="82-learner-model-and-adaptivity-engine-bkt-policy">8.2 Learner model and adaptivity (engine: <code>bkt</code>, <code>policy</code>)<a class="headerlink" href="#82-learner-model-and-adaptivity-engine-bkt-policy" title="Permanent link">&para;</a></h3>
 <p><strong>Scope.</strong> Steps in a commit lesson are a fixed sequence (step N depends on the code after N−1), so they are never reordered. Adaptivity means explanation style, hint depth, skip offer, and next-lesson recommendation. Independent quiz items in a second track can be reordered (stretch).</p>
 <p><strong>Observations.</strong> Only the <strong>first action on a step</strong> (attempt or skip) is observed. Later actions are logged, not observed. Each concept in the step&#39;s <code>conceptIds</code> gets the same observation.</p>
 <ul>
@@ -449,13 +449,13 @@ llm_calls(id, lesson_job_id→lesson_jobs null, provider, model, purpose, prompt
 <p><strong>Policy:</strong> between lessons, pick the lowest <code>p_known</code> among unlocked concepts and recommend the lesson that covers it, with <code>reason</code>. Stretch: review items before steps.</p>
 <p><strong>Queue:</strong> one DB transaction first locks the <code>step_progress</code> row (<code>SELECT … FOR UPDATE</code>), then writes the attempt, <code>step_progress</code>, hint rows, and a pg-boss job <code>mastery</code> (singleton key <code>mastery:&lt;attemptId&gt;</code>, so retries are idempotent). The response returns at once. The worker, in one transaction, locks the learner&#39;s <code>learners</code> row (<code>SELECT … FOR UPDATE</code>), calls <code>/v1/mastery/update</code> and <code>/v1/next</code>, and writes <code>mastery</code> and <code>recommendations</code>. The WK-1 spike confirms pg-boss can enqueue on the transaction&#39;s connection.</p>
 <p><strong>Small data:</strong> with ~3 code lessons, BKT barely moves. Report this as a limit.</p>
-<h3>8.3 Player core (<code>packages/player-core</code>)</h3>
+<h3 id="83-player-core-packagesplayer-core">8.3 Player core (<code>packages/player-core</code>)<a class="headerlink" href="#83-player-core-packagesplayer-core" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Events are derived from hunks. Same input and same typing config → same events. Config: hunks &gt; 20 changed lines are inserted as one highlighted block; typing 60 WPM; 300 ms pause at line end.</li>
 <li>Snapshot every <strong>K = 200</strong> events and at every step boundary. <code>seek(t)</code> = nearest snapshot ≤ t, then replay.</li>
 <li>CI test: seek replays ≤ K events (count-based). The timing benchmark (≤ 100 ms at 5k events) runs locally and on release tags only.</li>
 </ul>
-<h3>8.4 World seam (WP2 defines it; this is its only home)</h3>
+<h3 id="84-world-seam-wp2-defines-it-this-is-its-only-home">8.4 World seam (WP2 defines it; this is its only home)<a class="headerlink" href="#84-world-seam-wp2-defines-it-this-is-its-only-home" title="Permanent link">&para;</a></h3>
 <ul>
 <li>A world is <code>worlds/&lt;slug&gt;/</code> at the repo root (<code>manifest.json</code>: concepts, edges, question types, BKT defaults; <code>prompts/</code>; <code>lessons/</code>), plus <code>services/engine/worlds/&lt;slug&gt;.py</code> (the Python World class), plus <code>apps/web/src/worlds/&lt;slug&gt;/</code> (TS renderers).</li>
 <li><code>WORLDS</code> (env) lists the enabled worlds. The TS registry is generated (§6.2).</li>
@@ -463,7 +463,7 @@ llm_calls(id, lesson_job_id→lesson_jobs null, provider, model, purpose, prompt
 <li>Adding a world changes no engine-core logic, API core or <code>player-core</code>. A second track&#39;s game parts add values to the step-kind enum only if they need a new kind (stretch migration).</li>
 </ul>
 <hr>
-<h2>9. API surface (v1)</h2>
+<h2 id="9-api-surface-v1">9. API surface (v1)<a class="headerlink" href="#9-api-surface-v1" title="Permanent link">&para;</a></h2>
 <p><strong>Auth rules:</strong> learners see published lessons only. Job events are visible to the creator only. <code>/me/*</code> uses <code>sessions.active_learner_id</code>. Author and admin endpoints check <code>users.role</code>.</p>
 <p><strong>Public (core)</strong></p>
 <ul>
@@ -508,7 +508,7 @@ GET /healthz · GET /readyz
 </code></pre>
 <p>Stretch engine endpoints: <code>/v1/pipeline/segment</code>, <code>/v1/narrate</code>, <code>/v1/grade</code>.</p>
 <hr>
-<h2>10. Repository layout</h2>
+<h2 id="10-repository-layout">10. Repository layout<a class="headerlink" href="#10-repository-layout" title="Permanent link">&para;</a></h2>
 <pre><code>apps/web/        src/{shell,player,author,quest,worlds}/ (core); src/{sandbox}/ (stretch); scripts/gen-registry.ts; public/audio/
 apps/api/        src/{auth,lessons,attempts,progress,grading,worker,sse,engine-client,db}/; drizzle/; test/security/
 services/engine/ app.py (WP2); ingest/, pipeline/, llm/, bkt/, policy/, worlds/ (§8.4); snapshot/ (WP12); prompts/, evals/ (WP18)
@@ -523,8 +523,8 @@ docs/            idea.md, notes/ (existing); sdlc/; adr/; study/
 plan.md  README.md
 </code></pre>
 <hr>
-<h2>11. Delivery plan (6 weeks, solo)</h2>
-<h3>11.1 The 6-week core (Must)</h3>
+<h2 id="11-delivery-plan-6-weeks-solo">11. Delivery plan (6 weeks, solo)<a class="headerlink" href="#11-delivery-plan-6-weeks-solo" title="Permanent link">&para;</a></h2>
+<h3 id="111-the-6-week-core-must">11.1 The 6-week core (Must)<a class="headerlink" href="#111-the-6-week-core-must" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Lessons:</strong> two synthetic lessons (ours, MIT), one OSS commit (Q6), deployed. Agni is a local pilot only. Lessons live in <code>worlds/codequest/lessons/*.json</code>, loaded by a seed script.</li>
 <li><strong>Generation:</strong> ingest, pedagogy with recorded fixtures in CI, fallback (§8.1).</li>
@@ -535,8 +535,8 @@ plan.md  README.md
 <li><strong>SDLC:</strong> requirements and use cases (Wk 2); threat-model draft (Wk 2, ½ day); ADRs as decisions land; privacy notice, one paragraph (Wk 6); final threat model (Wk 6).</li>
 </ul>
 <p><strong>Load check:</strong> at most two core build WPs per week. Buffer days: Wk 3 Thursday and Wk 6 Friday. Report: ½ day in Wk 4, 5 and 6.</p>
-<h3>11.2 Weeks</h3>
-<table>
+<h3 id="112-weeks">11.2 Weeks<a class="headerlink" href="#112-weeks" title="Permanent link">&para;</a></h3>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Wk</th>
@@ -574,12 +574,12 @@ plan.md  README.md
 <td>WP13 prod and S4 smoke. WP14 finish. WP15 final threat model and privacy paragraph (½ day). Report (½ day). Demo rehearsal (timed, 5 min). <strong>Fri: buffer day</strong></td>
 <td>S4; S1 on prod; report</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p><strong>Cut gate (Fri, Wk 3):</strong> pass only if gate, hints, reveal and persisted attempts work end to end on synthetic lesson 1 in compose, T1/T2 works, and <code>main</code> CI is green. If it fails, no stretch item starts, and the named core fallbacks apply first: browser speech, polling instead of SSE, deterministic-only OSS lesson (§11.3). Rec-1 governs stretch items only, never core scope. If the core still overruns, the owner decides at this gate.</p>
 <p><strong>S2b decision (Fri, Wk 5):</strong> if the Wk-4 result is negative (replay group not better or clearly easier), Mon–Thu of Wk 5 is one rework round (pacing, chunking, narration) and a rerun with the same two lessons. Then decide the stretch cut. If the result is positive, that slot goes to stretch. No third round. Report either way.</p>
-<h3>11.3 Cut line</h3>
+<h3 id="113-cut-line">11.3 Cut line<a class="headerlink" href="#113-cut-line" title="Permanent link">&para;</a></h3>
 <p><strong>One rule:</strong> list order is cut order. The top item is cut first. Stretch items start only if the Wk-3 gate passes with time left, in reverse list order (most valuable first). The earliest-week column is a floor.</p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>#</th>
@@ -660,7 +660,7 @@ plan.md  README.md
 <td>WP6, WP16, WP18, WP5</td>
 <td>Wk 5</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p>Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won&#39;t.</p>
 <p><strong>Core fallbacks</strong> (used before cutting core scope; each has a named trigger):</p>
 <ul>
@@ -671,7 +671,7 @@ plan.md  README.md
 </ul>
 <p><strong>Never cut:</strong> prediction, hint and reveal gates; BKT; persisted attempts; T1/T2; pedagogy with fallback; narration for core lessons; CI/CD; unit and API tests; one e2e; the S1 deployed lesson (OSS, or synthetic with owner sign-off); S2a and S2b; one live URL.</p>
 <hr>
-<h2>12. Honesty labels (single home)</h2>
+<h2 id="12-honesty-labels-single-home">12. Honesty labels (single home)<a class="headerlink" href="#12-honesty-labels-single-home" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Replays are <strong>reconstructed from a diff</strong>, not recorded. Badge: &quot;Reconstructed replay&quot;.</li>
 <li>AI explanations of <em>why</em> the author wrote something are <strong>inferred</strong>. Label them.</li>
@@ -681,8 +681,8 @@ plan.md  README.md
 <li>Competitors (Scrimba, DeepWiki, Code Wiki, Pocket Flow, CodeTour): the gap is in search, not proof that nobody built it.</li>
 </ul>
 <hr>
-<h2>13. Risks</h2>
-<table>
+<h2 id="13-risks">13. Risks<a class="headerlink" href="#13-risks" title="Permanent link">&para;</a></h2>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>#</th>
@@ -804,16 +804,16 @@ plan.md  README.md
 <td>H</td>
 <td>Gate; cut line; Rec-1</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <hr>
-<h2>14. Feasibility</h2>
+<h2 id="14-feasibility">14. Feasibility<a class="headerlink" href="#14-feasibility" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Technical:</strong> feasible; all components are mainstream. Highest risks: LLM quality (fallback and fixtures) and solo scope (gate).</li>
 <li><strong>Economic:</strong> core runs on free tiers (pricing check Wk 1). The recurring cost is one LLM call per lesson, generated once and cached. S3 measures it.</li>
 <li><strong>Operational:</strong> single developer; compose matches prod; automated deploys. Six weeks, with gates at Wk 3 and Wk 5.</li>
 </ul>
 <hr>
-<h2>15. Deep dive</h2>
+<h2 id="15-deep-dive">15. Deep dive<a class="headerlink" href="#15-deep-dive" title="Permanent link">&para;</a></h2>
 <p><strong>15.1 Grading and hints (single home for both rules)</strong></p>
 <ul>
 <li><strong>T1</strong> MCQ: deterministic, TS (<code>apps/api/src/grading</code>). <strong>T2</strong> cloze: deterministic, TS, whitespace- and comment-insensitive token compare via the <code>typescript</code> scanner, with an accepted-variants list. <strong>T3</strong> (stretch, cut 12): engine judge, <code>pending</code> until the job completes.</li>
@@ -825,7 +825,7 @@ plan.md  README.md
 <p><strong>15.3 Quest layer (stretch, cut 7).</strong> The mastery list is core. XP is derived from mastery gains and not stored, so watching earns nothing. Badges are <code>badges(learner_id, badge_slug)</code>. Badges avoid streaks, leaderboards and loss aversion (App. A).</p>
 <p><strong>15.4 Replay realism.</strong> Char-level diff within each hunk (<code>diff-match-patch</code>), a typing cadence model, speeds 0.5×–4× with an &quot;instant&quot; mode, and file switches as explicit events. Limits per lesson: ≤ 8 files, ≤ 400 changed lines, no lockfiles or generated or binary files. Replay plays only after reveal (<code>revealed</code> or <code>skipped</code>). Pause-edits are a local overlay, discarded on resume after a prompt. Fork is stretch.</p>
 <p><strong>15.5 Security (adds to NFR2)</strong></p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Threat</th>
@@ -868,7 +868,7 @@ plan.md  README.md
 <td>Supply chain</td>
 <td>Hash-locked deps; LiteLLM advisory check in WP0 (verify the reported PyPI incident); Dependabot; <code>pip-audit</code>, <code>pnpm audit</code>, Trivy</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p>Threat model: STRIDE in <code>docs/sdlc/threat-model.md</code>. Draft by WP0 in Wk 2; final by WP15 in Wk 6.</p>
 <p><strong>15.6 Privacy.</strong> Core collects email and password (or GitHub identity) only. Privacy notice: one paragraph in <code>docs/sdlc/privacy.md</code> (Wk 6). Audience is 13 and over; no child data (§4 NFR1).</p>
 <p><strong>15.7 AI practice.</strong> Core: recorded fixtures only in CI; no live calls in PR checks; <code>prompt_version</code> on steps and <code>llm_calls</code>; repair inside the engine. Stretch (cut 12): prompt registry, provider failover, live evals with spend cap.</p>
@@ -889,7 +889,7 @@ plan.md  README.md
 Demo script (5 min): import commit → lesson → play, predict, miss, hint, reveal → mastery list → next recommendation with reason → live URL → pipeline run.
 Study design: §2 (S2a, S2b). Protocol, consent form and results in <code>docs/study/</code> (WP14).</p>
 <hr>
-<h2>16. Work packages</h2>
+<h2 id="16-work-packages">16. Work packages<a class="headerlink" href="#16-work-packages" title="Permanent link">&para;</a></h2>
 <p><strong>Ground rules:</strong></p>
 <ol>
 <li>Read <code>plan.md</code>. Stay inside your owned paths. Request contract changes from the owner (WP2 for schema and engine bootstrap; WP5 for the API).</li>
@@ -897,7 +897,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in <code>docs/s
 <li>Root lockfiles and root CI files change only through WP1 or an explicit small PR.</li>
 <li>If a spike contradicts the plan, write an ADR and stop to report.</li>
 </ol>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>WP</th>
@@ -1040,10 +1040,10 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in <code>docs/s
 <td>WP6</td>
 <td>Versioned prompts; offline golden evals; capability matrix</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p><strong>Start rule:</strong> a WP starts when its dependencies merge. §11.2 is the schedule.</p>
 <hr>
-<h2>17. Decisions locked in / still open</h2>
+<h2 id="17-decisions-locked-in-still-open">17. Decisions locked in / still open<a class="headerlink" href="#17-decisions-locked-in-still-open" title="Permanent link">&para;</a></h2>
 <p><strong>Locked (from planning Q&amp;A):</strong></p>
 <ul>
 <li>Merge both ideas as <em>one engine, two worlds</em>; code world first, kids world thin. <strong>Superseded 2026-11-06:</strong> one engine, programming only. The kids world is dropped; a second language track is stretch.</li>
@@ -1056,7 +1056,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in <code>docs/s
 </ul>
 <p>Locked items placed behind the cut line (none removed): K8s (3); Python SDK publish (4); TS SDK (11); live TTS (8); sandbox (9); second language track and OpenUI (10); LLM beyond pedagogy (12). Redis is an optional profile, not core (Rec-2).</p>
 <p><strong>Open: owner decisions.</strong> Each has a default the plan works with. &quot;Blocks&quot; is the week the real answer is needed.</p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>#</th>
@@ -1137,7 +1137,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in <code>docs/s
 <td>Wk 2</td>
 <td>Written consent form for S2a and S2b; quiz score and time only; confirm course rules before S2b</td>
 </tr>
-</tbody></table>
+</tbody></table></div>
 <p><strong>Blocking summary:</strong> Wk 1: Q3, Q5, Q8, Q9. Wk 2: Q12. Wk 4: Q1, Q4, Q6. Wk 5: Q10. Q2 only if item 10 is approved. Q7 and Q11 need nothing.</p>
 <p><strong>Recommendations (needs owner OK):</strong></p>
 <ul>
@@ -1146,7 +1146,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in <code>docs/s
 <li><strong>Rec-3: JSON-UI instead of OpenUI</strong> if the OpenUI spike fails in the second-track week. Stretch only.</li>
 </ul>
 <hr>
-<h2>Appendix A: Stretch designs (condensed)</h2>
+<h2 id="appendix-a-stretch-designs-condensed">Appendix A: Stretch designs (condensed)<a class="headerlink" href="#appendix-a-stretch-designs-condensed" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Second language track (item 10, replaces KidsQuest):</strong> same seam as CodeQuest: <code>worlds/&lt;slug&gt;/manifest.json</code>, prompts, lessons, one Python World class, one <code>WORLDS</code> entry. Default content: Python basics, 5 concepts × 3 quiz items, drafted by the engine and approved by an author, as with CodeQuest lessons. Diagrams and game parts reuse <code>packages/ui-catalog</code>. Dropped with KidsQuest: child profiles, parental consent, the parent dashboard, OpenUI challenges and the child-moderation path.</li>
 <li><strong>Embed (item 5):</strong> <code>embed.js</code> mounts a sandboxed iframe. Per-lesson <code>frame-ancestors</code> requires the player document to be served by the API, not the static Vercel build; details deferred. Signed read-only token from <code>POST /lessons/:id/embed-tokens</code>. No cookies. Replay and reveal only; <code>postMessage</code> emits <code>step</code> and <code>complete</code>.</li>

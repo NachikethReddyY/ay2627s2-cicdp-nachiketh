@@ -22,6 +22,7 @@ erDiagram
   LEARNERS ||--o{ HINT_EVENTS : takes
   STEPS ||--o{ HINT_EVENTS : "hint for"
   LEARNERS ||--o{ GAME_COMPLETIONS : completes
+  LESSONS ||--o{ GAME_COMPLETIONS : "completed in"
   LEARNERS ||--o{ PART_COMPLETIONS : completes
   LESSONS ||--o{ PART_COMPLETIONS : "parts of"
   LESSON_VERSIONS ||--o{ LESSON_MEDIA : "media for"
