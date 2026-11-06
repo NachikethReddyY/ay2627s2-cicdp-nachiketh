@@ -5,11 +5,14 @@ import "@xterm/xterm/css/xterm.css";
 import type { ShellSocket } from "./shellSocket";
 import { isToggleKey } from "./usePanel";
 
-type TerminalViewProps = { shell: ShellSocket };
+type TerminalViewProps = { shell: ShellSocket; active?: boolean };
 
 // Mounts xterm onto the shared shell socket. Unmounting disposes xterm only; the socket outlives the view.
-export default function TerminalView({ shell }: TerminalViewProps) {
+export default function TerminalView({ shell, active = true }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   useEffect(() => {
     const el = host.current;
@@ -20,6 +23,8 @@ export default function TerminalView({ shell }: TerminalViewProps) {
       fontSize: 13,
       theme: { background: "#1b1b1f", foreground: "#ffffff" },
     });
+    termRef.current = term;
+    if (activeRef.current) term.focus();
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
@@ -46,8 +51,13 @@ export default function TerminalView({ shell }: TerminalViewProps) {
       off();
       data.dispose();
       term.dispose();
+      termRef.current = null;
     };
   }, [shell]);
+
+  useEffect(() => {
+    if (active) termRef.current?.focus();
+  }, [active]);
 
   return <div ref={host} aria-label="Terminal" className="h-full w-full overflow-hidden bg-[#1b1b1f] p-1" />;
 }

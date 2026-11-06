@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, listFiles, type DirEntry } from "../runPython";
 import { FOCUS } from "../ui";
 
@@ -13,9 +13,14 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
+  const seq = useRef(0);
   const load = useCallback(() => {
+    const mine = ++seq.current; // a slower, older response must not overwrite a newer one
     setError(null);
-    listFiles(path || undefined).then(setListing, (e) => setError(errText(e)));
+    listFiles(path || undefined).then(
+      (l) => { if (mine === seq.current) setListing(l); },
+      (e) => { if (mine === seq.current) setError(errText(e)); },
+    );
   }, [path]);
 
   useEffect(() => {
@@ -32,6 +37,7 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
     );
   }
   if (!listing) return <div style={pad} className="py-0.5 text-xs opacity-60">Loading…</div>;
+  if (listing.entries.length === 0 && !listing.truncated) return <div style={pad} className="py-0.5 text-xs opacity-60">Empty</div>;
   return (
     <ul>
       {listing.entries.map((en) => {

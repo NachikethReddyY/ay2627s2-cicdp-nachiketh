@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { FOCUS } from "../ui";
 import FileTree from "./FileTree";
 import type { ShellSocket, ShellState } from "./shellSocket";
-import { KEY_STEP, MIN_HEIGHT, type usePanel } from "./usePanel";
+import { KEY_STEP, MAX_FRACTION, MIN_HEIGHT, type usePanel } from "./usePanel";
 
 const TerminalView = lazy(() => import("./TerminalView"));
 
@@ -39,9 +39,20 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
   const { state, dispatch } = panel;
   const [shellState, setShellState] = useState<ShellState>(() => shell.state());
 
+  const sectionRef = useRef<HTMLElement>(null);
+  const refreshTree = useRef(onRefreshTree);
+  refreshTree.current = onRefreshTree;
   useEffect(() => {
-    setShellState(shell.state());
-    return shell.onState(setShellState);
+    let wasReady = false;
+    const track = (s: ShellState) => {
+      setShellState(s);
+      const ready = s.kind === "open" && s.ready;
+      // The sandbox container exists once the shell is ready, so a listing made earlier may have failed.
+      if (ready && !wasReady) refreshTree.current();
+      wasReady = ready;
+    };
+    track(shell.state());
+    return shell.onState(track);
   }, [shell]);
   useEffect(() => {
     shell.setActive(state.open);
@@ -53,7 +64,7 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => e.currentTarget.setPointerCapture(e.pointerId);
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const rect = e.currentTarget.parentElement!.getBoundingClientRect();
+    const rect = sectionRef.current!.getBoundingClientRect();
     dispatch({ type: "resize", px: rect.bottom - e.clientY, container: container(e.currentTarget) });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -66,6 +77,7 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
   const line = stateLine(shellState);
   return (
     <section
+      ref={sectionRef}
       aria-label="Terminal panel"
       hidden={!state.open}
       style={{ height: state.height }}
@@ -76,12 +88,13 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
         aria-orientation="horizontal"
         aria-label="Resize terminal"
         aria-valuemin={MIN_HEIGHT}
+        aria-valuemax={Math.round(MAX_FRACTION * (sectionRef.current?.parentElement?.clientHeight || window.innerHeight))}
         aria-valuenow={state.height}
         tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onKeyDown={onKeyDown}
-        className={`h-1.5 flex-none cursor-row-resize bg-white/20 hover:bg-white/40 ${FOCUS}`}
+        className={`h-1.5 flex-none touch-none cursor-row-resize bg-white/20 hover:bg-white/40 ${FOCUS}`}
       />
       <div className="flex flex-none items-center gap-2 border-b-2 border-white/20 px-3 py-1">
         <h3 className="text-sm font-extrabold">Terminal</h3>
@@ -106,7 +119,7 @@ export default function TerminalPanel({ shell, panel, badge, treeKey, onRefreshT
         </div>
         <div className="min-w-0 flex-1">
           <Suspense fallback={<p className="p-3 text-sm">Loading terminal…</p>}>
-            <TerminalView shell={shell} />
+            <TerminalView shell={shell} active={state.open} />
           </Suspense>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { buildTimeline } from "@learnquest/player-core";
 import EditorPane from "../EditorPane";
-import { createShellSocket } from "../terminal/shellSocket";
+import { createShellSocket, type ShellSocket } from "../terminal/shellSocket";
 import TerminalPanel from "../terminal/TerminalPanel";
 import { isToggleKey, usePanel } from "../terminal/usePanel";
 import { checkPassed, pollPython, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
@@ -26,8 +26,18 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const runRef = useRef<HTMLButtonElement>(null);
   const timeline = useMemo(() => buildTimeline([{ beforeFiles: {}, hunks: [] }]), []);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const shell = useMemo(() => createShellSocket(), []);
-  useEffect(() => () => shell.dispose(), [shell]);
+  // One socket per mount, created in the effect so StrictMode's simulated unmount (which disposes it) gets a fresh one.
+  const [shell, setShell] = useState<ShellSocket | null>(null);
+  useEffect(() => {
+    const s = createShellSocket();
+    setShell(s);
+    return () => {
+      s.dispose();
+      setShell(null);
+    };
+  }, []);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
   const panel = usePanel(bodyRef);
   const { dispatch: panelDispatch } = panel;
   const [treeKey, setTreeKey] = useState(0);
@@ -35,12 +45,17 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isToggleKey(e)) return;
+      if (e.repeat) { e.preventDefault(); return; }
       e.preventDefault();
       panelDispatch({ type: "toggle" });
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [panelDispatch]);
+  useEffect(() => {
+    if (wasOpen.current && !panel.state.open) toggleRef.current?.focus();
+    wasOpen.current = panel.state.open;
+  }, [panel.state.open]);
   const python = part.language === "python";
   const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
   // The server judges a Check run and records the completion; the player only shows its verdict.
@@ -131,7 +146,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const body = (
     <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
       <EditorPane transportRef={runRef} edit={{ value: code, language: part.language ?? "javascript", onChange: setCode }} />
-      <TerminalPanel shell={shell} panel={panel} badge={null} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />
+      {shell && <TerminalPanel shell={shell} panel={panel} badge={null} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />}
       <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-32 flex-none flex-col border-t-[3px] border-ink bg-ink font-mono text-white">
         <div className="flex flex-none items-center gap-2 border-b-2 border-white/20 px-3 py-1">
           <h3 id="out-h" className="text-sm font-extrabold">Terminal</h3>
@@ -173,7 +188,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         panel: <p className="whitespace-pre-wrap font-semibold">{part.instructions}</p>,
         footer: (
           <>
-            <button type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
+            <button ref={toggleRef} type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
             <button type="button" disabled={starting || sid !== null} onClick={() => run(true)} className={`btn check ${FOCUS}`}>Check</button>
             {next}
           </>
