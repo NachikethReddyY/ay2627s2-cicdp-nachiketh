@@ -27,7 +27,8 @@ export function shellUrl(
   if (opts?.wsOrigin && opts.ticket) {
     return `${opts.wsOrigin}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}`;
   }
-  const scheme = loc.protocol === "https:" ? "wss:" : "ws:";
+  // http: -> ws:, https: -> wss:. Derived from the page protocol so plain ws only happens on an http: page (local dev).
+  const scheme = loc.protocol.replace(/^http/, "ws");
   return `${scheme}//${loc.host}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}`;
 }
 
@@ -35,8 +36,8 @@ export function shellUrl(
 export function normalizeWsOrigin(raw: string | undefined): string | undefined {
   let v = (raw ?? "").trim();
   while (v.endsWith("/")) v = v.slice(0, -1); // a loop, not /\/+$/, which backtracks super-linearly
-  if (/^https:\/\//i.test(v)) v = "wss://" + v.slice(8);
-  else if (/^http:\/\//i.test(v)) v = "ws://" + v.slice(7);
+  // http(s) -> ws(s): replace only the "http" prefix, so https stays secure and plain ws appears only if http was given.
+  if (/^https?:\/\//i.test(v)) v = "ws" + v.slice(4);
   return v || undefined;
 }
 
