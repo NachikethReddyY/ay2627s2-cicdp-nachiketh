@@ -73,3 +73,26 @@ test("admin creates, fills and orders a collection; unfeatured and empty ones st
   await db.update(paths).set({ visibility: "private" }).where(eq(paths.slug, "p-two"));
   assert.deepEqual(out(await q(learner, "collections.list"))[1].paths.map((p: { slug: string }) => p.slug), ["p-one"]);
 });
+
+test("only the first 12 featured collections are listed, each with all its paths", async () => {
+  const { admin, learner } = await setup();
+  await db.insert(paths).values([{ slug: "p-a", title: "A" }, { slug: "p-b", title: "B" }]);
+  for (let i = 0; i < 13; i++) {
+    const slug = `c-${String(i).padStart(2, "0")}`;
+    await m(admin, "collections.create", { slug, title: slug });
+    await m(admin, "collections.setFeatured", { slug, featured: true });
+    await m(admin, "collections.setPaths", { slug, pathSlugs: i === 12 ? ["p-b"] : ["p-a", "p-b"] });
+  }
+  const list = out(await q(learner, "collections.list"));
+  assert.equal(list.length, 12); // start-here (position 0) plus c-00..c-10
+  assert.ok(list.every((c: { paths: unknown[] }) => c.paths.length > 0));
+  assert.deepEqual(list[1].paths.map((p: { slug: string }) => p.slug), ["p-a", "p-b"]);
+});
+
+test("reseeding keeps an admin's edits to the starter collection", async () => {
+  const { admin } = await setup();
+  await m(admin, "collections.setPaths", { slug: "start-here", pathSlugs: [] });
+  const { seed } = await import("../src/db/seed.ts");
+  await seed();
+  assert.deepEqual(out(await q(admin, "collections.adminList"))[0].pathSlugs, []);
+});

@@ -29,13 +29,15 @@ const list = protectedProcedure.output(z.array(Collection)).query(async ({ ctx }
     SELECT id, slug, title, description FROM collections WHERE featured
     ORDER BY position, created_at, id LIMIT ${MAX_FEATURED}`);
   if (cols.length === 0) return [];
+  // Both follow-up queries are limited to the collections shown, so a 13th featured one cannot crowd out their paths.
+  const shown = sql.join(cols.map((c) => sql`${c.id}`), sql`, `);
   const { rows: links } = await db.execute<{ collection_id: string; slug: string }>(sql`
     SELECT cp.collection_id, p.slug FROM collection_paths cp
-    JOIN collections c ON c.id = cp.collection_id AND c.featured
     JOIN paths p ON p.id = cp.path_id AND p.visibility = 'public'
+    WHERE cp.collection_id IN (${shown})
     ORDER BY cp.position`);
   const cards = new Map(
-    (await pathCards(ctx.learnerId, sql`p.id IN (SELECT cp.path_id FROM collection_paths cp JOIN collections c ON c.id = cp.collection_id AND c.featured) AND p.visibility = 'public'`, sql`p.slug`, MAX_PATHS * MAX_FEATURED)).map((c) => [c.slug, c]),
+    (await pathCards(ctx.learnerId, sql`p.id IN (SELECT cp.path_id FROM collection_paths cp WHERE cp.collection_id IN (${shown})) AND p.visibility = 'public'`, sql`p.slug`, MAX_PATHS * MAX_FEATURED)).map((c) => [c.slug, c]),
   );
   return cols
     .map((c) => ({

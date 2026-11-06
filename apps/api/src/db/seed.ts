@@ -20,12 +20,13 @@ export async function seed() {
       .onConflictDoUpdate({ target: paths.slug, set: path });
     const [jsPath] = await tx.select().from(paths).where(eq(paths.slug, "js-foundations"));
     const startHere = { title: "Start here", description: "New to LearnQuest? Begin with these.", featured: true };
-    await tx
+    // Only a fresh database gets the starter collection and link; later admin edits (retitle, unfeature, setPaths) survive a reseed.
+    const [created] = await tx
       .insert(collections)
       .values({ slug: "start-here", ...startHere })
-      .onConflictDoNothing(); // an admin may have retitled or unfeatured it since
-    const [col] = await tx.select().from(collections).where(eq(collections.slug, "start-here"));
-    await tx.insert(collectionPaths).values({ collectionId: col!.id, pathId: jsPath!.id, position: 0 }).onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: collections.id });
+    if (created) await tx.insert(collectionPaths).values({ collectionId: created.id, pathId: jsPath!.id, position: 0 });
     await tx
       .insert(pathCourses)
       .values({ pathId: jsPath!.id, worldId: world!.id, position: 0 })

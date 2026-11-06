@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useApi, type ExplorePath } from "../lib/api";
 import { trpc } from "../lib/trpc";
@@ -74,8 +74,15 @@ function Row({ p, onDone, scope, tone }: { p: ExplorePath; onDone: () => void; s
 
 // Hand-picked collections, shown above the community list. Stays quiet (renders nothing) if there are none or the load fails,
 // so a curation problem never hides the paths below it.
-function Collections({ onDone }: { onDone: () => void }) {
+// `refresh` changes whenever any list changed something (a join or publish), so both lists stay in step.
+function Collections({ onDone, refresh }: { onDone: () => void; refresh: number }) {
   const { data, error, reload } = useApi("collections", () => trpc.collections.list.query());
+  const seen = useRef(refresh);
+  useEffect(() => {
+    if (seen.current === refresh) return;
+    seen.current = refresh;
+    reload();
+  }, [refresh, reload]);
   if (error || (data && data.length === 0)) return null;
   if (!data) return <div className="explore-collections" aria-busy="true"><Spinner /></div>;
   return (
@@ -85,7 +92,7 @@ function Collections({ onDone }: { onDone: () => void }) {
           <h2 id={`col-${c.slug}`} className="explore-col-h">{c.title}</h2>
           {c.description && <p className="explore-col-desc">{c.description}</p>}
           <ul className="lq-comm explore-list">
-            {c.paths.map((p, i) => <Row key={p.slug} p={p} onDone={() => { reload(); onDone(); }} scope="official" tone={tones[i % 4]} />)}
+            {c.paths.map((p, i) => <Row key={p.slug} p={p} onDone={onDone} scope="official" tone={tones[i % 4]} />)}
           </ul>
         </section>
       ))}
@@ -102,6 +109,8 @@ export default function Explore() {
     return () => clearTimeout(t);
   }, [q]);
   const { data, error, reload } = useApi(`paths:${scope}:${dq}`, () => trpc.paths.list.query({ scope, q: dq || undefined }));
+  const [refresh, setRefresh] = useState(0);
+  const refreshAll = useCallback(() => { reload(); setRefresh((n) => n + 1); }, [reload]);
 
   return (
     <div className="lq lq-explore">
@@ -122,7 +131,7 @@ export default function Explore() {
                 className="explore-search" />
             </div>
           </div>
-          {scope !== "mine" && !dq && <Collections onDone={reload} />}
+          {scope !== "mine" && !dq && <Collections onDone={refreshAll} refresh={refresh} />}
           <div className="explore-results">
             {error ? (
               <div className="lq-empty-card">
@@ -136,7 +145,7 @@ export default function Explore() {
               </div>
             ) : (
               <ul className="lq-comm explore-list">
-                {data.map((p, i) => <Row key={p.slug} p={p} onDone={reload} scope={scope} tone={tones[i % 4]} />)}
+                {data.map((p, i) => <Row key={p.slug} p={p} onDone={refreshAll} scope={scope} tone={tones[i % 4]} />)}
               </ul>
             )}
           </div>
