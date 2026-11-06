@@ -1,0 +1,20 @@
+sequenceDiagram
+  actor L as Learner
+  participant P as Player (XState)
+  participant A as API (tRPC)
+  participant S as Auth middleware
+  participant G as Grader
+  participant M as Step state machine
+  participant D as PostgreSQL
+  L->>P: Submit prediction
+  P->>A: steps.attempt(stepId, answer)
+  A->>S: Resolve learner from session cookie
+  S-->>A: learnerId or UNAUTHORIZED
+  A->>D: Load step secret + step_progress
+  A->>G: Grade answer (multiple choice / fill-in-the-blank)
+  G-->>A: correct?
+  A->>M: next(progress, attempt)
+  M-->>A: new progress or conflict (409)
+  A->>D: BEGIN: insert attempt, update step_progress: COMMIT
+  A-->>P: Outcome + only what the new state permits
+  P-->>L: Hint, retry or reveal

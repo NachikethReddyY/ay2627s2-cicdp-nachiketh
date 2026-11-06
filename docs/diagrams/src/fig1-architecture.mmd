@@ -1,0 +1,31 @@
+flowchart TB
+  subgraph Client["Browser: apps/web"]
+    UI["React 19 + TanStack Router"]
+    PL["Lesson player: Monaco + XState"]
+    PC["player-core: timeline replay"]
+    UI --> PL --> PC
+  end
+  RW["Vercel rewrite: /api/* (same-site cookie)"]
+  subgraph Server["Render: apps/api"]
+    F["Fastify 5: helmet, Origin check, rate limit"]
+    T["tRPC routers: paths, lessons, steps, collections, games"]
+    G["Grading + step state machine"]
+    AI["AI generator + Zod validation"]
+    SB["Sandbox routes: shell and run"]
+    F --> T
+    T --> G
+    T --> AI
+    T --> SB
+  end
+  ENG["Python engine: FastAPI + LiteLLM"]
+  DB[("Neon PostgreSQL + Better Auth")]
+  OBJ[("Object storage: lesson media")]
+  ANT["Anthropic API"]
+  LLM["LLM provider"]
+  DAY["Daytona sandboxes"]
+  UI -- "HTTPS" --> RW --> F
+  G -- "Drizzle ORM" --> DB
+  T --> OBJ
+  AI --> ANT
+  T -- "bearer token" --> ENG --> LLM
+  SB --> DAY

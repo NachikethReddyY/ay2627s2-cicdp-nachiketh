@@ -1,0 +1,25 @@
+flowchart LR
+  USER["Learner's browser"]
+  subgraph Vercel["Vercel"]
+    WEBD["apps/web (static build)"]
+    RWD["Rewrite /api/*"]
+  end
+  subgraph Render["Render"]
+    APID["apps/api (Docker, Node 22)"]
+  end
+  ENGD["Engine host: services/engine (Docker, Python 3.12)"]
+  NEON[("Neon: PostgreSQL + auth")]
+  OBJD[("Object storage")]
+  DAYD["Daytona: learner sandboxes"]
+  ANTD["Anthropic API"]
+  LLMD["LLM provider"]
+  GH["GitHub: repository + Actions CI"]
+  USER --> WEBD
+  USER --> RWD --> APID
+  APID --> NEON
+  APID --> OBJD
+  APID --> DAYD
+  APID --> ANTD
+  APID -- "bearer token" --> ENGD --> LLMD
+  GH -. "main branch" .-> Vercel
+  GH -. "main branch" .-> Render

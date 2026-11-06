@@ -1,0 +1,25 @@
+flowchart TB
+  DEP["Dependabot: weekly update PRs"]
+  PR["Pull request opened or updated"]
+  DEP --> PR
+  subgraph Auto["PR automation workflow"]
+    A1["Area and size labels"]
+    A2["Conventional Commits title check"]
+    A3["Assign author, review labels"]
+  end
+  subgraph CI["CI workflow"]
+    C1["check job: PostgreSQL 16 service, frozen-lockfile install, turbo lint + test + build"]
+    C2["engine job: uv sync, ruff, mypy --strict, pytest, LiteLLM advisory"]
+  end
+  PR --> Auto
+  PR --> CI
+  GATE{"check and engine pass?"}
+  C1 --> GATE
+  C2 --> GATE
+  A2 --> GATE
+  GATE -- "yes" --> MERGE["Squash merge to main (linear history)"]
+  GATE -- "no" --> FIX["Fix and push again"] --> PR
+  MERGE --> CIP["CI runs again on push to main"]
+  MERGE --> LAB["Labels workflow syncs labels when label files change"]
+  MERGE --> DEPLOY["Deploy: Vercel (web), Render (API)"]
+  STALE["Stale workflow: daily sweep of inactive issues and PRs"]
