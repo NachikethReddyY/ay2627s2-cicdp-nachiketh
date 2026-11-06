@@ -1,0 +1,29 @@
+flowchart LR
+  subgraph Apps["apps"]
+    WEB["apps/web: React client"]
+    API["apps/api: Fastify + tRPC"]
+  end
+  subgraph Packages["packages"]
+    PC["player-core: replay engine"]
+    UC["ui-catalog: block contract + schema"]
+  end
+  subgraph Services["services"]
+    ENG["services/engine: FastAPI"]
+    SBI["services/sandbox: shell image"]
+  end
+  DB[("Neon PostgreSQL")]
+  OBJ[("Object storage")]
+  DAY["Daytona"]
+  LLM["LLM providers"]
+  WEB --> PC
+  WEB --> UC
+  API --> UC
+  ENG --> UC
+  WEB -- "tRPC over HTTPS" --> API
+  API -- "HTTP + bearer token" --> ENG
+  API -- "Drizzle ORM" --> DB
+  API --> OBJ
+  API -- "SDK" --> DAY
+  DAY --- SBI
+  API --> LLM
+  ENG --> LLM
