@@ -1,4 +1,4 @@
-# LearnQuest: learn to code from real code changes
+# LearnSlop: learn to code from real code changes
 
 Status: pivoted on 2026-11-06 from a children's tutoring idea to a programming learning tool. The earlier YC "Primer" framing is dropped. The research below is kept because the design decisions depend on it.
 
@@ -8,7 +8,7 @@ Most programming tutorials are passive. A learner watches someone write code, or
 
 ## The product
 
-LearnQuest turns a real code change into an adaptive lesson. The learner predicts what a change does before the answer is shown. The lesson then mixes modalities, chosen per concept and per learner:
+LearnSlop turns a real code change into an adaptive lesson. The learner predicts what a change does before the answer is shown. The lesson then mixes modalities, chosen per concept and per learner:
 
 - **Code replay:** an ordered commit or PR is replayed step by step in an editor. The learner can pause and edit at any point.
 - **Diagrams:** a picture of how the code runs (call flow, state, data shape).

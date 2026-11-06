@@ -4,7 +4,7 @@ Instructions for AI coding agents working in this repo. `CLAUDE.md` imports this
 
 ## What we are building
 
-LearnQuest is an interactive **programming learning tool**. A learner picks a programming concept or a real code change and the engine turns it into a short, adaptive lesson that mixes modalities:
+LearnSlop is an interactive **programming learning tool**. A learner picks a programming concept or a real code change and the engine turns it into a short, adaptive lesson that mixes modalities:
 
 - **Diagrams**: flow, call stack, memory and data-structure pictures that explain how code runs.
 - **Code replay**: a commit or snippet is replayed step by step, with the learner predicting each outcome first.
