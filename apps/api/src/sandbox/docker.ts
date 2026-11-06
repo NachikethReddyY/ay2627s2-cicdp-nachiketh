@@ -67,6 +67,9 @@ const HOME = "/home/learner";
 const LEARNER_UID = "1001";
 const PIPE_MAX_BYTES = 64 * 1024;
 const PIPE_TIMEOUT_MS = 10_000;
+// Exit code the listing script uses for "not a directory", distinct from the docker exec codes (125 to 127).
+const NOT_A_DIR = 3;
+const LIST_SCRIPT = `test -d "$1" && ! test -L "$1" || exit ${NOT_A_DIR}; exec find -P "$1" -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%f\\0'`;
 
 export function containerName(learnerId: string): string {
   return `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
@@ -96,12 +99,14 @@ export function dockerBackend(opts: {
   exec?: Exec;
   spawn?: Spawn;
   spawnChild?: SpawnChild;
+  timeoutMs?: number;
   maxContainers?: () => number;
 }): SandboxBackend {
   const idleMs = opts.idleMs ?? IDLE_MS;
   const exec = opts.exec ?? run;
   const spawn = opts.spawn ?? pty.spawn;
   const spawnChild = opts.spawnChild ?? spawnProcess;
+  const timeoutMs = opts.timeoutMs ?? PIPE_TIMEOUT_MS;
   const maxContainers = opts.maxContainers ?? (() => env.SANDBOX_MAX_SHELLS);
   // Containers that are running or being started. A closed terminal leaves its container up until the idle stop,
   // so the server-wide cap counts these, not open sockets.
@@ -163,20 +168,25 @@ export function dockerBackend(opts: {
       let bytes = 0;
       let capped = false;
       let done = false;
+      let timedOut = false;
       const finish = (code: number | null) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        if (timedOut) return reject(new Error("sandbox command timed out"));
         resolve({ code, stdout: Buffer.concat(chunks).toString("utf8"), capped });
       };
-      const timer = setTimeout(() => child.kill(), PIPE_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, timeoutMs);
       timer.unref();
       child.stdout!.on("data", (d: Buffer) => {
         if (capped) return;
         const room = PIPE_MAX_BYTES - bytes;
         chunks.push(d.length > room ? d.subarray(0, room) : d);
         bytes += Math.min(d.length, room);
-        if (d.length >= room) {
+        if (d.length > room) {
           capped = true;
           child.kill();
           finish(null);
@@ -194,22 +204,29 @@ export function dockerBackend(opts: {
     });
   }
 
+  // A non-zero exit is an error, never "missing". A docker-level code right after the idle stop means the shell is gone.
+  async function failed(name: string, what: string, code: number | null): Promise<Error> {
+    if ((code === 125 || code === 126 || code === 127) && !(await isRunning(name))) return new SandboxNotRunningError();
+    return new Error(`${what} failed (exit ${code})`);
+  }
+
   return {
     async writeFile(learnerId, fileName, content) {
       const name = containerName(learnerId);
       if (!(await isRunning(name))) throw new SandboxNotRunningError();
       const r = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'cat > "$1"', "sh", `${HOME}/${fileName}`], content);
-      if (r.code !== 0) throw new Error(`writing ${fileName} failed (exit ${r.code})`);
+      if (r.code !== 0) throw await failed(name, `writing ${fileName}`, r.code);
     },
 
     async listDir(learnerId, relDir) {
       const name = containerName(learnerId);
       if (!(await isRunning(name))) throw new SandboxNotRunningError();
       const dir = relDir ? `${HOME}/${relDir}` : HOME;
-      const r = await pipe(["exec", "-u", LEARNER_UID, name, "find", "-P", dir, "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\\t%s\\t%f\\0"]);
-      if (r.code !== 0 && !r.capped && r.stdout === "") return null;
-      const listing = parseFindOutput(r.stdout, LIST_MAX_ENTRIES);
-      return r.capped ? { ...listing, truncated: true } : listing;
+      const r = await pipe(["exec", "-u", LEARNER_UID, name, "sh", "-c", LIST_SCRIPT, "sh", dir]);
+      if (r.capped) return { ...parseFindOutput(r.stdout, LIST_MAX_ENTRIES), truncated: true };
+      if (r.code === NOT_A_DIR) return null;
+      if (r.code !== 0) throw await failed(name, "listing", r.code);
+      return parseFindOutput(r.stdout, LIST_MAX_ENTRIES);
     },
 
     async openShell(learnerId, { cols, rows }) {
