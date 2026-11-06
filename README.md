@@ -1,5 +1,7 @@
 # LearnQuest
-LearnQuest turns a real code change into an adaptive lesson: the learner predicts the outcome before being told, and the system models what they understand and adapts the next step. This monorepo holds the Fastify + tRPC API (`apps/api`), the React/Vite web app (`apps/web`), the Python LLM engine (`services/engine`), and the shared `packages/player-core` and `packages/ui-catalog` packages. The product plan is in `docs/plan.md`.
+LearnQuest is an interactive tool for learning to program. Pick a concept or a real code change and it builds a short, adaptive lesson with diagrams, code replays, quizzes, games and practice. Learners predict the outcome before they see it, and the engine adapts the next step to what they understand. The target learners are beginner and early-career developers, starting with JavaScript and TypeScript.
+
+The monorepo holds the Fastify + tRPC API (`apps/api`), the React/Vite web app (`apps/web`), the Python LLM engine (`services/engine`), the sandbox (`services/sandbox`), and the shared `packages/player-core` and `packages/ui-catalog` packages. The product direction is in [AGENTS.md](AGENTS.md). The detailed plan is in `docs/plan.md`.
 
 ## Local development
 
@@ -20,7 +22,7 @@ pnpm dev
 TEST_DATABASE_URL=postgres://learnquest:learnquest@localhost:5432/learnquest_test pnpm exec turbo run lint test build
 ```
 
-## AI path builder (inference engine)
+## Lesson engine (inference engine)
 
 The "Learn anything" builder calls the Python engine in `services/engine`, which talks to any OpenAI-compatible model. Set `LLM_MODEL`, `LLM_API_BASE` and `LLM_API_KEY` in `services/engine/.env`, then:
 
