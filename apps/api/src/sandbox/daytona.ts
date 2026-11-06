@@ -103,11 +103,14 @@ export function daytonaBackend(opts: {
 
   /** The learner's running shell sandbox. Never creates or starts one: a missing or non-started sandbox is "no shell". */
   async function findShell(learnerId: string): Promise<DaytonaSandbox> {
-    for await (const s of client.list({ labels: shellLabels(learnerId) })) {
-      if (s.state !== "started") throw new SandboxNotRunningError();
-      return s;
+    const it = client.list({ labels: shellLabels(learnerId) });
+    try {
+      const first = await it.next();
+      if (first.done || first.value.state !== "started") throw new SandboxNotRunningError();
+      return first.value;
+    } finally {
+      await it.return?.(); // only the first match matters; release the iterator
     }
-    throw new SandboxNotRunningError();
   }
 
   // Home directory per sandbox id: it does not change for a sandbox's life.
