@@ -86,9 +86,9 @@ test("nothing connects until connect() is called", () => {
 test("send is dropped unless the socket is open", () => {
   reset();
   const s = make();
-  s.send("x");
+  assert.equal(s.send("x"), false);
   s.connect(80, 24);
-  s.send("y");
+  assert.equal(s.send("y"), false);
   assert.deepEqual(FakeWS.last.sent, []);
   s.dispose();
 });

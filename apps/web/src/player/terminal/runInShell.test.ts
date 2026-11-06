@@ -12,7 +12,7 @@ const harness = (over: Partial<Parameters<typeof runInShell>[0]> = {}) => {
     panel: { open: () => void log.push("open") },
     socket: {
       whenReady: async (ms: number) => void log.push(`ready:${ms}`),
-      send: (d: string) => void log.push(`send:${JSON.stringify(d)}`),
+      send: (d: string) => (log.push(`send:${JSON.stringify(d)}`), true),
     },
     putFile: async (n: string, c: string) => void log.push(`put:${n}:${c}`),
     refreshTree: () => void log.push("tree"),
@@ -67,11 +67,33 @@ test("a sandbox that is not ready in 15 s, or is off, types nothing and writes n
         whenReady: async () => {
           throw new ShellNotReadyError(why);
         },
-        send: () => void log.push("send"),
+        send: () => (log.push("send"), true),
       },
     });
     await assert.rejects(runInShell(o), (e: RunInShellError) => e.kind === kind);
     assert.ok(!log.some((l) => l.startsWith("put:") || l === "send"));
+  }
+});
+
+test("a socket that drops during the PUT or the pause fails the Run and types nothing more", async () => {
+  for (const dropAt of ["put", "pause"] as const) {
+    let open = true;
+    const { o, log } = harness({
+      putFile: async () => {
+        if (dropAt === "put") open = false;
+      },
+      sleep: async () => {
+        if (dropAt === "pause") open = false;
+      },
+    });
+    o.socket.send = (d: string) => {
+      if (!open) return false;
+      log.push(`send:${JSON.stringify(d)}`);
+      return true;
+    };
+    await assert.rejects(runInShell(o), (e: RunInShellError) => e.kind === "unavailable");
+    assert.ok(!log.includes('send:"cd ~ && python3 solution.py\\r"'));
+    assert.ok(!log.includes("tree"));
   }
 });
 

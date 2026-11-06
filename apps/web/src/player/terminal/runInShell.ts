@@ -20,6 +20,8 @@ export class RunInShellError extends Error {
   }
 }
 
+const lostShell = () => new RunInShellError("unavailable", "The shell disconnected, press Run again");
+
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -63,8 +65,9 @@ export async function runInShell(o: {
     throw new RunInShellError("copy", `Could not copy your code to the sandbox: ${message}`);
   }
 
-  o.socket.send(CTRL_C);
+  // send() reports false when the socket is no longer open; the drop may have happened during the PUT or the pause.
+  if (!o.socket.send(CTRL_C)) throw lostShell();
   await (o.sleep ?? defaultSleep)(SETTLE_MS);
-  o.socket.send(command);
+  if (!o.socket.send(command)) throw lostShell();
   o.refreshTree();
 }
