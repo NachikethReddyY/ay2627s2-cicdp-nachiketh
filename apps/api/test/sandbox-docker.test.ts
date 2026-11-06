@@ -122,12 +122,19 @@ test("docker-level and find failures throw instead of reading as missing", async
 });
 
 test("a docker-level failure after the container stopped is SandboxNotRunningError", async () => {
-  child.next({ code: 125 });
+  child.next({ code: 1 }); // real docker exec on a stopped container exits 1
   const p = b.listDir!("learner-a", "proj");
   inspectState = "false"; // the idle stop lands after the first check, before the exec result
   await assert.rejects(p, SandboxNotRunningError);
-  child.next({ code: 126 });
+  child.next({ code: 125 });
+  await assert.rejects(b.listDir!("learner-a", "proj"), SandboxNotRunningError);
+  child.next({ code: 1 });
   await assert.rejects(b.writeFile!("learner-a", "solution.py", "x"), SandboxNotRunningError);
+});
+
+test("a non-zero exit while the container is still running is a generic error", async () => {
+  child.next({ code: 1 });
+  await assert.rejects(b.writeFile!("learner-a", "solution.py", "x"), (e) => !(e instanceof SandboxNotRunningError) && /exit 1/.test((e as Error).message));
 });
 
 test("writeFile rejects on a non-zero exit", async () => {

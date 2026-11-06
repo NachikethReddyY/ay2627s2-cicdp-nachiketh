@@ -204,9 +204,10 @@ export function dockerBackend(opts: {
     });
   }
 
-  // A non-zero exit is an error, never "missing". A docker-level code right after the idle stop means the shell is gone.
+  // A non-zero exit is an error, never "missing". If the container stopped meanwhile (docker exec then exits 1 or 125),
+  // the shell is gone rather than the command broken.
   async function failed(name: string, what: string, code: number | null): Promise<Error> {
-    if ((code === 125 || code === 126 || code === 127) && !(await isRunning(name))) return new SandboxNotRunningError();
+    if (!(await isRunning(name))) return new SandboxNotRunningError();
     return new Error(`${what} failed (exit ${code})`);
   }
 
