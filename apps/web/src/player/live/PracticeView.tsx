@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { buildTimeline } from "@learnquest/player-core";
 import EditorPane from "../EditorPane";
+import { createShellSocket } from "../terminal/shellSocket";
+import TerminalPanel from "../terminal/TerminalPanel";
+import { isToggleKey, usePanel } from "../terminal/usePanel";
 import { checkPassed, pollPython, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
@@ -22,6 +25,22 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const checking = useRef(false);
   const runRef = useRef<HTMLButtonElement>(null);
   const timeline = useMemo(() => buildTimeline([{ beforeFiles: {}, hunks: [] }]), []);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const shell = useMemo(() => createShellSocket(), []);
+  useEffect(() => () => shell.dispose(), [shell]);
+  const panel = usePanel(bodyRef);
+  const { dispatch: panelDispatch } = panel;
+  const [treeKey, setTreeKey] = useState(0);
+  // Capture phase, so Ctrl+` toggles the panel even while the editor or the terminal has focus.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isToggleKey(e)) return;
+      e.preventDefault();
+      panelDispatch({ type: "toggle" });
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [panelDispatch]);
   const python = part.language === "python";
   const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
   // The server judges a Check run and records the completion; the player only shows its verdict.
@@ -110,8 +129,9 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   };
   const file = python ? "solution.py" : "solution.js";
   const body = (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
       <EditorPane transportRef={runRef} edit={{ value: code, language: part.language ?? "javascript", onChange: setCode }} />
+      <TerminalPanel shell={shell} panel={panel} badge={null} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />
       <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-32 flex-none flex-col border-t-[3px] border-ink bg-ink font-mono text-white">
         <div className="flex flex-none items-center gap-2 border-b-2 border-white/20 px-3 py-1">
           <h3 id="out-h" className="text-sm font-extrabold">Terminal</h3>
@@ -153,6 +173,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         panel: <p className="whitespace-pre-wrap font-semibold">{part.instructions}</p>,
         footer: (
           <>
+            <button type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
             <button type="button" disabled={starting || sid !== null} onClick={() => run(true)} className={`btn check ${FOCUS}`}>Check</button>
             {next}
           </>
