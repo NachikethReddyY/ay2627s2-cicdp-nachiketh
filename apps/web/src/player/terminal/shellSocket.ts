@@ -18,9 +18,33 @@ export function backoffMs(attempt: number): number {
   return BACKOFF_MS[Math.min(Math.max(attempt, 0), BACKOFF_MS.length - 1)];
 }
 
-export function shellUrl(loc: { protocol: string; host: string }, cols: number, rows: number): string {
+export function shellUrl(
+  loc: { protocol: string; host: string },
+  cols: number,
+  rows: number,
+  opts?: { wsOrigin?: string; ticket?: string },
+): string {
+  if (opts?.wsOrigin && opts.ticket) {
+    return `${opts.wsOrigin}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}`;
+  }
   const scheme = loc.protocol === "https:" ? "wss:" : "ws:";
   return `${scheme}//${loc.host}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}`;
+}
+
+/** Absolute ws(s) origin of the API host (VITE_SHELL_WS_ORIGIN); undefined means same-origin (dev proxy). */
+export function defaultWsOrigin(): string | undefined {
+  const v = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SHELL_WS_ORIGIN;
+  return v ? v : undefined;
+}
+
+/** POST /api/sandbox/shell-ticket. Throws an error carrying `status` on a non-2xx answer. Never logs the ticket. */
+async function defaultFetchTicket(): Promise<string> {
+  const res = await fetch("/api/sandbox/shell-ticket", { method: "POST", credentials: "include" });
+  if (!res.ok) throw Object.assign(new Error(`Shell ticket failed (${res.status})`), { status: res.status });
+  const body: unknown = await res.json();
+  const ticket = (body as { ticket?: unknown } | null)?.ticket;
+  if (typeof ticket !== "string" || !ticket) throw new Error("Shell ticket response had no ticket");
+  return ticket;
 }
 
 export class ShellNotReadyError extends Error {
@@ -60,6 +84,9 @@ interface Deps {
   WebSocket: new (url: string) => WebSocket;
   location: { protocol: string; host: string };
   probe: () => Promise<number>;
+  /** Origin to connect to directly with a ticket; unset or empty keeps the same-origin behaviour. */
+  wsOrigin: string;
+  fetchTicket: () => Promise<string>;
 }
 
 interface Pending {
@@ -72,6 +99,8 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   const WS = deps.WebSocket ?? globalThis.WebSocket;
   const probe =
     deps.probe ?? (() => fetch("/api/sandbox/files", { credentials: "include" }).then((r) => r.status));
+  const fetchTicket = deps.fetchTicket ?? defaultFetchTicket;
+  const wsOrigin = "wsOrigin" in deps ? deps.wsOrigin : defaultWsOrigin();
   const encoder = new TextEncoder();
 
   let state: ShellState = { kind: "idle" };
@@ -162,7 +191,27 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     ready = false;
     lastError = "";
     setState({ kind: "connecting" });
-    const socket = new WS(shellUrl(deps.location ?? globalThis.location, size.cols, size.rows));
+    if (!wsOrigin) return connectSocket(gen);
+    // Tickets are single-use and short-lived, so every attempt fetches its own.
+    fetchTicket().then(
+      (ticket) => {
+        if (gen !== generation || disposed) return;
+        connectSocket(gen, ticket);
+      },
+      (err: unknown) => {
+        if (gen !== generation || disposed) return;
+        const status = (err as { status?: unknown } | null)?.status;
+        if (status === 503) return closed("disabled", "The sandbox is disabled");
+        if (status === 401) return closed("signed_out", "Sign in to use the terminal");
+        scheduleRetry();
+      },
+    );
+  };
+
+  const connectSocket = (gen: number, ticket?: string) => {
+    const socket = new WS(
+      shellUrl(deps.location ?? globalThis.location, size.cols, size.rows, ticket ? { wsOrigin, ticket } : undefined),
+    );
     ws = socket;
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {

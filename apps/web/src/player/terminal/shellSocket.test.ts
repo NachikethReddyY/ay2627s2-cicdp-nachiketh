@@ -340,3 +340,162 @@ test("output and state listeners, and dispose", async (t) => {
   s2.dispose();
   await assert.rejects(pending, ShellNotReadyError);
 });
+
+// ---- direct connection with a single-use ticket (production: browser -> API host) ----
+
+const ORIGIN = "wss://learnquest-api.onrender.com";
+const makeTicket = (fetchTicket: () => Promise<string>, wsOrigin: string | undefined = ORIGIN) =>
+  createShellSocket({
+    WebSocket: FakeWS as unknown as new (url: string) => WebSocket,
+    location,
+    probe: async () => 404,
+    wsOrigin,
+    fetchTicket,
+  });
+const statusErr = (status: number) => Object.assign(new Error(`HTTP ${status}`), { name: "ApiError", status });
+
+test("shellUrl with a wsOrigin and ticket targets the API host and encodes the ticket", () => {
+  assert.equal(
+    shellUrl(location, 100, 30, { wsOrigin: ORIGIN, ticket: "a b/c+d" }),
+    `${ORIGIN}/api/sandbox/shell?tab=practice&cols=100&rows=30&ticket=a%20b%2Fc%2Bd`,
+  );
+  assert.equal(shellUrl(location, 80, 24, {}), shellUrl(location, 80, 24));
+  assert.equal(shellUrl(location, 80, 24, { wsOrigin: ORIGIN }), shellUrl(location, 80, 24));
+});
+
+test("with a wsOrigin the ticket is fetched once and the socket opens against the API host", async () => {
+  reset();
+  let calls = 0;
+  const s = makeTicket(async () => {
+    calls++;
+    return "tk";
+  });
+  s.connect(80, 24);
+  assert.equal(s.state().kind, "connecting");
+  assert.equal(FakeWS.count, 0, "no socket before the ticket arrives");
+  await flush();
+  assert.equal(calls, 1);
+  assert.equal(FakeWS.count, 1);
+  assert.ok(FakeWS.last.url.startsWith(`${ORIGIN}/api/sandbox/shell?`));
+  assert.ok(FakeWS.last.url.includes("ticket=tk"));
+  FakeWS.last.open();
+  assert.equal(s.state().kind, "open");
+  s.dispose();
+});
+
+test("every reconnect fetches a fresh ticket", async (t) => {
+  reset();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let n = 0;
+  const s = makeTicket(async () => `tk${++n}`);
+  s.connect(80, 24);
+  await flush();
+  FakeWS.last.open();
+  FakeWS.last.msg(bytes("$ "));
+  FakeWS.last.drop(1006);
+  t.mock.timers.tick(1000);
+  await flush();
+  assert.equal(n, 2);
+  assert.equal(FakeWS.count, 2);
+  assert.ok(FakeWS.last.url.includes("ticket=tk2"));
+  assert.ok(!FakeWS.last.url.includes("ticket=tk1"));
+  s.dispose();
+});
+
+test("ticket failures: 503 disabled, 401 signed out, anything else retries with backoff", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const [status, reason] of [
+    [503, "disabled"],
+    [401, "signed_out"],
+  ] as const) {
+    reset();
+    let calls = 0;
+    const s = makeTicket(async () => {
+      calls++;
+      throw statusErr(status);
+    });
+    s.connect(80, 24);
+    await flush();
+    const st = s.state() as { kind: string; reason: string };
+    assert.equal(st.kind, "closed");
+    assert.equal(st.reason, reason);
+    t.mock.timers.tick(60_000);
+    await flush();
+    assert.equal(FakeWS.count, 0);
+    assert.equal(calls, 1, "no retry");
+    s.dispose();
+  }
+  for (const err of [new Error("offline"), statusErr(429)]) {
+    reset();
+    let calls = 0;
+    const s = makeTicket(async () => {
+      calls++;
+      if (calls === 1) throw err;
+      return "tk";
+    });
+    s.connect(80, 24);
+    await flush();
+    const st = s.state() as { kind: string; inMs: number };
+    assert.equal(st.kind, "reconnecting");
+    assert.equal(st.inMs, 1000);
+    assert.equal(FakeWS.count, 0);
+    t.mock.timers.tick(1000);
+    await flush();
+    assert.equal(calls, 2);
+    assert.equal(FakeWS.count, 1);
+    s.dispose();
+  }
+});
+
+test("dispose while the ticket is pending never constructs a socket", async () => {
+  reset();
+  let release: (v: string) => void = () => {};
+  const s = makeTicket(() => new Promise<string>((r) => (release = r)));
+  s.connect(80, 24);
+  s.dispose();
+  release("tk");
+  await flush();
+  assert.equal(FakeWS.count, 0);
+});
+
+test("a stale ticket result (superseded open) is dropped", async () => {
+  reset();
+  const releases: ((v: string) => void)[] = [];
+  const s = makeTicket(() => new Promise<string>((r) => releases.push(r)));
+  s.connect(80, 24);
+  s.setActive(false);
+  s.setActive(true); // state is connecting, not paused: no new open
+  releases[0]("tk");
+  await flush();
+  assert.equal(FakeWS.count, 1);
+  s.dispose();
+});
+
+test("without a wsOrigin the ticket is never fetched", async () => {
+  reset();
+  let calls = 0;
+  const s = makeTicket(async () => {
+    calls++;
+    return "tk";
+  }, "");
+  s.connect(80, 24);
+  assert.equal(FakeWS.count, 1, "synchronous same-origin connect");
+  assert.equal(FakeWS.last.url, "ws://localhost:5173/api/sandbox/shell?tab=practice&cols=80&rows=24");
+  await flush();
+  assert.equal(calls, 0);
+  const e = createShellSocket({
+    WebSocket: FakeWS as unknown as new (url: string) => WebSocket,
+    location,
+    probe: async () => 404,
+    wsOrigin: undefined,
+    fetchTicket: async () => {
+      calls++;
+      return "tk";
+    },
+  });
+  e.connect(80, 24);
+  assert.equal(FakeWS.count, 2, "an undefined origin is also same-origin");
+  assert.equal(calls, 0);
+  s.dispose();
+  e.dispose();
+});

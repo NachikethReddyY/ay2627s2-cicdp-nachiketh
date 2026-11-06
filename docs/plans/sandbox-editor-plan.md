@@ -11,7 +11,7 @@ Status: phases 1 and 2 are built (sandbox service, shell WebSocket and terminal 
 - **Lesson content:** each lesson has its own `instructions.txt`, which is plain text shown in the instructions window.
 - **Checks run in the container.** A lesson's check runs its command and compares output or rules. When the check passes, the step is approved automatically.
 
-Caveat: production WebSockets are blocked by the Vercel rewrite, so Run falls back to the one-shot path there until the proxy is fixed.
+Production WebSockets: Vercel rewrites cannot proxy them, so in production the browser connects straight to the API host. The web app sets `VITE_SHELL_WS_ORIGIN` (for example `wss://learnquest-api.onrender.com`); the client first calls `POST /api/sandbox/shell-ticket` (session cookie, returns a single-use ticket valid for 30 s), then opens `GET /api/sandbox/shell?ticket=...`. A fresh ticket is fetched for every connection attempt, and the CSP `connect-src` allows the `wss:` origin. Unset, the client uses the same-origin socket (dev proxy) with no ticket.
 
 ## Look and feel
 
