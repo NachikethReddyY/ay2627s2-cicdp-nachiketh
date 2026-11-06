@@ -34,3 +34,5 @@ All third-party actions are pinned to SHAs.
 ## Local pre-push check
 
 Run `pnpm exec turbo run lint test build` with `TEST_DATABASE_URL` pointing at a throwaway Postgres whose database name ends `_test`. See the `test-locally-before-push` memory for the exact container command.
+
+Turbo covers only the pnpm workspaces. The `engine` job is separate, so when `services/engine` changes also run, from that directory: `uv sync --frozen`, `uv run ruff check learnquest_engine tests scripts`, `uv run mypy --strict learnquest_engine`, `uv run pytest`.

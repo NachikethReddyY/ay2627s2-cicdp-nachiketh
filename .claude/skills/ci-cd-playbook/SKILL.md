@@ -25,7 +25,7 @@ The older `cicd-best-practices` skill follows the aspirational design in `docs/p
 ## 1. Keep `main` green and releasable (CRITICAL)
 
 - Small PRs, merged often. A red `main` or red PR is fixed before new work. The size labeler tags every PR and warns from the XL tier (500+ changed lines, lockfiles excluded); aim for under ~300.
-- Run the same commands locally that CI runs, before every push: `pnpm exec turbo run lint test build` with API tests on a real Postgres (see the `test-locally-before-push` memory for the container setup). Never push a DB test you only typechecked.
+- Run the same commands locally that CI runs, before every push: `pnpm exec turbo run lint test build` with API tests on a real Postgres (see the `test-locally-before-push` memory for the container setup). Turbo does not cover the Python engine: if `services/engine` changed, also run `uv sync --frozen`, `uv run ruff check learnquest_engine tests scripts`, `uv run mypy --strict learnquest_engine` and `uv run pytest` there. Never push a DB test you only typechecked.
 - Never bypass the pipeline for an "urgent" or tiny change. The `main` ruleset requires checks `check` and `engine`, a strict (up-to-date) branch, linear history and squash or rebase merges. Do not weaken it to get a change through.
 - Renaming or removing a job changes a required check name. Update `.github/rulesets/main.json` and the live ruleset in the same change, or merges block.
 - Unfinished work stays behind a flag or off the user path. Do not merge a half feature that breaks `main`.
@@ -91,5 +91,5 @@ The older `cicd-best-practices` skill follows the aspirational design in `docs/p
 - [ ] `concurrency` and `timeout-minutes` set
 - [ ] Required check names still match `.github/rulesets/main.json`
 - [ ] Ran green on a PR and the expected jobs appear
-- [ ] Same commands pass locally (`pnpm exec turbo run lint test build`)
+- [ ] Same commands pass locally (`pnpm exec turbo run lint test build`, plus the engine's ruff, mypy and pytest if `services/engine` changed)
 - [ ] Rollback and smoke steps still work for any deploy-related change
