@@ -27,6 +27,10 @@ export const pollPython = (id: string, from: number) => call<PyPoll>(`/api/sandb
 export const sendPythonLine = (id: string, line: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}/input`, { method: "POST", body: JSON.stringify({ line }) });
 export const stopPython = (id: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}`, { method: "DELETE" });
 
+/** Writes the learner's editor file into their sandbox home (PUT /api/sandbox/files/:name). */
+export const putFile = (name: "solution.py" | "solution.js", content: string) =>
+  call<unknown>(`/api/sandbox/files/${name}`, { method: "PUT", body: JSON.stringify({ content }) }).then(() => undefined);
+
 export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; size: number };
 /** One directory level of the learner's sandbox home (or of `dir`, relative to it). */
 export const listFiles = (dir?: string) =>
