@@ -13,6 +13,8 @@ Status: phases 1 and 2 are built (sandbox service, shell WebSocket and terminal 
 
 Production WebSockets: Vercel rewrites cannot proxy them, so in production the browser connects straight to the API host. The web app sets `VITE_SHELL_WS_ORIGIN` (for example `wss://learnquest-api.onrender.com`); the client first calls `POST /api/sandbox/shell-ticket` (session cookie, returns a single-use ticket valid for 30 s), then opens `GET /api/sandbox/shell?ticket=...`. A fresh ticket is fetched for every connection attempt, and the CSP `connect-src` allows the `wss:` origin. This variable is baked in at build time, so set it in the Vercel build environment and redeploy; the API's WebSocket Origin check requires `PUBLIC_ORIGIN` to equal the Vercel web origin. Unset, the client uses the same-origin socket (dev proxy) with no ticket.
 
+Deploy notes for ticket auth: tickets live in an in-process map, so Render must run a single API instance (or tickets need a shared store). `PUBLIC_ORIGIN` is a single value, so preview deploys on a different origin get 403 from the Origin check. Render access logs record the request URL including the ticket query; a ticket is single use with a 30 s TTL, so a logged value is already dead.
+
 ## Look and feel
 
 - A macOS-style desktop: a menu bar at the top, file icons on the desktop, windows with traffic-light title bars, and a dock.
