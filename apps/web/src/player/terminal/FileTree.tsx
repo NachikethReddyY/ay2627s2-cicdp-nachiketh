@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, listFiles, type DirEntry } from "../runPython";
 import { FOCUS } from "../ui";
+import { toggleExpanded } from "./expanded";
 
 type FileTreeProps = { refreshKey: number };
 type Listing = { entries: DirEntry[]; truncated: boolean };
@@ -11,7 +12,7 @@ const errText = (e: unknown) => (e instanceof ApiError && e.status === 409 ? "Op
 function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; depth: number }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
 
   const seq = useRef(0);
   const load = useCallback(() => {
@@ -48,18 +49,18 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
             {isDir ? (
               <button
                 type="button"
-                aria-expanded={!!open[en.name]}
-                onClick={() => setOpen((o) => ({ ...o, [en.name]: !o[en.name] }))}
+                aria-expanded={open.has(en.name)}
+                onClick={() => setOpen((o) => toggleExpanded(o, en.name))}
                 style={pad}
                 className={`flex w-full items-center gap-1 py-0.5 text-left text-xs hover:bg-white/10 ${FOCUS}`}
               >
-                <span aria-hidden="true">{open[en.name] ? "▾" : "▸"}</span>
+                <span aria-hidden="true">{open.has(en.name) ? "▾" : "▸"}</span>
                 {en.name}
               </button>
             ) : (
               <div style={pad} className="py-0.5 pl-3 text-xs opacity-80">{en.name}{en.type === "link" ? " →" : ""}</div>
             )}
-            {isDir && open[en.name] && <Dir path={p} refreshKey={refreshKey} depth={depth + 1} />}
+            {isDir && open.has(en.name) && <Dir path={p} refreshKey={refreshKey} depth={depth + 1} />}
           </li>
         );
       })}
