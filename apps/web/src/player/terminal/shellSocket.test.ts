@@ -8,6 +8,12 @@ const flush = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
+// A real Response body parse (res.json()) finishes on a later macrotask than a few microtask turns, so wait on
+// real setImmediate (never the mocked setTimeout) until `done` holds, with a bounded number of turns.
+const settleUntil = async (done: () => boolean) => {
+  for (let i = 0; i < 200 && !done(); i++) await new Promise<void>((r) => setImmediate(r));
+};
+
 class FakeWS {
   static all: FakeWS[] = [];
   static get last() {
@@ -466,7 +472,7 @@ test("the default ticket fetch keeps the server error code; a 503 with a bad bod
         wsOrigin: ORIGIN,
       });
       s.connect(80, 24);
-      await flush();
+      await settleUntil(() => s.state().kind !== "connecting");
       const st = s.state() as { kind: string; inMs?: number };
       assert.equal(st.kind, expectClosed ? "closed" : "reconnecting");
       if (!expectClosed) assert.equal(st.inMs, 1000);
