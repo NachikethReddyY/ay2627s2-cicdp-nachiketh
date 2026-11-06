@@ -30,3 +30,12 @@ Then check from a shell container: `curl -m 3 http://169.254.169.254/` must time
 ## Stronger isolation
 
 Set `SANDBOX_RUNTIME=runsc` to run shell containers under [gVisor](https://gvisor.dev) once it is installed and registered with Docker. Containers are recreated on the next connect after an idle stop, so a changed runtime or network applies without manual cleanup.
+
+## File endpoint
+
+`PUT /api/sandbox/files/:name` writes one file into the learner's sandbox home, and `GET /api/sandbox/files?dir=<rel>` lists a folder there. Only `solution.py` and `solution.js` can be written, with content up to 16 KiB. A listing returns at most 200 entries and sets `truncated` when there are more. `dir` is up to four plain segments, with no `.` or `..`.
+
+- The endpoints never create or start a sandbox. Without an open shell they answer `409 no_shell`, so the editor opens the terminal first.
+- `501 not_implemented` means the active backend has no file support.
+- Docker writes and lists as uid 1001 (the `learner` user), so the files belong to the shell user. On Daytona the home is the sandbox user's home (`/home/learner` if the SDK reports none).
+- A missing or non-directory folder answers 404.

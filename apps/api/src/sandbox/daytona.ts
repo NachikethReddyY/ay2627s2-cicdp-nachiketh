@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { env } from "../env.ts";
-import { SandboxBusyError, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
+import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
 
 // Narrow views of @daytonaio/sdk, so tests pass a fake and nothing here depends on SDK internals.
 export interface DaytonaPty {
@@ -26,7 +26,11 @@ export interface DaytonaSandbox {
     getSessionCommand(session: string, cmd: string): Promise<{ exitCode?: number }>;
     sendSessionCommandInput(session: string, cmd: string, data: string): Promise<void>;
   };
-  fs: { uploadFile(file: Buffer, remotePath: string): Promise<void> };
+  getUserHomeDir(): Promise<string | undefined>;
+  fs: {
+    uploadFile(file: Buffer, remotePath: string): Promise<void>;
+    listFiles(path: string): Promise<Array<{ name: string; isDir: boolean; size: number; mode: string }>>;
+  };
 }
 export interface DaytonaClient {
   create(params: Record<string, unknown>, options?: { timeout?: number }): Promise<DaytonaSandbox>;
@@ -89,6 +93,27 @@ export function daytonaBackend(opts: {
       await sbx.start();
     }
     return sbx;
+  }
+
+  /** The learner's running shell sandbox. Never creates or starts one: a missing or non-started sandbox is "no shell". */
+  async function findShell(learnerId: string): Promise<DaytonaSandbox> {
+    const labels = { ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) };
+    for await (const s of client.list({ labels })) {
+      if (s.state !== "started") throw new SandboxNotRunningError();
+      return s;
+    }
+    throw new SandboxNotRunningError();
+  }
+
+  // Home directory per sandbox id: it does not change for a sandbox's life.
+  const homes = new Map<string, string>();
+  async function homeOf(sbx: DaytonaSandbox): Promise<string> {
+    let h = homes.get(sbx.id);
+    if (!h) {
+      h = (await sbx.getUserHomeDir()) ?? "/home/learner";
+      homes.set(sbx.id, h);
+    }
+    return h;
   }
 
   function shellSandbox(learnerId: string) {
@@ -157,6 +182,30 @@ export function daytonaBackend(opts: {
         release();
         throw err;
       }
+    },
+
+    async writeFile(learnerId, name, content) {
+      const sbx = await findShell(learnerId);
+      await sbx.fs.uploadFile(Buffer.from(content), `${await homeOf(sbx)}/${name}`);
+    },
+
+    async listDir(learnerId, relDir) {
+      const sbx = await findShell(learnerId);
+      const home = await homeOf(sbx);
+      let files;
+      try {
+        files = await sbx.fs.listFiles(relDir ? `${home}/${relDir}` : home);
+      } catch (err) {
+        // Only a missing folder is "not found"; anything else is a real failure. Duck-typed so the SDK is not imported.
+        if ((err as { statusCode?: number } | null)?.statusCode === 404) return null;
+        throw err;
+      }
+      const entries = files.slice(0, LIST_MAX_ENTRIES).map((f): DirEntry => ({
+        name: f.name,
+        type: f.mode.startsWith("L") ? "link" : f.isDir ? "dir" : "file",
+        size: f.size,
+      }));
+      return { entries, truncated: files.length > LIST_MAX_ENTRIES };
     },
 
     runCode(learnerId, language, code, limits: RunLimits): RunHandle {

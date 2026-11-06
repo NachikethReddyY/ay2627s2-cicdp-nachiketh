@@ -2,10 +2,10 @@ import "./helpers.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
-import { SandboxBusyError } from "../src/sandbox/backend.ts";
+import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
 
-function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string] } = {}) {
-  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error } = {}) {
+  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
   const mk = (extra: Partial<DaytonaSandbox> = {}): DaytonaSandbox => ({
@@ -37,7 +37,16 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
       getSessionCommand: async () => ({ exitCode: opts.exitCode ?? 0 }),
       sendSessionCommandInput: async (_s, _c, d) => void log.input.push(d),
     },
-    fs: { uploadFile: async (_f, p) => void log.uploaded.push(p) },
+    getUserHomeDir: async () => (log.homeCalls++, "home" in opts ? opts.home : "/home/daytona"),
+    fs: {
+      uploadFile: async (_f, p) => void log.uploaded.push(p),
+      listFiles: async (p) => {
+        log.listedPaths.push(p);
+        if (opts.listError) throw opts.listError;
+        if (opts.listStatus) throw Object.assign(new Error("status"), { statusCode: opts.listStatus });
+        return opts.files ?? [];
+      },
+    },
     ...extra,
   });
   const client: DaytonaClient = {
@@ -199,4 +208,47 @@ test("a failed sandbox delete is retried", async () => {
   const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
   await new Promise((res) => run.onExit(res));
   assert.equal(f.log.deleted, 1);
+});
+
+test("writeFile uploads to <home>/solution.py and never creates a sandbox", async () => {
+  const f = fake({ existing: [{ state: "started" }], home: "/home/daytona" });
+  const b = daytonaBackend({ client: f.client });
+  await b.writeFile!("learner-1", "solution.py", "print(1)");
+  await b.writeFile!("learner-1", "solution.js", "1");
+  assert.deepEqual(f.log.uploaded, ["/home/daytona/solution.py", "/home/daytona/solution.js"]);
+  assert.equal(f.log.created.length, 0);
+  assert.equal(f.log.homeCalls, 1, "home is cached per sandbox id");
+});
+
+test("no sandbox, or one that is not started, is SandboxNotRunningError and nothing is created or started", async () => {
+  for (const existing of [[], [{ state: "stopped" }], [{ state: "starting" }]]) {
+    const f = fake({ existing });
+    const b = daytonaBackend({ client: f.client });
+    await assert.rejects(b.writeFile!("learner-1", "solution.py", "x"), SandboxNotRunningError);
+    await assert.rejects(b.listDir!("learner-1", ""), SandboxNotRunningError);
+    assert.equal(f.log.created.length + f.log.started, 0);
+  }
+});
+
+test("listDir maps FileInfo, falls back to /home/learner, and returns null on 404", async () => {
+  const f = fake({ existing: [{ state: "started" }], home: undefined,
+    files: [{ name: "d", isDir: true, size: 0, mode: "drwxr-xr-x" }, { name: "a.py", isDir: false, size: 3, mode: "-rw-r--r--" },
+            { name: "l", isDir: false, size: 1, mode: "Lrwxrwxrwx" }] });
+  const b = daytonaBackend({ client: f.client });
+  assert.deepEqual((await b.listDir!("learner-1", "proj"))!.entries,
+    [{ name: "d", type: "dir", size: 0 }, { name: "a.py", type: "file", size: 3 }, { name: "l", type: "link", size: 1 }]);
+  assert.equal(f.log.listedPaths.at(-1), "/home/learner/proj");
+  const g = fake({ existing: [{ state: "started" }], listStatus: 404 });
+  assert.equal(await daytonaBackend({ client: g.client }).listDir!("learner-1", "gone"), null);
+});
+
+test("listDir caps at LIST_MAX_ENTRIES and flags truncation; other failures throw", async () => {
+  const many = Array.from({ length: LIST_MAX_ENTRIES + 5 }, (_, i) => ({ name: `f${i}`, isDir: false, size: 1, mode: "-rw-r--r--" }));
+  const f = fake({ existing: [{ state: "started" }], files: many });
+  const r = await daytonaBackend({ client: f.client }).listDir!("learner-1", "");
+  assert.equal(r!.entries.length, LIST_MAX_ENTRIES);
+  assert.equal(r!.truncated, true);
+  assert.equal(f.log.listedPaths.at(-1), "/home/daytona");
+  const g = fake({ existing: [{ state: "started" }], listStatus: 500 });
+  await assert.rejects(daytonaBackend({ client: g.client }).listDir!("learner-1", ""), /status/);
 });
