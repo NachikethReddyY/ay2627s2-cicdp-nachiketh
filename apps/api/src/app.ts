@@ -1,4 +1,4 @@
-import Fastify, { type FastifyError } from "fastify";
+import Fastify, { type FastifyError, type FastifyRequest } from "fastify";
 import helmet from "@fastify/helmet";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { createContext } from "./trpc/trpc.ts";
 import { sandboxRoutes } from "./sandbox/route.ts";
 import { sandboxRunRoute } from "./sandbox/run.ts";
 import { sandboxFilesRoute } from "./sandbox/files.ts";
+import { sandboxTicketRoute } from "./sandbox/ticket.ts";
 import { devRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
@@ -29,7 +30,19 @@ const REQ_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function buildApp(opts: { trustProxy?: string | false } = {}) {
   const app = Fastify({
-    logger: env.NODE_ENV === "test" ? false : { level: "info" },
+    logger: env.NODE_ENV === "test" ? false : {
+          level: "info",
+          serializers: {
+            // Same fields as Fastify's default, but the shell ticket in the query string must never reach the logs.
+            req: (req: FastifyRequest) => ({
+              method: req.method,
+              url: req.url?.replace(/([?&]ticket=)[^&]*/, "$1[redacted]"),
+              host: req.host,
+              remoteAddress: req.ip,
+              remotePort: req.socket?.remotePort,
+            }),
+          },
+        },
     genReqId: (req) => {
       const id = req.headers["x-request-id"];
       return typeof id === "string" && REQ_ID.test(id) ? id : randomUUID();
@@ -100,6 +113,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(sandboxRoutes);
       api.register(sandboxRunRoute);
       api.register(sandboxFilesRoute);
+      api.register(sandboxTicketRoute);
       api.register(devRoutes);
       api.get(
         "/healthz",
