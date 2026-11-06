@@ -162,6 +162,6 @@ playback: idle | playing | paused | editing
 
 **Core, Wk 5 (WP17):** mastery list and next-lesson card with reason on the finished screen.
 
-**Stretch (cut line §11.3), not in this plan:** sandbox fork with real files (9); embed (5); live TTS (8); quest map, XP, badges, review (7); KidsQuest (10); T3 `pending` grading state (12); free-chat tutor (not planned at all).
+**Stretch (cut line §11.3), not in this plan:** sandbox fork with real files (9); embed (5); live TTS (8); quest map, XP, badges, review (7); second language track (10); T3 `pending` grading state (12); free-chat tutor (not planned at all).
 
 **Not planned, out of scope:** word-level caption timing for MP3s, themeable editor, shortcut remapping, offline mode.

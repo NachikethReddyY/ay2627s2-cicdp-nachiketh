@@ -1,0 +1,30 @@
+erDiagram
+  USER ||--o{ SESSION : has
+  USER ||--o{ ACCOUNT : has
+  USER ||--o| LEARNERS : "is"
+  USER ||--o{ AI_GENERATIONS : requests
+  USER ||--o{ WORLDS : owns
+  USER ||--o{ PATHS : owns
+  LEARNERS ||--o{ ENROLLMENTS : enrols
+  PATHS ||--o{ ENROLLMENTS : has
+  PATHS ||--o{ PATH_COURSES : contains
+  WORLDS ||--o{ PATH_COURSES : "course in"
+  COLLECTIONS ||--o{ COLLECTION_PATHS : groups
+  PATHS ||--o{ COLLECTION_PATHS : "listed in"
+  WORLDS ||--o{ CONCEPTS : defines
+  WORLDS ||--o{ LESSONS : holds
+  LESSONS ||--o{ LESSON_VERSIONS : "versioned as"
+  LESSON_VERSIONS ||--o{ STEPS : contains
+  LEARNERS ||--o{ STEP_PROGRESS : tracks
+  STEPS ||--o{ STEP_PROGRESS : "progress on"
+  LEARNERS ||--o{ ATTEMPTS : makes
+  STEPS ||--o{ ATTEMPTS : "attempted on"
+  LEARNERS ||--o{ HINT_EVENTS : takes
+  STEPS ||--o{ HINT_EVENTS : "hint for"
+  LEARNERS ||--o{ GAME_COMPLETIONS : completes
+  LESSONS ||--o{ GAME_COMPLETIONS : "completed in"
+  LEARNERS ||--o{ PART_COMPLETIONS : completes
+  LESSONS ||--o{ PART_COMPLETIONS : "parts of"
+  LESSON_VERSIONS ||--o{ LESSON_MEDIA : "media for"
+  STEPS |o--o{ LESSON_MEDIA : "narrates"
+  LEARNERS ||--o{ IMAGE_GENERATIONS : requests

@@ -2,6 +2,8 @@
 
 > Status: **v2 final (2026-10-27), after 6 review passes.** WP0 (spikes) and WP1 (repo skeleton) may start now. Before Week 1 ends, answer Q3, Q5, Q8, Q9 and decide Rec-2 (§17). Every other open question has a working default.
 > Changes from v1: 6-week core with a Wk-3 cut gate and an ordered cut line; adaptivity redefined (steps keep commit order); answers, hints and source served server-side only; World seam defined; one queue (pg-boss on Postgres); data model and API made consistent; KidsQuest, sandbox, embed and SDK publish moved to stretch (Appendix A).
+>
+> **Pivot (2026-11-06): programming learning tool.** The audience is learners of programming, 13 and over, JavaScript and TypeScript first. Children, KidsQuest, parental consent and the YC Primer framing are dropped. Code and schema keep the names `world` and `worlds`; read them as *track*. Already built, per a 2026-11-06 check: game blocks (grid, order, match, sort, physics, quiz) and the visual engine (LQ-19, LQ-48 to LQ-58). Sections touching children, KidsQuest or the audience are updated; the superseded decision is marked in §17.
 > Date: 2026-10-27 · Owner: Nachikethreddyy · CICDP course project, solo, **6 weeks** (§11), deadline unknown (Q3).
 > Source: `docs/idea.md`, `docs/notes/`.
 
@@ -11,13 +13,14 @@
 
 **LearnSlop turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.**
 
-Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example / practice; the visual style is KidsQuest-only, stretch), hint depth, skip offer and next-lesson recommendation come from a learner model. **No free-chat tutor in core.**
+Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. **No free-chat tutor in core.**
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 
-- From **Primer**: learner model, adaptive next step. Dropped: "solves the YC Primer" (the YC request is for ages 4–10 tutoring).
+- From the earlier **Primer** idea: the learner model and adaptive next step. Dropped: the children's-tutor framing and the YC Primer link (that request is for ages 4–10).
 - From **Scrim-Forge**: editable replay from commit history, narration. Dropped: any-repo import, recorded keystrokes, O(1) scrub, "AI knows why the author wrote it" (§12).
-- **Worlds:** CodeQuest is core. KidsQuest is stretch (Appendix A). A world is a plugin (§8.4).
+- **Tracks** (code and schema name: `world`): CodeQuest, the JavaScript and TypeScript track, is core. A second language track is stretch (Appendix A). A track is a plugin (§8.4).
+- **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (run code in the browser), and game parts (order, match, sort, physics, quiz, grid). Game parts exist as catalog blocks and an engine prompt (`game_practice.md`). Wiring them into lesson steps in the web player is not yet verified.
 - **"Video injection"** (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won't.
 
 ---
@@ -27,11 +30,11 @@ Core loop: present a step → predict → hint ladder on a miss → reveal (repl
 **Goals**
 - G1. A permissively licensed JS/TS commit becomes a replayable lesson with predictions, hints and narration.
 - G2. A BKT learner model per account drives the next step.
-- G3. A second world on the same engine. Core proves the seam with a CI fixture world; KidsQuest is stretch (Rec-1).
+- G3. A second language track on the same engine. Core proves the seam with a CI fixture track; a second track is stretch (Rec-1).
 - G4. Model-agnostic AI: LiteLLM, one provider in core.
 - G5. TS and Python SDKs (stretch). G6. CI/CD and one live URL. G7. SDLC artefacts.
 
-**Non-goals:** any-repo or arbitrary-URL import; pull-request import (commit only); private repos; non-JS/TS content; real-time multi-user; payments; mobile; kids chat; calling the replay "recorded".
+**Non-goals:** any-repo or arbitrary-URL import; pull-request import (commit only); private repos; non-JS/TS content; real-time multi-user; payments; mobile; children's product or kids chat; calling the replay "recorded".
 
 **Success criteria**
 - S1: one permissive OSS commit (Q6) plays end to end in the **deployed** app by Wk 6. Agni is a local pilot only, never deployed (Q7).
@@ -39,7 +42,7 @@ Core loop: present a step → predict → hint ladder on a miss → reveal (repl
 - S2b (Wk 4): 3+ classmates, counterbalanced, two synthetic lessons with narration. Replay vs. reading the same diff, then a short quiz. Go on only if the replay group scores better or finds it clearly easier. Directional, not decisive, with ~3 people. Decision Fri Wk 5 (§11.2): if negative, Mon–Thu Wk 5 is one rework-and-rerun slot; if positive, that slot goes to stretch. Consent: Q12.
 - S3: tokens and cost per generated lesson, from `llm_calls` (N/A if only fixtures ran).
 - S4: CI green on every PR; `main` deploys; post-deploy smoke passes on staging and prod.
-- S5 (stretch, Rec-1): KidsQuest with no change to engine core logic. Expected touched paths: `worlds/kidsquest/`, `services/engine/worlds/kidsquest.py`, `packages/ui-catalog/`, `apps/web/src/{kids,worlds/kidsquest}/`, `e2e/kids/`, one `WORLDS` entry, and the step-kind enum migration (§8.4). CI path check (WP14) flags anything else.
+- S5 (stretch, Rec-1): a second language track (default: Python basics) with no change to engine core logic. Expected touched paths: `worlds/python/`, `services/engine/worlds/python.py`, `apps/web/src/worlds/python/`, `e2e/python/`, one `WORLDS` entry, and the step-kind enum migration only if a new kind is needed (§8.4). CI path check (WP14) flags anything else.
 
 ---
 
@@ -54,7 +57,7 @@ Core actors: **learner (student or junior developer)**, author, admin.
 | UC8–UC9 | Mastery list; next recommended lesson, with reason | yes |
 | UC11 | Import a commit → draft lesson | yes (author) |
 | UC12 | Publish / unpublish (editing: cut 6) | yes (author) |
-| UC2, UC10 | Child profile with consent; KidsQuest challenge | stretch (App. A) |
+| UC2, UC10 | Removed 2026-11-06: child profile and KidsQuest challenge | dropped |
 | UC7, UC13–UC15 | Sandbox; provider config; SDK; embed | stretch (cuts 4, 5, 9, 11, 12) |
 
 Full flows: `docs/sdlc/use-cases.md` (WP0).
@@ -73,11 +76,11 @@ Full flows: `docs/sdlc/use-cases.md` (WP0).
 - FR7 Narration: pre-rendered MP3 per step; browser speech fallback.
 - FR10 CI/CD, one live URL. FR13a Author publish/unpublish. FR14a Mastery list.
 
-**Should** (cut line, §11.3): FR3b LLM extras (12); FR7b live TTS (8); FR8 KidsQuest (10); FR9 SDKs (4, 11); FR11 sandbox (9); FR12 embed (5); FR13b author editing (6); FR14b quest, review, dashboard (7).
+**Should** (cut line, §11.3): FR3b LLM extras (12); FR7b live TTS (8); FR8 game parts in lessons (10); FR9 SDKs (4, 11); FR11 sandbox (9); FR12 embed (5); FR13b author editing (6); FR14b quest, review, dashboard (7).
 **Could:** FR16 local-model profile (Ollama); FR17 Prometheus/Grafana. **Won't:** FR15 MP4 export.
 
 **Non-functional**
-- NFR1 Kids safety: stretch only (Appendix A).
+- NFR1 Audience age: 13 and over. No child accounts, no parental consent flow, no under-13 data (Pivot, top of this file).
 - NFR2 Security: argon2id; httpOnly secure cookies; CSRF; in-memory rate limits (single instance); secrets in env store; dependency, secret and image scans; code runs only in the browser.
 - NFR3 Performance: seek replays ≤ K events (§8.3); first paint ≤ 2.5 s; generation is async.
 - NFR4 Accessibility: WCAG 2.2 AA target; keyboard player control; captions from narration text (WP4 M2); axe in Playwright.
@@ -182,7 +185,7 @@ Principles: `steps` is the only home of step content. Published `lesson_versions
 ```
 users(id, email UNIQUE, password_hash null, role enum[learner,author,admin], created_at)
 oauth_accounts(id, user_id→users, provider, provider_user_id, UNIQUE(provider, provider_user_id))
-learners(id, kind enum[user], user_id→users UNIQUE)              -- child kind: stretch migration
+learners(id, kind enum[user], user_id→users UNIQUE)              -- no child kind (audience is 13+)
 sessions(id, user_id→users, active_learner_id→learners, token_hash UNIQUE, created_at, expires_at, revoked_at null)
 worlds(id, slug UNIQUE, config jsonb)
 concepts(id, world_id→worlds, slug, name, UNIQUE(world_id, slug))
@@ -210,7 +213,7 @@ llm_calls(id, lesson_job_id→lesson_jobs null, provider, model, purpose, prompt
 ```
 pg-boss keeps its own job tables. Mastery work is not in `lesson_jobs`.
 
-**Stretch tables and columns** (added by their WP's migration): `child_profiles`, `parental_consents`, `review_schedule(learner_id, step_id)`, `badges(learner_id, badge_slug)`, `usage_quotas`, `provider_settings`, `lessons.embed_allowed_origins`, `learners.kind = child` with its check.
+**Stretch tables and columns** (added by their WP's migration): `review_schedule(learner_id, step_id)`, `badges(learner_id, badge_slug)`, `usage_quotas`, `provider_settings`, `lessons.embed_allowed_origins`.
 
 **Lesson response** (`GET /lessons/:id`): `{id, title, concepts[], steps:[{id, idx, title, conceptIds, hintCount, state}], labels:{reconstructed:true}}`. `state` is the active learner's `step_progress.state` (`predicting` if no row), so the player can resume in one call. No source, no file states, no prompts.
 
@@ -230,7 +233,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 
 ### 8.2 Learner model and adaptivity (engine: `bkt`, `policy`)
 
-**Scope.** Steps in a commit lesson are a fixed sequence (step N depends on the code after N−1), so they are never reordered. Adaptivity means explanation style, hint depth, skip offer, and next-lesson recommendation. KidsQuest's independent challenges can be reordered (stretch).
+**Scope.** Steps in a commit lesson are a fixed sequence (step N depends on the code after N−1), so they are never reordered. Adaptivity means explanation style, hint depth, skip offer, and next-lesson recommendation. Independent quiz items in a second track can be reordered (stretch).
 
 **Observations.** Only the **first action on a step** (attempt or skip) is observed. Later actions are logged, not observed. Each concept in the step's `conceptIds` gets the same observation.
 - correct, 0 hints → correct
@@ -271,8 +274,8 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 ### 8.4 World seam (WP2 defines it; this is its only home)
 - A world is `worlds/<slug>/` at the repo root (`manifest.json`: concepts, edges, question types, BKT defaults; `prompts/`; `lessons/`), plus `services/engine/worlds/<slug>.py` (the Python World class), plus `apps/web/src/worlds/<slug>/` (TS renderers).
 - `WORLDS` (env) lists the enabled worlds. The TS registry is generated (§6.2).
-- CI runs `worlds/_fixture/` and `services/engine/worlds/_fixture.py` through the same seam. This keeps S5 honest without KidsQuest.
-- Adding a world changes no engine-core logic, API core or `player-core`. KidsQuest's challenge steps add one value to the step-kind enum (stretch migration).
+- CI runs `worlds/_fixture/` and `services/engine/worlds/_fixture.py` through the same seam. This keeps S5 honest without a second track.
+- Adding a world changes no engine-core logic, API core or `player-core`. A second track's game parts add values to the step-kind enum only if they need a new kind (stretch migration).
 
 ---
 
@@ -293,7 +296,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 - `POST /lessons/import` (author; body `{repo, sha}`; repo not on the allow-list → 400) → `202 {jobId}` · `GET /jobs/:id/events` (SSE, creator only)
 - `GET /author/lessons?status=draft` (author only) · `POST /lessons/:id/publish` · `POST /lessons/:id/unpublish` (author)
 
-**Stretch:** `GET/PUT /admin/providers` (cut 12); child and embed endpoints (Appendix A); `GET /attempts/:id/events` for T3 (cut 12).
+**Stretch:** `GET/PUT /admin/providers` (cut 12); embed endpoints (Appendix A); `GET /attempts/:id/events` for T3 (cut 12).
 
 **Shapes (core)**
 ```
@@ -329,12 +332,12 @@ Stretch engine endpoints: `/v1/pipeline/segment`, `/v1/narrate`, `/v1/grade`.
 ## 10. Repository layout
 
 ```
-apps/web/        src/{shell,player,author,quest,worlds}/ (core); src/{sandbox,kids}/ (stretch); scripts/gen-registry.ts; public/audio/
+apps/web/        src/{shell,player,author,quest,worlds}/ (core); src/{sandbox}/ (stretch); scripts/gen-registry.ts; public/audio/
 apps/api/        src/{auth,lessons,attempts,progress,grading,worker,sse,engine-client,db}/; drizzle/; test/security/
 services/engine/ app.py (WP2); ingest/, pipeline/, llm/, bkt/, policy/, worlds/ (§8.4); snapshot/ (WP12); prompts/, evals/ (WP18)
 packages/        lesson-schema/, player-core/ (core); ui-catalog/, sdk-ts/, sdk-py/, embed/ (stretch)
 worlds/          codequest/ (manifest.json, prompts/, lessons/, repos.yml); _fixture/ (manifest.json)
-e2e/             smoke/ (WP4); the rest (WP14); kids/ (stretch)
+e2e/             smoke/ (WP4); the rest (WP14); python/ (stretch)
 spikes/          throwaway (WP0)
 infra/           docker/, render/, vercel/; k8s/ (stretch)
 .github/workflows/  pr.yml, main.yml, release.yml (WP1); jobs/ (reusable `workflow_call`, others); k8s.yml (stretch)
@@ -385,10 +388,10 @@ plan.md  README.md
 | 4 | Python SDK publish (generated client stays) | WP9 | Wk 6 |
 | 5 | Embed widget (App. A) | WP12 | Wk 5 |
 | 6 | Author editing beyond publish/unpublish | WP8 | Wk 5 |
-| 7 | Quest and review extras, parent dashboard, badges, placement quiz | WP17 | Wk 6 |
+| 7 | Quest and review extras, badges, placement quiz | WP17 | Wk 6 |
 | 8 | Live TTS, extra adapters, Piper (separate GPL container) | WP11 | Wk 5 |
 | 9 | Sandbox fork (App. A) | WP12 | Wk 6 |
-| 10 | KidsQuest (App. A) | WP10 | after Wk 6 (Rec-1) |
+| 10 | Second language track (App. A) | WP10 | after Wk 6 (Rec-1) |
 | 11 | TS SDK client and publish | WP9 | after Wk 6 (Rec-1) |
 | 12 | LLM beyond pedagogy: segmentation, evals, T3 judge, prompt registry, provider admin page, other LLM providers, TTS adapters | WP6, WP16, WP18, WP5 | Wk 5 |
 
@@ -420,12 +423,12 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 | # | Risk | L | I | Mitigation |
 |---|---|---|---|---|
 | R1 | Scope vs. 6 weeks solo | H | H | Core (§11.1), gates, cut line (§11.3) |
-| R2 | OpenUI maturity (stretch) | M | M | Spike in KidsQuest week; JSON-UI fallback (App. A) |
+| R2 | OpenUI maturity (stretch) | M | M | Spike in the second-track week; JSON-UI fallback (App. A) |
 | R3 | LLM output invalid or leaky | H | M | Pydantic + Zod validation; one repair; fallback; answers never sent before reveal |
 | R4 | LLM cost and latency | M | M | One provider; one call per lesson; fixtures in CI; `llm_calls`; provider spend limit (Q4) |
 | R5 | WebContainers licence and COOP/COEP | M | M | Stretch (cut 9); isolation on sandbox route only |
 | R6 | Running untrusted repo code | M | H | Allow-list; browser-only execution |
-| R7 | Children's data and safety | L | H | KidsQuest is stretch; consent first (App. A) |
+| R7 | Learner data (13+ audience) | L | H | No child accounts; minimal data (§15.6) |
 | R8 | Repo licences, vendored code | M | M | Permissive gate; vendored scan; manual review |
 | R9 | Learners "watch instead of learn" | M | H | Prediction gate; hints; reveal gate; S2 |
 | R10 | Contract drift TS ↔ Py | M | M | Zod source; shared fixtures in CI |
@@ -456,7 +459,7 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 
 **15.2 Learner model.** Wheel-spinning and style rules: §8.2 only. Stretch: SM-2-lite review over `review_schedule`, re-asking missed questions (cut 7). Each recommendation stores `reason`, shown in the UI.
 
-**15.3 Quest layer (stretch, cut 7).** The mastery list is core. XP is derived from mastery gains and not stored, so watching earns nothing. Badges are `badges(learner_id, badge_slug)`. Children get no streaks, leaderboards, or loss aversion (App. A).
+**15.3 Quest layer (stretch, cut 7).** The mastery list is core. XP is derived from mastery gains and not stored, so watching earns nothing. Badges are `badges(learner_id, badge_slug)`. Badges avoid streaks, leaderboards and loss aversion (App. A).
 
 **15.4 Replay realism.** Char-level diff within each hunk (`diff-match-patch`), a typing cadence model, speeds 0.5×–4× with an "instant" mode, and file switches as explicit events. Limits per lesson: ≤ 8 files, ≤ 400 changed lines, no lockfiles or generated or binary files. Replay plays only after reveal (`revealed` or `skipped`). Pause-edits are a local overlay, discarded on resume after a prompt. Fork is stretch.
 
@@ -476,7 +479,7 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 
 Threat model: STRIDE in `docs/sdlc/threat-model.md`. Draft by WP0 in Wk 2; final by WP15 in Wk 6.
 
-**15.6 Privacy.** Core collects email and password (or GitHub identity) only. Privacy notice: one paragraph in `docs/sdlc/privacy.md` (Wk 6). Children and consent: Appendix A.
+**15.6 Privacy.** Core collects email and password (or GitHub identity) only. Privacy notice: one paragraph in `docs/sdlc/privacy.md` (Wk 6). Audience is 13 and over; no child data (§4 NFR1).
 
 **15.7 AI practice.** Core: recorded fixtures only in CI; no live calls in PR checks; `prompt_version` on steps and `llm_calls`; repair inside the engine. Stretch (cut 12): prompt registry, provider failover, live evals with spend cap.
 
@@ -521,7 +524,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in `docs/study/
 | **WP7** | Engine: learner model | `services/engine/{bkt,policy}` | WP2 | BKT with constraints and clamping; P1–P3 (P3 is the convergence check); `/v1/mastery/update`, `/v1/next` (stateless) |
 | **WP8** | Job workers, SSE, publish | `apps/api/src/{worker,sse,engine-client}`, `apps/web/src/author` | WP5, WP6, WP7 | Mastery worker (learner row lock; idempotent); import job with SSE (creator only); recommendation with reason; publish and unpublish. Stretch: editing (cut 6) |
 | **WP9** | SDKs (stretch) | `packages/sdk-ts`, `packages/sdk-py` | WP5 | Generated clients; publish is cuts 4 and 11 |
-| **WP10** | KidsQuest (stretch, Rec-1) | `worlds/kidsquest/`, `packages/ui-catalog`, `apps/web/src/{kids,worlds/kidsquest}`, `e2e/kids/` | WP2, WP4, WP6, WP7 | Appendix A; no engine-core change (S5); parent data export and delete, retention |
+| **WP10** | Second language track (stretch, Rec-1) | `worlds/python/`, `apps/web/src/worlds/python/`, `e2e/python/` | WP2, WP4, WP6, WP7 | Appendix A; no engine-core change (S5) |
 | **WP11** | CodeQuest content | `worlds/codequest/{manifest.json,prompts/,lessons/,repos.yml}`, seed script, `scripts/narrate.ts\|py`, `apps/web/public/audio/` | WP2 | Synthetic lessons 1–2 hand-written (Wk 2–3); OSS lesson LLM-generated with deterministic fallback (Wk 4–5); answers in `secret`; `narrate` renders one MP3 per step |
 | **WP12** | Sandbox and embed (stretch) | `apps/web/src/sandbox/`, `packages/embed`, `services/engine/snapshot`, `apps/api/src/embed` | WP4, WP5, WP6 | Appendix A |
 | **WP13** | Deployment | `infra/{render,vercel}`, `.github/workflows/jobs/deploy.yml`; stretch: `infra/k8s`, `k8s.yml`, OTel | WP1, WP4, WP5, WP6, WP7 | GHCR images; Vercel static web and rewrites; Render api and engine with in-process worker; staging (Wk 5), prod (Wk 6); smoke |
@@ -538,7 +541,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in `docs/study/
 ## 17. Decisions locked in / still open
 
 **Locked (from planning Q&A):**
-- Merge both ideas as *one engine, two worlds*; code world first, kids world thin.
+- Merge both ideas as *one engine, two worlds*; code world first, kids world thin. **Superseded 2026-11-06:** one engine, programming only. The kids world is dropped; a second language track is stretch.
 - React + Vite + Monaco, XState, Fastify, PostgreSQL, Jest/SuperTest/Playwright, ESLint/Prettier, CI/CD; Python for engine and SDK; TS and Python SDKs.
 - Model-agnostic AI and TTS (OpenAI-compatible, Anthropic, local; ElevenLabs, local, others).
 - Accounts and Postgres progress; WebContainers sandbox and TTS voiceover in scope (sandbox as should-have).
@@ -546,14 +549,14 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in `docs/study/
 - OpenUI / Open Intelligent UI as generative-UI direction; video-like timeline per `idea.md`.
 - Graded: CI/CD, automated testing, SDLC docs, live demo. Solo, **6 weeks**.
 
-Locked items placed behind the cut line (none removed): K8s (3); Python SDK publish (4); TS SDK (11); live TTS (8); sandbox (9); KidsQuest and OpenUI (10); LLM beyond pedagogy (12). Redis is an optional profile, not core (Rec-2).
+Locked items placed behind the cut line (none removed): K8s (3); Python SDK publish (4); TS SDK (11); live TTS (8); sandbox (9); second language track and OpenUI (10); LLM beyond pedagogy (12). Redis is an optional profile, not core (Rec-2).
 
 **Open: owner decisions.** Each has a default the plan works with. "Blocks" is the week the real answer is needed.
 
 | # | Question | Blocks | Default |
 |---|---|---|---|
 | Q1 | Confirm "video injection" (§1). | Wk 4 | As written |
-| Q2 | KidsQuest age band (7–9); parent dashboard graded? | Wk 6, only if item 10 approved | Ages 7–9; not graded separately |
+| Q2 | Which second language track (item 10)? | Wk 6, only if item 10 approved | Python basics (JS/TS stays first) |
 | Q3 | Deadline and marking rubric. | Wk 1 | 6 weeks. If sooner, cut top-first per §11.3; if later, no change |
 | Q4 | Anthropic key for pedagogy; spend cap. | Wk 4 | If a key exists: author runs pedagogy once to record fixtures; CI uses fixtures only. No key at all: OSS lesson uses the deterministic fallback (§11.3). Cap: provider console limit, suggested $20 |
 | Q5 | Accounts: Vercel, Render, Neon or Supabase, GHCR. Domain. | Wk 1 | No custom domain: Vercel rewrites to Render. Free tiers. Pooler-free connection string |
@@ -568,15 +571,15 @@ Locked items placed behind the cut line (none removed): K8s (3); Python SDK publ
 **Blocking summary:** Wk 1: Q3, Q5, Q8, Q9. Wk 2: Q12. Wk 4: Q1, Q4, Q6. Wk 5: Q10. Q2 only if item 10 is approved. Q7 and Q11 need nothing.
 
 **Recommendations (needs owner OK):**
-- **Rec-1: demote if the core overruns.** If the Wk-3 gate fails or Wk 5 finds the core behind, approve dropping cut items 8, 9, 10 and 11 (live TTS, sandbox, KidsQuest, TS SDK) from the plan of record. They stay listed as stretch and are not scheduled. Rec-1 covers stretch items only; core fallbacks (§11.3) are used first.
+- **Rec-1: demote if the core overruns.** If the Wk-3 gate fails or Wk 5 finds the core behind, approve dropping cut items 8, 9, 10 and 11 (live TTS, sandbox, second language track, TS SDK) from the plan of record. They stay listed as stretch and are not scheduled. Rec-1 covers stretch items only; core fallbacks (§11.3) are used first.
 - **Rec-2: queue and Redis.** pg-boss replaces BullMQ, which removes Redis from core. Redis stays as an optional compose profile, used only if rate limiting or cache needs more than one instance. Needs owner OK because it moves a locked item.
-- **Rec-3: JSON-UI instead of OpenUI** if the OpenUI spike fails in the KidsQuest week. Stretch only.
+- **Rec-3: JSON-UI instead of OpenUI** if the OpenUI spike fails in the second-track week. Stretch only.
 
 ---
 
 ## Appendix A: Stretch designs (condensed)
 
-- **KidsQuest (item 10):** 5 concepts × 3 challenges from `packages/ui-catalog`. OpenUI output is parsed and allow-listed in TS, both in the web renderer and in the API on save. JSON-UI fallback validated by Zod. Text ≤ 80 chars, from pre-approved story templates; the author approves each challenge; moderation by the OpenAI endpoint if a key exists, else a wordlist. Keyboard alternative for `DragToPartition`. No free text to any model. Audio-first, icon-led UI for early readers (ages 7–9). Parent dashboard is WP17. Consent: parent verifies email (Resend; Mailpit in dev), then a child profile (nickname + age band) and a `parental_consents` row. Verifiable-consent rules differ by jurisdiction; use test data only.
+- **Second language track (item 10, replaces KidsQuest):** same seam as CodeQuest: `worlds/<slug>/manifest.json`, prompts, lessons, one Python World class, one `WORLDS` entry. Default content: Python basics, 5 concepts × 3 quiz items, drafted by the engine and approved by an author, as with CodeQuest lessons. Diagrams and game parts reuse `packages/ui-catalog`. Dropped with KidsQuest: child profiles, parental consent, the parent dashboard, OpenUI challenges and the child-moderation path.
 - **Embed (item 5):** `embed.js` mounts a sandboxed iframe. Per-lesson `frame-ancestors` requires the player document to be served by the API, not the static Vercel build; details deferred. Signed read-only token from `POST /lessons/:id/embed-tokens`. No cookies. Replay and reveal only; `postMessage` emits `step` and `complete`.
 - **Sandbox (item 9):** curated repos within caps (≤ 5 MB, ≤ 500 files). `sandbox.html` is its own Vite entry; COOP/COEP apply to that path only. Overlay and timeline position saved to `sessionStorage`. Engine builds a full repo snapshot (WP12). Dependencies installed in the browser (`npm ci`). Chromium fully supported; other browsers beta (per `idea.md`). Commercial licence for production.
 - **OpenUI and WebContainers research:** OpenUI is MIT. Packages (2026-10-27): `@openuidev/react-lang` (`createLibrary`, `<Renderer>`), `lang-core`, `react-ui`, `cli`. Unknown-component rejection is unconfirmed, so our TS allow-list is the control. WebContainers are free for prototypes, commercial for production; COOP/COEP values unverified.
