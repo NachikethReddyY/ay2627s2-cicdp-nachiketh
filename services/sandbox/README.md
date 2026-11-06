@@ -38,4 +38,4 @@ Set `SANDBOX_RUNTIME=runsc` to run shell containers under [gVisor](https://gviso
 - The endpoints never create or start a sandbox. Without an open shell they answer `409 no_shell`, so the editor opens the terminal first.
 - `501 not_implemented` means the active backend has no file support.
 - Docker writes and lists as uid 1001 (the `learner` user), so the files belong to the shell user. On Daytona the home is the sandbox user's home (`/home/learner` if the SDK reports none).
-- A missing or non-directory folder answers 404.
+- A missing or non-directory folder answers 404. On Daytona a missing folder is a 404 from the SDK; a file path is confirmed with a second `getFileDetails` call (`isDir === false`). If that call also fails, the original error is surfaced as a failure.

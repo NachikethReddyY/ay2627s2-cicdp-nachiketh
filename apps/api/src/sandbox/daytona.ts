@@ -30,6 +30,7 @@ export interface DaytonaSandbox {
   fs: {
     uploadFile(file: Buffer, remotePath: string): Promise<void>;
     listFiles(path: string): Promise<Array<{ name: string; isDir: boolean; size: number; mode: string }>>;
+    getFileDetails(path: string): Promise<{ isDir: boolean }>;
   };
 }
 export interface DaytonaClient {
@@ -66,8 +67,11 @@ export function daytonaBackend(opts: {
   const finding = new Map<string, Promise<DaytonaSandbox>>();
   let openTerminals = 0;
 
+  // One label set for finding and creating shell sandboxes, so the two cannot drift.
+  const shellLabels = (learnerId: string) => ({ ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) });
+
   async function findOrCreate(learnerId: string): Promise<DaytonaSandbox> {
-    const labels = { ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) };
+    const labels = shellLabels(learnerId);
     let sbx: DaytonaSandbox | undefined;
     for await (const s of client.list({ labels })) {
       sbx = s;
@@ -97,8 +101,7 @@ export function daytonaBackend(opts: {
 
   /** The learner's running shell sandbox. Never creates or starts one: a missing or non-started sandbox is "no shell". */
   async function findShell(learnerId: string): Promise<DaytonaSandbox> {
-    const labels = { ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) };
-    for await (const s of client.list({ labels })) {
+    for await (const s of client.list({ labels: shellLabels(learnerId) })) {
       if (s.state !== "started") throw new SandboxNotRunningError();
       return s;
     }
@@ -192,12 +195,16 @@ export function daytonaBackend(opts: {
     async listDir(learnerId, relDir) {
       const sbx = await findShell(learnerId);
       const home = await homeOf(sbx);
+      const path = relDir ? `${home}/${relDir}` : home;
       let files;
       try {
-        files = await sbx.fs.listFiles(relDir ? `${home}/${relDir}` : home);
+        files = await sbx.fs.listFiles(path);
       } catch (err) {
-        // Only a missing folder is "not found"; anything else is a real failure. Duck-typed so the SDK is not imported.
+        // Missing folder: 404 (duck-typed so the SDK is not imported).
         if ((err as { statusCode?: number } | null)?.statusCode === 404) return null;
+        // A file path fails listFiles with some other error: confirm it is a file, else it is a real failure.
+        const info = await sbx.fs.getFileDetails(path).catch(() => undefined);
+        if (info && info.isDir === false) return null;
         throw err;
       }
       const entries = files.slice(0, LIST_MAX_ENTRIES).map((f): DirEntry => ({
