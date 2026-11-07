@@ -14,9 +14,10 @@ type Props = {
   viewPath?: string; // file the user picked; falls back to the replay's active file
   overlay?: ReactNode;
   edit?: { value: string; language: string; onChange(v: string): void }; // practice: the learner types here
+  look?: { theme: "vs" | "vs-dark"; fontSize: number; fontFamily: string }; // workbench test page
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay, edit }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, look }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -80,7 +81,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit 
         language={edit?.language ?? langOf(viewPath ?? active)}
         value={edit?.value}
         onChange={edit && ((v) => edit.onChange(v ?? ""))}
-        theme="vs"
+        theme={look?.theme ?? "vs"}
         onMount={onMount}
         options={{
           readOnly: !edit,
@@ -88,7 +89,8 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit 
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          fontSize: 14,
+          fontSize: look?.fontSize ?? 14,
+          ...(look && { fontFamily: look.fontFamily, lineHeight: 22 }),
           padding: { bottom: edit ? 16 : 140 }, // room for the replay's floating controls
           hover: { enabled: "off" },
           occurrencesHighlight: "off",
