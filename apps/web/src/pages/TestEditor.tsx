@@ -3,10 +3,12 @@ import { Check, ChevronDown, Folder, Play } from "lucide-react";
 import Markdown from "react-markdown";
 import { usePanel } from "../player/terminal/usePanel";
 import FileBadge from "../player/workbench/FileBadge";
+import DocsPanel from "../player/workbench/DocsPanel";
+import { DOCS } from "../player/workbench/docs";
 import Workbench from "../player/workbench/Workbench";
 import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
-import { TEST_DOCS, pickTestLesson, type TestLesson } from "./testEditorFixture";
+import { pickTestLesson, type TestLesson } from "./testEditorFixture";
 
 // Dev-only page for building the practice workbench. Fixture data only: no sign-in, no API, no sandbox.
 
@@ -20,6 +22,7 @@ export default function TestEditor() {
   const [open, setOpen] = useState(lesson.fileName);
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
+  const [selectedDoc, setSelectedDoc] = useState("for");
   const runRef = useRef<HTMLButtonElement>(null);
   const panel = usePanel(); // no container: the workbench clamps the height at render
 
@@ -32,7 +35,7 @@ export default function TestEditor() {
   };
 
   const paletteFiles = lesson.files.map((f) => ({ id: f.path, title: f.path }));
-  const paletteDocs = TEST_DOCS.map((d) => ({ id: d.id, title: d.title, sub: d.snippet }));
+  const paletteDocs = DOCS.map((d) => ({ id: d.id, title: d.title, sub: d.src }));
   const paletteCommands = [
     { id: "run", title: "Run", run },
     { id: "check", title: "Check", run: check },
@@ -72,18 +75,7 @@ export default function TestEditor() {
     </>
   );
 
-  const docs = (
-    <>
-      <p className="text-[11.5px] text-[var(--mu)]">Sample docs (the real panel comes later)</p>
-      <ul>
-        {TEST_DOCS.map((d) => (
-          <li key={d.id}>
-            <strong>{d.title}</strong> <span className="text-[var(--mu)]">{d.snippet}</span>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
+  const docs = <DocsPanel selected={selectedDoc} onSelect={setSelectedDoc} />;
 
   const bottom = (
     <div className="flex h-full flex-col">
@@ -120,7 +112,7 @@ export default function TestEditor() {
       paletteCommands={paletteCommands}
       paletteDocs={paletteDocs}
       onOpenFile={setOpen}
-      onOpenDoc={() => {}}
+      onOpenDoc={setSelectedDoc}
       status={status}
       panel={panel}
       showPlanned
