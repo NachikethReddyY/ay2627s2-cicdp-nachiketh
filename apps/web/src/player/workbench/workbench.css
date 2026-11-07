@@ -1,0 +1,385 @@
+/* Practice workbench tokens and shared classes. */
+/* In the components layer so Tailwind utilities (gap-1, h-[22px]) can override these rules. */
+@layer components {
+  .wb {
+    --tx: #1c1c1e; --mu: #555a66; --line: #D7D6D6; --side: #EDECEC; --code: #FFFFFF; --tbar: #FFFFFF;
+    --selrow: #D7D6D6; --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
+    --ac: #2f5fd6; --acT: #2f5fd6; --cur: #fff6cf; --numdim: #b4b8c0;
+    --pane2: rgba(255, 255, 255, 0.5); --ed: #FFFFFF; --ok: #1f9d55; --bad: #c2362f;
+    --tsbg: #3178C6; --tstx: #FFFFFF; --jsbg: #F2B63A; --jstx: #3B2A00; --mdbg: #5B6272; --mdtx: #FFFFFF; --pybg: #3776AB; --pytx: #FFFFFF;
+    /* Desktop window (Main.dc.html): glass window over the wallpaper, vibrant navigator, glass palette (Palette.dc.html). */
+    --win: rgba(255, 255, 255, 0.3); --edge: rgba(255, 255, 255, 0.7); --vib: rgba(237, 236, 236, 0.82);
+    --glass: rgba(255, 255, 255, 0.82); --glass-edge: rgba(255, 255, 255, 0.9); --glass-line: rgba(20, 30, 70, 0.1); --chip: #FFFFFF;
+    --nu: #1c00cf; --fn: #326d74; --warn: #b7791f;
+    color: var(--tx);
+    font-family: "Geist", system-ui, sans-serif;
+    font-size: 12.5px;
+  }
+  .wb[data-theme="dark"] {
+    --tx: #ececec; --mu: #9a9a9a; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
+    --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
+    --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
+    --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
+    --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
+    --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
+    --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
+    --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a;
+  }
+  @media (prefers-color-scheme: dark) {
+    .wb[data-theme="system"] {
+      --tx: #ececec; --mu: #9a9a9a; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
+      --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
+      --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
+      --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
+      --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
+      --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
+      --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
+      --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a;
+    }
+  }
+  .wb .wb-mono { font-family: "Geist Mono", ui-monospace, monospace; }
+
+  /* >=1024 px: the desktop. Wallpaper behind a floating window (Main.dc.html: 32 px inset, 16 px radius). */
+  .wb-desk {
+    padding: 32px; box-sizing: border-box;
+    background: url("/img/desktop-imac-blue.jpg") center / cover no-repeat, #a9c7f7;
+  }
+  .wb-win {
+    position: relative; border-radius: 16px; overflow: hidden; background: var(--win); border: 1px solid var(--edge);
+    box-shadow: 0 24px 60px rgba(20, 30, 70, 0.28), 0 6px 16px rgba(20, 30, 70, 0.12), inset 0 2px 0 rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
+  }
+  .wb-desk[data-resolved="dark"] .wb-win { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+  /* Navigator: translucent over the window's frosted wallpaper (vibrancy); the editor stays solid. */
+  .wb-side { background: var(--vib); }
+  .wb-lights { display: inline-flex; flex: none; gap: 8px; }
+  .wb-lights > span { width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; border: 1px solid rgba(0, 0, 0, 0.12); }
+  .wb-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
+
+  /* 28 px toolbar button */
+  .wb-tb {
+    height: 28px; min-width: 28px; padding: 0 8px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--tx); font: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  }
+  .wb-tb:hover { background: var(--hov); }
+  .wb-tb:disabled { opacity: 0.4; cursor: default; }
+  .wb-tb:disabled:hover { background: transparent; }
+
+  /* 12 px resize handles: vertical bar (col-resize) and horizontal bar (row-resize) */
+  .wb-split-v, .wb-split-h {
+    flex: none; display: flex; align-items: center; justify-content: center;
+    background: var(--tbar); box-sizing: border-box; outline: none; user-select: none; -webkit-user-select: none;
+  }
+  .wb-split-v { width: 12px; cursor: col-resize; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .wb-split-h { height: 12px; cursor: row-resize; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+  .wb-split-v:focus-visible, .wb-split-h:focus-visible { box-shadow: inset 0 0 0 2px var(--acT); }
+
+  /* 11 px uppercase section label */
+  .wb-sec {
+    display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mu);
+  }
+
+  /* One focus ring everywhere: 2 px accent, just outside the control, following its radius. */
+  .wb :is(button, input, select, a, [role="tab"]):focus-visible { outline: 2px solid var(--acT); outline-offset: 1px; }
+  .wb footer select:focus-visible, .wb .wb-row:focus-visible { outline-offset: -2px; }
+
+  /* Rounded group that holds 26 px buttons (toolbar toggles, tab pills). Main.dc.html sets height 32 on a content-box
+     element with a 1 px border, so the drawn pill is 34 px; only the navigator view tabs set border-box. */
+  .wb-pill {
+    display: inline-flex; align-items: center; gap: 1px; height: 34px; padding: 0 3px; box-sizing: border-box;
+    border-radius: 16px; background: var(--pane2); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08);
+  }
+  .wb-pill > .wb-tb { height: 26px; min-width: 36px; border-radius: 13px; }
+  .wb-pill > .wb-tb.wb-outline { border: 0; }
+  .wb-pill:has(> .wb-primary) { gap: 3px; }
+  /* Text tabs inside a pill (bottom panel) */
+  .wb-ptab {
+    display: inline-flex; align-items: center; height: 26px; padding: 0 14px; border: 0; border-radius: 13px;
+    background: transparent; color: var(--mu); font: inherit; cursor: pointer;
+  }
+  .wb-ptab:hover { background: var(--hov); }
+  .wb-ptab[aria-pressed="true"], .wb-ptab[data-on="true"] { background: var(--sel); color: var(--acT); cursor: default; }
+  .wb-pill > .wb-tb.wb-nb { width: 30px; min-width: 30px; padding: 0; }
+  .wb-pill > .wb-tb.wb-wide { min-width: 38px; }
+  .wb-pill > .wb-tb.wb-n34 { min-width: 34px; }
+  .wb-navtabs { flex: none; justify-content: center; gap: 4px; height: 32px; box-shadow: none; width: 220px; max-width: calc(100% - 12px); margin: 6px auto 8px; }
+  .wb-navtabs > .wb-tb { width: 33px; min-width: 33px; padding: 0; }
+  .wb-navtabs > .wb-tb:not([aria-pressed="true"]), .wb-pill > .wb-nb:not([aria-pressed="true"]) { color: var(--mu); }
+  @media (max-width: 639px) { .wb-pill > .wb-tb { min-width: 32px; padding: 0 7px; } }
+  .wb-tb[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+  /* Panel toggles: no capsule; shown = full text colour, hidden = grey (user override of the design). */
+  .wb-tb.wb-tog { height: 26px; min-width: 36px; border-radius: 13px; color: var(--mu); }
+  .wb-tb.wb-tog[aria-pressed="true"] { background: transparent; color: var(--tx); }
+  .wb-tb.wb-tog[aria-pressed="true"]:hover { background: var(--hov); }
+  .wb-tb.wb-primary { background: var(--ac); color: #fff; }
+  .wb-tb.wb-primary:hover { background: #2752bd; }
+  .wb-tb.wb-outline { border: 1px solid var(--line); }
+  .wb-tb.wb-small { height: 24px; }
+
+  /* Text tabs (utility area) */
+  .wb-tab {
+    height: 30px; margin-bottom: -1px; padding: 0 4px; border: 0; background: transparent; color: var(--mu);
+    font-size: 13px; cursor: pointer;
+  }
+  .wb-tab { border-radius: 6px 6px 0 0; }
+  .wb-tab[aria-selected="true"] { color: var(--tx); font-weight: 500; box-shadow: inset 0 -2px 0 var(--acT); }
+
+  /* 18 px file-type badge */
+  .wb-badge {
+    flex: none; width: 16px; height: 16px; border-radius: 3px; display: inline-grid; place-items: center;
+    font-size: 7.5px; font-weight: 700; line-height: 1;
+  }
+
+  .wb-scroll { overflow: auto; min-height: 0; }
+  .wb-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+  .wb-scroll::-webkit-scrollbar-thumb { background: rgba(120, 125, 140, 0.45); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+  .wb-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  /* Navigator rows */
+  .wb-row {
+    display: flex; align-items: center; gap: 5px; width: calc(100% - 12px); height: 22px; margin: 0 6px; padding: 0 8px;
+    box-sizing: border-box; border: 0; border-radius: 6px; background: transparent; color: var(--tx);
+    font-size: 13px; white-space: nowrap; text-align: left; cursor: pointer;
+  }
+  .wb-row:hover { background: var(--hov); }
+  .wb-row[aria-selected="true"] { background: var(--selrow); font-weight: 500; }
+  .wb-row-strong { font-weight: 600; }
+
+  /* Markdown in the utility area */
+  .wb-prose { font-size: 13px; line-height: 1.55; }
+  .wb-prose p, .wb-prose ul, .wb-prose ol { margin: 0 0 10px; }
+  .wb-prose ul, .wb-prose ol { padding-left: 18px; }
+  .wb-prose ul { list-style: disc; }
+  .wb-prose ol { list-style: decimal; }
+  .wb-prose code {
+    font-family: "Geist Mono", ui-monospace, monospace; font-size: 0.92em; padding: 1px 5px; border-radius: 4px;
+    background: var(--pane2); border: 1px solid var(--line);
+  }
+  .wb-prose strong { font-weight: 600; }
+
+  /* Command palette: a modal <dialog> with glass pills (Palette.dc.html). Rendered inside .wb so the tokens apply. */
+  .wb-pal {
+    position: fixed; top: 14vh; left: 50%; margin: 0; transform: translateX(-50%);
+    width: min(700px, calc(100vw - 24px)); max-height: 76vh; padding: 0; border: 0; background: transparent; color: var(--tx);
+    overflow: visible; flex-direction: column; gap: 12px; font-size: 13px; outline: none;
+  }
+  .wb-pal[open] { display: flex; }
+  /* Narrow layout (no window frame): the whole workbench frosts behind the palette. */
+  .wb-pal::backdrop {
+    background: rgba(255, 255, 255, 0.34);
+    backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%);
+  }
+  .wb[data-resolved="dark"] .wb-pal::backdrop { background: rgba(8, 10, 20, 0.38); backdrop-filter: blur(10px) saturate(110%) brightness(0.9); -webkit-backdrop-filter: blur(10px) saturate(110%) brightness(0.9); }
+  /* Desktop layout: only the window frosts. The backdrop stays clear, so the wallpaper and the window's shadow stay sharp;
+     an overlay inside the window (clipped by its radius) blurs what the window shows. */
+  @media (min-width: 1024px) {
+    .wb-pal::backdrop, .wb[data-resolved="dark"] .wb-pal::backdrop { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .wb-win[data-palette-open]::after {
+      content: ""; position: absolute; inset: 0; z-index: 30; pointer-events: none;
+      background: rgba(255, 255, 255, 0.34);
+      backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%);
+    }
+    .wb[data-resolved="dark"] .wb-win[data-palette-open]::after { background: rgba(8, 10, 20, 0.38); backdrop-filter: blur(10px) saturate(110%) brightness(0.9); -webkit-backdrop-filter: blur(10px) saturate(110%) brightness(0.9); }
+  }
+  .wb-pal-glass {
+    background: var(--glass); border: 1px solid var(--glass-edge);
+    backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
+    box-shadow: 0 30px 80px rgba(20, 30, 70, 0.3), 0 2px 8px rgba(20, 30, 70, 0.08);
+  }
+  .wb[data-resolved="dark"] .wb-pal-glass { box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.25); }
+  .wb-pal-top { display: flex; gap: 12px; flex: none; }
+  .wb-pal-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 20px; box-sizing: border-box; border-radius: 30px; }
+  .wb-pal-search input {
+    flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--tx); font: inherit; font-size: 18px; outline: none;
+  }
+  /* Focus shows on the pill, not as a box inside it: accent border plus a soft ring. */
+  .wb .wb-pal-search input:focus, .wb .wb-pal-search input:focus-visible { outline: none; }
+  .wb-pal-search input::placeholder { color: var(--mu); }
+  .wb-pal-search:focus-within {
+    border-color: var(--acT);
+    box-shadow: 0 0 0 1px var(--acT), 0 0 0 4px color-mix(in srgb, var(--acT) 24%, transparent), 0 30px 80px rgba(20, 30, 70, 0.3);
+  }
+  .wb-pal-esc {
+    flex: none; height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--line); background: var(--chip);
+    color: var(--mu); font-size: 11px; display: inline-flex; align-items: center;
+  }
+  .wb-pal-modes { flex: none; display: flex; align-items: center; gap: 4px; height: 60px; padding: 0 8px; box-sizing: border-box; border-radius: 30px; }
+  .wb-pal-modes button {
+    width: 44px; height: 44px; padding: 0; border: 0; border-radius: 22px; background: transparent; color: var(--mu);
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .wb-pal-modes button:hover { background: var(--hov); }
+  .wb-pal-modes button[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+  .wb-pal-card { display: flex; flex-direction: column; min-height: 0; border-radius: 22px; overflow: hidden; }
+  .wb-pal-list { margin: 0; padding: 8px 10px; max-height: min(340px, 50vh); list-style: none; }
+  .wb-pal-head {
+    display: flex; align-items: center; height: 30px; padding: 0 12px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mu);
+  }
+  .wb-pal-row { display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; border-radius: 12px; cursor: pointer; }
+  .wb-pal-list[data-mode="file"] .wb-pal-row { height: 46px; }
+  .wb-pal-row[aria-selected="true"] { background: var(--selrow); }
+  .wb-pal-row .wb-badge { width: 28px; height: 28px; border-radius: 8px; font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; }
+  .wb-pal-text { display: flex; align-items: baseline; gap: 10px; min-width: 0; line-height: 1.25; }
+  .wb-pal-list[data-mode="file"] .wb-pal-text { flex-direction: column; align-items: flex-start; gap: 0; }
+  .wb-pal-title { flex: none; font-size: 14px; font-weight: 500; }
+  .wb-pal-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mu); font-size: 12px; }
+  .wb-pal-end { margin-left: auto; display: flex; flex: none; align-items: center; gap: 6px; }
+  .wb-pal-hint {
+    height: 22px; padding: 0 8px; box-sizing: border-box; border-radius: 11px; border: 1px solid var(--line); background: var(--chip);
+    color: var(--mu); font-size: 11px; display: inline-flex; align-items: center;
+  }
+  .wb-pal-enter { height: 22px; padding: 0 8px; border-radius: 11px; background: var(--ac); color: #fff; display: inline-flex; align-items: center; }
+  .wb-pal-empty { margin: 0; padding: 14px 22px; color: var(--mu); }
+  .wb-pal-foot {
+    display: flex; align-items: center; gap: 14px; height: 40px; flex: none; padding: 0 20px; border-top: 1px solid var(--glass-line); color: var(--mu); font-size: 12px;
+  }
+  .wb-pal-foot > span { display: inline-flex; align-items: center; gap: 6px; }
+  .wb-pal-foot kbd {
+    display: inline-flex; align-items: center; gap: 1px; height: 20px; padding: 0 7px; box-sizing: border-box; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--chip); font-size: 11px;
+  }
+  .wb-pal-modes button:focus-visible { outline-offset: 2px; }
+
+  /* Less glass for people who ask for it: solid surfaces and a plain dim. */
+  @media (prefers-reduced-transparency: reduce) {
+    .wb-win, .wb-pal-glass, .wb-pal::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .wb-win { background: var(--side); }
+    .wb-side { background: var(--side); }
+    .wb-pal-glass { background: var(--tbar); }
+    .wb-win[data-palette-open]::after, .wb[data-resolved="dark"] .wb-win[data-palette-open]::after { background: rgba(20, 30, 70, 0.4); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) and (max-width: 1023px) {
+    .wb-pal::backdrop, .wb[data-resolved="dark"] .wb-pal::backdrop { background: rgba(20, 30, 70, 0.4); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .wb-pal[open], .wb-pal[open]::backdrop { animation: wb-fade 0.14s ease-out; }
+  }
+  @keyframes wb-fade { from { opacity: 0; } }
+
+  /* Planned parts (showPlanned): present, focusable, inert. */
+  .wb-soon { cursor: default; }
+  .wb-debugbar {
+    position: absolute; z-index: 3; top: 8px; right: 16px; display: flex; align-items: center; gap: 1px; padding: 3px;
+    border-radius: 9px; background: var(--tbar); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  }
+  .wb-debugbar > .wb-tb { height: 26px; min-width: 26px; padding: 0 5px; }
+  .wb-chip {
+    display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; box-sizing: border-box; border-radius: 11px;
+    background: var(--pane2); border: 1px solid var(--line); color: var(--tx); font: inherit; font-size: 11.5px;
+  }
+  button.wb-chip:hover { background: var(--hov); }
+  .wb .wb-mono.wb-chip { font-family: "Geist Mono", ui-monospace, monospace; }
+  .wb-tree { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 14px; white-space: nowrap; color: var(--tx); }
+  .wb-dot-sq { width: 8px; height: 8px; flex: none; border-radius: 2px; }
+  .wb-git-m {
+    margin-left: auto; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px;
+    background: #f2c744; color: #3b2a00; font-size: 10.5px; font-weight: 600;
+  }
+  .wb-field {
+    width: 100%; box-sizing: border-box; height: 28px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--ed); color: var(--tx); font: inherit;
+  }
+  .wb-field::placeholder, .wb-ask textarea::placeholder { color: var(--mu); }
+  .wb-bubble { align-self: flex-end; max-width: 90%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--ac); color: #fff; }
+  .wb-ask {
+    display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 20px; border: 1px solid var(--line);
+    background: var(--tbar); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08);
+  }
+  .wb-ask textarea { flex: 1; min-width: 0; resize: none; border: 0; background: transparent; color: var(--tx); font: inherit; }
+  .wb-send {
+    flex: none; width: 30px; height: 30px; border: 0; border-radius: 15px; background: var(--ac); color: #fff;
+    display: grid; place-items: center; cursor: default;
+  }
+  .wb-caret { display: inline-block; width: 7px; height: 14px; background: var(--tx); vertical-align: -2px; }
+  .wb .wb-ask textarea:focus-visible { outline: none; }
+  .wb-ask:focus-within { border-color: var(--acT); box-shadow: 0 0 0 1px var(--acT), 0 0 0 4px color-mix(in srgb, var(--acT) 24%, transparent); }
+
+  /* Motion. Everything here is off under prefers-reduced-motion. */
+  /* Shared sliding bubble ([data-slider], see Segmented.tsx): one ::before that moves to the selected button. */
+  [data-slider] { position: relative; }
+  [data-slider]::before {
+    content: ""; position: absolute; left: 0; top: 0; pointer-events: none;
+    width: var(--sw, 0); height: var(--sh, 0); transform: translate(var(--sx, 0), var(--sy, 0));
+    border-radius: var(--sr, 13px); background: var(--sel); opacity: var(--so, 0);
+  }
+  /* The selected button keeps its colour but hands its background to the bubble. */
+  [data-slider] > [aria-pressed="true"] { background: transparent !important; position: relative; z-index: 1; }
+  [data-slider] > :is(button, span) { position: relative; z-index: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    [data-slider][data-moving]::before {
+      transition: transform 0.24s cubic-bezier(0.3, 1.3, 0.5, 1), width 0.24s cubic-bezier(0.3, 1.3, 0.5, 1),
+        height 0.24s cubic-bezier(0.3, 1.3, 0.5, 1), opacity 0.15s;
+    }
+    /* Theme change: colours ease while [data-theming] is on (Workbench sets it for 450 ms in the commit that changes the
+       tokens), so hovers elsewhere stay instant. Never inside Monaco, which re-themes at once. */
+    .wb[data-theming] :where(*):not(.monaco-editor, .monaco-editor *) {
+      transition: background-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+        border-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), fill 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), stroke 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+        box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    /* A view or panel that appears (new nav view, bottom tab, palette mode, panel toggled on) fades in with a small slide.
+       @starting-style applies only to elements inserted after [data-ready], so the first paint stays still. */
+    .wb[data-ready] .wb-appear {
+      transition: opacity 0.2s ease-out, transform 0.2s ease-out, background-color 0.25s, color 0.25s, border-color 0.25s;
+      @starting-style { opacity: 0; transform: translateY(5px); }
+    }
+  }
+}
+
+/* Monaco's hover and suggest widgets (editor help). Outside the components layer on purpose: Monaco's own
+   stylesheet is unlayered and would win over layered rules. Scoped under .wb; both themes via the tokens. */
+.wb .monaco-editor .monaco-hover,
+.wb .monaco-editor .suggest-widget,
+.wb .monaco-editor .parameter-hints-widget {
+  background: var(--glass); color: var(--tx); border: 1px solid var(--glass-edge); border-radius: 14px; overflow: hidden;
+  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+  box-shadow: 0 18px 44px rgba(20, 30, 70, 0.24), 0 2px 6px rgba(20, 30, 70, 0.08);
+  font-family: "Geist", system-ui, sans-serif; font-size: 12.5px;
+}
+.wb .monaco-editor .monaco-hover .hover-row, .wb .monaco-editor .monaco-hover .markdown-hover { background: transparent; }
+.wb .monaco-editor .monaco-hover .hover-contents { padding: 2px 4px; }
+.wb .monaco-editor .monaco-hover .hover-row.status-bar { display: none; }
+.wb .monaco-editor .monaco-hover hr { border-color: var(--glass-line); margin: 2px 0; }
+.wb .monaco-editor .monaco-hover p { margin: 4px 0; line-height: 1.5; }
+.wb .monaco-editor .monaco-hover p:first-child strong { font-weight: 600; font-size: 13px; }
+/* The source chip after the title (`JavaScript`), and any inline code. */
+.wb .monaco-editor .monaco-hover code {
+  font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; padding: 1px 6px; border-radius: 6px;
+  background: color-mix(in srgb, var(--ac) 12%, transparent); color: var(--acT);
+}
+.wb .monaco-editor .monaco-hover pre, .wb .monaco-editor .monaco-hover .code, .wb .monaco-editor .monaco-hover .monaco-tokenized-source {
+  font-family: "Geist Mono", ui-monospace, monospace !important; font-size: 12px; line-height: 1.6; white-space: pre-wrap;
+}
+.wb .monaco-editor .monaco-hover pre { margin: 4px 0; padding: 8px 10px; border-radius: 10px; background: var(--pane2); border: 1px solid var(--line); }
+.wb .monaco-editor .monaco-hover a, .wb .monaco-editor .suggest-widget a {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 11px; border-radius: 12px; text-decoration: none;
+  background: color-mix(in srgb, var(--ac) 12%, transparent); color: var(--acT); font-weight: 500; font-size: 12px; cursor: pointer;
+}
+.wb .monaco-editor .monaco-hover a:hover { background: color-mix(in srgb, var(--ac) 20%, transparent); }
+.wb .monaco-editor .monaco-hover a:focus-visible { outline: 2px solid var(--acT); outline-offset: 1px; }
+.wb .monaco-editor .suggest-widget { padding: 4px; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row { border-radius: 8px; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused { background: var(--sel); color: var(--tx); }
+.wb .monaco-editor .suggest-widget .monaco-list-row .highlight { color: var(--acT) !important; font-weight: 600; }
+.wb .monaco-editor .suggest-details-container {
+  background: var(--glass); color: var(--tx); border: 1px solid var(--glass-edge); border-radius: 14px; overflow: hidden;
+  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+  box-shadow: 0 18px 44px rgba(20, 30, 70, 0.24), 0 2px 6px rgba(20, 30, 70, 0.08);
+}
+.wb .monaco-editor .suggest-details-container .suggest-details, .wb .monaco-editor .suggest-details-container .suggest-details * {
+  font-family: "Geist", system-ui, sans-serif;
+}
+.wb .monaco-editor .suggest-details-container .suggest-details { background: transparent; font-size: 12.5px; }
+.wb .monaco-editor .suggest-details-container .suggest-details .docs { padding: 6px 10px; }
+.wb .monaco-editor .suggest-details-container .suggest-details .docs hr { border-color: var(--glass-line); }
+.wb .monaco-editor .suggest-details-container .suggest-details pre {
+  margin: 4px 0; padding: 8px 10px; border-radius: 10px; background: var(--pane2); border: 1px solid var(--line); white-space: pre-wrap;
+}
+.wb .monaco-editor .suggest-details-container .suggest-details pre, .wb .monaco-editor .suggest-details-container .suggest-details pre *,
+.wb .monaco-editor .suggest-details-container .suggest-details code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; }
+
+/* Board: line numbers are one pixel smaller than the code (calc(var(--fs) - 1px)). Outside the layer so it beats Monaco. */
+.wb .monaco-editor .margin-view-overlays .line-numbers { font-size: 12px; }

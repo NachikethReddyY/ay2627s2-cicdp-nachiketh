@@ -16,9 +16,10 @@ const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
+const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
 
 // The player has its own audio, so button sounds stay off there.
-const isQuiet = (p: string) => p.startsWith("/play") || p.startsWith("/diff");
+const isQuiet = (p: string) => p.startsWith("/play") || p.startsWith("/diff") || p.startsWith("/test");
 
 function Root() {
   return (
@@ -72,6 +73,7 @@ const routeTree = root.addChildren([
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
+  ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),
 ]);
 
 const router = createRouter({ routeTree, defaultNotFoundComponent: NotFound, defaultErrorComponent: RouteError });
