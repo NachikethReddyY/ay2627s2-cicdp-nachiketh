@@ -52,7 +52,7 @@ export default function TestEditor() {
       <ul aria-label="Files">
         {lesson.files.map((f) => (
           <li key={f.path}>
-            <button type="button" className="wb-row" style={{ paddingLeft: 30 }} data-drawer-close aria-current={f.path === open} onClick={() => setOpen(f.path)}>
+            <button type="button" className="wb-row pl-[30px]" data-drawer-close aria-current={f.path === open} onClick={() => setOpen(f.path)}>
               <FileBadge path={f.path} />
               {f.path}
             </button>

@@ -55,12 +55,16 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
     }
   }, [open]);
 
-  // Each opening (or a shortcut for another mode while open) starts from that mode's prefix.
-  useEffect(() => {
-    if (!open) return;
-    setQuery(PREFIX[initial]);
-    setIndex(0);
-  }, [open, initial]);
+  // Each opening (or a shortcut for another mode while open) starts from that mode's prefix. Reset during
+  // render, not in an effect, so a reopen never paints the old query for a frame.
+  const [seen, setSeen] = useState({ open, initial });
+  if (seen.open !== open || seen.initial !== initial) {
+    setSeen({ open, initial });
+    if (open) {
+      setQuery(PREFIX[initial]);
+      setIndex(0);
+    }
+  }
 
   const { mode, term } = parseQuery(query);
   const results = useMemo<PaletteItem[]>(

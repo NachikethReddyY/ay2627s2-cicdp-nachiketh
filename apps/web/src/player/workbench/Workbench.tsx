@@ -1,15 +1,21 @@
 import { Columns2, List, Plus, Search, Sparkles, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue } from "./context";
 import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolveTheme, useLayout, type Layout } from "./layout";
 import CommandPalette, { type PaletteCommand } from "./CommandPalette";
 import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
-import { DebugBar, DebugConsole, NAV_TABS, PlannedNavView, RunStopPill, Soon, type NavView } from "./Planned";
+import { NAV_TABS, Soon, type NavView } from "./Planned";
 import Splitter from "./Splitter";
 import StatusBar, { type WorkbenchStatus } from "./StatusBar";
 import Toolbar, { TrafficLights } from "./Toolbar";
 import "./workbench.css";
+
+// The planned parts hold sample text, so they load only when showPlanned is on.
+const DebugBar = lazy(() => import("./PlannedParts").then((m) => ({ default: m.DebugBar })));
+const DebugConsole = lazy(() => import("./PlannedParts").then((m) => ({ default: m.DebugConsole })));
+const PlannedNavView = lazy(() => import("./PlannedParts").then((m) => ({ default: m.PlannedNavView })));
+const RunStopPill = lazy(() => import("./PlannedParts").then((m) => ({ default: m.RunStopPill })));
 
 export type WorkbenchLanguage = "javascript" | "typescript" | "python";
 
@@ -187,7 +193,7 @@ export default function Workbench(p: Props) {
       <div className="flex h-[42px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
         {planned ? (
-          <span className="wb-pill" style={{ gap: 4 }} role="group" aria-label="Panel view">
+          <span className="wb-pill gap-1" role="group" aria-label="Panel view">
             <button type="button" className="wb-ptab" aria-pressed={bottomView === "main"} onClick={() => setBottomTab("main")}>
               {p.bottomTitle ?? "Terminal"}
             </button>
@@ -224,7 +230,7 @@ export default function Workbench(p: Props) {
       </div>
       {bottomView === "console" && (
         <div className="wb-scroll min-h-0 flex-1">
-          <DebugConsole />
+          <Suspense fallback={null}><DebugConsole /></Suspense>
         </div>
       )}
     </section>
@@ -287,7 +293,7 @@ export default function Workbench(p: Props) {
                       </span>
                       {planned && (
                         <>
-                          <span className="wb-pill" style={{ gap: 4 }} role="group" aria-label="Navigator or AI help">
+                          <span className="wb-pill gap-1" role="group" aria-label="Navigator or AI help">
                             <button type="button" className="wb-tb wb-nb" aria-label="List" title="List" aria-pressed={view !== "ai"} onClick={() => setNavView("files")}>
                               <List size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
@@ -295,7 +301,7 @@ export default function Workbench(p: Props) {
                               <Sparkles size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
                           </span>
-                          <RunStopPill />
+                          <Suspense fallback={null}><RunStopPill /></Suspense>
                         </>
                       )}
                     </div>
@@ -309,7 +315,7 @@ export default function Workbench(p: Props) {
                       </div>
                     )}
                     <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : "pt-3"}`}>
-                      {view === "files" ? p.navigator : <PlannedNavView view={view} />}
+                      {view === "files" ? p.navigator : <Suspense fallback={null}><PlannedNavView view={view} /></Suspense>}
                     </div>
                   </nav>
                   <Splitter
@@ -328,7 +334,7 @@ export default function Workbench(p: Props) {
                   <main ref={centerRef} className="flex min-w-0 flex-1 flex-col bg-[var(--code)]">
                     <div className="relative flex min-h-0 flex-1 flex-col">
                       {p.editor}
-                      {planned && <DebugBar />}
+                      {planned && <Suspense fallback={null}><DebugBar /></Suspense>}
                     </div>
                     {panel.open && (
                       <Splitter
@@ -444,6 +450,7 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
     closeRef.current?.focus();
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (document.querySelector("dialog[open]")) return; // the command palette owns Esc while it is open
       e.preventDefault();
       onCloseRef.current();
     };

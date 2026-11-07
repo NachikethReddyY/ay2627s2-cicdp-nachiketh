@@ -11,7 +11,7 @@ type Props = {
 function Block({ label, text, mono }: { label: string; text: string; mono?: boolean }) {
   return (
     <>
-      <h3 className="wb-sec" style={{ padding: 0, height: 22 }}>{label}</h3>
+      <h3 className="wb-sec h-[22px] p-0">{label}</h3>
       {mono ? (
         <pre className="wb-mono mb-3.5 whitespace-pre-wrap rounded-lg border border-[var(--line)] bg-[var(--pane2)] px-2.5 py-2 text-xs">{text}</pre>
       ) : (
@@ -74,7 +74,7 @@ export default function DocsPanel({ selected, onSelect }: Props) {
         <Block label="Syntax" text={doc.syntax} mono />
         <Block label="Example" text={doc.example} mono />
         <Block label="Details" text={doc.detail} />
-        <h3 className="wb-sec" style={{ padding: 0, height: 22 }}>See also</h3>
+        <h3 className="wb-sec h-[22px] p-0">See also</h3>
         <div className="flex flex-wrap gap-1.5">
           {doc.see.map((id) => {
             const r = byId(id);
