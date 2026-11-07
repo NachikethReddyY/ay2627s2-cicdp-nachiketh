@@ -3,12 +3,13 @@ import { z } from "zod";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { MAX_CODE } from "./run.ts";
-import { getBackend, LIST_MAX_ENTRIES, SANDBOX_FILES, SandboxNotRunningError, type SandboxFileName } from "./backend.ts";
+import { getBackend, LIST_MAX_ENTRIES, SANDBOX_FILES, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxFileName } from "./backend.ts";
 
 const WINDOW_MS = 60_000;
 const MAX_WRITES = 30;
 const MAX_LISTS = 60;
 const MAX_NAME = 64;
+const MAX_WORKSPACE_FILE = 64 * 1024;
 const MAX_WINDOWS = 1000;
 const SEGMENT = /^[A-Za-z0-9._-]{1,64}$/;
 
@@ -54,6 +55,8 @@ function serial<T>(learner: string, fn: () => Promise<T>): Promise<T> {
 
 export async function sandboxFilesRoute(app: FastifyInstance) {
   const Body = z.object({ content: z.string().max(MAX_CODE) });
+  const WorkspaceBody = z.object({ path: z.string(), content: z.string().max(MAX_WORKSPACE_FILE) });
+  const WorkspaceMoveBody = z.object({ source: z.string(), targetDir: z.string() });
   const writeAllowed = limiter(MAX_WRITES);
   const listAllowed = limiter(MAX_LISTS);
 
@@ -86,6 +89,64 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
+  app.get<{ Querystring: { path?: unknown } }>("/sandbox/workspace-file", async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!listAllowed(learner)) return tooMany(reply);
+    const path = parseDir(req.query.path);
+    if (path === null || !path) return reply.status(400).send(fail("bad_request", "Invalid file path"));
+    const backend = await getBackend();
+    if (!backend.readWorkspaceFile) return notImplemented(reply);
+    try {
+      const content = await serial(learner, () => backend.readWorkspaceFile!(learner, path));
+      if (content === null) return reply.status(404).send(fail("not_found", "File not found"));
+      if (Buffer.byteLength(content, "utf8") > MAX_WORKSPACE_FILE) return reply.status(413).send(fail("file_too_large", "This file is too large to open in the editor"));
+      return { content };
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      if (err instanceof SandboxFileTooLargeError) return reply.status(413).send(fail("file_too_large", "This file is too large to open in the editor"));
+      throw err;
+    }
+  });
+
+  app.put("/sandbox/workspace-file", { bodyLimit: MAX_WORKSPACE_FILE * 3 + 1024 }, async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!writeAllowed(learner)) return tooMany(reply);
+    const body = WorkspaceBody.safeParse(req.body);
+    const path = body.success ? parseDir(body.data.path) : null;
+    if (!body.success || path === null || !path) return reply.status(400).send(fail("bad_request", "Invalid file path or content"));
+    const backend = await getBackend();
+    if (!backend.writeWorkspaceFile) return notImplemented(reply);
+    try {
+      await serial(learner, () => backend.writeWorkspaceFile!(learner, path, body.data.content));
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      if (err instanceof SandboxFileTooLargeError) return reply.status(413).send(fail("file_too_large", "This file is too large to save"));
+      throw err;
+    }
+    return reply.status(204).send();
+  });
+
+  app.post("/sandbox/workspace-file/move", async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!writeAllowed(learner)) return tooMany(reply);
+    const body = WorkspaceMoveBody.safeParse(req.body);
+    const source = body.success ? parseDir(body.data.source) : null;
+    const targetDir = body.success ? parseDir(body.data.targetDir) : null;
+    if (!body.success || !source || targetDir === null || !targetDir) return reply.status(400).send(fail("bad_request", "Invalid source file or destination folder"));
+    const backend = await getBackend();
+    if (!backend.moveWorkspaceFile) return notImplemented(reply);
+    try {
+      await serial(learner, () => backend.moveWorkspaceFile!(learner, source, targetDir));
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      throw err;
+    }
+    return reply.status(204).send();
+  });
+
   app.get<{ Querystring: { dir?: unknown } }>("/sandbox/files", async (req, reply) => {
     const learner = await learnerFor(req, reply);
     if (!learner) return reply;
@@ -107,5 +168,35 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
       entries: listing.entries.slice(0, LIST_MAX_ENTRIES).map((e) => ({ ...e, name: e.name.slice(0, MAX_NAME) })),
       truncated: listing.truncated || listing.entries.length > LIST_MAX_ENTRIES,
     };
+  });
+
+  // One request for all open workspace folders. The read-only directory calls
+  // can run in parallel while the learner-scoped serial queue excludes writes.
+  app.get<{ Querystring: { dir?: unknown } }>("/sandbox/files/batch", async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!listAllowed(learner)) return tooMany(reply);
+    const dirs = Array.isArray(req.query.dir) ? req.query.dir : req.query.dir === undefined ? [] : [req.query.dir];
+    const parsed = dirs.map(parseDir);
+    if (!parsed.length || parsed.length > 32 || parsed.some((dir) => dir === null)) {
+      return reply.status(400).send(fail("bad_request", "Invalid directory list"));
+    }
+    const backend = await getBackend();
+    if (!backend.listDir) return notImplemented(reply);
+    try {
+      const listings = await serial(learner, () => Promise.all(parsed.map((dir) => backend.listDir!(learner, dir!))));
+      return {
+        directories: Object.fromEntries(parsed.map((dir, index) => {
+          const listing = listings[index];
+          return [dir, listing ? {
+            entries: listing.entries.slice(0, LIST_MAX_ENTRIES).map((e) => ({ ...e, name: e.name.slice(0, MAX_NAME) })),
+            truncated: listing.truncated || listing.entries.length > LIST_MAX_ENTRIES,
+          } : null];
+        })),
+      };
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      throw err;
+    }
   });
 }

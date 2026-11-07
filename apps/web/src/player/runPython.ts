@@ -35,3 +35,38 @@ export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; 
 /** One directory level of the learner's sandbox home (or of `dir`, relative to it). */
 export const listFiles = (dir?: string) =>
   call<{ entries: DirEntry[]; truncated: boolean }>(`/api/sandbox/files${dir === undefined ? "" : `?dir=${encodeURIComponent(dir)}`}`);
+
+/** Lists several open workspace folders in one request. */
+export const listFileDirectories = (directories: string[]) => {
+  const query = directories.map((dir) => `dir=${encodeURIComponent(dir)}`).join("&");
+  return call<{ directories: Record<string, { entries: DirEntry[]; truncated: boolean } | null> }>(`/api/sandbox/files/batch?${query}`);
+};
+
+/** Reads one editable file from the authenticated learner workspace. */
+export const getWorkspaceFile = (path: string) =>
+  call<{ content: string }>(`/api/sandbox/workspace-file?path=${encodeURIComponent(path)}`);
+
+/** Saves one editable file to the authenticated learner workspace. */
+export const putWorkspaceFile = (path: string, content: string) =>
+  call<unknown>("/api/sandbox/workspace-file", { method: "PUT", body: JSON.stringify({ path, content }) }).then(() => undefined);
+
+/** Moves one file into an existing workspace folder. */
+export const moveWorkspaceFile = (source: string, targetDir: string) =>
+  call<unknown>("/api/sandbox/workspace-file/move", { method: "POST", body: JSON.stringify({ source, targetDir }) }).then(() => undefined);
+
+export type GuideWidget =
+  | { type: "hint"; title: string; body: string }
+  | { type: "steps"; title: string; items: string[] }
+  | { type: "question"; text: string };
+export type GuideChatMessage = { role: "user" | "assistant"; content: string };
+export const askEditorGuide = (input: {
+  fileName: string;
+  projectRoot: string;
+  language: string;
+  code: string;
+  selection: string;
+  messages: GuideChatMessage[];
+}) => call<{ guide: { message: string; widgets: GuideWidget[] } }>("/api/dev/guide-chat", {
+  method: "POST",
+  body: JSON.stringify(input),
+});

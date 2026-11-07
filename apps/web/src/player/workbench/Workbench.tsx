@@ -1,8 +1,8 @@
-import { Columns2, List, Plus, Sparkles, X } from "lucide-react";
+import { Columns2, List, Maximize2, Minimize2, Plus, Sparkles, X } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
-import { WorkbenchContext, type WorkbenchContextValue } from "./context";
-import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resizeContainerForPanel, resolveTheme, useLayout, type Layout } from "./layout";
+import { WorkbenchContext, type WorkbenchContextValue, type WorkbenchProblem } from "./context";
+import { EDITOR_MIN, LEFT_MAX_FRACTION, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolveTheme, useLayout, type Layout } from "./layout";
 import CommandPalette, { type PaletteCommand } from "./CommandPalette";
 import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
 import { NAV_TABS, Soon, type NavView } from "./Planned";
@@ -17,6 +17,7 @@ const DebugBar = lazy(() => import("./PlannedParts").then((m) => ({ default: m.D
 const DebugConsole = lazy(() => import("./PlannedParts").then((m) => ({ default: m.DebugConsole })));
 const PlannedNavView = lazy(() => import("./PlannedParts").then((m) => ({ default: m.PlannedNavView })));
 const RunStopPill = lazy(() => import("./PlannedParts").then((m) => ({ default: m.RunStopPill })));
+const AIGuide = lazy(() => import("./PlannedParts").then((m) => ({ default: m.AIGuide })));
 
 export type WorkbenchLanguage = "javascript" | "typescript" | "python";
 
@@ -34,6 +35,15 @@ type Props = {
   bottom: ReactNode;
   /** Heading of the bottom panel. Default "Terminal". */
   bottomTitle?: string;
+  /** Real shell sessions for the test workbench's terminal tabs. */
+  terminalSessions?: {
+    items: { id: string; label: string }[];
+    activeId: string;
+    onSelect(id: string): void;
+    onNew(): void;
+    split: boolean;
+    onToggleSplit(): void;
+  };
   /** Shown in the stacked (narrow) layout only; the wide layout keeps the lesson text in the navigator tree. */
   instructions?: ReactNode;
   docs: ReactNode;
@@ -46,6 +56,8 @@ type Props = {
   /** Called after the workbench has switched to the Docs tab. */
   onOpenDoc(id: string): void;
   status: WorkbenchStatus;
+  /** Git branch injected by Vite at startup for the local workbench preview. */
+  gitBranch?: string;
   /** Status-bar language for the open file; defaults to the lesson language. */
   languageLabel?: string;
   /** Hide Ln/Col (a rendered preview has no caret). */
@@ -58,6 +70,8 @@ type Props = {
    * view must not show dead controls. The /test/editor page turns it on.
    */
   showPlanned?: boolean;
+  /** Current editor context for the structured guide on the test workbench. */
+  aiContext?: { fileName: string; projectRoot: string; code: string; language: string };
 };
 
 const LANG_NAMES: Record<WorkbenchLanguage, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" };
@@ -84,7 +98,13 @@ export default function Workbench(p: Props) {
   const wide = useMedia(WIDE);
   const prefersDark = useMedia(DARK);
   const resolved = resolveTheme(layout.theme, prefersDark);
+  const [wordWrap, setWordWrap] = useState(() => {
+    try { return window.localStorage.getItem("lq.editor.wordWrap") === "true"; } catch { return false; }
+  });
   const [cursor, setCursor] = useState<{ line: number; column: number } | null>(null);
+  const [selection, setSelection] = useState<{ startLine: number; endLine: number; text: string } | null>(null);
+  const [problems, setProblems] = useState<WorkbenchProblem[]>([]);
+  const diagnostics = { errors: problems.filter((problem) => problem.severity === "error").length, warnings: problems.filter((problem) => problem.severity === "warning").length };
   const [overlay, setOverlay] = useState<Overlay>(null);
   // Motion (theme fades, panels fading in) starts after the first paint, so loading does not flash.
   const [ready, setReady] = useState(false);
@@ -101,10 +121,16 @@ export default function Workbench(p: Props) {
   }, []);
   const planned = p.showPlanned === true && wide; // the planned parts are drawn only in the wide layout
   const [navView, setNavView] = useState<NavView>("files");
+  useEffect(() => setSelection(null), [p.aiContext?.fileName]);
   const [bottomTab, setBottomTab] = useState<"main" | "console">("main");
+  const [panelMaximized, setPanelMaximized] = useState(false);
   const view: NavView = planned ? navView : "files";
   const bottomView = planned ? bottomTab : "main";
   const { state: panel, dispatch: panelDispatch } = p.panel;
+  useEffect(() => setProblems([]), [p.fileName]);
+  useEffect(() => {
+    try { window.localStorage.setItem("lq.editor.wordWrap", String(wordWrap)); } catch { /* Settings still work for this session. */ }
+  }, [wordWrap]);
 
   // A theme change eases colours: [data-theming] turns the transitions on for 450 ms, set in the same commit as the
   // new tokens so the change is animated. Hovers and everything else stay instant.
@@ -143,10 +169,10 @@ export default function Workbench(p: Props) {
 
   // Space the panels share with the editor, without the splitter bars.
   const avail = rowW - (layout.showLeft ? SPLIT : 0) - (layout.showUtil ? SPLIT : 0);
-  const shown: Layout = clampLayout(layout, avail);
-  const leftMax = Math.max(LEFT_MIN, Math.min(LEFT_MAX, avail - (shown.showUtil ? shown.utilW : 0) - EDITOR_MIN));
-  const utilMax = Math.max(UTIL_MIN, Math.min(UTIL_MAX, avail - (shown.showLeft ? shown.leftW : 0) - EDITOR_MIN));
-  const leftResizeContainer = shown.showUtil ? resizeContainerForPanel(avail, layout.utilW, shown.utilW) : avail;
+  const panelAvail = Number.isFinite(avail) ? avail : Math.max(0, window.innerWidth - 64 - (layout.showLeft ? SPLIT : 0) - (layout.showUtil ? SPLIT : 0));
+  const shown: Layout = clampLayout(layout, panelAvail);
+  const leftMax = Math.max(LEFT_MIN, Math.min(Math.floor(panelAvail * LEFT_MAX_FRACTION), panelAvail - (shown.showUtil ? shown.utilW : 0) - EDITOR_MIN));
+  const utilMax = Math.max(UTIL_MIN, Math.min(UTIL_MAX, panelAvail - (shown.showLeft ? shown.leftW : 0) - EDITOR_MIN));
 
   // Fit the bottom panel into the centre column at render, like the widths. Only a user
   // resize writes a new height, so a window that shrinks and grows again gets it back.
@@ -171,7 +197,6 @@ export default function Workbench(p: Props) {
 
   // Command palette. Capture phase on window, so Cmd/Ctrl+P beats Monaco, xterm and the browser's print dialog.
   const [palette, setPalette] = useState<{ open: boolean; mode: PaletteMode }>({ open: false, mode: "file" });
-  const openPalette = (mode: PaletteMode = "file") => setPalette({ open: true, mode });
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       const mode = paletteKey(e);
@@ -200,13 +225,9 @@ export default function Workbench(p: Props) {
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLButtonElement | null>(null);
-  const closeFileDrawerRef = useRef<() => void>(() => {});
   const closeOverlay = () => {
     returnTo.current = overlay === "nav" ? navBtn.current : utilBtn.current;
     setOverlay(null);
-  };
-  closeFileDrawerRef.current = () => {
-    if (!wide && overlay === "nav") closeOverlay();
   };
   // The toggle is inert until the drawer is gone, so focus it after the commit.
   useEffect(() => {
@@ -218,27 +239,20 @@ export default function Workbench(p: Props) {
   const openDocRef = useRef(openDoc);
   openDocRef.current = openDoc;
   const ctx = useMemo<WorkbenchContextValue>(
-    () => ({
-      monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light",
-      setCursor,
-      openDoc: (id) => openDocRef.current(id),
-      closeFileDrawer: () => closeFileDrawerRef.current(),
-    }),
-    [resolved],
+    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", wordWrap, setWordWrap, fileName: p.fileName, setCursor, setSelection, setProblems, openDoc: (id) => openDocRef.current(id) }),
+    [resolved, wordWrap, p.fileName],
   );
 
-  const bottomPanel = panel.open && (
-    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)] lg:border-l lg:border-[var(--line)]">
-      <div className="flex h-[43px] flex-none items-center border-b border-[var(--line)] px-2.5">
+  const bottomPanel = panel.everOpened && (
+    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} hidden={!panel.open} style={panelMaximized ? undefined : { height: panelH }} className={`wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)] ${panelMaximized ? "absolute inset-0 z-20" : ""}`}>
+      <div className="wb-bottom-toolbar flex h-[43px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
         {planned ? (
           <Segmented className="wb-pill gap-1" role="group" aria-label="Panel view">
             <button type="button" className="wb-ptab" aria-pressed={bottomView === "main"} onClick={() => setBottomTab("main")}>
               {p.bottomTitle ?? "Terminal"}
             </button>
-            <button type="button" className="wb-ptab" aria-pressed={bottomView === "console"} onClick={() => setBottomTab("console")}>
-              Debug console
-            </button>
+            <button type="button" className="wb-ptab" aria-label="Debug console" title="Debug console" aria-pressed={bottomView === "console"} onClick={() => setBottomTab("console")}><span className="wb-console-full">Debug console</span><span className="wb-console-short" aria-hidden="true">...</span></button>
           </Segmented>
         ) : (
           <span className="wb-pill">
@@ -248,23 +262,26 @@ export default function Workbench(p: Props) {
           </span>
         )}
         <span className="wb-pill ml-auto">
+          {planned && p.terminalSessions && <>
+            <button type="button" className="wb-tb wb-n34" aria-label="New terminal" title={p.terminalSessions.items.length >= 4 ? "Maximum of four terminals" : "New terminal"} disabled={p.terminalSessions.items.length >= 4} onClick={p.terminalSessions.onNew}>
+              <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            <button type="button" className="wb-tb wb-n34" aria-label={p.terminalSessions.split ? "Exit split terminal view" : "Split terminal view"} title={p.terminalSessions.split ? "Exit split view" : p.terminalSessions.items.length < 2 ? "Split view (opens a second terminal)" : "Split view"} onClick={p.terminalSessions.onToggleSplit}>
+              <Columns2 size={15} strokeWidth={1.7} aria-hidden="true" />
+            </button>
+          </>}
           {planned && (
-            <>
-              <Soon label="New terminal" className="wb-tb wb-n34">
-                <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
-              </Soon>
-              <Soon label="Split terminal" className="wb-tb wb-n34">
-                <Columns2 size={15} strokeWidth={1.7} aria-hidden="true" />
-              </Soon>
-            </>
+            <button type="button" className="wb-tb wb-n34" aria-label={panelMaximized ? "Restore terminal panel" : "Maximize terminal panel"} title={panelMaximized ? "Restore" : "Maximize"} onClick={() => setPanelMaximized((value) => !value)}>
+              {panelMaximized ? <Minimize2 size={15} strokeWidth={1.75} aria-hidden="true" /> : <Maximize2 size={15} strokeWidth={1.75} aria-hidden="true" />}
+            </button>
           )}
-          <button type="button" className="wb-tb wb-n34" aria-label="Close panel" title="Close panel" onClick={() => panelDispatch({ type: "close" })}>
+          <button type="button" className="wb-tb wb-n34" aria-label="Close panel" title="Close panel" onClick={() => { setPanelMaximized(false); panelDispatch({ type: "close" }); }}>
             <X size={15} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </span>
       </div>
       {/* Keep the real panel mounted (a terminal keeps its session) while the sample console shows. */}
-      <div className="wb-appear wb-scroll min-h-0 flex-1" hidden={bottomView === "console"}>
+      <div className={`wb-appear wb-scroll min-h-0 flex-1 ${p.terminalSessions ? "overflow-x-hidden" : ""}`} hidden={bottomView === "console"}>
         {p.bottom}
       </div>
       {bottomView === "console" && (
@@ -299,8 +316,6 @@ export default function Workbench(p: Props) {
         onClick: toggleUtil,
         ref: utilBtn,
       }}
-      search={{ label: "Search files, commands, and docs (Ctrl+P)", onClick: () => openPalette("file") }}
-      onRun={() => setBottomTab("main")}
       actions={p.actions}
       lights={wide && !shown.showLeft}
       planned={planned}
@@ -308,7 +323,10 @@ export default function Workbench(p: Props) {
   );
 
   const status = (
-    <StatusBar planned={planned} status={p.status} cursor={p.noCursor ? null : cursor} language={p.languageLabel ?? LANG_NAMES[p.language]} theme={layout.theme} onTheme={(theme) => dispatch({ type: "theme", theme })} />
+    <StatusBar planned={planned} branch={p.gitBranch} status={p.status} errors={diagnostics.errors} warnings={diagnostics.warnings} wordWrap={wordWrap} onWordWrap={() => setWordWrap((value) => !value)} cursor={p.noCursor ? null : cursor} language={p.languageLabel ?? LANG_NAMES[p.language]} onProblems={() => {
+      setNavView("problems");
+      if (!layout.showLeft) dispatch({ type: "toggleLeft" });
+    }} />
   );
 
   return (
@@ -349,17 +367,20 @@ export default function Workbench(p: Props) {
                     {planned && view !== "ai" && (
                       <Segmented className="wb-pill wb-navtabs" role="group" aria-label="Navigator view">
                         {NAV_TABS.map((t) => (
-                          <button key={t.id} type="button" className="wb-tb" aria-label={t.label} title={t.label} aria-pressed={view === t.id} onClick={() => setNavView(t.id)}>
+                          <button key={t.id} type="button" className="wb-tb relative" aria-label={t.id === "problems" ? `${t.label} (${diagnostics.errors + diagnostics.warnings})` : t.label} title={t.label} aria-pressed={view === t.id} onClick={() => setNavView(t.id)}>
                             <t.icon size={17} strokeWidth={1.7} aria-hidden="true" />
+                            {t.id === "problems" && diagnostics.errors + diagnostics.warnings > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-3 rounded-full bg-[var(--bad)] px-1 text-[9px] leading-3 text-white">{diagnostics.errors + diagnostics.warnings}</span>}
                           </button>
                         ))}
                       </Segmented>
                     )}
-                    <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : "pt-3"}`}>
-                      <div key={view} className="wb-appear">
-                        {view === "files" ? p.navigator : <Suspense fallback={null}><PlannedNavView view={view} /></Suspense>}
+                    {view === "ai" && p.aiContext ? (
+                      <div className="wb-appear flex min-h-0 min-w-0 flex-1 pt-1.5"><Suspense fallback={null}><AIGuide {...p.aiContext} selection={selection} /></Suspense></div>
+                    ) : (
+                      <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : "pt-3"}`}>
+                        <div key={view} className="wb-appear">{view === "files" ? p.navigator : <Suspense fallback={null}><PlannedNavView view={view} problems={problems} branch={p.gitBranch} /></Suspense>}</div>
                       </div>
-                    </div>
+                    )}
                   </nav>
                   <Splitter
                     orientation="vertical"
@@ -367,7 +388,7 @@ export default function Workbench(p: Props) {
                     value={shown.leftW}
                     min={LEFT_MIN}
                     max={leftMax}
-                    onResize={(px) => dispatch({ type: "resizeLeft", px, container: leftResizeContainer })}
+                    onResize={(px) => dispatch({ type: "resizeLeft", px, container: avail })}
                   />
                 </>
               )}
@@ -376,12 +397,12 @@ export default function Workbench(p: Props) {
                 <div className="flex min-h-0 flex-1">
                 <div className="flex min-w-0 flex-1 flex-col">
                 <Breadcrumbs title={p.title} fileName={p.fileName} crumbs={p.crumbs} symbol={p.symbol} edge="bottom" />
-                <main ref={centerRef} className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--code)]">
+                <main ref={centerRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--code)]">
                   <div className="relative flex min-h-0 flex-1 flex-col">
                     {p.editor}
-                    {planned && <Suspense fallback={null}><DebugBar /></Suspense>}
+                    {planned && navView === "debug" && <Suspense fallback={null}><DebugBar /></Suspense>}
                   </div>
-                  {panel.open && (
+                  {panel.open && !panelMaximized && (
                     <Splitter
                       orientation="horizontal"
                       label="Resize terminal panel"
@@ -389,7 +410,14 @@ export default function Workbench(p: Props) {
                       min={MIN_HEIGHT}
                       max={Math.max(MIN_HEIGHT, MAX_FRACTION * centerH)}
                       after
-                      onResize={(px) => panelDispatch({ type: "resize", px, container: centerH })}
+                      onResize={(px) => {
+                        if (px < MIN_HEIGHT) {
+                          setPanelMaximized(false);
+                          panelDispatch({ type: "close" });
+                        } else {
+                          panelDispatch({ type: "resize", px, container: centerH });
+                        }
+                      }}
                     />
                   )}
                   {bottomPanel}
@@ -436,12 +464,7 @@ export default function Workbench(p: Props) {
           open={palette.open}
           initial={palette.mode}
           files={p.paletteFiles}
-          commands={[
-            ...p.paletteCommands.map((command) => command.id.toLowerCase() === "run" || command.title.toLowerCase() === "run"
-              ? { ...command, run: () => { setBottomTab("main"); command.run(); } }
-              : command),
-            ...viewCommands,
-          ]}
+          commands={[...p.paletteCommands, ...viewCommands]}
           docs={p.paletteDocs}
           onOpenFile={p.onOpenFile}
           onOpenDoc={openDoc}
@@ -458,7 +481,8 @@ export default function Workbench(p: Props) {
 }
 
 // Modal drawer for the narrow layout. The caller makes the rest of the workbench inert, so Tab stays
-// inside. Focus starts on Close; Escape closes from anywhere.
+// inside. Focus starts on Close; Escape closes from anywhere; a click on an element marked
+// data-drawer-close (a file row, say) closes it after the click is handled.
 function Drawer({ side, label, onClose, children }: { side: "left" | "right"; label: string; onClose(): void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -481,6 +505,7 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
     <div
       className="fixed inset-0 z-40 flex"
       style={{ justifyContent: side === "left" ? "flex-start" : "flex-end" }}
+      onClick={(e) => (e.target as Element).closest("[data-drawer-close]") && onClose()}
     >
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} className="absolute inset-0 cursor-default bg-black/30" onClick={onClose} />
       <div role="dialog" aria-modal="true" aria-label={label} className="relative flex h-full w-[min(85vw,340px)] flex-col bg-[var(--side)] shadow-xl">
