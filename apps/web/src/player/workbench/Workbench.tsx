@@ -1,4 +1,4 @@
-import { Columns2, List, Plus, Search, Sparkles, X } from "lucide-react";
+import { Columns2, List, Plus, Sparkles, X } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue } from "./context";
@@ -22,6 +22,10 @@ export type WorkbenchLanguage = "javascript" | "typescript" | "python";
 type Props = {
   title: string;
   fileName: string;
+  /** Folders above the file, root first, for the breadcrumb (Main.dc.html). Without it the breadcrumb shows the lesson title. */
+  crumbs?: string[];
+  /** The symbol under the caret, last in the breadcrumb. */
+  symbol?: string;
   language: WorkbenchLanguage;
   navigator: ReactNode;
   /** Use WorkbenchEditor so the editor follows the workbench theme. */
@@ -29,7 +33,8 @@ type Props = {
   bottom: ReactNode;
   /** Heading of the bottom panel. Default "Terminal". */
   bottomTitle?: string;
-  instructions: ReactNode;
+  /** Shown in the stacked (narrow) layout only; the wide layout keeps the lesson text in the navigator tree. */
+  instructions?: ReactNode;
   docs: ReactNode;
   actions: ReactNode;
   /** Palette entries: the open files, the lesson's own commands (Run, Check...) and the docs catalogue. */
@@ -145,7 +150,6 @@ export default function Workbench(p: Props) {
   }, []);
   const closePalette = () => setPalette((s) => ({ ...s, open: false }));
   const openDoc = (id: string) => {
-    dispatch({ type: "utilTab", tab: "docs" });
     if (wide && !layout.showUtil) dispatch({ type: "toggleUtil" });
     if (!wide) setOverlay("docs");
     p.onOpenDoc(id);
@@ -158,8 +162,6 @@ export default function Workbench(p: Props) {
     { id: "theme.dark", title: "Color theme: Dark", run: () => dispatch({ type: "theme", theme: "dark" }) },
     { id: "theme.system", title: "Color theme: System", run: () => dispatch({ type: "theme", theme: "system" }) },
   ];
-  const mac = typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform);
-  const searchKey = mac ? "⌘P" : "Ctrl+P";
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLButtonElement | null>(null);
@@ -181,18 +183,9 @@ export default function Workbench(p: Props) {
     [resolved],
   );
 
-  const tabs = (
-    <UtilTabs
-      tab={layout.utilTab}
-      onTab={(tab) => dispatch({ type: "utilTab", tab })}
-      instructions={p.instructions}
-      docs={p.docs}
-    />
-  );
-
   const bottomPanel = panel.open && (
-    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
-      <div className="flex h-[42px] flex-none items-center border-b border-[var(--line)] px-2.5">
+    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)] lg:border-l lg:border-[var(--line)]">
+      <div className="flex h-[43px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
         {planned ? (
           <span className="wb-pill gap-1" role="group" aria-label="Panel view">
@@ -213,15 +206,15 @@ export default function Workbench(p: Props) {
         <span className="wb-pill ml-auto">
           {planned && (
             <>
-              <Soon label="New terminal">
+              <Soon label="New terminal" className="wb-tb wb-n34">
                 <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
               </Soon>
-              <Soon label="Split terminal">
+              <Soon label="Split terminal" className="wb-tb wb-n34">
                 <Columns2 size={15} strokeWidth={1.7} aria-hidden="true" />
               </Soon>
             </>
           )}
-          <button type="button" className="wb-tb" aria-label="Close panel" title="Close panel" onClick={() => panelDispatch({ type: "close" })}>
+          <button type="button" className="wb-tb wb-n34" aria-label="Close panel" title="Close panel" onClick={() => panelDispatch({ type: "close" })}>
             <X size={15} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </span>
@@ -242,6 +235,8 @@ export default function Workbench(p: Props) {
     <Toolbar
       title={p.title}
       fileName={p.fileName}
+      crumbs={p.crumbs}
+      symbol={p.symbol}
       nav={{
         label: wide ? "Toggle navigator" : "Show files",
         pressed: wide ? layout.showLeft : openOverlay === "nav",
@@ -259,11 +254,6 @@ export default function Workbench(p: Props) {
         onClick: toggleUtil,
         ref: utilBtn,
       }}
-      tools={
-        <button type="button" className="wb-tb flex-none" aria-label="Search and commands" title={`Search and commands (${searchKey})`} onClick={() => setPalette({ open: true, mode: "file" })}>
-          <Search size={16} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-      }
       actions={p.actions}
       lights={wide && !shown.showLeft}
       planned={planned}
@@ -283,19 +273,19 @@ export default function Workbench(p: Props) {
         style={{ colorScheme: resolved }}
       >
         {/* While a drawer is open, everything behind it is inert: out of the Tab order and the accessibility tree. */}
-        <div inert={openOverlay != null} className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""}`}>
+        <div inert={openOverlay != null} data-palette-open={palette.open || undefined} className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""}`}>
           {wide ? (
             <div ref={rowRef} className="flex min-h-0 flex-1">
               {shown.showLeft && (
                 <>
                   <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-side flex min-h-0 flex-none flex-col">
                     <div className="flex flex-none items-center gap-2 px-3 pt-3">
-                      <span className="flex h-8 items-center">
+                      <span className="flex h-[34px] items-center">
                         <TrafficLights />
                       </span>
                       {planned && (
                         <>
-                          <span className="wb-pill gap-1" role="group" aria-label="Navigator or AI help">
+                          <span className="wb-pill gap-1 shadow-[0_1px_2px_rgba(20,30,70,.1)]" role="group" aria-label="Navigator or AI help">
                             <button type="button" className="wb-tb wb-nb" aria-label="List" title="List" aria-pressed={view !== "ai"} onClick={() => setNavView("files")}>
                               <List size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
@@ -332,53 +322,54 @@ export default function Workbench(p: Props) {
               )}
               <div className="flex min-w-0 flex-1 flex-col">
                 {toolbar}
-                <div className="flex min-h-0 flex-1">
-                  <main ref={centerRef} className="flex min-w-0 flex-1 flex-col bg-[var(--code)]">
-                    <div className="relative flex min-h-0 flex-1 flex-col">
-                      {p.editor}
-                      {planned && <Suspense fallback={null}><DebugBar /></Suspense>}
-                    </div>
-                    {panel.open && (
-                      <Splitter
-                        orientation="horizontal"
-                        label="Resize terminal panel"
-                        value={panelH}
-                        min={MIN_HEIGHT}
-                        max={Math.max(MIN_HEIGHT, MAX_FRACTION * centerH)}
-                        after
-                        onResize={(px) => panelDispatch({ type: "resize", px, container: centerH })}
-                      />
-                    )}
-                    {bottomPanel}
-                  </main>
-                  {shown.showUtil && (
-                    <>
-                      <Splitter
-                        orientation="vertical"
-                        label="Resize instructions and docs"
-                        value={shown.utilW}
-                        min={UTIL_MIN}
-                        max={utilMax}
-                        after
-                        onResize={(px) => dispatch({ type: "resizeUtil", px, container: avail })}
-                      />
-                      <aside aria-label="Instructions and docs" style={{ width: shown.utilW }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
-                        {tabs}
-                      </aside>
-                    </>
+                <main ref={centerRef} className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--code)]">
+                  <div className="relative flex min-h-0 flex-1 flex-col">
+                    {p.editor}
+                    {planned && <Suspense fallback={null}><DebugBar /></Suspense>}
+                  </div>
+                  {panel.open && (
+                    <Splitter
+                      orientation="horizontal"
+                      label="Resize terminal panel"
+                      value={panelH}
+                      min={MIN_HEIGHT}
+                      max={Math.max(MIN_HEIGHT, MAX_FRACTION * centerH)}
+                      after
+                      onResize={(px) => panelDispatch({ type: "resize", px, container: centerH })}
+                    />
                   )}
-                </div>
+                  {bottomPanel}
+                </main>
               </div>
+              {/* The docs column runs the full window height, level with the toolbar. */}
+              {shown.showUtil && (
+                <>
+                  <Splitter
+                    orientation="vertical"
+                    label="Resize docs"
+                    value={shown.utilW}
+                    min={UTIL_MIN}
+                    max={utilMax}
+                    after
+                    onResize={(px) => dispatch({ type: "resizeUtil", px, container: avail })}
+                  />
+                  <aside aria-label="Docs" style={{ width: shown.utilW }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
+                    {p.docs}
+                  </aside>
+                </>
+              )}
             </div>
           ) : (
             <div className="flex min-w-0 flex-1 flex-col">
               {toolbar}
               <main className="flex min-w-0 flex-col bg-[var(--code)]">
                 {p.editor}
-                <section aria-label="Instructions" className="border-t border-[var(--line)] bg-[var(--tbar)] px-4 py-4">
-                  <h2 className="mb-2 text-[13px] font-semibold">Instructions</h2>
-                  <div className="wb-prose">{p.instructions}</div>
-                </section>
+                {p.instructions && (
+                  <section aria-label="Instructions" className="border-t border-[var(--line)] bg-[var(--tbar)] px-4 py-4">
+                    <h2 className="mb-2 text-[13px] font-semibold">Instructions</h2>
+                    <div className="wb-prose">{p.instructions}</div>
+                  </section>
+                )}
                 {bottomPanel && <div className="border-t border-[var(--line)]">{bottomPanel}</div>}
               </main>
             </div>
@@ -402,42 +393,6 @@ export default function Workbench(p: Props) {
         )}
       </div>
     </WorkbenchContext>
-  );
-}
-
-function UtilTabs({ tab, onTab, instructions, docs }: { tab: Layout["utilTab"]; onTab(t: Layout["utilTab"]): void; instructions: ReactNode; docs: ReactNode }) {
-  const ids = ["instructions", "docs"] as const;
-  const names = { instructions: "Instructions", docs: "Docs" };
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const next = ids[(ids.indexOf(tab) + 1) % ids.length];
-    onTab(next);
-    document.getElementById(`wb-tab-${next}`)?.focus();
-  };
-  return (
-    <>
-      <div role="tablist" aria-label="Utility area" onKeyDown={onKeyDown} className="flex h-[51px] flex-none items-end gap-4 border-b border-[var(--line)] px-3">
-        {ids.map((id) => (
-          <button
-            key={id}
-            id={`wb-tab-${id}`}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            aria-controls={`wb-panel-${id}`}
-            tabIndex={tab === id ? 0 : -1}
-            className="wb-tab"
-            onClick={() => onTab(id)}
-          >
-            {names[id]}
-          </button>
-        ))}
-      </div>
-      <div id={`wb-panel-${tab}`} role="tabpanel" aria-labelledby={`wb-tab-${tab}`} className="wb-scroll wb-prose flex-1 px-4 pb-5 pt-4">
-        {tab === "instructions" ? instructions : docs}
-      </div>
-    </>
   );
 }
 
@@ -476,7 +431,7 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
             <X size={15} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
-        <div className={`wb-scroll flex-1 py-1.5 ${side === "right" ? "wb-prose px-4" : ""}`}>{children}</div>
+        <div className={`flex-1 ${side === "right" ? "wb-prose flex min-h-0 flex-col" : "wb-scroll py-1.5"}`}>{children}</div>
       </div>
     </div>
   );

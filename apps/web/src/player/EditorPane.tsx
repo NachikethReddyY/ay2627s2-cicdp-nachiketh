@@ -117,8 +117,19 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
           scrollBeyondLastLine: false,
           automaticLayout: true,
           fontSize: 14,
-          ...(fontFamily && { fontFamily, lineHeight: 22 }),
-          padding: { bottom: edit ? 16 : 140 }, // room for the replay's floating controls
+          ...(fontFamily && {
+            // Main.dc.html: 13 px code on 22 px rows, 8 px above the first line, slim 10 px scrollbars.
+            fontFamily,
+            fontSize: 13,
+            lineHeight: 22,
+            lineNumbersMinChars: 3,
+            lineDecorationsWidth: 10,
+            folding: false,
+            glyphMargin: false,
+            renderLineHighlight: "all" as const,
+            scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+          }),
+          padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 }, // room for the replay's floating controls
           hover: { enabled: help ? "on" : "off" },
           lightbulb: { enabled: "off" as never }, // no quick fixes: errors are explained, not rewritten
           occurrencesHighlight: "off",

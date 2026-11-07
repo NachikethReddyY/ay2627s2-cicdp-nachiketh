@@ -34,8 +34,9 @@ export default function DocsPanel({ selected, onSelect }: Props) {
   };
 
   return (
-    <div className="-mx-4 -mt-4">
-      <div className="relative flex items-center gap-2.5 border-b border-[var(--line)] px-3 py-2.5">
+    <div className="wb-prose flex min-h-0 flex-1 flex-col">
+      <div className="relative flex h-[49px] flex-none items-center gap-2.5 border-b border-[var(--line)] px-3">
+        <h2 className="flex-none text-[13px] font-semibold">Docs</h2>
         <label htmlFor={`${uid}-q`} className="sr-only">Search docs</label>
         <div className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-[15px] border border-[var(--line)] bg-[var(--pane2)] px-3">
           <Search size={14} strokeWidth={1.8} aria-hidden="true" className="flex-none text-[var(--mu)]" />
@@ -52,7 +53,7 @@ export default function DocsPanel({ selected, onSelect }: Props) {
           />
         </div>
         {q.trim() && (
-          <div className="absolute inset-x-3 top-[46px] z-10 max-h-[230px] overflow-auto rounded-xl border border-[var(--line)] bg-[var(--tbar)] p-1 shadow-[0_10px_28px_rgba(20,30,70,.18)]">
+          <div className="absolute inset-x-3 top-[44px] z-10 max-h-[230px] overflow-auto rounded-xl border border-[var(--line)] bg-[var(--tbar)] p-1 shadow-[0_10px_28px_rgba(20,30,70,.18)]">
             {results.map((d) => (
               <button
                 key={d.id}
@@ -67,7 +68,7 @@ export default function DocsPanel({ selected, onSelect }: Props) {
           </div>
         )}
       </div>
-      <article className="px-4 pb-5 pt-4" aria-label={doc.title}>
+      <article className="wb-scroll min-h-0 flex-1 px-4 pb-5 pt-4" aria-label={doc.title}>
         <div className="text-[11.5px] text-[var(--mu)]">{doc.src}</div>
         <h2 className="mb-2 mt-0.5 text-lg font-semibold leading-tight">{doc.title}</h2>
         <p className="mb-3.5">{doc.snippet}</p>

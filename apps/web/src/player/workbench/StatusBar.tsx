@@ -25,7 +25,7 @@ const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
 export default function StatusBar({ status, cursor, language, theme, onTheme, planned = false }: Props) {
   const ThemeIcon = THEME_ICON[theme];
   return (
-    <footer className="flex h-6 flex-none items-center gap-4 overflow-hidden whitespace-nowrap border-t border-[var(--line)] bg-[var(--side)] px-3 text-[11.5px] text-[var(--mu)]">
+    <footer className="flex h-[25px] flex-none items-center gap-4 overflow-hidden whitespace-nowrap border-t border-[var(--line)] bg-[var(--side)] px-3 text-[11.5px] text-[var(--mu)]">
       {planned && (
         <>
           <span className="wb-mono flex flex-none items-center gap-1.5">
@@ -47,17 +47,13 @@ export default function StatusBar({ status, cursor, language, theme, onTheme, pl
         </>
       )}
       <span role="status" className="flex min-w-0 items-center gap-3">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span aria-hidden="true" className="wb-dot" style={{ color: DOT[status.tone ?? "ready"] }} />
-          <span className="truncate">{status.text}</span>
-        </span>
+        <span className="truncate">{status.text}</span>
         {status.verdict && <span className="truncate text-[var(--tx)]">{status.verdict}</span>}
       </span>
       <span className="ml-auto flex-none max-sm:hidden">{cursor ? `Ln ${cursor.line}, Col ${cursor.column}` : ""}</span>
       {planned && <span className="flex-none">Spaces: 2</span>}
       {planned && <span className="flex-none">UTF-8</span>}
-      <span className="flex-none max-sm:ml-auto">{language}</span>
-      <label className="flex flex-none items-center gap-1">
+      <label className="flex flex-none items-center gap-1 max-sm:ml-auto">
         <ThemeIcon size={13} strokeWidth={1.75} aria-hidden="true" />
         <span className="sr-only">Theme</span>
         <select
@@ -70,6 +66,9 @@ export default function StatusBar({ status, cursor, language, theme, onTheme, pl
           <option value="dark">Dark theme</option>
         </select>
       </label>
+      <span className="flex-none">{language}</span>
+      {/* The design's connection dot ends the bar; its colour follows the status. */}
+      <span aria-hidden="true" className="wb-dot" style={{ color: DOT[status.tone ?? "ready"] }} />
     </footer>
   );
 }

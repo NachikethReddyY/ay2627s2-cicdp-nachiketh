@@ -1,4 +1,5 @@
 // Sample lessons for the dev-only /test/editor page. Starter code only: no answers, no expected output checks.
+import { filePaths, type TreeNode } from "../player/workbench/fileTree.ts";
 
 export type TestLanguage = "javascript" | "typescript" | "python";
 
@@ -64,4 +65,72 @@ export function pickTestLesson(language: unknown): TestLesson {
   return typeof language === "string" && Object.hasOwn(TEST_LESSONS, language)
     ? TEST_LESSONS[language as TestLanguage]
     : TEST_LESSONS.javascript;
+}
+
+/** The navigator tree of Main.dc.html. The lesson's file takes the design's selected-row slot (trace-loop.ts). */
+export const TREE_ROOT = "learnquest";
+export const LESSON_DIR = `${TREE_ROOT}/packages/player-core/src`;
+
+export function designTree(lessonFile: string): TreeNode[] {
+  return [
+    {
+      name: TREE_ROOT,
+      open: true,
+      children: [
+        {
+          name: "apps",
+          open: true,
+          children: [
+            { name: "api", children: [{ name: "server.ts" }] },
+            { name: "web", children: [{ name: "main.tsx" }] },
+          ],
+        },
+        {
+          name: "packages",
+          open: true,
+          children: [
+            {
+              name: "player-core",
+              open: true,
+              children: [{ name: "src", open: true, children: [{ name: "index.ts" }, { name: "timeline.ts" }, { name: lessonFile, status: "M" }] }],
+            },
+            { name: "ui-catalog", children: [{ name: "index.ts" }] },
+          ],
+        },
+        {
+          name: "services",
+          children: [
+            { name: "engine", children: [{ name: "main.py" }] },
+            { name: "sandbox", children: [{ name: "main.ts" }] },
+          ],
+        },
+        { name: "docs", children: [{ name: "plan.md" }] },
+        { name: "README.md" },
+        { name: "AGENTS.md" },
+        { name: "DESIGN.md" },
+        { name: "package.json" },
+      ],
+    },
+  ];
+}
+
+/** Every file of the design tree, as full paths. */
+export const designFilePaths = (lessonFile: string) => filePaths(designTree(lessonFile));
+
+/** Short stand-in text for the files that are not the lesson: a one-line comment, nothing from a real lesson. */
+export function placeholderBody(path: string): string {
+  const name = path.split("/").pop() ?? path;
+  if (name.endsWith(".json")) return "{}\n";
+  if (name.endsWith(".md")) return `# ${name}\n\nPlaceholder text for the test page.\n`;
+  if (name.endsWith(".py")) return `# ${name}: placeholder for the test page.\n`;
+  return `// ${name}: placeholder for the test page.\n`;
+}
+
+/** Monaco language for a tree file; the lesson file keeps the lesson's own. */
+export function languageOf(path: string, lessonLanguage: TestLanguage): string {
+  if (path.endsWith(".md")) return "markdown";
+  if (path.endsWith(".json")) return "json";
+  if (path.endsWith(".py")) return "python";
+  if (/\.tsx?$/.test(path)) return "typescript";
+  return lessonLanguage;
 }

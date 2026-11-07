@@ -1,25 +1,36 @@
-import { useRef, useState } from "react";
-import { Check, ChevronDown, Folder, Play } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Check, Play } from "lucide-react";
 import Markdown from "react-markdown";
 import { usePanel } from "../player/terminal/usePanel";
-import FileBadge from "../player/workbench/FileBadge";
+import FileTreeView from "../player/workbench/FileTreeView";
+import { initialOpen, toggleFolder } from "../player/workbench/fileTree";
 import DocsPanel from "../player/workbench/DocsPanel";
 import { DOCS } from "../player/workbench/docs";
 import Workbench from "../player/workbench/Workbench";
 import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
-import { pickTestLesson, type TestLesson } from "./testEditorFixture";
+import { LESSON_DIR, TREE_ROOT, designFilePaths, designTree, languageOf, pickTestLesson, placeholderBody, type TestLesson } from "./testEditorFixture";
 
 // Dev-only page for building the practice workbench. Fixture data only: no sign-in, no API, no sandbox.
 
 const READY: WorkbenchStatus = { text: "Ready" };
 
-const initialFiles = (l: TestLesson) => Object.fromEntries(l.files.map((f) => [f.path, f.path === l.fileName ? l.starter : f.body]));
+// Files are keyed by their path in the design's tree. The lesson file and the README keep their fixture text.
+const lessonPath = (l: TestLesson) => `${LESSON_DIR}/${l.fileName}`;
+const README = `${TREE_ROOT}/README.md`;
+// The lesson text lives in the README, which opens as a rendered preview.
+const readmeBody = (l: TestLesson) => `# ${l.title}\n\n${l.instructions}\n`;
+const initialFiles = (l: TestLesson) =>
+  Object.fromEntries(
+    designFilePaths(l.fileName).map((p) => [p, p === lessonPath(l) ? l.starter : (p === README ? readmeBody(l) : placeholderBody(p))]),
+  );
 
 export default function TestEditor() {
   const [lesson] = useState(() => pickTestLesson(new URLSearchParams(location.search).get("language")));
   const [files, setFiles] = useState(() => initialFiles(lesson));
-  const [open, setOpen] = useState(lesson.fileName);
+  const tree = useMemo(() => designTree(lesson.fileName), [lesson]);
+  const [open, setOpen] = useState(lessonPath(lesson));
+  const [folders, setFolders] = useState(() => initialOpen(tree));
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const [selectedDoc, setSelectedDoc] = useState("for");
@@ -34,32 +45,26 @@ export default function TestEditor() {
     setStatus({ text: "Ran (sample output)" });
   };
 
-  const paletteFiles = lesson.files.map((f) => ({ id: f.path, title: f.path }));
+  const paletteFiles = designFilePaths(lesson.fileName).map((p) => {
+    const at = p.lastIndexOf("/");
+    return { id: p, title: p.slice(at + 1), sub: p.slice(0, at) };
+  });
   const paletteDocs = DOCS.map((d) => ({ id: d.id, title: d.title, sub: d.src }));
   const paletteCommands = [
     { id: "run", title: "Run", run },
     { id: "check", title: "Check", run: check },
   ];
 
+  // The sample language comes from ?language= (javascript, typescript, python).
   const navigator = (
-    <>
-      {/* The sample language comes from ?language= (javascript, typescript, python). */}
-      <div className="wb-row wb-row-root" aria-hidden="true">
-        <ChevronDown size={10} strokeWidth={2.5} className="flex-none opacity-65" />
-        <Folder size={16} strokeWidth={1.5} fill="#7aa2d8" stroke="#5f8bc8" className="flex-none" />
-        practice
-      </div>
-      <ul aria-label="Files">
-        {lesson.files.map((f) => (
-          <li key={f.path}>
-            <button type="button" className="wb-row pl-[30px]" data-drawer-close aria-current={f.path === open} onClick={() => setOpen(f.path)}>
-              <FileBadge path={f.path} />
-              {f.path}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
+    <FileTreeView
+      label="Files"
+      nodes={tree}
+      open={folders}
+      selected={open}
+      onToggle={(p) => setFolders((f) => toggleFolder(f, p))}
+      onSelect={setOpen}
+    />
   );
 
   const actions = (
@@ -88,24 +93,31 @@ export default function TestEditor() {
     </div>
   );
 
-  const openLang = open.endsWith(".md") ? "markdown" : lesson.language;
+  const openLang = languageOf(open, lesson.language);
 
   return (
     <Workbench
       title={`${lesson.title} (test page)`}
-      fileName={open}
+      fileName={open.slice(open.lastIndexOf("/") + 1)}
+      crumbs={open.split("/").slice(0, -1)}
+      symbol={open === lessonPath(lesson) ? (lesson.language === "python" ? "total(numbers)" : "sum(numbers)") : undefined}
       language={lesson.language}
       navigator={navigator}
       editor={
+        open === README ? (
+          <div className="wb-scroll wb-prose min-h-0 flex-1 px-8 py-6" aria-label="README preview" role="region" tabIndex={0}>
+            <Markdown>{files[README]}</Markdown>
+          </div>
+        ) : (
         <WorkbenchEditor
           key={`${lesson.language}:${open}`}
           transportRef={runRef}
           edit={{ value: files[open] ?? "", language: openLang, onChange: (v) => setFiles((fs) => ({ ...fs, [open]: v })) }}
         />
+        )
       }
       bottom={bottom}
       bottomTitle="Output"
-      instructions={<Markdown>{lesson.instructions}</Markdown>}
       docs={docs}
       actions={actions}
       paletteFiles={paletteFiles}

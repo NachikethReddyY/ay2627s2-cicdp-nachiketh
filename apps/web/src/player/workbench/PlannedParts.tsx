@@ -10,13 +10,13 @@ const icon = (I: LucideIcon, size = 15) => <I size={size} strokeWidth={1.8} aria
 /** Run / Stop pill at the end of the navigator head (the design's run controls). */
 export function RunStopPill() {
   return (
-    <span className="wb-pill ml-auto">
+    <span className="wb-pill ml-auto gap-0 shadow-[0_1px_2px_rgba(20,30,70,.1)]">
       <Soon label="Run" className="wb-tb wb-nb">
-        <Play size={14} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+        <Play size={12} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
       </Soon>
       <span aria-hidden="true" className="h-[18px] w-px bg-[var(--line)]" />
-      <Soon label="Stop" className="wb-tb wb-nb" style={{ color: "var(--mu)" }}>
-        <Square size={13} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+      <Soon label="Stop" className="wb-tb wb-nb" style={{ color: "var(--bad)" }}>
+        <Square size={10} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
       </Soon>
     </span>
   );

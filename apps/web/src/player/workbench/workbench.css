@@ -20,7 +20,7 @@
     --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
     --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
     --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
-    --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36;
+    --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
     --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
     --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
     --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a;
@@ -31,7 +31,7 @@
       --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
       --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
       --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
-      --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36;
+      --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
       --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
       --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
       --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a;
@@ -43,9 +43,6 @@
   .wb-desk {
     padding: 32px; box-sizing: border-box;
     background: url("/img/desktop-imac-blue.jpg") center / cover no-repeat, #a9c7f7;
-  }
-  .wb-desk[data-resolved="dark"] {
-    background: linear-gradient(rgba(8, 10, 20, 0.5), rgba(8, 10, 20, 0.5)), url("/img/desktop-imac-blue.jpg") center / cover no-repeat, #18203f;
   }
   .wb-win {
     position: relative; border-radius: 16px; overflow: hidden; background: var(--win); border: 1px solid var(--edge);
@@ -75,7 +72,7 @@
     background: var(--tbar); box-sizing: border-box; outline: none; user-select: none; -webkit-user-select: none;
   }
   .wb-split-v { width: 12px; cursor: col-resize; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
-  .wb-split-h { height: 12px; cursor: row-resize; border-top: 1px solid var(--line); }
+  .wb-split-h { height: 12px; cursor: row-resize; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
   .wb-split-v:focus-visible, .wb-split-h:focus-visible { box-shadow: inset 0 0 0 2px var(--acT); }
 
   /* 11 px uppercase section label */
@@ -88,9 +85,10 @@
   .wb :is(button, input, select, a, [role="tab"]):focus-visible { outline: 2px solid var(--acT); outline-offset: 1px; }
   .wb footer select:focus-visible, .wb .wb-row:focus-visible { outline-offset: -2px; }
 
-  /* 32 px rounded group that holds 26 px buttons (toolbar toggles, tab pills) */
+  /* Rounded group that holds 26 px buttons (toolbar toggles, tab pills). Main.dc.html sets height 32 on a content-box
+     element with a 1 px border, so the drawn pill is 34 px; only the navigator view tabs set border-box. */
   .wb-pill {
-    display: inline-flex; align-items: center; gap: 1px; height: 32px; padding: 0 3px; box-sizing: border-box;
+    display: inline-flex; align-items: center; gap: 1px; height: 34px; padding: 0 3px; box-sizing: border-box;
     border-radius: 16px; background: var(--pane2); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08);
   }
   .wb-pill > .wb-tb { height: 26px; min-width: 36px; border-radius: 13px; }
@@ -105,11 +103,16 @@
   .wb-ptab[aria-pressed="true"], .wb-ptab[data-on="true"] { background: var(--sel); color: var(--acT); cursor: default; }
   .wb-pill > .wb-tb.wb-nb { width: 30px; min-width: 30px; padding: 0; }
   .wb-pill > .wb-tb.wb-wide { min-width: 38px; }
-  .wb-navtabs { flex: none; justify-content: center; gap: 4px; width: 220px; max-width: calc(100% - 12px); margin: 6px auto 8px; }
+  .wb-pill > .wb-tb.wb-n34 { min-width: 34px; }
+  .wb-navtabs { flex: none; justify-content: center; gap: 4px; height: 32px; box-shadow: none; width: 220px; max-width: calc(100% - 12px); margin: 6px auto 8px; }
   .wb-navtabs > .wb-tb { width: 33px; min-width: 33px; padding: 0; }
   .wb-navtabs > .wb-tb:not([aria-pressed="true"]), .wb-pill > .wb-nb:not([aria-pressed="true"]) { color: var(--mu); }
   @media (max-width: 639px) { .wb-pill > .wb-tb { min-width: 32px; padding: 0 7px; } }
   .wb-tb[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+  /* Panel toggles: no capsule; shown = full text colour, hidden = grey (user override of the design). */
+  .wb-tb.wb-tog { height: 26px; min-width: 36px; border-radius: 13px; color: var(--mu); }
+  .wb-tb.wb-tog[aria-pressed="true"] { background: transparent; color: var(--tx); }
+  .wb-tb.wb-tog[aria-pressed="true"]:hover { background: var(--hov); }
   .wb-tb.wb-primary { background: var(--ac); color: #fff; }
   .wb-tb.wb-primary:hover { background: #2752bd; }
   .wb-tb.wb-outline { border: 1px solid var(--line); }
@@ -141,9 +144,8 @@
     font-size: 13px; white-space: nowrap; text-align: left; cursor: pointer;
   }
   .wb-row:hover { background: var(--hov); }
-  .wb-row[aria-current="true"] { background: var(--selrow); font-weight: 500; }
-  .wb-row-root { font-weight: 600; cursor: default; }
-  .wb-row-root:hover { background: transparent; }
+  .wb-row[aria-selected="true"] { background: var(--selrow); font-weight: 500; }
+  .wb-row-strong { font-weight: 600; }
 
   /* Markdown in the utility area */
   .wb-prose { font-size: 13px; line-height: 1.55; }
@@ -164,12 +166,23 @@
     overflow: visible; flex-direction: column; gap: 12px; font-size: 13px; outline: none;
   }
   .wb-pal[open] { display: flex; }
-  /* The workbench behind frosts over while the palette is open. */
+  /* Narrow layout (no window frame): the whole workbench frosts behind the palette. */
   .wb-pal::backdrop {
     background: rgba(255, 255, 255, 0.34);
     backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%);
   }
   .wb[data-resolved="dark"] .wb-pal::backdrop { background: rgba(8, 10, 20, 0.38); backdrop-filter: blur(10px) saturate(110%) brightness(0.9); -webkit-backdrop-filter: blur(10px) saturate(110%) brightness(0.9); }
+  /* Desktop layout: only the window frosts. The backdrop stays clear, so the wallpaper and the window's shadow stay sharp;
+     an overlay inside the window (clipped by its radius) blurs what the window shows. */
+  @media (min-width: 1024px) {
+    .wb-pal::backdrop, .wb[data-resolved="dark"] .wb-pal::backdrop { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .wb-win[data-palette-open]::after {
+      content: ""; position: absolute; inset: 0; z-index: 30; pointer-events: none;
+      background: rgba(255, 255, 255, 0.34);
+      backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%);
+    }
+    .wb[data-resolved="dark"] .wb-win[data-palette-open]::after { background: rgba(8, 10, 20, 0.38); backdrop-filter: blur(10px) saturate(110%) brightness(0.9); -webkit-backdrop-filter: blur(10px) saturate(110%) brightness(0.9); }
+  }
   .wb-pal-glass {
     background: var(--glass); border: 1px solid var(--glass-edge);
     backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
@@ -236,6 +249,9 @@
     .wb-win { background: var(--side); }
     .wb-side { background: var(--side); }
     .wb-pal-glass { background: var(--tbar); }
+    .wb-win[data-palette-open]::after, .wb[data-resolved="dark"] .wb-win[data-palette-open]::after { background: rgba(20, 30, 70, 0.4); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) and (max-width: 1023px) {
     .wb-pal::backdrop, .wb[data-resolved="dark"] .wb-pal::backdrop { background: rgba(20, 30, 70, 0.4); backdrop-filter: none; -webkit-backdrop-filter: none; }
   }
   @media (prefers-reduced-motion: no-preference) {
