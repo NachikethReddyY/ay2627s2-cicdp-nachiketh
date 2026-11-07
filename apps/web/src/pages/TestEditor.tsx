@@ -110,17 +110,20 @@ export default function TestEditor() {
       language={lesson.language}
       navigator={navigator}
       editor={
-        open === README ? (
-          <div className="wb-scroll wb-prose min-h-0 flex-1 px-8 py-6" aria-label="README preview" role="region" tabIndex={0}>
-            <Markdown>{files[README]}</Markdown>
+        <>
+          <div className={open === README ? "hidden" : "min-h-0 min-w-0 flex-1"}>
+            <WorkbenchEditor
+              modelPath={`${lesson.language}/${open}`}
+              transportRef={runRef}
+              edit={{ value: files[open] ?? "", language: openLang, onChange: (v) => setFiles((fs) => ({ ...fs, [open]: v })) }}
+            />
           </div>
-        ) : (
-        <WorkbenchEditor
-          key={`${lesson.language}:${open}`}
-          transportRef={runRef}
-          edit={{ value: files[open] ?? "", language: openLang, onChange: (v) => setFiles((fs) => ({ ...fs, [open]: v })) }}
-        />
-        )
+          {open === README && (
+            <div className="wb-scroll wb-prose min-h-0 flex-1 px-8 py-6" aria-label="README preview" role="region" tabIndex={0}>
+              <Markdown>{files[README]}</Markdown>
+            </div>
+          )}
+        </>
       }
       bottom={bottom}
       bottomTitle="Output"

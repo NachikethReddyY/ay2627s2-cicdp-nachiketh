@@ -51,6 +51,11 @@ function clamp(px: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, px));
 }
 
+/** Adjust reducer space for the panel width that rendering clamps but does not persist. */
+export function resizeContainerForPanel(container: number, storedWidth: number, visibleWidth: number): number {
+  return container + storedWidth - visibleWidth;
+}
+
 // Largest navigator width that still leaves the editor EDITOR_MIN px.
 function leftLimit(s: Layout, container: number): number {
   if (!Number.isFinite(container)) return LEFT_MAX;

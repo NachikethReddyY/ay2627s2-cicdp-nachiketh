@@ -14,6 +14,7 @@ type Props = {
   ref?: Ref<EditorHandle>;
   transportRef: RefObject<HTMLButtonElement | null>;
   viewPath?: string; // file the user picked; falls back to the replay's active file
+  modelPath?: string; // stable Monaco model identity for editable workspace files
   overlay?: ReactNode;
   edit?: { value: string; language: string; onChange(v: string): void }; // practice: the learner types here
   theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default "vs"
@@ -22,7 +23,7 @@ type Props = {
   help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable; // practice: hovers, completion docs, squiggles
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, help }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, modelPath, overlay, edit, theme, fontFamily, onCursor, help }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -103,6 +104,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
   return (
     <div className="relative h-[65dvh] min-w-0 flex-none lg:h-auto lg:min-h-0 lg:flex-1">
       <Editor
+        path={modelPath ? `file:///workspace/${modelPath.split("/").map(encodeURIComponent).join("/")}` : undefined}
         loading={<div className="grid h-full place-items-center"><Loader label="Opening the editor" /></div>}
         language={language}
         value={edit?.value}

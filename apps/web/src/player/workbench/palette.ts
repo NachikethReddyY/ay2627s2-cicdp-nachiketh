@@ -2,6 +2,14 @@ export type PaletteMode = "file" | "cmd" | "doc";
 
 export type PaletteItem = { id: string; title: string; sub?: string; hint?: string; badge?: "ts" | "js" | "py" | "md" };
 
+const MODE_PREFIX: Record<PaletteMode, string> = { file: "", cmd: ">", doc: "?" };
+
+/** Switch palette modes without duplicating a recognized prefix or retaining leading whitespace. */
+export function queryForMode(query: string, current: PaletteMode, next: PaletteMode): string {
+  const term = current === next ? query.trim().slice(MODE_PREFIX[current].length) : "";
+  return MODE_PREFIX[next] + term;
+}
+
 /** A leading `>` is commands, a leading `?` is docs, anything else is files. `term` is trimmed and lower-cased. */
 export function parseQuery(q: string): { mode: PaletteMode; term: string } {
   const s = q.trimStart();

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LAYOUT, clampLayout, layoutReducer, loadLayout, resolveTheme, saveLayout } from "./layout.ts";
+import { DEFAULT_LAYOUT, clampLayout, layoutReducer, loadLayout, resizeContainerForPanel, resolveTheme, saveLayout } from "./layout.ts";
 import type { Layout } from "./layout.ts";
 
 const BIG = 2000;
@@ -61,6 +61,14 @@ test("clampLayout returns the minimums when the window is too small", () => {
   const s = clampLayout({ ...DEFAULT_LAYOUT, leftW: 520, utilW: 420 }, 500);
   assert.equal(s.leftW, 180);
   assert.equal(s.utilW, 200);
+});
+
+test("resizeLeft uses the displayed utility width after layout clamping", () => {
+  const stored = { ...DEFAULT_LAYOUT, utilW: 420 };
+  const shown = clampLayout(stored, 800);
+  assert.equal(shown.utilW, 208);
+  const resizeContainer = resizeContainerForPanel(800, stored.utilW, shown.utilW);
+  assert.equal(layoutReducer(stored, { type: "resizeLeft", px: 232, container: resizeContainer }).leftW, 232);
 });
 
 test("clampLayout pulls out-of-range widths into the design ranges", () => {

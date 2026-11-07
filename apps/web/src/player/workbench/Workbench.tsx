@@ -2,7 +2,7 @@ import { Columns2, List, Plus, Sparkles, X } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue } from "./context";
-import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolveTheme, useLayout, type Layout } from "./layout";
+import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resizeContainerForPanel, resolveTheme, useLayout, type Layout } from "./layout";
 import CommandPalette, { type PaletteCommand } from "./CommandPalette";
 import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
 import { NAV_TABS, Soon, type NavView } from "./Planned";
@@ -146,6 +146,7 @@ export default function Workbench(p: Props) {
   const shown: Layout = clampLayout(layout, avail);
   const leftMax = Math.max(LEFT_MIN, Math.min(LEFT_MAX, avail - (shown.showUtil ? shown.utilW : 0) - EDITOR_MIN));
   const utilMax = Math.max(UTIL_MIN, Math.min(UTIL_MAX, avail - (shown.showLeft ? shown.leftW : 0) - EDITOR_MIN));
+  const leftResizeContainer = shown.showUtil ? resizeContainerForPanel(avail, layout.utilW, shown.utilW) : avail;
 
   // Fit the bottom panel into the centre column at render, like the widths. Only a user
   // resize writes a new height, so a window that shrinks and grows again gets it back.
@@ -170,6 +171,7 @@ export default function Workbench(p: Props) {
 
   // Command palette. Capture phase on window, so Cmd/Ctrl+P beats Monaco, xterm and the browser's print dialog.
   const [palette, setPalette] = useState<{ open: boolean; mode: PaletteMode }>({ open: false, mode: "file" });
+  const openPalette = (mode: PaletteMode = "file") => setPalette({ open: true, mode });
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       const mode = paletteKey(e);
@@ -288,6 +290,8 @@ export default function Workbench(p: Props) {
         onClick: toggleUtil,
         ref: utilBtn,
       }}
+      search={{ label: "Search files, commands, and docs (Ctrl+P)", onClick: () => openPalette("file") }}
+      onRun={() => setBottomTab("main")}
       actions={p.actions}
       lights={wide && !shown.showLeft}
       planned={planned}
@@ -354,7 +358,7 @@ export default function Workbench(p: Props) {
                     value={shown.leftW}
                     min={LEFT_MIN}
                     max={leftMax}
-                    onResize={(px) => dispatch({ type: "resizeLeft", px, container: avail })}
+                    onResize={(px) => dispatch({ type: "resizeLeft", px, container: leftResizeContainer })}
                   />
                 </>
               )}
@@ -423,7 +427,12 @@ export default function Workbench(p: Props) {
           open={palette.open}
           initial={palette.mode}
           files={p.paletteFiles}
-          commands={[...p.paletteCommands, ...viewCommands]}
+          commands={[
+            ...p.paletteCommands.map((command) => command.id.toLowerCase() === "run" || command.title.toLowerCase() === "run"
+              ? { ...command, run: () => { setBottomTab("main"); command.run(); } }
+              : command),
+            ...viewCommands,
+          ]}
           docs={p.paletteDocs}
           onOpenFile={p.onOpenFile}
           onOpenDoc={openDoc}

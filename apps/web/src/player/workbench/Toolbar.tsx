@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode, type Ref } from "react";
-import { ChevronLeft, ChevronRight, Folder, PanelBottom, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, PanelBottom, PanelLeft, PanelRight, Search, type LucideIcon } from "lucide-react";
 import FileBadge, { FileIcon } from "./FileBadge";
 import { Soon } from "./Planned";
 
@@ -17,6 +17,8 @@ type Props = {
   nav: Toggle;
   terminal: Toggle;
   util: Toggle;
+  search: { label: string; onClick(): void };
+  onRun(): void;
   /** Run / Stop / Check / Next. */
   actions: ReactNode;
   /** Draw the window's traffic lights at the start (the navigator that normally holds them is hidden). */
@@ -119,7 +121,7 @@ export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: 
   );
 }
 
-export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, actions, lights = false, planned = false }: Props) {
+export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, search, onRun, actions, lights = false, planned = false }: Props) {
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
       <div className="flex h-12 flex-none items-center gap-2 px-2 sm:gap-3 sm:px-3">
@@ -143,7 +145,16 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
           {/* The design has no lesson title in the toolbar; it stays for screen readers and the narrow layout. */}
           <h1 className="min-w-0 truncate text-[13px] font-normal text-[var(--mu)] lg:sr-only">{title}</h1>
         </div>
-        <div className="wb-pill flex-none">{actions}</div>
+        <button type="button" className="wb-tb wb-tog" aria-label={search.label} title={search.label} onClick={search.onClick}>
+          <Search size={17} strokeWidth={1.7} aria-hidden="true" />
+        </button>
+        <div
+          className="wb-pill flex-none"
+          onClickCapture={(event) => {
+            const button = (event.target as Element).closest("button");
+            if (button?.title.toLowerCase() === "run" || button?.getAttribute("aria-label")?.toLowerCase() === "run") onRun();
+          }}
+        >{actions}</div>
         <span className="flex flex-none items-center gap-px">
           <ToggleButton t={nav} icon={PanelLeft} />
           <ToggleButton t={terminal} icon={PanelBottom} />
