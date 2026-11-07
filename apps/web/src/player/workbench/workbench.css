@@ -105,3 +105,53 @@
   background: var(--pane2); border: 1px solid var(--line);
 }
 .wb-prose strong { font-weight: 600; }
+
+/* Command palette: a modal <dialog> with glass pills (Palette.dc.html). Rendered inside .wb so the tokens apply. */
+.wb-pal {
+  position: fixed; top: 14vh; left: 50%; margin: 0; transform: translateX(-50%);
+  width: min(700px, calc(100vw - 24px)); max-height: 76vh; padding: 0; border: 0; background: transparent; color: var(--tx);
+  overflow: visible; flex-direction: column; gap: 12px; font-size: 13px;
+}
+.wb-pal[open] { display: flex; }
+.wb-pal::backdrop { background: rgba(20, 30, 70, 0.32); }
+.wb-pal-glass {
+  background: color-mix(in srgb, var(--tbar) 88%, transparent); backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%); border: 1px solid var(--line);
+  box-shadow: 0 30px 80px rgba(20, 30, 70, 0.3), 0 2px 8px rgba(20, 30, 70, 0.08);
+}
+.wb-pal-top { display: flex; gap: 12px; flex: none; }
+.wb-pal-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 20px; border-radius: 30px; }
+.wb-pal-search input {
+  flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--tx); font: inherit; font-size: 18px; outline: none;
+}
+.wb .wb-pal-search input:focus-visible { outline: none; }
+.wb-pal-search input::placeholder { color: var(--mu); }
+.wb-pal-search:focus-within { border-color: var(--acT); }
+.wb-pal-esc {
+  flex: none; height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--line); background: var(--code);
+  color: var(--mu); font-size: 11px; display: inline-flex; align-items: center;
+}
+.wb-pal-modes { flex: none; display: flex; align-items: center; gap: 4px; height: 60px; padding: 0 8px; border-radius: 30px; }
+.wb-pal-modes button {
+  width: 44px; height: 44px; border: 0; border-radius: 22px; background: transparent; color: var(--mu); font-size: 17px;
+  display: grid; place-items: center; cursor: pointer;
+}
+.wb-pal-modes button:hover { background: var(--hov); }
+.wb-pal-modes button[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+.wb-pal-card { display: flex; flex-direction: column; min-height: 0; border-radius: 22px; overflow: hidden; }
+.wb-pal-list { margin: 0; padding: 8px 8px 4px; max-height: 50vh; list-style: none; }
+.wb-pal-row {
+  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border-radius: 12px; cursor: pointer;
+}
+.wb-pal-row[aria-selected="true"] { background: var(--sel); }
+.wb-pal-title { flex: none; font-size: 14px; }
+.wb-pal-sub { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mu); font-size: 12.5px; }
+.wb-pal-hint { margin-left: auto; padding: 1px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--mu); font-size: 11px; }
+.wb-pal-enter { margin-left: auto; color: var(--acT); font-size: 13px; }
+.wb-pal-sub + .wb-pal-enter, .wb-pal-hint + .wb-pal-enter { margin-left: 8px; }
+.wb-pal-title:not(:has(+ *)) { flex: 1; }
+.wb-pal-empty { margin: 0; padding: 18px 20px; color: var(--mu); }
+.wb-pal-foot {
+  display: flex; align-items: center; gap: 16px; height: 38px; padding: 0 20px; border-top: 1px solid var(--line); color: var(--mu); font-size: 12px;
+}
+.wb-pal-foot kbd { padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--code); font-size: 11px; }

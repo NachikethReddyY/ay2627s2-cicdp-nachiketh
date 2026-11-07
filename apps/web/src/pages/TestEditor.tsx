@@ -33,11 +33,20 @@ export default function TestEditor() {
     history.replaceState(null, "", `?language=${lang}`);
   };
 
+  const check = () => setStatus({ text: "Check needs a real lesson", tone: "error" });
+
   const run = () => {
     panel.dispatch({ type: "open" });
     setOutput((o) => o + lesson.output);
     setStatus({ text: "Ran (sample output)" });
   };
+
+  const paletteFiles = lesson.files.map((f) => ({ id: f.path, title: f.path }));
+  const paletteDocs = TEST_DOCS.map((d) => ({ id: d.id, title: d.title, sub: d.snippet }));
+  const paletteCommands = [
+    { id: "run", title: "Run", run },
+    { id: "check", title: "Check", run: check },
+  ];
 
   const navigator = (
     <>
@@ -71,7 +80,7 @@ export default function TestEditor() {
         </svg>
         Run
       </button>
-      <button type="button" className="wb-tb wb-outline" onClick={() => setStatus({ text: "Check needs a real lesson", tone: "error" })}>
+      <button type="button" className="wb-tb wb-outline" onClick={check}>
         Check
       </button>
     </>
@@ -121,6 +130,11 @@ export default function TestEditor() {
       instructions={<Markdown>{lesson.instructions}</Markdown>}
       docs={docs}
       actions={actions}
+      paletteFiles={paletteFiles}
+      paletteCommands={paletteCommands}
+      paletteDocs={paletteDocs}
+      onOpenFile={setOpen}
+      onOpenDoc={() => {}}
       status={status}
       panel={panel}
     />

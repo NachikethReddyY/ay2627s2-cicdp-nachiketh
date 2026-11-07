@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue } from "./context";
 import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolveTheme, useLayout, type Layout } from "./layout";
+import CommandPalette, { type PaletteCommand } from "./CommandPalette";
+import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
 import Splitter from "./Splitter";
 import StatusBar, { type WorkbenchStatus } from "./StatusBar";
 import Toolbar from "./Toolbar";
@@ -22,6 +24,13 @@ type Props = {
   instructions: ReactNode;
   docs: ReactNode;
   actions: ReactNode;
+  /** Palette entries: the open files, the lesson's own commands (Run, Check...) and the docs catalogue. */
+  paletteFiles: PaletteItem[];
+  paletteCommands: PaletteCommand[];
+  paletteDocs: PaletteItem[];
+  onOpenFile(id: string): void;
+  /** Called after the workbench has switched to the Docs tab. */
+  onOpenDoc(id: string): void;
   status: WorkbenchStatus;
   /** Bottom panel open/height state (lq.terminal), shared with whatever renders inside it. */
   panel: ReturnType<typeof usePanel>;
@@ -99,6 +108,39 @@ export default function Workbench(p: Props) {
 
   // Overlays only exist in the narrow layout.
   const openOverlay = wide ? null : overlay;
+  const toggleNav = () => (wide ? dispatch({ type: "toggleLeft" }) : setOverlay((o) => (o === "nav" ? null : "nav")));
+  const toggleUtil = () => (wide ? dispatch({ type: "toggleUtil" }) : setOverlay((o) => (o === "docs" ? null : "docs")));
+
+  // Command palette. Capture phase on window, so Cmd/Ctrl+P beats Monaco, xterm and the browser's print dialog.
+  const [palette, setPalette] = useState<{ open: boolean; mode: PaletteMode }>({ open: false, mode: "file" });
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const mode = paletteKey(e);
+      if (!mode) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) setPalette({ open: true, mode });
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+  const closePalette = () => setPalette((s) => ({ ...s, open: false }));
+  const openDoc = (id: string) => {
+    dispatch({ type: "utilTab", tab: "docs" });
+    if (wide && !layout.showUtil) dispatch({ type: "toggleUtil" });
+    if (!wide) setOverlay("docs");
+    p.onOpenDoc(id);
+  };
+  const viewCommands: PaletteCommand[] = [
+    { id: "view.sidebar", title: "Toggle sidebar", run: toggleNav },
+    { id: "view.terminal", title: "Toggle terminal panel", hint: "Ctrl+`", run: () => panelDispatch({ type: "toggle" }) },
+    { id: "view.docs", title: "Toggle docs panel", run: toggleUtil },
+    { id: "theme.light", title: "Color theme: Light", run: () => dispatch({ type: "theme", theme: "light" }) },
+    { id: "theme.dark", title: "Color theme: Dark", run: () => dispatch({ type: "theme", theme: "dark" }) },
+    { id: "theme.system", title: "Color theme: System", run: () => dispatch({ type: "theme", theme: "system" }) },
+  ];
+  const mac = typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform);
+  const searchKey = mac ? "⌘P" : "Ctrl+P";
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLButtonElement | null>(null);
@@ -148,7 +190,7 @@ export default function Workbench(p: Props) {
       nav={{
         label: wide ? "Toggle navigator" : "Show files",
         pressed: wide ? layout.showLeft : openOverlay === "nav",
-        onClick: () => (wide ? dispatch({ type: "toggleLeft" }) : setOverlay((o) => (o === "nav" ? null : "nav"))),
+        onClick: toggleNav,
         ref: navBtn,
       }}
       terminal={{
@@ -159,9 +201,18 @@ export default function Workbench(p: Props) {
       util={{
         label: wide ? "Toggle instructions and docs" : "Show docs",
         pressed: wide ? layout.showUtil : openOverlay === "docs",
-        onClick: () => (wide ? dispatch({ type: "toggleUtil" }) : setOverlay((o) => (o === "docs" ? null : "docs"))),
+        onClick: toggleUtil,
         ref: utilBtn,
       }}
+      tools={
+        <button type="button" className="wb-tb wb-outline" aria-label="Search and commands" title={`Search and commands (${searchKey})`} onClick={() => setPalette({ open: true, mode: "file" })}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="M20.5 20.5L16 16" />
+          </svg>
+          <span className="wb-mono max-sm:hidden text-[11px] text-[var(--mu)]">{searchKey}</span>
+        </button>
+      }
       actions={p.actions}
     />
   );
@@ -244,6 +295,16 @@ export default function Workbench(p: Props) {
           )}
           {status}
         </div>
+        <CommandPalette
+          open={palette.open}
+          initial={palette.mode}
+          files={p.paletteFiles}
+          commands={[...p.paletteCommands, ...viewCommands]}
+          docs={p.paletteDocs}
+          onOpenFile={p.onOpenFile}
+          onOpenDoc={openDoc}
+          onClose={closePalette}
+        />
         {openOverlay && (
           <Drawer side={openOverlay === "nav" ? "left" : "right"} label={openOverlay === "nav" ? "Files" : "Docs"} onClose={closeOverlay}>
             {openOverlay === "nav" ? p.navigator : p.docs}
