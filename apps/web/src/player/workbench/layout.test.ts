@@ -75,15 +75,19 @@ test("clampLayout with a hidden panel only protects the visible one", () => {
   assert.equal(s.leftW, DEFAULT_LAYOUT.leftW, "the hidden navigator is not touched");
 });
 
+// Storage stub that answers only for the given keys; other keys read as missing.
+const store = (items: Record<string, string>) => ({ getItem: (k: string) => items[k] ?? null });
+
 test("loadLayout returns the defaults for missing or unusable storage", () => {
-  for (const raw of [null, "not json", "[]", "null", '{"leftW":"big"}', '{"leftW":-5}', '{"theme":"neon"}']) {
-    assert.deepEqual(loadLayout({ getItem: () => raw }), DEFAULT_LAYOUT, String(raw));
+  for (const raw of [null, "not json", "[]", "null", '{"leftW":"big"}', '{"leftW":-5}']) {
+    assert.deepEqual(loadLayout(store({ "lq.workbench": raw as string })), DEFAULT_LAYOUT, String(raw));
   }
+  assert.deepEqual(loadLayout(store({})), DEFAULT_LAYOUT);
 });
 
 test("loadLayout keeps valid fields and defaults the rest", () => {
-  const raw = '{"leftW":300,"utilW":"wide","showLeft":false,"showUtil":"yes","leftView":"problems","utilTab":"nope","theme":"dark"}';
-  assert.deepEqual(loadLayout({ getItem: () => raw }), {
+  const raw = '{"leftW":300,"utilW":"wide","showLeft":false,"showUtil":"yes","leftView":"problems","utilTab":"nope"}';
+  assert.deepEqual(loadLayout(store({ "lq.workbench": raw, "lq.theme": "dark" })), {
     ...DEFAULT_LAYOUT,
     leftW: 300,
     showLeft: false,
@@ -92,15 +96,53 @@ test("loadLayout keeps valid fields and defaults the rest", () => {
   });
 });
 
-test("loadLayout tolerates a throwing storage", () => {
-  assert.deepEqual(loadLayout({ getItem: () => { throw new Error("blocked"); } }), DEFAULT_LAYOUT);
+test("theme is read from lq.theme; a bad lq.theme falls back to system and other fields still load", () => {
+  assert.equal(loadLayout(store({ "lq.theme": "neon" })).theme, "system");
+  assert.equal(loadLayout(store({ "lq.theme": "" })).theme, "system");
+  assert.equal(loadLayout(store({ "lq.theme": "light" })).theme, "light");
+  const s = loadLayout(store({ "lq.theme": "neon", "lq.workbench": '{"leftW":300}' }));
+  assert.equal(s.theme, "system");
+  assert.equal(s.leftW, 300);
 });
 
-test("saveLayout writes under lq.workbench and tolerates a throwing storage", () => {
-  const written: Array<[string, string]> = [];
-  const s: Layout = { ...DEFAULT_LAYOUT, leftW: 300 };
-  saveLayout({ setItem: (k, v) => { written.push([k, v]); } }, s);
-  assert.equal(written[0]?.[0], "lq.workbench");
-  assert.deepEqual(JSON.parse(written[0]?.[1] ?? "null"), s);
-  assert.doesNotThrow(() => saveLayout({ setItem: () => { throw new Error("quota"); } }, s));
+test("a theme in the old lq.workbench blob is ignored", () => {
+  assert.equal(loadLayout(store({ "lq.workbench": '{"theme":"dark"}' })).theme, "system");
+});
+
+test("loadLayout tolerates a throwing storage", () => {
+  const throwing = { getItem: () => { throw new Error("blocked"); } };
+  assert.deepEqual(loadLayout(throwing), DEFAULT_LAYOUT);
+});
+
+test("saveLayout writes the other fields to lq.workbench and theme to lq.theme", () => {
+  const items: Record<string, string> = {};
+  const s: Layout = { ...DEFAULT_LAYOUT, leftW: 300, theme: "dark" };
+  saveLayout({ setItem: (k, v) => { items[k] = v; } }, s);
+  const blob = JSON.parse(items["lq.workbench"] ?? "null");
+  assert.equal("theme" in blob, false, "lq.workbench must not hold the theme");
+  assert.equal(blob.leftW, 300);
+  assert.equal(items["lq.theme"], "dark");
+});
+
+test("theme round-trips through lq.theme", () => {
+  const items: Record<string, string> = {};
+  const s: Layout = { ...DEFAULT_LAYOUT, leftW: 250, theme: "light" };
+  saveLayout({ setItem: (k, v) => { items[k] = v; } }, s);
+  assert.deepEqual(loadLayout(store(items)), s);
+});
+
+test("saveLayout tolerates a throwing storage", () => {
+  assert.doesNotThrow(() => saveLayout({ setItem: () => { throw new Error("quota"); } }, DEFAULT_LAYOUT));
+  assert.doesNotThrow(() => saveLayout(undefined, DEFAULT_LAYOUT));
+});
+
+test("resize with a NaN px is ignored", () => {
+  assert.deepEqual(layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px: NaN, container: BIG }), DEFAULT_LAYOUT);
+  assert.deepEqual(layoutReducer(DEFAULT_LAYOUT, { type: "resizeUtil", px: NaN, container: BIG }), DEFAULT_LAYOUT);
+});
+
+test("clampLayout with both panels hidden leaves the widths unchanged", () => {
+  const s = clampLayout({ ...DEFAULT_LAYOUT, showLeft: false, showUtil: false, leftW: 520, utilW: 420 }, 500);
+  assert.equal(s.leftW, 520);
+  assert.equal(s.utilW, 420);
 });

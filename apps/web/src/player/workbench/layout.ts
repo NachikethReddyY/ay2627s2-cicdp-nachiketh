@@ -2,6 +2,7 @@ import { useEffect, useReducer } from "react";
 import type { Dispatch } from "react";
 
 export const LAYOUT_KEY = "lq.workbench";
+export const THEME_KEY = "lq.theme";
 export const LEFT_MIN = 180;
 export const LEFT_MAX = 520;
 export const UTIL_MIN = 200;
@@ -104,23 +105,33 @@ function inRange(v: unknown, min: number, max: number): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
 }
 
-// Each field is checked on its own: a bad field falls back to its default and
-// the valid fields are kept.
-export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout {
-  let raw: string | null;
+function readRaw(store: Pick<Storage, "getItem"> | undefined, key: string): string | null {
   try {
-    raw = store?.getItem(LAYOUT_KEY) ?? null;
+    return store?.getItem(key) ?? null;
   } catch {
-    return DEFAULT_LAYOUT;
+    return null;
   }
-  if (raw == null) return DEFAULT_LAYOUT;
+}
+
+// The theme lives under its own key (lq.theme) so the plan's storage contract holds.
+// Anything other than a known theme string falls back to "system".
+function parseTheme(raw: string | null): Theme {
+  return THEMES.includes(raw as Theme) ? (raw as Theme) : DEFAULT_LAYOUT.theme;
+}
+
+// Each field is checked on its own: a bad field falls back to its default and
+// the valid fields are kept. The theme comes from lq.theme, the rest from lq.workbench.
+export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout {
+  const theme = parseTheme(readRaw(store, THEME_KEY));
+  const raw = readRaw(store, LAYOUT_KEY);
+  if (raw == null) return { ...DEFAULT_LAYOUT, theme };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return DEFAULT_LAYOUT;
+    return { ...DEFAULT_LAYOUT, theme };
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return DEFAULT_LAYOUT;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ...DEFAULT_LAYOUT, theme };
   const p = parsed as Record<string, unknown>;
   return {
     leftW: inRange(p.leftW, LEFT_MIN, LEFT_MAX) ? p.leftW : DEFAULT_LAYOUT.leftW,
@@ -129,15 +140,23 @@ export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout 
     showUtil: typeof p.showUtil === "boolean" ? p.showUtil : DEFAULT_LAYOUT.showUtil,
     leftView: LEFT_VIEWS.includes(p.leftView as Layout["leftView"]) ? (p.leftView as Layout["leftView"]) : DEFAULT_LAYOUT.leftView,
     utilTab: UTIL_TABS.includes(p.utilTab as Layout["utilTab"]) ? (p.utilTab as Layout["utilTab"]) : DEFAULT_LAYOUT.utilTab,
-    theme: THEMES.includes(p.theme as Theme) ? (p.theme as Theme) : DEFAULT_LAYOUT.theme,
+    theme,
   };
 }
 
+// Writes theme to lq.theme and the other fields to lq.workbench. Each write is
+// guarded on its own, so a failing write does not stop the other one.
 export function saveLayout(store: Pick<Storage, "setItem"> | undefined, s: Layout): void {
+  const { theme, ...rest } = s;
   try {
-    store?.setItem(LAYOUT_KEY, JSON.stringify(s));
+    store?.setItem(LAYOUT_KEY, JSON.stringify(rest));
   } catch {
     // Storage can be full or blocked; the layout still works without persistence.
+  }
+  try {
+    store?.setItem(THEME_KEY, theme);
+  } catch {
+    // As above.
   }
 }
 
@@ -149,6 +168,8 @@ function safeLocalStorage(): Storage | undefined {
   }
 }
 
+// Toggles and resizes do not re-clamp: consumers must call clampLayout at render
+// with the current container width.
 export function useLayout(): [Layout, Dispatch<LayoutAction>] {
   const [layout, dispatch] = useReducer(layoutReducer, undefined, () => loadLayout(safeLocalStorage()));
 
