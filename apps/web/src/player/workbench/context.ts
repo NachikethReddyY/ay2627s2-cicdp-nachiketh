@@ -9,12 +9,15 @@ export type WorkbenchContextValue = {
   setCursor(c: { line: number; column: number } | null): void;
   /** Open a docs entry in the utility area (the editor hover's "Open in Docs"). */
   openDoc(id: string): void;
+  /** Close the Files drawer after selecting a file on a narrow screen. */
+  closeFileDrawer(): void;
 };
 
 export const WorkbenchContext = createContext<WorkbenchContextValue>({
   monacoTheme: "learnslop-light",
   setCursor: () => {},
   openDoc: () => {},
+  closeFileDrawer: () => {},
 });
 
 export const useWorkbench = () => useContext(WorkbenchContext);

@@ -39,7 +39,6 @@ export default function TreeRow({ depth, kind, name, open = false, selected = fa
         aria-setsize={setSize}
         aria-posinset={posInSet}
         tabIndex={tabIndex}
-        data-drawer-close={folder ? undefined : ""}
         className={`wb-row ${strong ? "wb-row-strong" : ""}`}
         style={{ paddingLeft: 8 + INDENT * depth }}
         onClick={onClick}

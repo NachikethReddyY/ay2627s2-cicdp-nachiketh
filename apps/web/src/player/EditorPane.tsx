@@ -104,6 +104,8 @@ export default function EditorPane({ ref, transportRef, viewPath, modelPath, ove
   return (
     <div className="relative h-[65dvh] min-w-0 flex-none lg:h-auto lg:min-h-0 lg:flex-1">
       <Editor
+        keepCurrentModel={Boolean(modelPath)}
+        saveViewState={Boolean(modelPath)}
         path={modelPath ? `file:///workspace/${modelPath.split("/").map(encodeURIComponent).join("/")}` : undefined}
         loading={<div className="grid h-full place-items-center"><Loader label="Opening the editor" /></div>}
         language={language}

@@ -200,9 +200,13 @@ export default function Workbench(p: Props) {
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const returnTo = useRef<HTMLButtonElement | null>(null);
+  const closeFileDrawerRef = useRef<() => void>(() => {});
   const closeOverlay = () => {
     returnTo.current = overlay === "nav" ? navBtn.current : utilBtn.current;
     setOverlay(null);
+  };
+  closeFileDrawerRef.current = () => {
+    if (!wide && overlay === "nav") closeOverlay();
   };
   // The toggle is inert until the drawer is gone, so focus it after the commit.
   useEffect(() => {
@@ -214,7 +218,12 @@ export default function Workbench(p: Props) {
   const openDocRef = useRef(openDoc);
   openDocRef.current = openDoc;
   const ctx = useMemo<WorkbenchContextValue>(
-    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", setCursor, openDoc: (id) => openDocRef.current(id) }),
+    () => ({
+      monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light",
+      setCursor,
+      openDoc: (id) => openDocRef.current(id),
+      closeFileDrawer: () => closeFileDrawerRef.current(),
+    }),
     [resolved],
   );
 

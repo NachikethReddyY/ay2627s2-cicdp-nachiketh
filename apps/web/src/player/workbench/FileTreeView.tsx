@@ -1,5 +1,6 @@
 import { useMemo, useRef, type KeyboardEvent } from "react";
 import { Mark } from "./Toolbar";
+import { useWorkbench } from "./context";
 import { flattenTree, type TreeNode } from "./fileTree";
 import TreeRow from "./TreeRow";
 
@@ -17,6 +18,7 @@ type Props = {
 export default function FileTreeView({ label, nodes, open, selected, onToggle, onSelect }: Props) {
   const rows = useMemo(() => flattenTree(nodes, open), [nodes, open]);
   const list = useRef<HTMLUListElement>(null);
+  const { closeFileDrawer } = useWorkbench();
   const tabStop = rows.some((r) => r.path === selected) ? selected : rows[0]?.path;
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
@@ -62,7 +64,14 @@ export default function FileTreeView({ label, nodes, open, selected, onToggle, o
           strong={r.depth === 0}
           icon={r.depth === 0 ? <Mark size={18} /> : undefined}
           tabIndex={r.path === tabStop ? 0 : -1}
-          onClick={() => (r.isFolder ? onToggle(r.path) : onSelect(r.path))}
+          onClick={() => {
+            if (r.isFolder) {
+              onToggle(r.path);
+              return;
+            }
+            onSelect(r.path);
+            closeFileDrawer();
+          }}
         />
       ))}
     </ul>
