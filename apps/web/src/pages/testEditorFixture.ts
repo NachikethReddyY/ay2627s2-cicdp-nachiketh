@@ -56,6 +56,9 @@ export const TEST_LESSONS: Record<TestLanguage, TestLesson> = {
   },
 };
 
+/** The default fixture: the JavaScript lesson. */
+export const TEST_LESSON: TestLesson = TEST_LESSONS.javascript;
+
 /** Picks the lesson for a `?language=` value; anything unknown gives JavaScript. */
 export function pickTestLesson(language: unknown): TestLesson {
   return typeof language === "string" && Object.hasOwn(TEST_LESSONS, language)

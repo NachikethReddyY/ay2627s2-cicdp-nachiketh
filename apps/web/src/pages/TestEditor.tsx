@@ -1,28 +1,16 @@
 import { useRef, useState } from "react";
 import Markdown from "react-markdown";
-import EditorPane from "../player/EditorPane";
-import { TEST_LESSONS, pickTestLesson, type TestLanguage, type TestLesson } from "./testEditorFixture";
-import "./testEditor.css";
-import "../player/workbench/workbench.css";
+import { usePanel } from "../player/terminal/usePanel";
+import FileBadge from "../player/workbench/FileBadge";
+import Workbench from "../player/workbench/Workbench";
+import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
+import type { WorkbenchStatus } from "../player/workbench/StatusBar";
+import { TEST_DOCS, TEST_LESSONS, pickTestLesson, type TestLanguage, type TestLesson } from "./testEditorFixture";
 
-// Dev-only sandbox for building the practice workbench. Fixture data only: no sign-in, no API, no sandbox.
+// Dev-only page for building the practice workbench. Fixture data only: no sign-in, no API, no sandbox.
 
-const BADGES: Record<string, { label: string; bg: string; fg: string }> = {
-  js: { label: "JS", bg: "#F2B63A", fg: "#3B2A00" },
-  ts: { label: "TS", bg: "#3178C6", fg: "#fff" },
-  py: { label: "PY", bg: "#3776AB", fg: "#fff" },
-  md: { label: "MD", bg: "#5B6272", fg: "#fff" },
-};
 const LANG_NAMES: Record<TestLanguage, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" };
-
-function Badge({ path }: { path: string }) {
-  const b = BADGES[path.split(".").pop() ?? ""] ?? BADGES.md;
-  return (
-    <span className="te-badge" style={{ background: b.bg, color: b.fg }} aria-hidden="true">
-      {b.label}
-    </span>
-  );
-}
+const READY: WorkbenchStatus = { text: "Ready" };
 
 const initialFiles = (l: TestLesson) => Object.fromEntries(l.files.map((f) => [f.path, f.path === l.fileName ? l.starter : f.body]));
 
@@ -31,8 +19,10 @@ export default function TestEditor() {
   const [files, setFiles] = useState(() => initialFiles(lesson));
   const [open, setOpen] = useState(lesson.fileName);
   const [output, setOutput] = useState("");
-  const [status, setStatus] = useState("Ready");
+  const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const runRef = useRef<HTMLButtonElement>(null);
+  const noContainer = useRef<HTMLElement>(null); // the workbench clamps the panel to its own centre column
+  const panel = usePanel(noContainer);
 
   const switchTo = (lang: TestLanguage) => {
     const next = TEST_LESSONS[lang];
@@ -40,105 +30,100 @@ export default function TestEditor() {
     setFiles(initialFiles(next));
     setOpen(next.fileName);
     setOutput("");
-    setStatus("Ready");
+    setStatus(READY);
     history.replaceState(null, "", `?language=${lang}`);
   };
 
   const run = () => {
+    panel.dispatch({ type: "open" });
     setOutput((o) => o + lesson.output);
-    setStatus("Ran (sample output)");
+    setStatus({ text: "Ran (sample output)" });
   };
+
+  const navigator = (
+    <>
+      <div className="wb-sec">Sample language</div>
+      <div role="group" aria-label="Sample language" className="mb-2 flex flex-wrap gap-1 px-2.5">
+        {(Object.keys(TEST_LESSONS) as TestLanguage[]).map((l) => (
+          <button key={l} type="button" className="wb-tb wb-outline wb-small" aria-pressed={l === lesson.language} onClick={() => switchTo(l)}>
+            {LANG_NAMES[l]}
+          </button>
+        ))}
+      </div>
+      <div className="wb-sec">Files</div>
+      <ul>
+        {lesson.files.map((f) => (
+          <li key={f.path}>
+            <button type="button" className="wb-row" aria-current={f.path === open} onClick={() => setOpen(f.path)}>
+              <FileBadge path={f.path} />
+              {f.path}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+
+  const actions = (
+    <>
+      <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={run} title="Run">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <path d="M8 5l12 7-12 7z" />
+        </svg>
+        Run
+      </button>
+      <button type="button" className="wb-tb wb-outline" onClick={() => setStatus({ text: "Check needs a real lesson", tone: "error" })}>
+        Check
+      </button>
+    </>
+  );
+
+  const docs = (
+    <>
+      <p className="text-[11.5px] text-[var(--mu)]">Sample docs (the real panel comes later)</p>
+      <ul>
+        {TEST_DOCS.map((d) => (
+          <li key={d.id}>
+            <strong>{d.title}</strong> <span className="text-[var(--mu)]">{d.snippet}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+
+  const bottom = (
+    <div className="flex h-full flex-col">
+      <div className="flex flex-none justify-end px-2 pt-1">
+        <button type="button" className="wb-tb" onClick={() => setOutput("")}>
+          Clear
+        </button>
+      </div>
+      <pre className="wb-mono min-h-0 flex-1 whitespace-pre-wrap px-3.5 pb-2 text-xs leading-[1.65]">{output || "Press Run to see sample output."}</pre>
+    </div>
+  );
 
   const openLang = open.endsWith(".md") ? "markdown" : lesson.language;
 
   return (
-    <div className="te flex flex-col p-3 sm:p-6 lg:h-dvh">
-      <div className="te-frame flex min-h-0 flex-1 flex-col">
-        {/* Toolbar */}
-        <header className="te-bar flex flex-wrap items-center gap-2 px-3 py-2">
-          <a href="/" className="flex items-center gap-2 text-sm font-semibold">
-            <span className="grid size-5 place-items-center rounded bg-[var(--ac)] text-[10px] font-bold text-white" aria-hidden="true">
-              LS
-            </span>
-            LearnSlop
-          </a>
-          <span className="te-muted text-sm">/ {lesson.title} /</span>
-          <span className="flex items-center gap-1.5 text-sm">
-            <Badge path={open} />
-            {open}
-          </span>
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900">TEST PAGE</span>
-          <div className="ml-auto flex flex-wrap items-center gap-1" role="group" aria-label="Sample language">
-            {(Object.keys(TEST_LESSONS) as TestLanguage[]).map((l) => (
-              <button key={l} type="button" className="te-btn" aria-pressed={l === lesson.language} onClick={() => switchTo(l)}>
-                {LANG_NAMES[l]}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <button ref={runRef} type="button" className="te-btn te-btn-primary" onClick={run}>
-              Run
-            </button>
-            <button type="button" className="te-btn" onClick={() => setStatus("Check needs a real lesson")}>
-              Check
-            </button>
-          </div>
-        </header>
-
-        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          {/* Navigator */}
-          <nav className="te-side flex-none border-[var(--line)] p-2 lg:w-[232px] lg:border-r" aria-label="Files">
-            <p className="te-muted px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide">Files</p>
-            <ul>
-              {lesson.files.map((f) => (
-                <li key={f.path}>
-                  <button type="button" className="te-row" aria-current={f.path === open} onClick={() => setOpen(f.path)}>
-                    <Badge path={f.path} />
-                    {f.path}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          {/* Editor + output */}
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <EditorPane
-              key={`${lesson.language}:${open}`}
-              theme="learnslop-light"
-              fontFamily={'"Geist Mono", ui-monospace, monospace'}
-              transportRef={runRef}
-              edit={{ value: files[open] ?? "", language: openLang, onChange: (v) => setFiles((fs) => ({ ...fs, [open]: v })) }}
-            />
-            <section className="te-side flex h-44 flex-none flex-col border-t border-[var(--line)]" aria-label="Output">
-              <div className="flex items-center px-3 py-1">
-                <span className="te-muted text-[11px] font-semibold uppercase tracking-wide">Output</span>
-                <button type="button" className="te-btn ml-auto" onClick={() => setOutput("")}>
-                  Clear
-                </button>
-              </div>
-              <pre className="te-out min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-3 pb-2">{output || "Press Run to see sample output."}</pre>
-            </section>
-          </main>
-
-          {/* Instructions */}
-          <aside className="flex-none border-[var(--line)] p-4 lg:w-[320px] lg:overflow-auto lg:border-l" aria-label="Instructions">
-            <h2 className="text-sm font-semibold">Instructions</h2>
-            <div className="te-prose mt-2 text-sm leading-relaxed">
-              <Markdown>{lesson.instructions}</Markdown>
-            </div>
-          </aside>
-        </div>
-
-        {/* Status bar */}
-        <footer className="te-bar flex items-center gap-3 border-t border-b-0 px-3 py-1 text-xs">
-          <span role="status" className="flex items-center gap-1.5">
-            <span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />
-            {status}
-          </span>
-          <span className="te-muted ml-auto">{LANG_NAMES[lesson.language]}</span>
-        </footer>
-      </div>
-    </div>
+    <Workbench
+      title={`${lesson.title} (test page)`}
+      fileName={open}
+      language={lesson.language}
+      navigator={navigator}
+      editor={
+        <WorkbenchEditor
+          key={`${lesson.language}:${open}`}
+          transportRef={runRef}
+          edit={{ value: files[open] ?? "", language: openLang, onChange: (v) => setFiles((fs) => ({ ...fs, [open]: v })) }}
+        />
+      }
+      bottom={bottom}
+      bottomTitle="Output"
+      instructions={<Markdown>{lesson.instructions}</Markdown>}
+      docs={docs}
+      actions={actions}
+      status={status}
+      panel={panel}
+    />
   );
 }

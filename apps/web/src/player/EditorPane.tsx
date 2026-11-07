@@ -17,15 +17,18 @@ type Props = {
   edit?: { value: string; language: string; onChange(v: string): void }; // practice: the learner types here
   theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default "vs"
   fontFamily?: string;
+  onCursor?(line: number, column: number): void; // caret moves, for a status bar
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const caretRef = useRef<ReturnType<Parameters<OnMount>[0]["createDecorationsCollection"]> | null>(null);
   const lastRef = useRef<SeekResult | null>(null);
   const viewRef = useRef(viewPath);
+  const cursorRef = useRef(onCursor);
+  cursorRef.current = onCursor;
 
   const apply = useCallback((r: SeekResult) => {
     const ed = editorRef.current;
@@ -65,6 +68,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
     editorRef.current = ed;
     monacoRef.current = monaco;
     caretRef.current = ed.createDecorationsCollection();
+    ed.onDidChangeCursorPosition((e) => cursorRef.current?.(e.position.lineNumber, e.position.column));
     ed.addCommand(
       monaco.KeyCode.Escape,
       () => {
@@ -84,7 +88,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
         value={edit?.value}
         onChange={edit && ((v) => edit.onChange(v ?? ""))}
         theme={theme ?? "vs"}
-        beforeMount={theme ? (m) => defineWorkbenchThemes(m as never) : undefined}
+        beforeMount={theme ? (m) => defineWorkbenchThemes(m) : undefined}
         onMount={onMount}
         options={{
           readOnly: !edit,
