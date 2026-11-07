@@ -1,12 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterItems, paletteKey, parseQuery, queryForMode, type PaletteItem } from "./palette.ts";
-
-test("queryForMode preserves the term when reselecting a prefixed mode with leading whitespace", () => {
-  assert.equal(queryForMode("  > run", "cmd", "cmd"), "> run");
-  assert.equal(queryForMode("  ? loop", "doc", "doc"), "? loop");
-  assert.equal(queryForMode("> run", "cmd", "doc"), "?");
-});
+import { filterItems, paletteKey, parseQuery, type PaletteItem } from "./palette.ts";
 
 test("parseQuery: leading > is commands", () => {
   assert.deepEqual(parseQuery(">toggle"), { mode: "cmd", term: "toggle" });

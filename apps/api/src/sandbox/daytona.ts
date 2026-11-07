@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { env } from "../env.ts";
-import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
+import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxFileTooLargeError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
 
 // Narrow views of @daytonaio/sdk, so tests pass a fake and nothing here depends on SDK internals.
 export interface DaytonaPty {
@@ -19,7 +20,7 @@ export interface DaytonaSandbox {
   waitUntilStopped(timeout?: number): Promise<void>;
   setAutostopInterval(minutes: number): Promise<void>;
   process: {
-    createPty(o: { id: string; cols: number; rows: number; onData: (d: Uint8Array) => void | Promise<void> }): Promise<DaytonaPty>;
+    createPty(o: { id: string; cwd?: string; envs?: Record<string, string>; cols: number; rows: number; onData: (d: Uint8Array) => void | Promise<void> }): Promise<DaytonaPty>;
     createSession(id: string): Promise<void>;
     executeSessionCommand(session: string, req: { command: string; runAsync?: boolean; suppressInputEcho?: boolean }): Promise<{ cmdId?: string }>;
     getSessionCommandLogs(session: string, cmd: string, onStdout: (c: string) => void, onStderr: (c: string) => void): Promise<void>;
@@ -28,7 +29,9 @@ export interface DaytonaSandbox {
   };
   getUserHomeDir(): Promise<string | undefined>;
   fs: {
+    createFolder(path: string, mode: string): Promise<void>;
     uploadFile(file: Buffer, remotePath: string): Promise<void>;
+    downloadFile?(remotePath: string): Promise<Buffer>;
     listFiles(path: string): Promise<Array<{ name: string; isDir: boolean; size: number; mode: string }>>;
     getFileDetails(path: string): Promise<{ isDir: boolean; mode?: string }>;
     /** Removes the path itself; like unlink, it does not follow a symlink. */
@@ -44,6 +47,7 @@ export interface DaytonaClient {
 export const APP_LABEL = { app: "learnquest" } as const;
 const SHELL_ROLE = "shell";
 const RUNNER_ROLE = "runner";
+const DAYTONA_ZSH_RC = readFileSync(new URL("./learner-zshrc", import.meta.url));
 const BROKEN = new Set(["error", "build_failed", "destroyed", "destroying"]);
 
 /** The label value for a learner: a hash, so no learner id is stored at Daytona. Same hash Docker uses for container names. */
@@ -135,6 +139,85 @@ export function daytonaBackend(opts: {
   }
 
   return {
+    async readWorkspaceFile(learnerId, relPath) {
+      const sbx = await findShell(learnerId);
+      const parts = relPath.split("/");
+      let path = await homeOf(sbx);
+      for (const [index, part] of parts.entries()) {
+        path += `/${part}`;
+        let info: { isDir: boolean; mode?: string } | undefined;
+        try {
+          info = await sbx.fs.getFileDetails(path);
+        } catch (err) {
+          if ((err as { statusCode?: number } | null)?.statusCode === 404) return null;
+          throw err;
+        }
+        if (info.mode?.startsWith("L") || (index < parts.length - 1 ? !info.isDir : info.isDir)) return null;
+      }
+      if (!sbx.fs.downloadFile) throw new Error("Workspace file reading is not supported by this Daytona SDK");
+      const content = await sbx.fs.downloadFile(path);
+      if (content.byteLength > 64 * 1024) throw new SandboxFileTooLargeError();
+      return content.toString("utf8");
+    },
+
+    async writeWorkspaceFile(learnerId, relPath, content) {
+      const sbx = await findShell(learnerId);
+      const parts = relPath.split("/");
+      const home = await homeOf(sbx);
+      let parent = home;
+      for (const part of parts.slice(0, -1)) {
+        parent += `/${part}`;
+        let info: { isDir: boolean; mode?: string };
+        try {
+          info = await sbx.fs.getFileDetails(parent);
+        } catch (err) {
+          if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
+          await sbx.fs.createFolder(parent, "755");
+          info = await sbx.fs.getFileDetails(parent);
+        }
+        if (!info.isDir || info.mode?.startsWith("L")) throw new Error("Workspace path is not a regular file path");
+      }
+      const path = `${parent}/${parts.at(-1)}`;
+      const info = await sbx.fs.getFileDetails(path).catch((err) => {
+        if ((err as { statusCode?: number } | null)?.statusCode === 404) return undefined;
+        throw err;
+      });
+      if (info?.isDir) throw new Error("Workspace path is not a regular file path");
+      if (info?.mode?.startsWith("L")) await sbx.fs.deleteFile(path);
+      await sbx.fs.uploadFile(Buffer.from(content), path);
+    },
+
+    async moveWorkspaceFile(learnerId, source, targetDir) {
+      const sbx = await findShell(learnerId);
+      const parts = source.split("/");
+      const home = await homeOf(sbx);
+      let parent = home;
+      for (const part of parts.slice(0, -1)) {
+        parent += `/${part}`;
+        const info = await sbx.fs.getFileDetails(parent);
+        if (!info.isDir || info.mode?.startsWith("L")) throw new Error("Workspace file is unavailable");
+      }
+      const sourcePath = `${parent}/${parts.at(-1)}`;
+      const sourceInfo = await sbx.fs.getFileDetails(sourcePath);
+      if (sourceInfo.isDir || sourceInfo.mode?.startsWith("L") || !sbx.fs.downloadFile) throw new Error("Workspace file is unavailable");
+      let destination = home;
+      for (const part of targetDir.split("/")) {
+        destination += `/${part}`;
+        const info = await sbx.fs.getFileDetails(destination);
+        if (!info.isDir || info.mode?.startsWith("L")) throw new Error("Destination folder is unavailable");
+      }
+      const destinationPath = `${destination}/${parts.at(-1)}`;
+      try {
+        await sbx.fs.getFileDetails(destinationPath);
+        throw new Error("A file with that name already exists in the destination folder");
+      } catch (error) {
+        if ((error as { statusCode?: number } | null)?.statusCode !== 404) throw error;
+      }
+      const content = await sbx.fs.downloadFile(sourcePath);
+      await sbx.fs.uploadFile(content, destinationPath);
+      await sbx.fs.deleteFile(sourcePath);
+    },
+
     async openShell(learnerId, { cols, rows }) {
       if (openTerminals >= maxShells()) throw new SandboxBusyError();
       openTerminals++;
@@ -146,10 +229,38 @@ export function daytonaBackend(opts: {
       };
       try {
         const sbx = await shellSandbox(learnerId);
+        const home = await homeOf(sbx);
+        const workspace = `${home}/task-tracker`;
+        let workspaceInfo: { isDir: boolean; mode?: string } | undefined;
+        try {
+          workspaceInfo = await sbx.fs.getFileDetails(workspace);
+        } catch (err) {
+          if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
+          await sbx.fs.createFolder(workspace, "755");
+          workspaceInfo = await sbx.fs.getFileDetails(workspace);
+        }
+        if (!workspaceInfo.isDir || workspaceInfo.mode?.startsWith("L")) {
+          throw new Error("Workspace path is not a regular directory");
+        }
+        const zshDir = "/tmp/learnquest-zsh";
+        let zshDirInfo: { isDir: boolean; mode?: string } | undefined;
+        try {
+          zshDirInfo = await sbx.fs.getFileDetails(zshDir);
+        } catch (err) {
+          if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
+          await sbx.fs.createFolder(zshDir, "755");
+          zshDirInfo = await sbx.fs.getFileDetails(zshDir);
+        }
+        if (!zshDirInfo.isDir || zshDirInfo.mode?.startsWith("L")) {
+          throw new Error("Terminal config path is not a regular directory");
+        }
+        await sbx.fs.uploadFile(DAYTONA_ZSH_RC, `${zshDir}/.zshrc`);
         const dataCbs: Array<(d: Uint8Array) => void> = [];
         const early: Uint8Array[] = []; // output that arrives before the route attaches its listener
         const pty = await sbx.process.createPty({
           id: `lq-${randomUUID()}`,
+          cwd: workspace,
+          envs: { TERM: "xterm-256color", ZDOTDIR: zshDir },
           cols,
           rows,
           onData: (d) => {

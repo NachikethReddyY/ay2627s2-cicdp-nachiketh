@@ -28,7 +28,17 @@ export async function sandboxRoutes(app: FastifyInstance) {
         const fail = (status: number, code: string, message: string) =>
           reply.status(status).send({ error: { code, message } });
         if (!env.SANDBOX_ENABLED) return fail(503, "unavailable", "Sandbox is disabled");
-        if (req.headers.origin !== env.PUBLIC_ORIGIN) return fail(403, "forbidden", "Bad origin");
+        const origin = req.headers.origin;
+        let devLoopback = false;
+        if (env.NODE_ENV === "development" && origin) {
+          try {
+            const parsed = new URL(origin);
+            devLoopback = parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+          } catch {
+            // Invalid origins fail the exact origin check below.
+          }
+        }
+        if (origin !== env.PUBLIC_ORIGIN && !devLoopback) return fail(403, "forbidden", "Bad origin");
         const tab = (req.query as Record<string, unknown>).tab;
         if (tab !== undefined && !(typeof tab === "string" && TAB.test(tab))) return fail(400, "bad_request", "Invalid tab id");
         // A ticket (direct browser-to-API connection, no cookie) wins; an invalid one never falls back to the cookie.

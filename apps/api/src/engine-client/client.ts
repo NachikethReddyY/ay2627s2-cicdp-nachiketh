@@ -12,7 +12,7 @@ export class EngineError extends Error {
 }
 
 /** POSTs JSON to a Python engine route. Throws EngineError on transport failure, timeout, or a non-2xx answer. */
-export async function callEngine<T = unknown>(path: `/v1/pipeline/${string}`, body: unknown): Promise<T> {
+export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unknown): Promise<T> {
   if (!env.ENGINE_TOKEN) throw new EngineError("ENGINE_TOKEN is not set", 503, null);
   let res: Response;
   try {

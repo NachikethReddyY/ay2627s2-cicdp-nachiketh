@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode, type Ref } from "react";
-import { ChevronLeft, ChevronRight, Folder, PanelBottom, PanelLeft, PanelRight, Search, type LucideIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, PanelBottom, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
 import FileBadge, { FileIcon } from "./FileBadge";
 import { Soon } from "./Planned";
 
@@ -17,8 +17,6 @@ type Props = {
   nav: Toggle;
   terminal: Toggle;
   util: Toggle;
-  search: { label: string; onClick(): void };
-  onRun(): void;
   /** Run / Stop / Check / Next. */
   actions: ReactNode;
   /** Draw the window's traffic lights at the start (the navigator that normally holds them is hidden). */
@@ -73,6 +71,7 @@ const SymbolMark = () => (
 /** The file path row. In the stacked layout it sits under the toolbar (border on top); in the desktop layout it
  *  heads the editor column beside the Docs header, sharing one bottom line (`edge="bottom"`). */
 export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: string; fileName: string; crumbs?: string[]; symbol?: string; edge: "top" | "bottom" }) {
+  if (!fileName) return null;
   return (
   <nav aria-label="File path" className={`flex h-[33px] flex-none items-center overflow-hidden border-[var(--line)] px-3.5 text-[var(--mu)] ${edge === "top" ? "border-t" : "border-b bg-[var(--tbar)]"}`}>
       <ol className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
@@ -80,23 +79,23 @@ export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: 
           <>
             {crumbs.map((c, i) => (
               <Fragment key={crumbs.slice(0, i + 1).join("/")}>
-                <li className="flex items-center gap-[5px]">
-                  {i === 0 ? <Mark size={15} /> : <Folder size={15} strokeWidth={1.2} fill="#7aa2d8" stroke="#7aa2d8" aria-hidden="true" className="flex-none" />}
-                  {c}
+                <li className="flex min-w-0 max-w-[clamp(36px,7vw,80px)] items-center gap-[5px]" title={c}>
+                  {i === 0 ? <Mark size={15} /> : <Folder size={15} strokeWidth={1.2} fill="var(--folder)" stroke="var(--folder)" aria-hidden="true" className="flex-none" />}
+                  <span className="min-w-0 truncate">{c}</span>
                 </li>
                 <li aria-hidden="true">›</li>
               </Fragment>
             ))}
             <li className="flex items-center gap-[5px]" aria-current={symbol ? undefined : "page"}>
               <FileIcon path={fileName} size={15} />
-              {fileName}
+              {fileName.split("/").at(-1) ?? fileName}
             </li>
             {symbol && (
               <>
                 <li aria-hidden="true">›</li>
-                <li className="wb-mono flex items-center gap-[5px] text-[var(--tx)]" aria-current="page">
+                <li className="wb-mono flex min-w-0 max-w-[clamp(48px,10vw,110px)] items-center gap-[5px] text-[var(--tx)]" aria-current="page" title={symbol}>
                   <SymbolMark />
-                  {symbol}
+                  <span className="min-w-0 truncate">{symbol}</span>
                 </li>
               </>
             )}
@@ -121,7 +120,7 @@ export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: 
   );
 }
 
-export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, search, onRun, actions, lights = false, planned = false }: Props) {
+export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, actions, lights = false, planned = false }: Props) {
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
       <div className="flex h-12 flex-none items-center gap-2 px-2 sm:gap-3 sm:px-3">
@@ -145,16 +144,7 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
           {/* The design has no lesson title in the toolbar; it stays for screen readers and the narrow layout. */}
           <h1 className="min-w-0 truncate text-[13px] font-normal text-[var(--mu)] lg:sr-only">{title}</h1>
         </div>
-        <button type="button" className="wb-tb wb-tog" aria-label={search.label} title={search.label} onClick={search.onClick}>
-          <Search size={17} strokeWidth={1.7} aria-hidden="true" />
-        </button>
-        <div
-          className="wb-pill flex-none"
-          onClickCapture={(event) => {
-            const button = (event.target as Element).closest("button");
-            if (button?.title.toLowerCase() === "run" || button?.getAttribute("aria-label")?.toLowerCase() === "run") onRun();
-          }}
-        >{actions}</div>
+        <div className="wb-pill flex-none">{actions}</div>
         <span className="flex flex-none items-center gap-px">
           <ToggleButton t={nav} icon={PanelLeft} />
           <ToggleButton t={terminal} icon={PanelBottom} />

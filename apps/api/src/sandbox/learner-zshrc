@@ -1,0 +1,35 @@
+# LearnSlop sandbox terminal defaults.
+autoload -Uz colors && colors
+setopt interactivecomments
+alias ls='ls --color=auto'
+alias ll='ls -lah --color=auto'
+alias la='ls -A --color=auto'
+alias grep='grep --color=auto'
+cd "$HOME/task-tracker" 2>/dev/null || cd "$HOME"
+export CLICOLOR=1
+export LESS='-FRX'
+export HISTSIZE=5000
+export SAVEHIST=10000
+PROMPT='%F{blue}%~%f $ '
+
+# Highlight executable command names as they are typed, without depending on an
+# optional plugin being preinstalled in the sandbox image.
+_learnquest_highlight_command() {
+  region_highlight=()
+  local command_name="${BUFFER%%[[:space:]]*}"
+  [[ -z "$command_name" ]] && return
+  if (( $+commands[$command_name] || $+builtins[$command_name] || $+aliases[$command_name] )); then
+    region_highlight+=("0:${#command_name} fg=green,bold")
+  else
+    region_highlight+=("0:${#command_name} fg=red,bold")
+  fi
+}
+zle -N zle-line-pre-redraw _learnquest_highlight_command
+
+# Notify the editor after each shell command so its file tree can refresh
+# immediately, without waiting for the background fallback poll.
+_learnquest_notify_workspace() {
+  print -n '\e]777;learnquest-refresh\a'
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _learnquest_notify_workspace

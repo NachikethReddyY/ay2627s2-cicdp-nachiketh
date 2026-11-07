@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { ArrowDown, ArrowUp, Book, CornerDownLeft, File, Search, Terminal, type LucideIcon } from "lucide-react";
 import FileBadge from "./FileBadge";
 import Segmented from "./Segmented";
-import { filterItems, parseQuery, queryForMode, type PaletteItem, type PaletteMode } from "./palette";
+import { filterItems, parseQuery, type PaletteItem, type PaletteMode } from "./palette";
 
 export type PaletteCommand = PaletteItem & { run(): void };
 
@@ -99,7 +99,7 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
   };
 
   const setMode = (m: PaletteMode) => {
-    setQuery(queryForMode(query, mode, m));
+    setQuery(PREFIX[m] + (m === mode ? query.slice(PREFIX[mode].length) : ""));
     setIndex(0);
     inputRef.current?.focus();
   };

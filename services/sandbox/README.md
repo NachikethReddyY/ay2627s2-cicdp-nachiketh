@@ -35,6 +35,8 @@ Set `SANDBOX_RUNTIME=runsc` to run shell containers under [gVisor](https://gviso
 
 `PUT /api/sandbox/files/:name` writes one file into the learner's sandbox home, and `GET /api/sandbox/files?dir=<rel>` lists a folder there. Only `solution.py` and `solution.js` can be written, with content up to 4000 characters (16 KiB is only the request body limit). A listing returns at most 200 entries and sets `truncated` when there are more. `dir` is up to four plain segments, with no `.` or `..`.
 
+The workbench also uses `GET /api/sandbox/workspace-file?path=<rel>` to read a regular file and `PUT /api/sandbox/workspace-file` with `{ path, content }` to save it. Workspace paths stay relative to the learner's home, have up to four safe segments, and are limited to 64 KiB. These routes use the same sign-in, open-shell, rate-limit and per-learner serialization checks. Symlink files and paths are not followed. The dev-only `/test/editor` seeds `sum.js` and `README.md` when the container home is empty, then reads and saves editor buffers against that home; its explorer refreshes the root and expanded folders every few seconds.
+
 - The endpoints never create or start a sandbox. Without an open shell they answer `409 no_shell`, so the editor opens the terminal first.
 - `501 not_implemented` means the active backend has no file support.
 - Docker writes and lists as uid 1001 (the `learner` user), so the files belong to the shell user. On Daytona the home is the sandbox user's home (`/home/learner` if the SDK reports none).

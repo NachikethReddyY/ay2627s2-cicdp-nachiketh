@@ -59,6 +59,8 @@ const list = (cookie: string, dir?: string) =>
     url: `/api/sandbox/files${dir === undefined ? "" : `?dir=${encodeURIComponent(dir)}`}`,
     headers: { cookie },
   });
+const listBatch = (cookie: string, dirs: string[]) =>
+  app.inject({ method: "GET", url: `/api/sandbox/files/batch?${dirs.map((dir) => `dir=${encodeURIComponent(dir)}`).join("&")}`, headers: { cookie } });
 
 test("signed out is 401 and a disabled sandbox is 503", async () => {
   fakeFiles();
@@ -120,6 +122,17 @@ test("no running shell is 409 no_shell; a backend without the methods is 501", a
 test("a missing directory is 404", async () => {
   fakeFiles({ missing: true });
   assert.equal((await list(await signUp(app), "gone")).statusCode, 404);
+});
+
+test("batch listing returns several directories in one request and rejects unsafe paths", async () => {
+  const cookie = await signUp(app);
+  const f = fakeFiles();
+  const response = await listBatch(cookie, ["", "src", "src/lib"]);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(Object.keys(response.json().directories), ["", "src", "src/lib"]);
+  assert.deepEqual(f.lists.map((item) => item.relDir), ["", "src", "src/lib"]);
+  assert.equal((await listBatch(cookie, ["src", "../private"])).statusCode, 400);
+  assert.equal((await listBatch(cookie, [])).statusCode, 400);
 });
 
 test("the 31st write and the 61st list in a minute are 429", async () => {

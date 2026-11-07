@@ -1,6 +1,5 @@
-import { useMemo, useRef, type KeyboardEvent } from "react";
+import { useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Mark } from "./Toolbar";
-import { useWorkbench } from "./context";
 import { flattenTree, type TreeNode } from "./fileTree";
 import TreeRow from "./TreeRow";
 
@@ -12,13 +11,14 @@ type Props = {
   selected: string;
   onToggle(path: string): void;
   onSelect(path: string): void;
+  rootActions?: ReactNode;
+  onMoveFile?(source: string, targetDir: string): void;
 };
 
 /** The navigator's tree: rows from flattenTree, Main.dc.html's look, WAI-ARIA tree keys (arrows, Home, End). */
-export default function FileTreeView({ label, nodes, open, selected, onToggle, onSelect }: Props) {
+export default function FileTreeView({ label, nodes, open, selected, onToggle, onSelect, rootActions, onMoveFile }: Props) {
   const rows = useMemo(() => flattenTree(nodes, open), [nodes, open]);
   const list = useRef<HTMLUListElement>(null);
-  const { closeFileDrawer } = useWorkbench();
   const tabStop = rows.some((r) => r.path === selected) ? selected : rows[0]?.path;
 
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
@@ -63,15 +63,11 @@ export default function FileTreeView({ label, nodes, open, selected, onToggle, o
           status={r.node.status}
           strong={r.depth === 0}
           icon={r.depth === 0 ? <Mark size={18} /> : undefined}
+          actions={r.depth === 0 ? rootActions : undefined}
+          path={r.path}
+          onMoveFile={onMoveFile}
           tabIndex={r.path === tabStop ? 0 : -1}
-          onClick={() => {
-            if (r.isFolder) {
-              onToggle(r.path);
-              return;
-            }
-            onSelect(r.path);
-            closeFileDrawer();
-          }}
+          onClick={() => (r.isFolder ? onToggle(r.path) : onSelect(r.path))}
         />
       ))}
     </ul>

@@ -79,7 +79,9 @@ def _parse[T: BaseModel](content: str, model: type[T]) -> T:
     return model.model_validate(json.loads(body))
 
 
-def generate[T: BaseModel](system: str, data: object, model: type[T]) -> Result[T]:
+def generate[T: BaseModel](
+    system: str, data: object, model: type[T], *, max_tokens: int | None = None
+) -> Result[T]:
     cfg = get_settings()
     schema = json_schema(model)
     mode = cfg.LLM_JSON_MODE or _auto_modes.get(cfg.LLM_MODEL) or "schema"
@@ -117,7 +119,7 @@ def generate[T: BaseModel](system: str, data: object, model: type[T]) -> Result[
                     api_key=cfg.LLM_API_KEY.get_secret_value() if cfg.LLM_API_KEY else None,
                     messages=messages,
                     response_format=formats.get(mode),
-                    max_completion_tokens=cfg.LLM_MAX_TOKENS,
+                    max_completion_tokens=max_tokens or cfg.LLM_MAX_TOKENS,
                     timeout=min(cfg.LLM_TIMEOUT_S, remaining()),
                     num_retries=0,  # retries are ours (one repair), never silent litellm ones
                     temperature=0.4,
