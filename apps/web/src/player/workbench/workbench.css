@@ -313,8 +313,9 @@
       transition: transform 0.24s cubic-bezier(0.3, 1.3, 0.5, 1), width 0.24s cubic-bezier(0.3, 1.3, 0.5, 1),
         height 0.24s cubic-bezier(0.3, 1.3, 0.5, 1), opacity 0.15s;
     }
-    /* Theme change: colours ease. Only after the first paint ([data-ready]) and never inside Monaco, which re-themes at once. */
-    .wb[data-ready] :where(*):not(.monaco-editor, .monaco-editor *) {
+    /* Theme change: colours ease while [data-theming] is on (Workbench sets it for 450 ms in the commit that changes the
+       tokens), so hovers elsewhere stay instant. Never inside Monaco, which re-themes at once. */
+    .wb[data-theming] :where(*):not(.monaco-editor, .monaco-editor *) {
       transition: background-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
         border-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), fill 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), stroke 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
         box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -379,3 +380,6 @@
 }
 .wb .monaco-editor .suggest-details-container .suggest-details pre, .wb .monaco-editor .suggest-details-container .suggest-details pre *,
 .wb .monaco-editor .suggest-details-container .suggest-details code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; }
+
+/* Board: line numbers are one pixel smaller than the code (calc(var(--fs) - 1px)). Outside the layer so it beats Monaco. */
+.wb .monaco-editor .margin-view-overlays .line-numbers { font-size: 12px; }

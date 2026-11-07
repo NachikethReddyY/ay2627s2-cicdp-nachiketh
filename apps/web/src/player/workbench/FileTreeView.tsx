@@ -55,6 +55,8 @@ export default function FileTreeView({ label, nodes, open, selected, onToggle, o
           kind={r.isFolder ? "folder" : "file"}
           name={r.node.name}
           open={r.open}
+          setSize={r.setSize}
+          posInSet={r.posInSet}
           selected={r.path === selected}
           status={r.node.status}
           strong={r.depth === 0}

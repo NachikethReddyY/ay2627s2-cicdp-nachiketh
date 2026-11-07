@@ -35,10 +35,10 @@ export default function DocsPanel({ selected, onSelect }: Props) {
 
   return (
     <div className="wb-prose flex min-h-0 flex-1 flex-col">
-      <div className="relative flex h-[49px] flex-none items-center gap-2.5 border-b border-[var(--line)] px-3">
+      <div className="relative flex h-[33px] flex-none items-center gap-2.5 border-b border-[var(--line)] px-3">
         <h2 className="flex-none text-[13px] font-semibold">Docs</h2>
         <label htmlFor={`${uid}-q`} className="sr-only">Search docs</label>
-        <div className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-[15px] border border-[var(--line)] bg-[var(--pane2)] px-3">
+        <div className="flex h-[26px] min-w-0 flex-1 items-center gap-2 rounded-[13px] border border-[var(--line)] bg-[var(--pane2)] px-3 shadow-[0_1px_2px_rgba(20,30,70,.08)]">
           <Search size={14} strokeWidth={1.8} aria-hidden="true" className="flex-none text-[var(--mu)]" />
           <input
             id={`${uid}-q`}
@@ -53,7 +53,7 @@ export default function DocsPanel({ selected, onSelect }: Props) {
           />
         </div>
         {q.trim() && (
-          <div className="absolute inset-x-3 top-[44px] z-10 max-h-[230px] overflow-auto rounded-xl border border-[var(--line)] bg-[var(--tbar)] p-1 shadow-[0_10px_28px_rgba(20,30,70,.18)]">
+          <div className="absolute inset-x-3 top-[34px] z-10 max-h-[230px] overflow-auto rounded-xl border border-[var(--line)] bg-[var(--tbar)] p-1 shadow-[0_10px_28px_rgba(20,30,70,.18)]">
             {results.map((d) => (
               <button
                 key={d.id}

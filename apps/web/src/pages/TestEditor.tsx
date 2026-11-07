@@ -3,7 +3,7 @@ import { Check, Play } from "lucide-react";
 import Markdown from "react-markdown";
 import { usePanel } from "../player/terminal/usePanel";
 import FileTreeView from "../player/workbench/FileTreeView";
-import { initialOpen, toggleFolder } from "../player/workbench/fileTree";
+import { ancestors, initialOpen, toggleFolder } from "../player/workbench/fileTree";
 import DocsPanel from "../player/workbench/DocsPanel";
 import { DOCS } from "../player/workbench/docs";
 import Workbench from "../player/workbench/Workbench";
@@ -17,6 +17,7 @@ const READY: WorkbenchStatus = { text: "Ready" };
 
 // Files are keyed by their path in the design's tree. The lesson file and the README keep their fixture text.
 const lessonPath = (l: TestLesson) => `${LESSON_DIR}/${l.fileName}`;
+const LANGUAGE_LABELS: Record<string, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python", markdown: "Markdown", json: "JSON" };
 const README = `${TREE_ROOT}/README.md`;
 // The lesson text lives in the README, which opens as a rendered preview.
 const readmeBody = (l: TestLesson) => `# ${l.title}\n\n${l.instructions}\n`;
@@ -31,6 +32,11 @@ export default function TestEditor() {
   const tree = useMemo(() => designTree(lesson.fileName), [lesson]);
   const [open, setOpen] = useState(lessonPath(lesson));
   const [folders, setFolders] = useState(() => initialOpen(tree));
+  // Opening a file (tree, palette) shows its row: the folders above it expand.
+  const openFile = (p: string) => {
+    setOpen(p);
+    setFolders((f) => new Set([...f, ...ancestors(p)]));
+  };
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const [selectedDoc, setSelectedDoc] = useState("for");
@@ -63,7 +69,7 @@ export default function TestEditor() {
       open={folders}
       selected={open}
       onToggle={(p) => setFolders((f) => toggleFolder(f, p))}
-      onSelect={setOpen}
+      onSelect={openFile}
     />
   );
 
@@ -123,9 +129,11 @@ export default function TestEditor() {
       paletteFiles={paletteFiles}
       paletteCommands={paletteCommands}
       paletteDocs={paletteDocs}
-      onOpenFile={setOpen}
+      onOpenFile={openFile}
       onOpenDoc={setSelectedDoc}
       status={status}
+      languageLabel={LANGUAGE_LABELS[openLang]}
+      noCursor={open === README}
       panel={panel}
       showPlanned
     />

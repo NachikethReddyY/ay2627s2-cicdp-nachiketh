@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filePaths, flattenTree, initialOpen, toggleFolder, type TreeNode } from "./fileTree.ts";
+import { ancestors, filePaths, flattenTree, initialOpen, toggleFolder, type TreeNode } from "./fileTree.ts";
 
 const tree: TreeNode[] = [
   {
@@ -49,4 +49,14 @@ test("a closed root shows one row", () => {
 
 test("filePaths walks closed folders too", () => {
   assert.deepEqual(filePaths(tree), ["root/a/x.ts", "root/b/y.ts", "root/z.md"]);
+});
+
+test("ancestors lists each folder above a file", () => {
+  assert.deepEqual(ancestors("a/b/c.ts"), ["a", "a/b"]);
+  assert.deepEqual(ancestors("c.ts"), []);
+});
+
+test("rows carry their place among siblings", () => {
+  const rows = flattenTree(tree, initialOpen(tree));
+  assert.deepEqual([rows[1].posInSet, rows[1].setSize, rows[4].posInSet], [1, 3, 3]);
 });

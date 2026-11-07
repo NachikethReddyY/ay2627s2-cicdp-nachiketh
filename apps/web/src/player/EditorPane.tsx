@@ -118,7 +118,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
           automaticLayout: true,
           fontSize: 14,
           ...(fontFamily && {
-            // Main.dc.html: 13 px code on 22 px rows, 8 px above the first line, slim 10 px scrollbars.
+            // Main.dc.html: 13 px code on 22 px rows, 8 px above the first line, scrollbars hidden, scrolling kept.
             fontFamily,
             fontSize: 13,
             lineHeight: 22,
@@ -127,7 +127,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
             folding: false,
             glyphMargin: false,
             renderLineHighlight: "all" as const,
-            scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+            scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const }, // the board hides the scrollbar (nosb)
           }),
           padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 }, // room for the replay's floating controls
           hover: { enabled: help ? "on" : "off" },

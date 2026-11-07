@@ -18,12 +18,14 @@ type Props = {
   onClick(): void;
   ref?: Ref<HTMLButtonElement>;
   tabIndex?: number;
+  setSize?: number;
+  posInSet?: number;
 };
 
 const INDENT = 12; // px per depth level (Main.dc.html: 8, 20, 32, 44, 56)
 
 /** One row of the file tree: Main.dc.html's 22 px row (10 px chevron, 18 px icon, 13 px name). A real button with tree semantics. */
-export default function TreeRow({ depth, kind, name, open = false, selected = false, status, icon, strong = false, onClick, ref, tabIndex }: Props) {
+export default function TreeRow({ depth, kind, name, open = false, selected = false, status, icon, strong = false, onClick, ref, tabIndex, setSize, posInSet }: Props) {
   const folder = kind === "folder";
   return (
     <li role="none">
@@ -34,6 +36,8 @@ export default function TreeRow({ depth, kind, name, open = false, selected = fa
         aria-level={depth + 1}
         aria-expanded={folder ? open : undefined}
         aria-selected={selected}
+        aria-setsize={setSize}
+        aria-posinset={posInSet}
         tabIndex={tabIndex}
         data-drawer-close={folder ? undefined : ""}
         className={`wb-row ${strong ? "wb-row-strong" : ""}`}

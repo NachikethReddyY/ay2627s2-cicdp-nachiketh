@@ -17,6 +17,9 @@ export type TreeRowData = {
   node: TreeNode;
   open: boolean;
   isFolder: boolean;
+  /** Siblings in the same folder and this row's 1-based place among them (aria-setsize, aria-posinset). */
+  setSize: number;
+  posInSet: number;
 };
 
 const join = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
@@ -36,11 +39,11 @@ export function initialOpen(nodes: TreeNode[], parent = ""): Set<string> {
 /** The rows to draw, top to bottom: closed folders hide their children. */
 export function flattenTree(nodes: TreeNode[], open: ReadonlySet<string>, depth = 0, parent = ""): TreeRowData[] {
   const rows: TreeRowData[] = [];
-  for (const node of nodes) {
+  for (const [i, node] of nodes.entries()) {
     const path = join(parent, node.name);
     const isFolder = node.children !== undefined;
     const isOpen = isFolder && open.has(path);
-    rows.push({ path, depth, node, open: isOpen, isFolder });
+    rows.push({ path, depth, node, open: isOpen, isFolder, setSize: nodes.length, posInSet: i + 1 });
     if (isOpen && node.children) rows.push(...flattenTree(node.children, open, depth + 1, path));
   }
   return rows;
@@ -59,4 +62,10 @@ export function filePaths(nodes: TreeNode[], parent = ""): string[] {
     const p = join(parent, n.name);
     return n.children ? filePaths(n.children, p) : [p];
   });
+}
+
+/** The folder paths above a file path, so opening the file can expand them. */
+export function ancestors(path: string): string[] {
+  const parts = path.split("/");
+  return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join("/"));
 }

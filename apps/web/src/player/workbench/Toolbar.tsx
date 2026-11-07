@@ -12,6 +12,8 @@ type Props = {
   crumbs?: string[];
   /** Symbol under the caret, shown last. */
   symbol?: string;
+  /** Leave the breadcrumb row out; the caller draws it (desktop layout). */
+  split?: boolean;
   nav: Toggle;
   terminal: Toggle;
   util: Toggle;
@@ -66,7 +68,58 @@ const SymbolMark = () => (
   </svg>
 );
 
-export default function Toolbar({ title, fileName, crumbs, symbol, nav, terminal, util, actions, lights = false, planned = false }: Props) {
+/** The file path row. In the stacked layout it sits under the toolbar (border on top); in the desktop layout it
+ *  heads the editor column beside the Docs header, sharing one bottom line (`edge="bottom"`). */
+export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: string; fileName: string; crumbs?: string[]; symbol?: string; edge: "top" | "bottom" }) {
+  return (
+  <nav aria-label="File path" className={`flex h-[33px] flex-none items-center overflow-hidden border-[var(--line)] px-3.5 text-[var(--mu)] ${edge === "top" ? "border-t" : "border-b bg-[var(--tbar)]"}`}>
+      <ol className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+        {crumbs ? (
+          <>
+            {crumbs.map((c, i) => (
+              <Fragment key={crumbs.slice(0, i + 1).join("/")}>
+                <li className="flex items-center gap-[5px]">
+                  {i === 0 ? <Mark size={15} /> : <Folder size={15} strokeWidth={1.2} fill="#7aa2d8" stroke="#7aa2d8" aria-hidden="true" className="flex-none" />}
+                  {c}
+                </li>
+                <li aria-hidden="true">›</li>
+              </Fragment>
+            ))}
+            <li className="flex items-center gap-[5px]" aria-current={symbol ? undefined : "page"}>
+              <FileIcon path={fileName} size={15} />
+              {fileName}
+            </li>
+            {symbol && (
+              <>
+                <li aria-hidden="true">›</li>
+                <li className="wb-mono flex items-center gap-[5px] text-[var(--tx)]" aria-current="page">
+                  <SymbolMark />
+                  {symbol}
+                </li>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <li className="flex items-center gap-[5px]">
+              <Mark size={15} />
+              learnslop
+            </li>
+            <li aria-hidden="true">›</li>
+            <li className="truncate">{title}</li>
+            <li aria-hidden="true">›</li>
+            <li className="wb-mono flex items-center gap-1.5 text-[var(--tx)]" aria-current="page">
+              <FileBadge path={fileName} />
+              {fileName}
+            </li>
+          </>
+        )}
+      </ol>
+    </nav>
+  );
+}
+
+export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, actions, lights = false, planned = false }: Props) {
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
       <div className="flex h-12 flex-none items-center gap-2 px-2 sm:gap-3 sm:px-3">
@@ -97,50 +150,7 @@ export default function Toolbar({ title, fileName, crumbs, symbol, nav, terminal
           <ToggleButton t={util} icon={PanelRight} />
         </span>
       </div>
-      <nav aria-label="File path" className="flex h-[33px] flex-none items-center overflow-hidden border-t border-[var(--line)] px-3.5 text-[var(--mu)]">
-        <ol className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-          {crumbs ? (
-            <>
-              {crumbs.map((c, i) => (
-                <Fragment key={c}>
-                  <li className="flex items-center gap-[5px]">
-                    {i === 0 ? <Mark size={15} /> : <Folder size={15} strokeWidth={1.2} fill="#7aa2d8" stroke="#7aa2d8" aria-hidden="true" className="flex-none" />}
-                    {c}
-                  </li>
-                  <li aria-hidden="true">›</li>
-                </Fragment>
-              ))}
-              <li className="flex items-center gap-[5px]" aria-current={symbol ? undefined : "page"}>
-                <FileIcon path={fileName} size={15} />
-                {fileName}
-              </li>
-              {symbol && (
-                <>
-                  <li aria-hidden="true">›</li>
-                  <li className="wb-mono flex items-center gap-[5px] text-[var(--tx)]" aria-current="page">
-                    <SymbolMark />
-                    {symbol}
-                  </li>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <li className="flex items-center gap-[5px]">
-                <Mark size={15} />
-                learnslop
-              </li>
-              <li aria-hidden="true">›</li>
-              <li className="truncate">{title}</li>
-              <li aria-hidden="true">›</li>
-              <li className="wb-mono flex items-center gap-1.5 text-[var(--tx)]" aria-current="page">
-                <FileBadge path={fileName} />
-                {fileName}
-              </li>
-            </>
-          )}
-        </ol>
-      </nav>
+      {!split && <Breadcrumbs title={title} fileName={fileName} crumbs={crumbs} symbol={symbol} edge="top" />}
     </header>
   );
 }

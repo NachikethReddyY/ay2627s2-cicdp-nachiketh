@@ -9,7 +9,7 @@ import { NAV_TABS, Soon, type NavView } from "./Planned";
 import Segmented from "./Segmented";
 import Splitter from "./Splitter";
 import StatusBar, { type WorkbenchStatus } from "./StatusBar";
-import Toolbar, { TrafficLights } from "./Toolbar";
+import Toolbar, { Breadcrumbs, TrafficLights } from "./Toolbar";
 import "./workbench.css";
 
 // The planned parts hold sample text, so they load only when showPlanned is on.
@@ -46,6 +46,10 @@ type Props = {
   /** Called after the workbench has switched to the Docs tab. */
   onOpenDoc(id: string): void;
   status: WorkbenchStatus;
+  /** Status-bar language for the open file; defaults to the lesson language. */
+  languageLabel?: string;
+  /** Hide Ln/Col (a rendered preview has no caret). */
+  noCursor?: boolean;
   /** Bottom panel open/height state (lq.terminal), shared with whatever renders inside it. */
   panel: ReturnType<typeof usePanel>;
   /**
@@ -84,9 +88,16 @@ export default function Workbench(p: Props) {
   const [overlay, setOverlay] = useState<Overlay>(null);
   // Motion (theme fades, panels fading in) starts after the first paint, so loading does not flash.
   const [ready, setReady] = useState(false);
+  const wbRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
-    return () => cancelAnimationFrame(id);
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
   }, []);
   const planned = p.showPlanned === true && wide; // the planned parts are drawn only in the wide layout
   const [navView, setNavView] = useState<NavView>("files");
@@ -94,6 +105,21 @@ export default function Workbench(p: Props) {
   const view: NavView = planned ? navView : "files";
   const bottomView = planned ? bottomTab : "main";
   const { state: panel, dispatch: panelDispatch } = p.panel;
+
+  // A theme change eases colours: [data-theming] turns the transitions on for 450 ms, set in the same commit as the
+  // new tokens so the change is animated. Hovers and everything else stay instant.
+  const firstTheme = useRef(true);
+  useLayoutEffect(() => {
+    if (firstTheme.current) {
+      firstTheme.current = false;
+      return;
+    }
+    const el = wbRef.current;
+    if (!el) return;
+    el.setAttribute("data-theming", "");
+    const t = setTimeout(() => el.removeAttribute("data-theming"), 450);
+    return () => clearTimeout(t);
+  }, [resolved]);
 
   const rowRef = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -238,8 +264,9 @@ export default function Workbench(p: Props) {
     </section>
   );
 
-  const toolbar = (
+  const toolbar = (split: boolean) => (
     <Toolbar
+      split={split}
       title={p.title}
       fileName={p.fileName}
       crumbs={p.crumbs}
@@ -256,7 +283,7 @@ export default function Workbench(p: Props) {
         onClick: () => panelDispatch({ type: "toggle" }),
       }}
       util={{
-        label: wide ? "Toggle instructions and docs" : "Show docs",
+        label: wide ? "Toggle docs panel" : "Show docs",
         pressed: wide ? layout.showUtil : openOverlay === "docs",
         onClick: toggleUtil,
         ref: utilBtn,
@@ -268,12 +295,13 @@ export default function Workbench(p: Props) {
   );
 
   const status = (
-    <StatusBar planned={planned} status={p.status} cursor={cursor} language={LANG_NAMES[p.language]} theme={layout.theme} onTheme={(theme) => dispatch({ type: "theme", theme })} />
+    <StatusBar planned={planned} status={p.status} cursor={p.noCursor ? null : cursor} language={p.languageLabel ?? LANG_NAMES[p.language]} theme={layout.theme} onTheme={(theme) => dispatch({ type: "theme", theme })} />
   );
 
   return (
     <WorkbenchContext value={ctx}>
       <div
+        ref={wbRef}
         className={`wb flex flex-col ${wide ? "wb-desk h-dvh overflow-hidden" : "min-h-dvh bg-[var(--code)]"}`}
         data-theme={layout.theme}
         data-resolved={resolved}
@@ -331,7 +359,10 @@ export default function Workbench(p: Props) {
                 </>
               )}
               <div className="flex min-w-0 flex-1 flex-col">
-                {toolbar}
+                {toolbar(true)}
+                <div className="flex min-h-0 flex-1">
+                <div className="flex min-w-0 flex-1 flex-col">
+                <Breadcrumbs title={p.title} fileName={p.fileName} crumbs={p.crumbs} symbol={p.symbol} edge="bottom" />
                 <main ref={centerRef} className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--code)]">
                   <div className="relative flex min-h-0 flex-1 flex-col">
                     {p.editor}
@@ -350,8 +381,8 @@ export default function Workbench(p: Props) {
                   )}
                   {bottomPanel}
                 </main>
-              </div>
-              {/* The docs column runs the full window height, level with the toolbar. */}
+                </div>
+                {/* The Docs column sits under the toolbar; its header shares the breadcrumb row's band. */}
               {shown.showUtil && (
                 <>
                   <Splitter
@@ -368,10 +399,12 @@ export default function Workbench(p: Props) {
                   </aside>
                 </>
               )}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="flex min-w-0 flex-1 flex-col">
-              {toolbar}
+              {toolbar(false)}
               <main className="flex min-w-0 flex-col bg-[var(--code)]">
                 {p.editor}
                 {p.instructions && (
@@ -436,7 +469,7 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} className="absolute inset-0 cursor-default bg-black/30" onClick={onClose} />
       <div role="dialog" aria-modal="true" aria-label={label} className="relative flex h-full w-[min(85vw,340px)] flex-col bg-[var(--side)] shadow-xl">
         <div className="flex h-12 flex-none items-center border-b border-[var(--line)] px-3">
-          <h2 className="text-[13px] font-semibold">{label}</h2>
+          <h2 className={`text-[13px] font-semibold ${side === "right" ? "sr-only" : ""}`}>{label}</h2>
           <button ref={closeRef} type="button" className="wb-tb ml-auto" aria-label={`Close ${label.toLowerCase()}`} onClick={onClose}>
             <X size={15} strokeWidth={1.75} aria-hidden="true" />
           </button>
