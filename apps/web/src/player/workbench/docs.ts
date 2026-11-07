@@ -104,7 +104,7 @@ export const DOCS: Doc[] = [
     tags: "array transform callback new list",
     snippet: "Builds a new array by calling a function on every item.",
     syntax: "array.map((item, index) => newItem)",
-    example: "const doubled = [1, 2, 3].map((n) => n * 2);",
+    example: "const doubled = [4, 5].map((n) => n * 2);",
     detail:
       "The original array is left alone. The new array has the same length, with each item replaced by what the callback returned.",
     see: ["push", "fn"],
@@ -121,7 +121,7 @@ export const DOCS: Doc[] = [
     detail:
       "Several values are printed on one line, separated by spaces. It returns undefined and does not change the values it prints.",
     see: ["fn", "let"],
-    words: ["log", "console"],
+    words: ["console"],
   },
   {
     id: "record",

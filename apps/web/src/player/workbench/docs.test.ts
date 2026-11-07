@@ -40,3 +40,12 @@ test("a word shared by languages resolves to that language's entry", () => {
 test("the catalogue is a plain reference: no lesson answer", () => {
   for (const d of DOCS) assert.doesNotMatch(d.example, /\b(sum|total)\b/i, d.id);
 });
+
+test("log is not a hover word: Math.log must not show console.log", () => {
+  assert.equal(docForWord("log", "javascript"), undefined);
+  assert.equal(docForWord("console", "javascript")?.id, "log");
+});
+
+test("the map example does not reuse the test lesson's input", () => {
+  assert.doesNotMatch(DOCS.find((d) => d.id === "map")?.example ?? "", /\[1, 2, 3\]/);
+});

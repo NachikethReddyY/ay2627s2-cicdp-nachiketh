@@ -450,6 +450,9 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
     closeRef.current?.focus();
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // A text field with its own Esc (clear the query first) keeps it until it is empty.
+      const t = e.target;
+      if (t instanceof HTMLInputElement && (t.dataset.ownEsc !== undefined || (t.value !== "" && /^(text|search)$/.test(t.type)))) return;
       if (document.querySelector("dialog[open]")) return; // the command palette owns Esc while it is open
       e.preventDefault();
       onCloseRef.current();
