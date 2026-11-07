@@ -122,7 +122,7 @@ export function wrapCompletionProvider(provider: Provider, language: string): Pr
       if (!r || !docLang || !helpActive.get(language)) return r;
       const before = model
         .getValueInRange({ startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column })
-        .replace(/\w*$/, ""); // text before the word being typed
+        .replace(/\w+$/, ""); // text before the word being typed
       const suggestions = r.suggestions.map((it): languages.CompletionItem => {
         const word = typeof it.label === "string" ? it.label : it.label.label;
         const doc = docForWord(hoverWord(word, before), docLang);

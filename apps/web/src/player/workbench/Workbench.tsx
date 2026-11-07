@@ -449,8 +449,7 @@ export default function Workbench(p: Props) {
 }
 
 // Modal drawer for the narrow layout. The caller makes the rest of the workbench inert, so Tab stays
-// inside. Focus starts on Close; Escape closes from anywhere; a click on an element marked
-// data-drawer-close (a file row, say) closes it after the click is handled.
+// inside. Focus starts on Close; Escape closes from anywhere.
 function Drawer({ side, label, onClose, children }: { side: "left" | "right"; label: string; onClose(): void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -473,7 +472,6 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
     <div
       className="fixed inset-0 z-40 flex"
       style={{ justifyContent: side === "left" ? "flex-start" : "flex-end" }}
-      onClick={(e) => (e.target as Element).closest("[data-drawer-close]") && onClose()}
     >
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} className="absolute inset-0 cursor-default bg-black/30" onClick={onClose} />
       <div role="dialog" aria-modal="true" aria-label={label} className="relative flex h-full w-[min(85vw,340px)] flex-col bg-[var(--side)] shadow-xl">
