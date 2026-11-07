@@ -1,12 +1,14 @@
+import { Columns2, List, Plus, Search, Sparkles, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue } from "./context";
 import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolveTheme, useLayout, type Layout } from "./layout";
 import CommandPalette, { type PaletteCommand } from "./CommandPalette";
 import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
+import { DebugBar, DebugConsole, NAV_TABS, PlannedNavView, RunStopPill, Soon, type NavView } from "./Planned";
 import Splitter from "./Splitter";
 import StatusBar, { type WorkbenchStatus } from "./StatusBar";
-import Toolbar from "./Toolbar";
+import Toolbar, { TrafficLights } from "./Toolbar";
 import "./workbench.css";
 
 export type WorkbenchLanguage = "javascript" | "typescript" | "python";
@@ -34,6 +36,12 @@ type Props = {
   status: WorkbenchStatus;
   /** Bottom panel open/height state (lq.terminal), shared with whatever renders inside it. */
   panel: ReturnType<typeof usePanel>;
+  /**
+   * Also draw the design's planned parts (AI help, debugger, source control, search, Share,
+   * notifications, Back/Forward) as inert "Coming soon" controls. Default false: the practice
+   * view must not show dead controls. The /test/editor page turns it on.
+   */
+  showPlanned?: boolean;
 };
 
 const LANG_NAMES: Record<WorkbenchLanguage, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" };
@@ -62,6 +70,11 @@ export default function Workbench(p: Props) {
   const resolved = resolveTheme(layout.theme, prefersDark);
   const [cursor, setCursor] = useState<{ line: number; column: number } | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  const planned = p.showPlanned === true && wide; // the planned parts are drawn only in the wide layout
+  const [navView, setNavView] = useState<NavView>("files");
+  const [bottomTab, setBottomTab] = useState<"main" | "console">("main");
+  const view: NavView = planned ? navView : "files";
+  const bottomView = planned ? bottomTab : "main";
   const { state: panel, dispatch: panelDispatch } = p.panel;
 
   const rowRef = useRef<HTMLDivElement>(null);
@@ -172,14 +185,48 @@ export default function Workbench(p: Props) {
   const bottomPanel = panel.open && (
     <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
       <div className="flex h-[42px] flex-none items-center border-b border-[var(--line)] px-2.5">
-        <h2 className="wb-sec">{p.bottomTitle ?? "Terminal"}</h2>
-        <button type="button" className="wb-tb ml-auto" aria-label="Close panel" title="Close panel" onClick={() => panelDispatch({ type: "close" })}>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
+        {planned ? (
+          <span className="wb-pill" style={{ gap: 4 }} role="group" aria-label="Panel view">
+            <button type="button" className="wb-ptab" aria-pressed={bottomView === "main"} onClick={() => setBottomTab("main")}>
+              {p.bottomTitle ?? "Terminal"}
+            </button>
+            <button type="button" className="wb-ptab" aria-pressed={bottomView === "console"} onClick={() => setBottomTab("console")}>
+              Debug console
+            </button>
+          </span>
+        ) : (
+          <span className="wb-pill">
+            <span aria-hidden="true" className="wb-ptab" data-on="true">
+              {p.bottomTitle ?? "Terminal"}
+            </span>
+          </span>
+        )}
+        <span className="wb-pill ml-auto">
+          {planned && (
+            <>
+              <Soon label="New terminal">
+                <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
+              </Soon>
+              <Soon label="Split terminal">
+                <Columns2 size={15} strokeWidth={1.7} aria-hidden="true" />
+              </Soon>
+            </>
+          )}
+          <button type="button" className="wb-tb" aria-label="Close panel" title="Close panel" onClick={() => panelDispatch({ type: "close" })}>
+            <X size={15} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </span>
       </div>
-      <div className="wb-scroll min-h-0 flex-1">{p.bottom}</div>
+      {/* Keep the real panel mounted (a terminal keeps its session) while the sample console shows. */}
+      <div className="wb-scroll min-h-0 flex-1" hidden={bottomView === "console"}>
+        {p.bottom}
+      </div>
+      {bottomView === "console" && (
+        <div className="wb-scroll min-h-0 flex-1">
+          <DebugConsole />
+        </div>
+      )}
     </section>
   );
 
@@ -205,33 +252,65 @@ export default function Workbench(p: Props) {
         ref: utilBtn,
       }}
       tools={
-        <button type="button" className="wb-tb wb-outline" aria-label="Search and commands" title={`Search and commands (${searchKey})`} onClick={() => setPalette({ open: true, mode: "file" })}>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="6.5" />
-            <path d="M20.5 20.5L16 16" />
-          </svg>
-          <span className="wb-mono max-sm:hidden text-[11px] text-[var(--mu)]">{searchKey}</span>
+        <button type="button" className="wb-tb flex-none" aria-label="Search and commands" title={`Search and commands (${searchKey})`} onClick={() => setPalette({ open: true, mode: "file" })}>
+          <Search size={16} strokeWidth={1.75} aria-hidden="true" />
         </button>
       }
       actions={p.actions}
+      lights={wide && !shown.showLeft}
+      planned={planned}
     />
   );
 
   const status = (
-    <StatusBar status={p.status} cursor={cursor} language={LANG_NAMES[p.language]} theme={layout.theme} onTheme={(theme) => dispatch({ type: "theme", theme })} />
+    <StatusBar planned={planned} status={p.status} cursor={cursor} language={LANG_NAMES[p.language]} theme={layout.theme} onTheme={(theme) => dispatch({ type: "theme", theme })} />
   );
 
   return (
     <WorkbenchContext value={ctx}>
-      <div className={`wb flex flex-col bg-[var(--code)] ${wide ? "h-dvh overflow-hidden" : "min-h-dvh"}`} data-theme={layout.theme} style={{ colorScheme: resolved }}>
+      <div
+        className={`wb flex flex-col ${wide ? "wb-desk h-dvh overflow-hidden" : "min-h-dvh bg-[var(--code)]"}`}
+        data-theme={layout.theme}
+        data-resolved={resolved}
+        style={{ colorScheme: resolved }}
+      >
         {/* While a drawer is open, everything behind it is inert: out of the Tab order and the accessibility tree. */}
-        <div inert={openOverlay != null} className="flex min-h-0 flex-1 flex-col">
+        <div inert={openOverlay != null} className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""}`}>
           {wide ? (
             <div ref={rowRef} className="flex min-h-0 flex-1">
               {shown.showLeft && (
                 <>
-                  <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-scroll flex flex-none flex-col bg-[var(--side)] py-1.5">
-                    {p.navigator}
+                  <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-side flex min-h-0 flex-none flex-col">
+                    <div className="flex flex-none items-center gap-2 px-3 pt-3">
+                      <span className="flex h-8 items-center">
+                        <TrafficLights />
+                      </span>
+                      {planned && (
+                        <>
+                          <span className="wb-pill" style={{ gap: 4 }} role="group" aria-label="Navigator or AI help">
+                            <button type="button" className="wb-tb wb-nb" aria-label="List" title="List" aria-pressed={view !== "ai"} onClick={() => setNavView("files")}>
+                              <List size={18} strokeWidth={1.8} aria-hidden="true" />
+                            </button>
+                            <button type="button" className="wb-tb wb-nb" aria-label="AI help" title="AI help" aria-pressed={view === "ai"} onClick={() => setNavView("ai")}>
+                              <Sparkles size={18} strokeWidth={1.8} aria-hidden="true" />
+                            </button>
+                          </span>
+                          <RunStopPill />
+                        </>
+                      )}
+                    </div>
+                    {planned && view !== "ai" && (
+                      <div className="wb-pill wb-navtabs" role="group" aria-label="Navigator view">
+                        {NAV_TABS.map((t) => (
+                          <button key={t.id} type="button" className="wb-tb" aria-label={t.label} title={t.label} aria-pressed={view === t.id} onClick={() => setNavView(t.id)}>
+                            <t.icon size={17} strokeWidth={1.7} aria-hidden="true" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : "pt-3"}`}>
+                      {view === "files" ? p.navigator : <PlannedNavView view={view} />}
+                    </div>
                   </nav>
                   <Splitter
                     orientation="vertical"
@@ -247,7 +326,10 @@ export default function Workbench(p: Props) {
                 {toolbar}
                 <div className="flex min-h-0 flex-1">
                   <main ref={centerRef} className="flex min-w-0 flex-1 flex-col bg-[var(--code)]">
-                    <div className="flex min-h-0 flex-1 flex-col">{p.editor}</div>
+                    <div className="relative flex min-h-0 flex-1 flex-col">
+                      {p.editor}
+                      {planned && <DebugBar />}
+                    </div>
                     {panel.open && (
                       <Splitter
                         orientation="horizontal"
@@ -379,9 +461,7 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
         <div className="flex h-12 flex-none items-center border-b border-[var(--line)] px-3">
           <h2 className="text-[13px] font-semibold">{label}</h2>
           <button ref={closeRef} type="button" className="wb-tb ml-auto" aria-label={`Close ${label.toLowerCase()}`} onClick={onClose}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
+            <X size={15} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
         <div className={`wb-scroll flex-1 py-1.5 ${side === "right" ? "wb-prose px-4" : ""}`}>{children}</div>

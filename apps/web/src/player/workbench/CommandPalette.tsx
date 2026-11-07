@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowDown, ArrowUp, Book, CornerDownLeft, File, Search, Terminal, type LucideIcon } from "lucide-react";
 import FileBadge from "./FileBadge";
 import { filterItems, parseQuery, type PaletteItem, type PaletteMode } from "./palette";
 
@@ -23,10 +24,10 @@ const PLACEHOLDER: Record<PaletteMode, string> = {
   doc: "Search the docs",
 };
 
-const MODES: { mode: PaletteMode; label: string; glyph: "file" | ">" | "?" }[] = [
-  { mode: "file", label: "Files", glyph: "file" },
-  { mode: "cmd", label: "Commands (>)", glyph: ">" },
-  { mode: "doc", label: "Docs (?)", glyph: "?" },
+const MODES: { mode: PaletteMode; label: string; icon: LucideIcon }[] = [
+  { mode: "file", label: "Files", icon: File },
+  { mode: "cmd", label: "Commands (>)", icon: Terminal },
+  { mode: "doc", label: "Docs (?)", icon: Book },
 ];
 
 export default function CommandPalette({ open, initial, files, commands, docs, onOpenFile, onOpenDoc, onClose }: Props) {
@@ -113,10 +114,7 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
     >
       <div className="wb-pal-top">
         <div className="wb-pal-glass wb-pal-search">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="flex-none text-[var(--mu)]">
-            <circle cx="11" cy="11" r="6.5" />
-            <path d="M20.5 20.5L16 16" />
-          </svg>
+          <Search size={20} strokeWidth={1.8} aria-hidden="true" className="flex-none text-[var(--mu)]" />
           <input
             ref={inputRef}
             type="text"
@@ -140,22 +138,15 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
         <div className="wb-pal-glass wb-pal-modes" role="group" aria-label="Search in">
           {MODES.map((m) => (
             <button key={m.mode} type="button" aria-label={m.label} title={m.label} aria-pressed={m.mode === mode} onClick={() => setMode(m.mode)}>
-              {m.glyph === "file" ? (
-                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z" />
-                  <path d="M14 3.5v4h4" />
-                </svg>
-              ) : (
-                <span className="wb-mono" aria-hidden="true">{m.glyph}</span>
-              )}
+              <m.icon size={19} strokeWidth={1.8} aria-hidden="true" />
             </button>
           ))}
         </div>
       </div>
 
       <div className="wb-pal-glass wb-pal-card">
-        <ul id={`${uid}-list`} ref={listRef} role="listbox" aria-label={HEADING[mode]} className="wb-scroll wb-pal-list">
-          <li role="presentation" className="wb-sec" aria-hidden="true">{HEADING[mode]}</li>
+        <ul id={`${uid}-list`} ref={listRef} role="listbox" aria-label={HEADING[mode]} className="wb-scroll wb-pal-list" data-mode={mode}>
+          <li role="presentation" className="wb-pal-head" aria-hidden="true">{HEADING[mode]}</li>
           {results.map((r, i) => (
             <li
               key={r.id}
@@ -167,17 +158,40 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
               onClick={() => choose(r)}
             >
               {mode === "file" && <FileBadge path={r.title} />}
-              <span className="wb-pal-title">{r.title}</span>
-              {r.sub && <span className="wb-pal-sub">{r.sub}</span>}
-              {r.hint && <kbd className="wb-mono wb-pal-hint">{r.hint}</kbd>}
-              {i === sel && <span className="wb-mono wb-pal-enter" aria-hidden="true">↵</span>}
+              <span className="wb-pal-text">
+                <span className="wb-pal-title">{r.title}</span>
+                {r.sub && <span className="wb-pal-sub">{r.sub}</span>}
+              </span>
+              <span className="wb-pal-end">
+                {r.hint && <kbd className="wb-mono wb-pal-hint">{r.hint}</kbd>}
+                {i === sel && (
+                  <span className="wb-pal-enter" aria-hidden="true">
+                    <CornerDownLeft size={12} strokeWidth={2} />
+                  </span>
+                )}
+              </span>
             </li>
           ))}
         </ul>
         {results.length === 0 && <p className="wb-pal-empty">No results for "{term}"</p>}
         <div className="wb-pal-foot" aria-hidden="true">
-          <span><kbd className="wb-mono">↑↓</kbd> navigate</span>
-          <span><kbd className="wb-mono">↵</kbd> open</span>
+          <span>
+            <kbd>
+              <ArrowUp size={11} strokeWidth={2} />
+              <ArrowDown size={11} strokeWidth={2} />
+            </kbd>
+            navigate
+          </span>
+          <span>
+            <kbd>
+              <CornerDownLeft size={11} strokeWidth={2} />
+            </kbd>
+            open
+          </span>
+          <span>
+            <kbd className="wb-mono">esc</kbd>
+            close
+          </span>
           <span className="ml-auto">{results.length} {results.length === 1 ? "result" : "results"}</span>
         </div>
         <span role="status" className="sr-only">{results.length} {results.length === 1 ? "result" : "results"}</span>

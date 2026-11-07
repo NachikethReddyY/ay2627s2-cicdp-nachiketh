@@ -1,37 +1,27 @@
 import { useRef, useState } from "react";
+import { Check, ChevronDown, Folder, Play } from "lucide-react";
 import Markdown from "react-markdown";
 import { usePanel } from "../player/terminal/usePanel";
 import FileBadge from "../player/workbench/FileBadge";
 import Workbench from "../player/workbench/Workbench";
 import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
-import { TEST_DOCS, TEST_LESSONS, pickTestLesson, type TestLanguage, type TestLesson } from "./testEditorFixture";
+import { TEST_DOCS, pickTestLesson, type TestLesson } from "./testEditorFixture";
 
 // Dev-only page for building the practice workbench. Fixture data only: no sign-in, no API, no sandbox.
 
-const LANG_NAMES: Record<TestLanguage, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" };
 const READY: WorkbenchStatus = { text: "Ready" };
 
 const initialFiles = (l: TestLesson) => Object.fromEntries(l.files.map((f) => [f.path, f.path === l.fileName ? l.starter : f.body]));
 
 export default function TestEditor() {
-  const [lesson, setLesson] = useState(() => pickTestLesson(new URLSearchParams(location.search).get("language")));
+  const [lesson] = useState(() => pickTestLesson(new URLSearchParams(location.search).get("language")));
   const [files, setFiles] = useState(() => initialFiles(lesson));
   const [open, setOpen] = useState(lesson.fileName);
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const runRef = useRef<HTMLButtonElement>(null);
   const panel = usePanel(); // no container: the workbench clamps the height at render
-
-  const switchTo = (lang: TestLanguage) => {
-    const next = TEST_LESSONS[lang];
-    setLesson(next);
-    setFiles(initialFiles(next));
-    setOpen(next.fileName);
-    setOutput("");
-    setStatus(READY);
-    history.replaceState(null, "", `?language=${lang}`);
-  };
 
   const check = () => setStatus({ text: "Check needs a real lesson", tone: "error" });
 
@@ -50,19 +40,16 @@ export default function TestEditor() {
 
   const navigator = (
     <>
-      <div className="wb-sec">Sample language</div>
-      <div role="group" aria-label="Sample language" className="mb-2 flex flex-wrap gap-1 px-2.5">
-        {(Object.keys(TEST_LESSONS) as TestLanguage[]).map((l) => (
-          <button key={l} type="button" className="wb-tb wb-outline wb-small" aria-pressed={l === lesson.language} onClick={() => switchTo(l)}>
-            {LANG_NAMES[l]}
-          </button>
-        ))}
+      {/* The sample language comes from ?language= (javascript, typescript, python). */}
+      <div className="wb-row wb-row-root" aria-hidden="true">
+        <ChevronDown size={10} strokeWidth={2.5} className="flex-none opacity-65" />
+        <Folder size={16} strokeWidth={1.5} fill="#7aa2d8" stroke="#5f8bc8" className="flex-none" />
+        practice
       </div>
-      <div className="wb-sec">Files</div>
-      <ul>
+      <ul aria-label="Files">
         {lesson.files.map((f) => (
           <li key={f.path}>
-            <button type="button" className="wb-row" data-drawer-close aria-current={f.path === open} onClick={() => setOpen(f.path)}>
+            <button type="button" className="wb-row" style={{ paddingLeft: 30 }} data-drawer-close aria-current={f.path === open} onClick={() => setOpen(f.path)}>
               <FileBadge path={f.path} />
               {f.path}
             </button>
@@ -75,12 +62,11 @@ export default function TestEditor() {
   const actions = (
     <>
       <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={run} title="Run">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-          <path d="M8 5l12 7-12 7z" />
-        </svg>
+        <Play size={13} strokeWidth={2} fill="currentColor" aria-hidden="true" />
         Run
       </button>
       <button type="button" className="wb-tb wb-outline" onClick={check}>
+        <Check size={15} strokeWidth={1.75} aria-hidden="true" />
         Check
       </button>
     </>
@@ -137,6 +123,7 @@ export default function TestEditor() {
       onOpenDoc={() => {}}
       status={status}
       panel={panel}
+      showPlanned
     />
   );
 }

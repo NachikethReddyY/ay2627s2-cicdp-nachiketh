@@ -1,5 +1,7 @@
 import type { ReactNode, Ref } from "react";
+import { Bell, ChevronLeft, ChevronRight, PanelBottom, PanelLeft, PanelRight, Share, type LucideIcon } from "lucide-react";
 import FileBadge from "./FileBadge";
+import { Soon } from "./Planned";
 
 type Toggle = { pressed: boolean; onClick(): void; label: string; ref?: Ref<HTMLButtonElement> };
 
@@ -13,26 +15,34 @@ type Props = {
   tools?: ReactNode;
   /** Run / Stop / Check / Next. */
   actions: ReactNode;
+  /** Draw the window's traffic lights at the start (the navigator that normally holds them is hidden). */
+  lights?: boolean;
+  /** Draw the design's planned Back/Forward, Share and Notifications as inert controls. */
+  planned?: boolean;
 };
 
-const Icon = ({ d }: { d: string }) => (
-  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect x="3" y="4" width="18" height="16" rx="3" />
-    <path d={d} />
-  </svg>
-);
-
-function ToggleButton({ t, d }: { t: Toggle; d: string }) {
+function ToggleButton({ t, icon: Icon }: { t: Toggle; icon: LucideIcon }) {
   return (
     <button ref={t.ref} type="button" className="wb-tb" aria-label={t.label} title={t.label} aria-pressed={t.pressed} onClick={t.onClick}>
-      <Icon d={d} />
+      <Icon size={17} strokeWidth={1.75} aria-hidden="true" />
     </button>
   );
 }
 
+/** The macOS window controls. Decoration only: not buttons, hidden from assistive tech. */
+export function TrafficLights() {
+  return (
+    <span aria-hidden="true" className="wb-lights">
+      <span style={{ background: "#ff5f57" }} />
+      <span style={{ background: "#febc2e" }} />
+      <span style={{ background: "#28c840" }} />
+    </span>
+  );
+}
+
 // The project mark from the design: a rounded square with a sprout.
-const Mark = ({ size }: { size: number }) => (
-  <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" className="flex-none">
+const Mark = ({ size, className = "" }: { size: number; className?: string }) => (
+  <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" className={`flex-none ${className}`}>
     <rect x="1" y="1" width="14" height="14" rx="4" fill="#3d79e0" />
     <path
       transform="scale(.667)"
@@ -46,37 +56,62 @@ const Mark = ({ size }: { size: number }) => (
   </svg>
 );
 
-export default function Toolbar({ title, fileName, nav, terminal, util, tools, actions }: Props) {
+export default function Toolbar({ title, fileName, nav, terminal, util, tools, actions, lights = false, planned = false }: Props) {
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
       <div className="flex h-12 flex-none items-center gap-2 px-2 sm:gap-3 sm:px-3">
-        <span className="wb-pill">
-          <ToggleButton t={nav} d="M9 4v16" />
-        </span>
+        {lights && <TrafficLights />}
+        {planned && (
+          <span className="wb-pill flex-none">
+            <Soon label="Back" className="wb-tb wb-wide">
+              <ChevronLeft size={17} strokeWidth={2.2} aria-hidden="true" />
+            </Soon>
+            <Soon label="Forward" className="wb-tb wb-wide" style={{ color: "var(--mu)" }}>
+              <ChevronRight size={17} strokeWidth={2} aria-hidden="true" />
+            </Soon>
+          </span>
+        )}
         <div className="flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap">
           <a href="/" className="flex flex-none items-center gap-1.5 rounded text-[13px] font-semibold" aria-label="LearnSlop home">
-            <Mark size={18} />
+            <Mark size={18} className="sm:hidden" />
             <span className="max-sm:hidden">LearnSlop</span>
           </a>
           <span aria-hidden="true" className="text-[var(--mu)] max-sm:hidden">/</span>
-          <h1 className="min-w-0 truncate text-[13px] font-medium">{title}</h1>
+          <h1 className="min-w-0 truncate text-[13px] font-normal text-[var(--mu)]">{title}</h1>
         </div>
-        {tools}
-        <div className="flex flex-none items-center gap-1">{actions}</div>
-        <span className="wb-pill">
-          <ToggleButton t={terminal} d="M3 14.5h18" />
-          <ToggleButton t={util} d="M17 4v16M3 10h14" />
+        <div className="flex flex-none items-center gap-1">
+          {tools}
+          {planned && (
+            <>
+              <Soon label="Share">
+                <Share size={16} strokeWidth={1.7} aria-hidden="true" />
+              </Soon>
+              <Soon label="Notifications">
+                <Bell size={16} strokeWidth={1.7} aria-hidden="true" />
+              </Soon>
+            </>
+          )}
+        </div>
+        <div className="wb-pill flex-none">{actions}</div>
+        <span className="wb-pill flex-none">
+          <ToggleButton t={nav} icon={PanelLeft} />
+          <ToggleButton t={terminal} icon={PanelBottom} />
+          <ToggleButton t={util} icon={PanelRight} />
         </span>
       </div>
       <nav aria-label="File path" className="flex h-8 flex-none items-center overflow-hidden border-t border-[var(--line)] px-3.5 text-[var(--mu)]">
         <ol className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-          <li className="flex items-center gap-1.5">
+          <li className="flex items-center gap-[5px]">
             <Mark size={15} />
             learnslop
           </li>
-          <li aria-hidden="true">›</li>
+          <li aria-hidden="true" className="flex">
+            <ChevronRight size={12} strokeWidth={2} />
+          </li>
           <li className="truncate">{title}</li>
-          <li aria-hidden="true">›</li>
+          <li aria-hidden="true" className="flex">
+            <ChevronRight size={12} strokeWidth={2} />
+          </li>
           <li className="wb-mono flex items-center gap-1.5 text-[var(--tx)]" aria-current="page">
             <FileBadge path={fileName} />
             {fileName}
