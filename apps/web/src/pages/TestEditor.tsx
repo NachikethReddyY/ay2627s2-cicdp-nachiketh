@@ -21,8 +21,7 @@ export default function TestEditor() {
   const [output, setOutput] = useState("");
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const runRef = useRef<HTMLButtonElement>(null);
-  const noContainer = useRef<HTMLElement>(null); // the workbench clamps the panel to its own centre column
-  const panel = usePanel(noContainer);
+  const panel = usePanel(); // no container: the workbench clamps the height at render
 
   const switchTo = (lang: TestLanguage) => {
     const next = TEST_LESSONS[lang];
@@ -54,7 +53,7 @@ export default function TestEditor() {
       <ul>
         {lesson.files.map((f) => (
           <li key={f.path}>
-            <button type="button" className="wb-row" aria-current={f.path === open} onClick={() => setOpen(f.path)}>
+            <button type="button" className="wb-row" data-drawer-close aria-current={f.path === open} onClick={() => setOpen(f.path)}>
               <FileBadge path={f.path} />
               {f.path}
             </button>

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
-import { MAX_FRACTION, MIN_HEIGHT, isToggleKey, type usePanel } from "../terminal/usePanel";
+import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue } from "./context";
 import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolveTheme, useLayout, type Layout } from "./layout";
 import Splitter from "./Splitter";
@@ -81,14 +81,12 @@ export default function Workbench(p: Props) {
   const leftMax = Math.max(LEFT_MIN, Math.min(LEFT_MAX, avail - (shown.showUtil ? shown.utilW : 0) - EDITOR_MIN));
   const utilMax = Math.max(UTIL_MIN, Math.min(UTIL_MAX, avail - (shown.showLeft ? shown.leftW : 0) - EDITOR_MIN));
 
-  // Keep the bottom panel inside its share of the centre column as the window changes.
-  const heightRef = useRef(panel.height);
-  heightRef.current = panel.height;
-  useEffect(() => {
-    if (wide && centerH > 0) panelDispatch({ type: "resize", px: heightRef.current, container: centerH });
-  }, [wide, centerH, panelDispatch]);
+  // Fit the bottom panel into the centre column at render, like the widths. Only a user
+  // resize writes a new height, so a window that shrinks and grows again gets it back.
+  const panelH = wide && centerH > 0 ? clampHeight(panel.height, centerH) : panel.height;
 
   // Capture phase, so Ctrl+` toggles the panel even while the editor has focus.
+  // Consumers must not register their own Ctrl+` listener, or the panel toggles twice.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!isToggleKey(e)) return;
@@ -103,11 +101,17 @@ export default function Workbench(p: Props) {
   const openOverlay = wide ? null : overlay;
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
+  const returnTo = useRef<HTMLButtonElement | null>(null);
   const closeOverlay = () => {
-    const back = overlay === "nav" ? navBtn.current : utilBtn.current;
+    returnTo.current = overlay === "nav" ? navBtn.current : utilBtn.current;
     setOverlay(null);
-    back?.focus();
   };
+  // The toggle is inert until the drawer is gone, so focus it after the commit.
+  useEffect(() => {
+    if (openOverlay != null || !returnTo.current) return;
+    returnTo.current.focus();
+    returnTo.current = null;
+  }, [openOverlay]);
 
   const ctx = useMemo<WorkbenchContextValue>(
     () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", setCursor }),
@@ -124,7 +128,7 @@ export default function Workbench(p: Props) {
   );
 
   const bottomPanel = panel.open && (
-    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panel.height }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
+    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
       <div className="flex h-[42px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="wb-sec">{p.bottomTitle ?? "Terminal"}</h2>
         <button type="button" className="wb-tb ml-auto" aria-label="Close panel" title="Close panel" onClick={() => panelDispatch({ type: "close" })}>
@@ -169,79 +173,82 @@ export default function Workbench(p: Props) {
   return (
     <WorkbenchContext value={ctx}>
       <div className={`wb flex flex-col bg-[var(--code)] ${wide ? "h-dvh overflow-hidden" : "min-h-dvh"}`} data-theme={layout.theme} style={{ colorScheme: resolved }}>
-        {wide ? (
-          <div ref={rowRef} className="flex min-h-0 flex-1">
-            {shown.showLeft && (
-              <>
-                <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-scroll flex flex-none flex-col bg-[var(--side)] py-1.5">
-                  {p.navigator}
-                </nav>
-                <Splitter
-                  orientation="vertical"
-                  label="Resize navigator"
-                  value={shown.leftW}
-                  min={LEFT_MIN}
-                  max={leftMax}
-                  onResize={(px) => dispatch({ type: "resizeLeft", px, container: avail })}
-                />
-              </>
-            )}
-            <div className="flex min-w-0 flex-1 flex-col">
-              {toolbar}
-              <div className="flex min-h-0 flex-1">
-                <main ref={centerRef} className="flex min-w-0 flex-1 flex-col bg-[var(--code)]">
-                  <div className="flex min-h-0 flex-1 flex-col">{p.editor}</div>
-                  {panel.open && (
-                    <Splitter
-                      orientation="horizontal"
-                      label="Resize terminal panel"
-                      value={panel.height}
-                      min={MIN_HEIGHT}
-                      max={Math.max(MIN_HEIGHT, MAX_FRACTION * centerH)}
-                      after
-                      onResize={(px) => panelDispatch({ type: "resize", px, container: centerH })}
-                    />
+        {/* While a drawer is open, everything behind it is inert: out of the Tab order and the accessibility tree. */}
+        <div inert={openOverlay != null} className="flex min-h-0 flex-1 flex-col">
+          {wide ? (
+            <div ref={rowRef} className="flex min-h-0 flex-1">
+              {shown.showLeft && (
+                <>
+                  <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-scroll flex flex-none flex-col bg-[var(--side)] py-1.5">
+                    {p.navigator}
+                  </nav>
+                  <Splitter
+                    orientation="vertical"
+                    label="Resize navigator"
+                    value={shown.leftW}
+                    min={LEFT_MIN}
+                    max={leftMax}
+                    onResize={(px) => dispatch({ type: "resizeLeft", px, container: avail })}
+                  />
+                </>
+              )}
+              <div className="flex min-w-0 flex-1 flex-col">
+                {toolbar}
+                <div className="flex min-h-0 flex-1">
+                  <main ref={centerRef} className="flex min-w-0 flex-1 flex-col bg-[var(--code)]">
+                    <div className="flex min-h-0 flex-1 flex-col">{p.editor}</div>
+                    {panel.open && (
+                      <Splitter
+                        orientation="horizontal"
+                        label="Resize terminal panel"
+                        value={panelH}
+                        min={MIN_HEIGHT}
+                        max={Math.max(MIN_HEIGHT, MAX_FRACTION * centerH)}
+                        after
+                        onResize={(px) => panelDispatch({ type: "resize", px, container: centerH })}
+                      />
+                    )}
+                    {bottomPanel}
+                  </main>
+                  {shown.showUtil && (
+                    <>
+                      <Splitter
+                        orientation="vertical"
+                        label="Resize instructions and docs"
+                        value={shown.utilW}
+                        min={UTIL_MIN}
+                        max={utilMax}
+                        after
+                        onResize={(px) => dispatch({ type: "resizeUtil", px, container: avail })}
+                      />
+                      <aside aria-label="Instructions and docs" style={{ width: shown.utilW }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
+                        {tabs}
+                      </aside>
+                    </>
                   )}
-                  {bottomPanel}
-                </main>
-                {shown.showUtil && (
-                  <>
-                    <Splitter
-                      orientation="vertical"
-                      label="Resize instructions and docs"
-                      value={shown.utilW}
-                      min={UTIL_MIN}
-                      max={utilMax}
-                      after
-                      onResize={(px) => dispatch({ type: "resizeUtil", px, container: avail })}
-                    />
-                    <aside aria-label="Instructions and docs" style={{ width: shown.utilW }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
-                      {tabs}
-                    </aside>
-                  </>
-                )}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex min-w-0 flex-1 flex-col">
-            {toolbar}
-            <main className="flex min-w-0 flex-col bg-[var(--code)]">
-              {p.editor}
-              <section aria-label="Instructions" className="border-t border-[var(--line)] bg-[var(--tbar)] px-4 py-4">
-                <h2 className="mb-2 text-[13px] font-semibold">Instructions</h2>
-                <div className="wb-prose">{p.instructions}</div>
-              </section>
-              {bottomPanel && <div className="border-t border-[var(--line)]">{bottomPanel}</div>}
-            </main>
-            {openOverlay && (
-              <Drawer side={openOverlay === "nav" ? "left" : "right"} label={openOverlay === "nav" ? "Files" : "Docs"} onClose={closeOverlay}>
-                {openOverlay === "nav" ? p.navigator : p.docs}
-              </Drawer>
-            )}
-          </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 flex-col">
+              {toolbar}
+              <main className="flex min-w-0 flex-col bg-[var(--code)]">
+                {p.editor}
+                <section aria-label="Instructions" className="border-t border-[var(--line)] bg-[var(--tbar)] px-4 py-4">
+                  <h2 className="mb-2 text-[13px] font-semibold">Instructions</h2>
+                  <div className="wb-prose">{p.instructions}</div>
+                </section>
+                {bottomPanel && <div className="border-t border-[var(--line)]">{bottomPanel}</div>}
+              </main>
+            </div>
+          )}
+          {status}
+        </div>
+        {openOverlay && (
+          <Drawer side={openOverlay === "nav" ? "left" : "right"} label={openOverlay === "nav" ? "Files" : "Docs"} onClose={closeOverlay}>
+            {openOverlay === "nav" ? p.navigator : p.docs}
+          </Drawer>
         )}
-        {status}
       </div>
     </WorkbenchContext>
   );
@@ -283,11 +290,29 @@ function UtilTabs({ tab, onTab, instructions, docs }: { tab: Layout["utilTab"]; 
   );
 }
 
+// Modal drawer for the narrow layout. The caller makes the rest of the workbench inert, so Tab stays
+// inside. Focus starts on Close; Escape closes from anywhere; a click on an element marked
+// data-drawer-close (a file row, say) closes it after the click is handled.
 function Drawer({ side, label, onClose, children }: { side: "left" | "right"; label: string; onClose(): void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => closeRef.current?.focus(), []);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onCloseRef.current();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
   return (
-    <div className="fixed inset-0 z-40 flex" style={{ justifyContent: side === "left" ? "flex-start" : "flex-end" }} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <div
+      className="fixed inset-0 z-40 flex"
+      style={{ justifyContent: side === "left" ? "flex-start" : "flex-end" }}
+      onClick={(e) => (e.target as Element).closest("[data-drawer-close]") && onClose()}
+    >
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} className="absolute inset-0 cursor-default bg-black/30" onClick={onClose} />
       <div role="dialog" aria-modal="true" aria-label={label} className="relative flex h-full w-[min(85vw,340px)] flex-col bg-[var(--side)] shadow-xl">
         <div className="flex h-12 flex-none items-center border-b border-[var(--line)] px-3">

@@ -83,7 +83,9 @@ function safeLocalStorage(): Storage | undefined {
   }
 }
 
-export function usePanel(containerRef: RefObject<HTMLElement | null>): {
+// With a containerRef the stored height is re-clamped (and saved) whenever the window resizes.
+// Without one the caller clamps at render (the workbench does), so only a user resize changes it.
+export function usePanel(containerRef?: RefObject<HTMLElement | null>): {
   state: PanelState;
   dispatch: Dispatch<PanelAction>;
 } {
@@ -96,6 +98,7 @@ export function usePanel(containerRef: RefObject<HTMLElement | null>): {
   }, [state]);
 
   useEffect(() => {
+    if (!containerRef) return;
     const reclamp = () => {
       const container = containerRef.current?.clientHeight || window.innerHeight;
       dispatch({ type: "resize", px: heightRef.current, container });
