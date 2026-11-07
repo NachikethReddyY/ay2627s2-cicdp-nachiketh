@@ -111,7 +111,7 @@ export default function TestEditor() {
       navigator={navigator}
       editor={
         <>
-          <div className={open === README ? "hidden" : "min-h-0 min-w-0 flex-1"}>
+          <div className={open === README ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
             <WorkbenchEditor
               modelPath={`${lesson.language}/${open}`}
               transportRef={runRef}
