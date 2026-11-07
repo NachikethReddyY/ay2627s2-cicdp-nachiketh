@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import EditorPane from "../player/EditorPane";
 import { TEST_LESSONS, pickTestLesson, type TestLanguage, type TestLesson } from "./testEditorFixture";
 import "./testEditor.css";
+import "../player/workbench/workbench.css";
 
 // Dev-only sandbox for building the practice workbench. Fixture data only: no sign-in, no API, no sandbox.
 
@@ -104,6 +105,8 @@ export default function TestEditor() {
           <main className="flex min-h-0 min-w-0 flex-1 flex-col">
             <EditorPane
               key={`${lesson.language}:${open}`}
+              theme="learnslop-light"
+              fontFamily={'"Geist Mono", ui-monospace, monospace'}
               transportRef={runRef}
               edit={{ value: files[open] ?? "", language: openLang, onChange: (v) => setFiles((fs) => ({ ...fs, [open]: v })) }}
             />

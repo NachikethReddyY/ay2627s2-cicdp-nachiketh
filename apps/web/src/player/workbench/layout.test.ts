@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LAYOUT, clampLayout, layoutReducer, loadLayout, saveLayout } from "./layout.ts";
+import { DEFAULT_LAYOUT, clampLayout, layoutReducer, loadLayout, resolveTheme, saveLayout } from "./layout.ts";
 import type { Layout } from "./layout.ts";
 
 const BIG = 2000;
@@ -145,4 +145,11 @@ test("clampLayout with both panels hidden leaves the widths unchanged", () => {
   const s = clampLayout({ ...DEFAULT_LAYOUT, showLeft: false, showUtil: false, leftW: 520, utilW: 420 }, 500);
   assert.equal(s.leftW, 520);
   assert.equal(s.utilW, 420);
+});
+
+test("resolveTheme: system follows prefersDark, light and dark ignore it", () => {
+  assert.equal(resolveTheme("system", true), "dark");
+  assert.equal(resolveTheme("system", false), "light");
+  assert.equal(resolveTheme("light", true), "light");
+  assert.equal(resolveTheme("dark", false), "dark");
 });

@@ -1,0 +1,48 @@
+/* Practice workbench tokens and shared classes. */
+.wb {
+  --tx: #1c1c1e; --mu: #555a66; --line: #D7D6D6; --side: #EDECEC; --code: #FFFFFF; --tbar: #FFFFFF;
+  --selrow: #D7D6D6; --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
+  --ac: #2f5fd6; --acT: #2f5fd6; --cur: #fff6cf; --numdim: #b4b8c0;
+  color: var(--tx);
+  font-family: "Geist", system-ui, sans-serif;
+  font-size: 12.5px;
+}
+.wb[data-theme="dark"] {
+  --tx: #ececec; --mu: #9a9a9a; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
+  --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
+  --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
+}
+@media (prefers-color-scheme: dark) {
+  .wb[data-theme="system"] {
+    --tx: #ececec; --mu: #9a9a9a; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
+    --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
+    --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
+  }
+}
+.wb .wb-mono { font-family: "Geist Mono", ui-monospace, monospace; }
+
+/* 28 px toolbar button */
+.wb-tb {
+  height: 28px; min-width: 28px; padding: 0 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--tx); font: inherit;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+}
+.wb-tb:hover { background: var(--hov); }
+.wb-tb:disabled { opacity: 0.4; cursor: default; }
+.wb-tb:disabled:hover { background: transparent; }
+.wb-tb:focus-visible { outline: 2px solid var(--ac); outline-offset: 1px; }
+
+/* 12 px resize handles: vertical bar (col-resize) and horizontal bar (row-resize) */
+.wb-split-v, .wb-split-h {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--tbar); box-sizing: border-box; outline: none; user-select: none; -webkit-user-select: none;
+}
+.wb-split-v { width: 12px; cursor: col-resize; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.wb-split-h { height: 12px; cursor: row-resize; border-top: 1px solid var(--line); }
+.wb-split-v:focus-visible, .wb-split-h:focus-visible { box-shadow: inset 0 0 0 2px var(--ac); }
+
+/* 11 px uppercase section label */
+.wb-sec {
+  display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mu);
+}

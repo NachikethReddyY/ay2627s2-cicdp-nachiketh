@@ -28,6 +28,11 @@ export type LayoutAction =
   | { type: "utilTab"; tab: Layout["utilTab"] }
   | { type: "theme"; theme: Theme };
 
+// "system" follows the OS colour scheme; the other two ignore it.
+export function resolveTheme(t: Theme, prefersDark: boolean): "light" | "dark" {
+  return t === "system" ? (prefersDark ? "dark" : "light") : t;
+}
+
 export const DEFAULT_LAYOUT: Layout = {
   leftW: 232,
   utilW: 320,
