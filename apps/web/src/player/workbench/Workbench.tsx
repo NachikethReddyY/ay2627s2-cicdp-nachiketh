@@ -174,8 +174,10 @@ export default function Workbench(p: Props) {
     returnTo.current = null;
   }, [openOverlay]);
 
+  const openDocRef = useRef(openDoc);
+  openDocRef.current = openDoc;
   const ctx = useMemo<WorkbenchContextValue>(
-    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", setCursor }),
+    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", setCursor, openDoc: (id) => openDocRef.current(id) }),
     [resolved],
   );
 

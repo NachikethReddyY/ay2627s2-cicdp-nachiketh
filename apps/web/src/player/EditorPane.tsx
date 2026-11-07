@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
+import type { IDisposable } from "monaco-editor";
 import type { SeekResult } from "@learnquest/player-core";
-import "./monaco";
+import { setPracticeDiagnostics } from "./monaco";
 import Loader from "../components/Loader";
 import { defineWorkbenchThemes } from "./workbench/monacoThemes";
 
@@ -18,9 +19,10 @@ type Props = {
   theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default "vs"
   fontFamily?: string;
   onCursor?(line: number, column: number): void; // caret moves, for a status bar
+  help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable; // practice: hovers, completion docs, squiggles
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, help }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -29,6 +31,22 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
   const viewRef = useRef(viewPath);
   const cursorRef = useRef(onCursor);
   cursorRef.current = onCursor;
+  const helpRef = useRef(help);
+  helpRef.current = help;
+  const helpOn = !!help;
+  const [mounted, setMounted] = useState<{ ed: Parameters<OnMount>[0]; monaco: Parameters<OnMount>[1] } | null>(null);
+
+  // Diagnostics on while a help editor is mounted; the replay defaults come back on unmount.
+  useEffect(() => {
+    if (!helpOn) return;
+    setPracticeDiagnostics(true);
+    return () => setPracticeDiagnostics(false);
+  }, [helpOn]);
+  useEffect(() => {
+    if (!helpOn || !mounted) return;
+    const d = helpRef.current?.(mounted.monaco, mounted.ed);
+    return () => d?.dispose();
+  }, [helpOn, mounted]);
 
   const apply = useCallback((r: SeekResult) => {
     const ed = editorRef.current;
@@ -78,6 +96,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
       "!findWidgetVisible",
     );
     if (lastRef.current) apply(lastRef.current);
+    setMounted({ ed, monaco });
   };
 
   return (
@@ -99,7 +118,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
           fontSize: 14,
           ...(fontFamily && { fontFamily, lineHeight: 22 }),
           padding: { bottom: edit ? 16 : 140 }, // room for the replay's floating controls
-          hover: { enabled: "off" },
+          hover: { enabled: help ? "on" : "off" },
           occurrencesHighlight: "off",
         }}
       />
