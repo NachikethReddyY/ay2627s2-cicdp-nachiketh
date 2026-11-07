@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowDown, ArrowUp, Book, CornerDownLeft, File, Search, Terminal, type LucideIcon } from "lucide-react";
 import FileBadge from "./FileBadge";
+import Segmented from "./Segmented";
 import { filterItems, parseQuery, type PaletteItem, type PaletteMode } from "./palette";
 
 export type PaletteCommand = PaletteItem & { run(): void };
@@ -139,17 +140,17 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
           />
           <span className="wb-mono wb-pal-esc" aria-hidden="true">esc</span>
         </div>
-        <div className="wb-pal-glass wb-pal-modes" role="group" aria-label="Search in">
+        <Segmented className="wb-pal-glass wb-pal-modes" role="group" aria-label="Search in">
           {MODES.map((m) => (
             <button key={m.mode} type="button" aria-label={m.label} title={m.label} aria-pressed={m.mode === mode} onClick={() => setMode(m.mode)}>
               <m.icon size={19} strokeWidth={1.8} aria-hidden="true" />
             </button>
           ))}
-        </div>
+        </Segmented>
       </div>
 
       <div className="wb-pal-glass wb-pal-card">
-        <ul id={`${uid}-list`} ref={listRef} role="listbox" aria-label={HEADING[mode]} className="wb-scroll wb-pal-list" data-mode={mode}>
+        <ul id={`${uid}-list`} ref={listRef} role="listbox" aria-label={HEADING[mode]} className="wb-appear wb-scroll wb-pal-list" data-mode={mode} key={mode}>
           <li role="presentation" className="wb-pal-head" aria-hidden="true">{HEADING[mode]}</li>
           {results.map((r, i) => (
             <li

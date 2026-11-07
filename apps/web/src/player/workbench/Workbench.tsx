@@ -6,6 +6,7 @@ import { EDITOR_MIN, LEFT_MAX, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resolv
 import CommandPalette, { type PaletteCommand } from "./CommandPalette";
 import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
 import { NAV_TABS, Soon, type NavView } from "./Planned";
+import Segmented from "./Segmented";
 import Splitter from "./Splitter";
 import StatusBar, { type WorkbenchStatus } from "./StatusBar";
 import Toolbar, { TrafficLights } from "./Toolbar";
@@ -81,6 +82,12 @@ export default function Workbench(p: Props) {
   const resolved = resolveTheme(layout.theme, prefersDark);
   const [cursor, setCursor] = useState<{ line: number; column: number } | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  // Motion (theme fades, panels fading in) starts after the first paint, so loading does not flash.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
+    return () => cancelAnimationFrame(id);
+  }, []);
   const planned = p.showPlanned === true && wide; // the planned parts are drawn only in the wide layout
   const [navView, setNavView] = useState<NavView>("files");
   const [bottomTab, setBottomTab] = useState<"main" | "console">("main");
@@ -184,18 +191,18 @@ export default function Workbench(p: Props) {
   );
 
   const bottomPanel = panel.open && (
-    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)] lg:border-l lg:border-[var(--line)]">
+    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} style={{ height: panelH }} className="wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)] lg:border-l lg:border-[var(--line)]">
       <div className="flex h-[43px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
         {planned ? (
-          <span className="wb-pill gap-1" role="group" aria-label="Panel view">
+          <Segmented className="wb-pill gap-1" role="group" aria-label="Panel view">
             <button type="button" className="wb-ptab" aria-pressed={bottomView === "main"} onClick={() => setBottomTab("main")}>
               {p.bottomTitle ?? "Terminal"}
             </button>
             <button type="button" className="wb-ptab" aria-pressed={bottomView === "console"} onClick={() => setBottomTab("console")}>
               Debug console
             </button>
-          </span>
+          </Segmented>
         ) : (
           <span className="wb-pill">
             <span aria-hidden="true" className="wb-ptab" data-on="true">
@@ -220,11 +227,11 @@ export default function Workbench(p: Props) {
         </span>
       </div>
       {/* Keep the real panel mounted (a terminal keeps its session) while the sample console shows. */}
-      <div className="wb-scroll min-h-0 flex-1" hidden={bottomView === "console"}>
+      <div className="wb-appear wb-scroll min-h-0 flex-1" hidden={bottomView === "console"}>
         {p.bottom}
       </div>
       {bottomView === "console" && (
-        <div className="wb-scroll min-h-0 flex-1">
+        <div className="wb-appear wb-scroll min-h-0 flex-1">
           <Suspense fallback={null}><DebugConsole /></Suspense>
         </div>
       )}
@@ -270,6 +277,7 @@ export default function Workbench(p: Props) {
         className={`wb flex flex-col ${wide ? "wb-desk h-dvh overflow-hidden" : "min-h-dvh bg-[var(--code)]"}`}
         data-theme={layout.theme}
         data-resolved={resolved}
+        data-ready={ready || undefined}
         style={{ colorScheme: resolved }}
       >
         {/* While a drawer is open, everything behind it is inert: out of the Tab order and the accessibility tree. */}
@@ -278,36 +286,38 @@ export default function Workbench(p: Props) {
             <div ref={rowRef} className="flex min-h-0 flex-1">
               {shown.showLeft && (
                 <>
-                  <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-side flex min-h-0 flex-none flex-col">
+                  <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-appear wb-side flex min-h-0 flex-none flex-col">
                     <div className="flex flex-none items-center gap-2 px-3 pt-3">
                       <span className="flex h-[34px] items-center">
                         <TrafficLights />
                       </span>
                       {planned && (
                         <>
-                          <span className="wb-pill gap-1 shadow-[0_1px_2px_rgba(20,30,70,.1)]" role="group" aria-label="Navigator or AI help">
+                          <Segmented className="wb-pill gap-1 shadow-[0_1px_2px_rgba(20,30,70,.1)]" role="group" aria-label="Navigator or AI help">
                             <button type="button" className="wb-tb wb-nb" aria-label="List" title="List" aria-pressed={view !== "ai"} onClick={() => setNavView("files")}>
                               <List size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
                             <button type="button" className="wb-tb wb-nb" aria-label="AI help" title="AI help" aria-pressed={view === "ai"} onClick={() => setNavView("ai")}>
                               <Sparkles size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
-                          </span>
+                          </Segmented>
                           <Suspense fallback={null}><RunStopPill /></Suspense>
                         </>
                       )}
                     </div>
                     {planned && view !== "ai" && (
-                      <div className="wb-pill wb-navtabs" role="group" aria-label="Navigator view">
+                      <Segmented className="wb-pill wb-navtabs" role="group" aria-label="Navigator view">
                         {NAV_TABS.map((t) => (
                           <button key={t.id} type="button" className="wb-tb" aria-label={t.label} title={t.label} aria-pressed={view === t.id} onClick={() => setNavView(t.id)}>
                             <t.icon size={17} strokeWidth={1.7} aria-hidden="true" />
                           </button>
                         ))}
-                      </div>
+                      </Segmented>
                     )}
                     <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : "pt-3"}`}>
-                      {view === "files" ? p.navigator : <Suspense fallback={null}><PlannedNavView view={view} /></Suspense>}
+                      <div key={view} className="wb-appear">
+                        {view === "files" ? p.navigator : <Suspense fallback={null}><PlannedNavView view={view} /></Suspense>}
+                      </div>
                     </div>
                   </nav>
                   <Splitter
@@ -353,7 +363,7 @@ export default function Workbench(p: Props) {
                     after
                     onResize={(px) => dispatch({ type: "resizeUtil", px, container: avail })}
                   />
-                  <aside aria-label="Docs" style={{ width: shown.utilW }} className="flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
+                  <aside aria-label="Docs" style={{ width: shown.utilW }} className="wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
                     {p.docs}
                   </aside>
                 </>

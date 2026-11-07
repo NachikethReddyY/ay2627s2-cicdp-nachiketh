@@ -296,6 +296,36 @@
   .wb-caret { display: inline-block; width: 7px; height: 14px; background: var(--tx); vertical-align: -2px; }
   .wb .wb-ask textarea:focus-visible { outline: none; }
   .wb-ask:focus-within { border-color: var(--acT); box-shadow: 0 0 0 1px var(--acT), 0 0 0 4px color-mix(in srgb, var(--acT) 24%, transparent); }
+
+  /* Motion. Everything here is off under prefers-reduced-motion. */
+  /* Shared sliding bubble ([data-slider], see Segmented.tsx): one ::before that moves to the selected button. */
+  [data-slider] { position: relative; }
+  [data-slider]::before {
+    content: ""; position: absolute; left: 0; top: 0; pointer-events: none;
+    width: var(--sw, 0); height: var(--sh, 0); transform: translate(var(--sx, 0), var(--sy, 0));
+    border-radius: var(--sr, 13px); background: var(--sel); opacity: var(--so, 0);
+  }
+  /* The selected button keeps its colour but hands its background to the bubble. */
+  [data-slider] > [aria-pressed="true"] { background: transparent !important; position: relative; z-index: 1; }
+  [data-slider] > :is(button, span) { position: relative; z-index: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    [data-slider][data-moving]::before {
+      transition: transform 0.24s cubic-bezier(0.3, 1.3, 0.5, 1), width 0.24s cubic-bezier(0.3, 1.3, 0.5, 1),
+        height 0.24s cubic-bezier(0.3, 1.3, 0.5, 1), opacity 0.15s;
+    }
+    /* Theme change: colours ease. Only after the first paint ([data-ready]) and never inside Monaco, which re-themes at once. */
+    .wb[data-ready] :where(*):not(.monaco-editor, .monaco-editor *) {
+      transition: background-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+        border-color 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), fill 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), stroke 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+        box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    /* A view or panel that appears (new nav view, bottom tab, palette mode, panel toggled on) fades in with a small slide.
+       @starting-style applies only to elements inserted after [data-ready], so the first paint stays still. */
+    .wb[data-ready] .wb-appear {
+      transition: opacity 0.2s ease-out, transform 0.2s ease-out, background-color 0.25s, color 0.25s, border-color 0.25s;
+      @starting-style { opacity: 0; transform: translateY(5px); }
+    }
+  }
 }
 
 /* Monaco's hover and suggest widgets (editor help). Outside the components layer on purpose: Monaco's own
