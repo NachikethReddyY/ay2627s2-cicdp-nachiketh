@@ -3,6 +3,8 @@ import EditorPane from "../EditorPane";
 import { CODE_FONT, useWorkbench } from "./context";
 import { registerEditorHelp } from "./editorHelp";
 
+const HELP_LANGUAGES = new Set(["javascript", "typescript", "python"]); // markdown and the rest get no help
+
 type Props = Omit<ComponentProps<typeof EditorPane>, "theme" | "fontFamily" | "onCursor" | "help">;
 
 // EditorPane with the workbench's theme and code font, reporting its caret to the status bar.
@@ -16,7 +18,7 @@ export default function WorkbenchEditor(props: Props) {
       theme={monacoTheme}
       fontFamily={CODE_FONT}
       onCursor={(line, column) => setCursor({ line, column })}
-      help={language ? (monaco, ed) => registerEditorHelp(monaco, language, openDoc, ed) : undefined}
+      help={language && HELP_LANGUAGES.has(language) ? (monaco, ed) => registerEditorHelp(monaco, language, openDoc, ed) : undefined}
     />
   );
 }

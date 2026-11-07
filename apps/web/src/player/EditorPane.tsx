@@ -33,6 +33,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
   cursorRef.current = onCursor;
   const helpRef = useRef(help);
   helpRef.current = help;
+  const language = edit?.language ?? langOf(viewPath ?? active);
   const helpOn = !!help;
   const [mounted, setMounted] = useState<{ ed: Parameters<OnMount>[0]; monaco: Parameters<OnMount>[1] } | null>(null);
 
@@ -46,7 +47,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
     if (!helpOn || !mounted) return;
     const d = helpRef.current?.(mounted.monaco, mounted.ed);
     return () => d?.dispose();
-  }, [helpOn, mounted]);
+  }, [helpOn, mounted, language]);
 
   const apply = useCallback((r: SeekResult) => {
     const ed = editorRef.current;
@@ -103,7 +104,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
     <div className="relative h-[65dvh] min-w-0 flex-none lg:h-auto lg:min-h-0 lg:flex-1">
       <Editor
         loading={<div className="grid h-full place-items-center"><Loader label="Opening the editor" /></div>}
-        language={edit?.language ?? langOf(viewPath ?? active)}
+        language={language}
         value={edit?.value}
         onChange={edit && ((v) => edit.onChange(v ?? ""))}
         theme={theme ?? "vs"}
@@ -119,6 +120,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
           ...(fontFamily && { fontFamily, lineHeight: 22 }),
           padding: { bottom: edit ? 16 : 140 }, // room for the replay's floating controls
           hover: { enabled: help ? "on" : "off" },
+          lightbulb: { enabled: "off" as never }, // no quick fixes: errors are explained, not rewritten
           occurrencesHighlight: "off",
         }}
       />

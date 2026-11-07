@@ -27,11 +27,11 @@ export function hoverWord(word: string, before: string): string {
 }
 
 const asDocLanguage = (l: string): DocLanguage | undefined => (l === "javascript" || l === "typescript" || l === "python" ? l : undefined);
-const link = (id: string) => `command:${COMMAND}?${encodeURIComponent(JSON.stringify([id]))}`;
 const block = (lang: string, code: string) => "```" + lang + "\n" + code + "\n```";
 const COMMAND = "lq.openDoc";
 /** Languages with a help editor mounted, and how many. Completion enrichment only runs while it is above 0. */
-const helpActive = new Map<string, number>();
+// Kept on globalThis so an HMR reload of this module does not orphan the count.
+const helpActive: Map<string, number> = ((globalThis as { __lqHelpActive?: Map<string, number> }).__lqHelpActive ??= new Map());
 let commandCount = 0;
 
 function hoverMarkdown(doc: Doc, lang: string, commandId: string): string {
@@ -39,7 +39,7 @@ function hoverMarkdown(doc: Doc, lang: string, commandId: string): string {
     `**${doc.title}** · \`${doc.src.replace(" docs", "")}\``,
     block(lang, doc.syntax),
     doc.snippet,
-    `[Open in Docs](${link(doc.id).replace(COMMAND, commandId)})`,
+    `[Open in Docs](command:${commandId}?${encodeURIComponent(JSON.stringify([doc.id]))})`,
   ].join("\n\n");
 }
 
@@ -69,12 +69,12 @@ export function registerEditorHelp(
   const hover = monaco.languages.registerHoverProvider(language, {
     provideHover(model: editor.ITextModel, pos: Position) {
       if (!ours(model)) return null;
-      const contents: { value: string; isTrusted: boolean }[] = [];
+      const contents: { value: string; isTrusted: boolean | { enabledCommands: string[] } }[] = [];
       const w = model.getWordAtPosition(pos);
       if (w) {
         const before = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: w.startColumn });
         const doc = docForWord(hoverWord(w.word, before), docLang);
-        if (doc) contents.push({ value: hoverMarkdown(doc, language, commandId), isTrusted: true });
+        if (doc) contents.push({ value: hoverMarkdown(doc, language, commandId), isTrusted: { enabledCommands: [commandId] } });
       }
       for (const mk of monaco.editor.getModelMarkers({ resource: model.uri })) {
         const inside =
@@ -120,11 +120,13 @@ export function wrapCompletionProvider(provider: Provider, language: string): Pr
     async provideCompletionItems(model, pos, ctx, token) {
       const r = await provider.provideCompletionItems(model, pos, ctx, token);
       if (!r || !docLang || !helpActive.get(language)) return r;
-      const before = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column });
+      const before = model
+        .getValueInRange({ startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column })
+        .replace(/\w*$/, ""); // text before the word being typed
       const suggestions = r.suggestions.map((it): languages.CompletionItem => {
         const word = typeof it.label === "string" ? it.label : it.label.label;
-        const doc = docForWord(word === "log" && /\bconsole\.\s*\w*$/.test(before) ? "console" : word, docLang);
-        if (!doc || (word === "log" && !/\bconsole\.\s*\w*$/.test(before))) return it;
+        const doc = docForWord(hoverWord(word, before), docLang);
+        if (!doc) return it;
         const lqDoc = docMarkdown(doc, language);
         return merge({ ...it, lqDoc, detail: it.detail ?? doc.title });
       });
@@ -132,7 +134,11 @@ export function wrapCompletionProvider(provider: Provider, language: string): Pr
     },
     resolveCompletionItem: provider.resolveCompletionItem && (async (item, token) => {
       const resolved = await provider.resolveCompletionItem!(item, token);
-      return resolved ? merge({ ...resolved, lqDoc: (item as EnrichedItem).lqDoc }) : resolved;
+      const lqDoc = (item as EnrichedItem).lqDoc;
+      if (!resolved || resolved === item || !lqDoc) return resolved; // same item: already carries the docs
+      const have = resolved.documentation;
+      if ((typeof have === "string" ? have : have?.value)?.includes(lqDoc)) return resolved;
+      return merge({ ...resolved, lqDoc });
     }),
   };
 }
