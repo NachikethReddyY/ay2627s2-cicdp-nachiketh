@@ -28,9 +28,11 @@ Then set `ENGINE_URL=http://localhost:8000` and the same `ENGINE_TOKEN` in `apps
 
 - `POST /v1/pipeline/outline` `{topic}` → `{outline, usage, attempts}`
 - `POST /v1/pipeline/lesson` `LessonContext` → `{lesson, usage, attempts}`
+- `POST /v1/mastery/update` `{priors, params?, questionType, correct}` → `{updates: [{conceptId, pPosterior, pNext}]}` (BKT, no LLM call; 422 on bad parameters)
+- `POST /v1/next` `{mastery, edges, lessons, unlockAt?, masteredAt?}` → `{action, lessonId, conceptId, reasonCode, reason}` (next-step policy, no LLM call)
 - `GET /healthz` → `{ok, model}` (no auth, no network call)
 
-Both pipeline routes need `X-Engine-Token`. Errors: 422 `invalid_output` when the model output
+All routes except `/healthz` need `X-Engine-Token`. Errors: 422 `invalid_output` when the model output
 fails validation after one repair retry; 502 `upstream` on provider failure; 401 on a bad token; 413 over 64 KB.
 
 ## Tests

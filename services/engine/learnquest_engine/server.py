@@ -19,7 +19,7 @@ from litellm.exceptions import (
 )
 from pydantic import BaseModel, Field
 
-from learnquest_engine import guide, llm, pipeline, visual
+from learnquest_engine import guide, learner, llm, pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.schemas import LessonContext
@@ -179,6 +179,19 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
     result = guide.reply(body.model_dump())
     return _body("guide", result)
+
+
+@app.post("/v1/mastery/update", dependencies=[Depends(require_token)])
+def mastery_update_route(body: learner.MasteryUpdateRequest) -> learner.MasteryUpdateResponse:
+    try:
+        return learner.update_mastery(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/v1/next", dependencies=[Depends(require_token)])
+def next_route(body: learner.NextRequest) -> learner.NextResponse:
+    return learner.next_step(body)
 
 
 @app.exception_handler(visual.CheckerUnavailable)
