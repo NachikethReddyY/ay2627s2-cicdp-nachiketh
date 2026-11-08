@@ -5,6 +5,7 @@ dist/
 .env
 .neon
 .env.local
+*.env.render
 
 # Python bytecode
 __pycache__/
