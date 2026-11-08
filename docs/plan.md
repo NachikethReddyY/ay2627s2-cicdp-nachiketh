@@ -266,6 +266,13 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 
 **Small data:** with ~3 code lessons, BKT barely moves. Report this as a limit.
 
+**Implementation notes (LQ-22):** what was built. Items marked PROPOSED need owner confirmation. Details in `docs/lq-22-plan.md`.
+- **Thresholds (PROPOSED, pending owner confirmation):** unlock at `p_known ≥ 0.8`, mastered at `p_known ≥ 0.95`, learn/practice boundary at `p < 0.4` (`policy.py`, `progress/mastery.ts`).
+- **No pg-boss (PROPOSED, pending owner confirmation):** the mastery update runs inline on the attempt path after commit. The attempt response never fails because of it. Catch-up runs on read (`me.mastery`, `me.next`). Idempotency comes from `attempts.mastery_applied_at`. This departs from the queue design above.
+- **Concept identity (PROPOSED):** concepts are upserted by `(world_id, slug)`, where slug is the lowercased, trimmed name. A step's concepts fall back to its lesson's concepts when empty.
+- **Observed actions (PROPOSED):** only predict-step first actions feed BKT. Other steps and later actions are not observed.
+- **Parameter name:** the engine uses `p_learn`, not `p_transit` as in the story.
+
 ### 8.3 Player core (`packages/player-core`)
 - Events are derived from hunks. Same input and same typing config → same events. Config: hunks > 20 changed lines are inserted as one highlighted block; typing 60 WPM; 300 ms pause at line end.
 - Snapshot every **K = 200** events and at every step boundary. `seek(t)` = nearest snapshot ≤ t, then replay.
