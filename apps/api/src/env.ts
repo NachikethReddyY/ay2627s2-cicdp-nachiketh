@@ -16,8 +16,6 @@ const schema = z
     // IP or comma-separated IPs/CIDRs of the reverse proxy in front of the API. Unset: trust no forwarded address.
     TRUSTED_PROXY: z.string().optional(),
     // Optional: without a key, paths.generate answers PRECONDITION_FAILED.
-    ANTHROPIC_API_KEY: z.string().min(1).optional(),
-    ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-5-5"),
     MODERATION_API_KEY: z.string().min(1).optional(),
     IMAGE_BASE_URL: z.url().optional(),
     IMAGE_API_KEY: z.string().min(1).optional(),
@@ -77,8 +75,8 @@ const schema = z
   )
   .refine(
     (e) => {
-      // AI is on when either text path is configured (ai/service.ts) or image generation is (media/imagegen.ts).
-      const ai = !!(e.ANTHROPIC_API_KEY || e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL));
+      // AI is on when the engine is configured (ai/service.ts) or image generation is (media/imagegen.ts).
+      const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL));
       return e.NODE_ENV !== "production" || !ai || e.AI_BUDGET_UNLIMITED || e.AI_DAILY_BUDGET_USD > 0 || e.AI_MONTHLY_BUDGET_USD > 0;
     },
     {

@@ -43,7 +43,7 @@ const badWatch = {
 let lessonCalls = 0;
 let lessonOut: (kind: string) => unknown;
 beforeEach(() => {
-  env.ANTHROPIC_API_KEY = "test-key";
+  env.ENGINE_TOKEN = "t".repeat(32);
   lessonCalls = 0;
   lessonOut = (kind) => parts[kind as keyof typeof parts];
   generator.outline = async () => outline;
@@ -99,9 +99,9 @@ test("a non-coding outline with a watch lesson is rejected", async () => {
 
 test("missing key, non-coding topic and bad input", async () => {
   const t = trpc(app, await signUp(app));
-  env.ANTHROPIC_API_KEY = undefined;
+  env.ENGINE_TOKEN = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");
-  env.ANTHROPIC_API_KEY = "k";
+  env.ENGINE_TOKEN = "k".repeat(32);
   generator.outline = async () => ({ refused: true });
   const res = await t.m("paths.generate", { prompt: "baking sourdough" });
   assert.equal(code(res), "BAD_REQUEST");
@@ -255,7 +255,7 @@ test("the AI budget stops a lesson with its own message, before the model call a
   const old = { daily: env.AI_DAILY_BUDGET_USD, estimate: env.AI_CALL_ESTIMATE_USD };
   try {
     env.AI_CALL_ESTIMATE_USD = 0.01;
-    env.AI_DAILY_BUDGET_USD = 0.055; // outline 0.01, first part 0.04 (four engine calls); the second part would reach 0.09
+    env.AI_DAILY_BUDGET_USD = 0.065; // outline 0.02 (two engine calls), first part 0.04 (four); the second part would reach 0.10
     const { t, lessons: ls } = await setup();
     assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
     assert.equal(lessonCalls, 1);

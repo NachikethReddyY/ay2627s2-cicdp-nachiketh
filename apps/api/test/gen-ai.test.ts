@@ -10,7 +10,11 @@ import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 
+const realLesson = generator.lesson; // later tests replace it; this one wants the engine-backed method
 const app = buildApp();
 after(() => app.close());
 
@@ -26,7 +30,7 @@ const outline = {
 };
 const saved = { est: env.AI_CALL_ESTIMATE_USD, d: env.AI_DAILY_BUDGET_USD, m: env.AI_MONTHLY_BUDGET_USD };
 beforeEach(() => {
-  env.ANTHROPIC_API_KEY = "test-key";
+  env.ENGINE_TOKEN = "t".repeat(32);
   generator.outline = async () => outline;
 });
 afterEach(async () => {
@@ -42,7 +46,7 @@ async function firstLesson() {
   const course = out(await t.q("courses.get", { slug: out(res).firstCourseSlug }));
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, course.lessons[0].slug));
   const learner = (await db.execute<{ id: string }>(sql`SELECT id FROM learners LIMIT 1`)).rows[0]!;
-  return { lesson: row!, learnerId: learner.id };
+  return { t, lesson: row!, learnerId: learner.id };
 }
 
 function gate() {
@@ -106,6 +110,21 @@ test("an engine part reserves four calls' worth of spend", async () => {
   assert.equal(Number(r!.s), 2);
 });
 
+test("a predict reply reserves two calls' worth of spend on each attempt", async () => {
+  const { lesson, learnerId } = await firstLesson();
+  await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
+  env.AI_CALL_ESTIMATE_USD = 0.5;
+  env.AI_DAILY_BUDGET_USD = 0;
+  env.AI_MONTHLY_BUDGET_USD = 0;
+  await db.execute(sql`DELETE FROM spend_ledger`);
+  generator.lesson = async () => {
+    throw new Error("stop"); // fails both attempts; each attempt is reserved before the call
+  };
+  await assert.rejects(ensureLesson(lesson.id, learnerId));
+  const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
+  assert.equal(Number(r!.s), 2); // two attempts x (reply + repair) x 0.5
+});
+
 test("a predict lesson stored for everyone is generated without the learner's missed concepts", async () => {
   const { lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
@@ -145,4 +164,46 @@ test("moderation down: a lesson in a public course is refused, a private one sti
   } finally {
     setModerationClient(safe);
   }
+});
+
+test("a predict lesson comes from the engine over HTTP and the learner never sees an answer key", async () => {
+  const { t, lesson, learnerId } = await firstLesson();
+  await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
+  const input = lesson1.steps[0]!.input;
+  const step = (n: number) => ({
+    title: `Step ${n}`,
+    prompt: "What changes?",
+    kind: "mcq",
+    options: ["a", "b", "c", "d"],
+    answer: 2,
+    beforeFiles: input.beforeFiles,
+    hunks: input.hunks,
+    hints: [{ text: "Look at the new line." }],
+    explanations: { workedExample: "It adds a line.", practice: "Add another." },
+    concepts: ["ownership"],
+  });
+  const seen: { path?: string; token?: unknown; kind?: string } = {};
+  const srv = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      Object.assign(seen, { path: req.url, token: req.headers["x-engine-token"], kind: JSON.parse(raw).lesson.kind });
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ lesson: { steps: [step(1), step(2), step(3)] } }));
+    });
+  }).listen(0);
+  const savedUrl = env.ENGINE_URL;
+  env.ENGINE_URL = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  generator.lesson = realLesson;
+  try {
+    assert.equal(await ensureLesson(lesson.id, learnerId), true);
+  } finally {
+    env.ENGINE_URL = savedUrl;
+    srv.close();
+  }
+  assert.deepEqual(seen, { path: "/v1/pipeline/lesson", token: env.ENGINE_TOKEN, kind: "predict" });
+  const res = await t.q("lessons.get", { id: lesson.slug });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(out(res).steps.length, 3);
+  assert.doesNotMatch(res.body, /"(answer|accepted|expectedOutput)"/);
 });
