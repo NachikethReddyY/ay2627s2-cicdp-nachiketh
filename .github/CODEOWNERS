@@ -1,0 +1,13 @@
+# CODEOWNERS names who is requested for review when a path changes.
+# The last matching pattern wins, so keep specific paths below the default.
+
+*  @NachikethReddyY
+
+# Sensitive paths that must always have a named owner.
+/apps/api/src/auth/                          @NachikethReddyY
+/.github/                                    @NachikethReddyY
+/.github/rulesets/                           @NachikethReddyY
+/infra/                                      @NachikethReddyY
+/docker-compose.yml                          @NachikethReddyY
+/turbo.json                                  @NachikethReddyY
+/services/engine/learnquest_engine/prompts/  @NachikethReddyY
