@@ -1,7 +1,9 @@
 @AGENTS.md
 
-# Claude Code notes
+`AGENTS.md` is the shared source for all coding agents. This file holds only Claude Code specifics.
 
-- Read `AGENTS.md` first. It holds the product direction (a programming learning tool, not a kids product), the repo map and the working rules.
-- Use `docs/plan.md` for the detailed plan. It has the 2026-11-06 pivot applied; `AGENTS.md` is the short version.
-- Before any PR push, run the full turbo CI against a test Postgres. The default port is 5432; set `TEST_DATABASE_URL` if yours is elsewhere (see `AGENTS.md`).
+## Claude Code specifics
+
+- Project skills live in `.claude/skills/`: `verify`, `ci-cd-playbook`, `cicd-best-practices`, `unslop`, `vercel-react-best-practices`. Use `verify` before claiming a change works or pushing a PR, and `ci-cd-playbook` when changing workflows.
+- The detailed plan is `docs/plan.md`.
+- Memory is per-user and lives outside the repo. Do not put personal preferences in this file.
