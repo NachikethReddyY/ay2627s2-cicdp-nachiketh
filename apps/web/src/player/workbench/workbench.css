@@ -10,7 +10,7 @@
     /* Desktop window (Main.dc.html): glass window over the wallpaper, vibrant navigator, glass palette (Palette.dc.html). */
     --win: rgba(255, 255, 255, 0.3); --edge: rgba(255, 255, 255, 0.7); --vib: rgba(237, 236, 236, 0.82);
     --glass: rgba(255, 255, 255, 0.82); --glass-edge: rgba(255, 255, 255, 0.9); --glass-line: rgba(20, 30, 70, 0.1); --chip: #FFFFFF;
-    --nu: #1c00cf; --fn: #326d74; --warn: #b7791f;
+    --nu: #1c00cf; --fn: #326d74; --warn: #b7791f; --folder: #7aa2d8; --folder-open: #91b6e8;
     color: var(--tx);
     font-family: "Geist", system-ui, sans-serif;
     font-size: 12.5px;
@@ -20,10 +20,10 @@
     --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
     --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
     --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
-    --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
+    --tsbg: #89b4fa; --tstx: #1e1e2e; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
     --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
     --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
-    --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a;
+    --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a; --folder: #89b4fa; --folder-open: #cba6f7;
   }
   @media (prefers-color-scheme: dark) {
     .wb[data-theme="system"] {
@@ -31,18 +31,37 @@
       --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
       --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
       --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
-      --tsbg: #9cc2ff; --tstx: #0f2a57; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
+      --tsbg: #89b4fa; --tstx: #1e1e2e; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
       --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
       --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
-      --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a;
+      --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a; --folder: #89b4fa; --folder-open: #cba6f7;
     }
   }
   .wb .wb-mono { font-family: "Geist Mono", ui-monospace, monospace; }
 
+  .wb .wb-terminal {
+    width: 100%; height: 100%; min-width: 0; min-height: 0; box-sizing: border-box;
+    border: 0; border-radius: 0; box-shadow: none;
+    --term-app-bg: var(--code); --term-app-fg: var(--tx); --term-app-cursor: var(--ac);
+    --term-font-family: "Geist Mono", ui-monospace, monospace;
+    --term-font-size: 13px; --term-row-height: 19px;
+  }
+
   /* >=1024 px: the desktop. Wallpaper behind a floating window (Main.dc.html: 32 px inset, 16 px radius). */
   .wb-desk {
-    padding: 32px; box-sizing: border-box;
-    background: url("/img/desktop-imac-blue.jpg") center / cover no-repeat, #a9c7f7;
+    position: relative; isolation: isolate; padding: 32px; box-sizing: border-box;
+    background: #a9c7f7;
+  }
+  .wb-desk::before, .wb-desk::after {
+    position: absolute; z-index: -1; inset: 0; content: ""; pointer-events: none;
+    background-position: center; background-size: cover; background-repeat: no-repeat;
+  }
+  .wb-desk::before { background-image: url("/img/desktop-light-wallpaper.jpg"); opacity: 1; }
+  .wb-desk::after { background-image: url("/img/desktop-dark-wallpaper.jpg"); opacity: 0; }
+  .wb-desk[data-resolved="dark"]::before { opacity: 0; }
+  .wb-desk[data-resolved="dark"]::after { opacity: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .wb-desk::before, .wb-desk::after { transition: opacity 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
   }
   .wb-win {
     position: relative; border-radius: 16px; overflow: hidden; background: var(--win); border: 1px solid var(--edge);
@@ -102,7 +121,7 @@
   .wb-ptab:hover { background: var(--hov); }
   .wb-ptab[aria-pressed="true"], .wb-ptab[data-on="true"] { background: var(--sel); color: var(--acT); cursor: default; }
   .wb-pill > .wb-tb.wb-nb { width: 30px; min-width: 30px; padding: 0; }
-  .wb-pill > .wb-tb.wb-wide { min-width: 38px; }
+  .wb-pill > .wb-tb.wb-wide { width: 32px; min-width: 32px; padding: 0; }
   .wb-pill > .wb-tb.wb-n34 { min-width: 34px; }
   .wb-navtabs { flex: none; justify-content: center; gap: 4px; height: 32px; box-shadow: none; width: 220px; max-width: calc(100% - 12px); margin: 6px auto 8px; }
   .wb-navtabs > .wb-tb { width: 33px; min-width: 33px; padding: 0; }
@@ -266,12 +285,89 @@
     border-radius: 9px; background: var(--tbar); border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
   }
   .wb-debugbar > .wb-tb { height: 26px; min-width: 26px; padding: 0 5px; }
+  .wb-debugbar > .wb-debug-grip { min-width: 18px; padding: 0 2px; cursor: grab; touch-action: none; }
   .wb-chip {
     display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; box-sizing: border-box; border-radius: 11px;
     background: var(--pane2); border: 1px solid var(--line); color: var(--tx); font: inherit; font-size: 11.5px;
   }
   button.wb-chip:hover { background: var(--hov); }
   .wb .wb-mono.wb-chip { font-family: "Geist Mono", ui-monospace, monospace; }
+  /* The new Sloppy guide uses an Apple Messages style header and chat bubbles. */
+  .wb-ai-guide { min-width: 0; background: transparent; }
+  .wb-ai-head { position: relative; display: flex; flex: none; flex-direction: column; align-items: center; padding: 10px 14px 6px; }
+  .wb-ai-iconbtn, .wb-ai-name {
+    display: inline-flex; align-items: center; justify-content: center; color: #1c1c1e; background: rgba(255,255,255,.6);
+    backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.85); box-shadow: 0 4px 14px rgba(20,30,70,.12); cursor: pointer;
+  }
+  .wb-ai-iconbtn { position: absolute; left: 14px; top: 12px; width: 32px; height: 32px; border-radius: 16px; }
+  .wb-ai-avatar { width: 54px; height: 54px; filter: drop-shadow(0 4px 10px rgba(47,95,214,.45)); }
+  .wb-ai-name { position: relative; z-index: 2; gap: 6px; height: 28px; margin-top: -9px; padding: 0 14px; border-radius: 14px; font-size: 13px; font-weight: 600; }
+  .wb-ai-thread { display: flex; min-width: 0; flex-direction: column; gap: 10px; padding: 2px 1px 8px; }
+  .wb-ai-time { align-self: center; color: #8a8f9a; font-size: 11px; font-weight: 500; letter-spacing: .02em; }
+  .wb-ai-user { align-self: flex-end; max-width: 84%; padding: 9px 14px; border-radius: 18px 18px 6px 18px; background: linear-gradient(180deg,#4a7bf0,#2f5fd6); color: #fff; line-height: 1.45; box-shadow: 0 4px 12px rgba(47,95,214,.3); }
+  .wb-ai-replies { display: flex; min-width: 0; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .wb-ai-reply { min-width: 0; max-width: 92%; padding: 8px 12px; border: 1px solid #e3e3e6; border-radius: 16px 16px 16px 6px; background: #fff; box-shadow: 0 3px 10px rgba(20,30,70,.08); line-height: 1.45; overflow-wrap: anywhere; }
+  .wb-ai-markdown p { margin: 0 0 7px; }
+  .wb-ai-markdown p:last-child { margin-bottom: 0; }
+  .wb-ai-markdown ul, .wb-ai-markdown ol { margin: 4px 0; padding-left: 18px; }
+  .wb-ai-markdown code { padding: 1px 4px; border-radius: 4px; background: var(--pane2); font: 11.5px "Geist Mono", ui-monospace, monospace; }
+  .wb-ai-widget { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--pane2); font-size: 11.5px; }
+  .wb-ai-widget strong { color: var(--acT); font-weight: 600; }
+  .wb-ai-widget p { margin: 3px 0 0; }
+  .wb-ai-widget ol { margin: 4px 0 0; padding-left: 18px; }
+  .wb-ai-spinner { width: 12px; height: 12px; flex: none; border: 2px solid var(--line); border-top-color: var(--acT); border-radius: 50%; animation: wb-ai-spin .8s linear infinite; }
+  @keyframes wb-ai-spin { to { transform: rotate(360deg); } }
+  .wb-ai-error { max-width: 92%; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); border-radius: 10px; color: var(--bad); font-size: 11.5px; }
+  @media (prefers-reduced-motion: reduce) { .wb-ai-spinner { animation: none; } }
+  .wb-ai-challenge { min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid #d7d6d6; border-radius: 19px; background: #fff; box-shadow: 0 8px 22px rgba(20,30,70,.12); }
+  .wb-ai-challenge-main { display: flex; min-width: 0; flex-direction: column; gap: 10px; padding: 12px; }
+  .wb-ai-challenge-title { display: flex; align-items: center; justify-content: space-between; color: #555a66; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+  .wb-ai-progress { display: flex; gap: 4px; }
+  .wb-ai-progress i { width: 13px; height: 4px; border-radius: 2px; background: #d7d6d6; }
+  .wb-ai-progress i:first-child { background: #2f5fd6; }
+  .wb-ai-code { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: auto; max-height: 120px; margin: 0; padding: 9px; border-radius: 10px; background: #0b0b0c; color: #f4f4f5; font: 11px/1.65 "Geist Mono", ui-monospace, monospace; }
+  .wb-ai-options { display: flex; flex-wrap: wrap; gap: 6px; }
+  .wb-ai-options button { min-height: 30px; padding: 0 11px; border: 1px solid #d7d6d6; border-radius: 16px; background: #fff; color: #1c1c1e; font: inherit; font-size: 11px; cursor: pointer; }
+  .wb-ai-options button:hover { background: rgba(47,95,214,.1); border-color: #2f5fd6; }
+  .wb-ai-result { padding: 8px 10px; border-radius: 10px; background: rgba(47,95,214,.1); color: #2f5fd6; font-size: 11.5px; }
+  .wb-ai-hints { display: flex; flex-direction: column; gap: 8px; padding: 9px 12px 11px; border-top: 1px solid #ececec; background: #fafafa; }
+  .wb-ai-hint-steps { display: flex; align-items: center; font-size: 10.5px; }
+  .wb-ai-hint-steps > span:not(.connector) { display: inline-flex; align-items: center; height: 23px; padding: 0 8px; border-radius: 12px; border: 1px solid #d7d6d6; background: #fff; }
+  .wb-ai-hint-steps > span.active { border-color: #E4F6EA; background: #E4F6EA; color: #1f6f3a; }
+  .wb-ai-hint-steps > span.locked { border-style: dashed; color: #8a8f9a; }
+  .wb-ai-hint-steps .connector { width: 8px; height: 2px; background: #d7d6d6; }
+  .wb-ai-hint-copy { display: flex; gap: 7px; color: #4a4a50; font-size: 11.5px; line-height: 1.4; }
+  .wb-ai-get-hint { align-self: flex-start; padding: 0; border: 0; background: none; color: #2f5fd6; font: inherit; font-size: 11.5px; cursor: pointer; }
+  .wb-ai-prompt { padding: 4px 8px; border: 1px solid #d7d6d6; border-radius: 12px; background: rgba(255,255,255,.72); color: #1c1c1e; font: inherit; font-size: 10.5px; cursor: pointer; }
+  .wb-ai-prompt:hover { border-color: #2f5fd6; background: rgba(47,95,214,.1); }
+  .wb-bottom-toolbar { container-type: inline-size; }
+  .wb-console-short { display: none; }
+  @container (max-width: 340px) {
+    .wb-bottom-toolbar .wb-console-full { display: none !important; }
+    .wb-bottom-toolbar .wb-console-short { display: inline !important; }
+  }
+  .wb-ai-guide .wb-ask { margin: auto 10px 10px; background: rgba(255,255,255,.82); }
+  .wb-ai-composer { display: flex; flex: none; flex-direction: column; align-items: stretch; gap: 0; padding: 7px 8px 6px 12px; }
+  .wb-ai-context { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 2px 7px 0; padding-bottom: 7px; border-bottom: 1px solid #f0f0f2; }
+  .wb-ai-context-chip { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 3px; padding: 2px 4px 2px 0; border-radius: 12px; background: #f0f0f2; }
+  .wb-ai-image-chip img { width: 22px; height: 22px; flex: none; border-radius: 5px; object-fit: cover; }
+  .wb-ai-context-file, .wb-ai-context-lines { display: inline-block; max-width: 58%; min-width: 0; overflow: hidden; padding: 3px 7px; border-radius: 10px; color: #3a3a3f; font: 10px/1.2 "Geist Mono", ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+  .wb-ai-context-file { background: rgba(47,95,214,.1); color: #2f5fd6; }
+  .wb-ai-context-chip > button { display: grid; width: 18px; height: 18px; flex: none; place-items: center; border: 0; border-radius: 9px; background: transparent; color: #555a66; cursor: pointer; }
+  .wb-ai-context-chip > button:hover { background: rgba(0,0,0,.08); }
+  .wb-ai-input-row { display: flex; width: 100%; min-width: 0; align-items: flex-end; gap: 7px; }
+  .wb-ai-input-row textarea { width: 0; height: 34px; min-height: 34px; max-height: 100px; flex: 1 1 0%; padding: 7px 2px; line-height: 20px; text-align: left; }
+  .wb-ai-attach-wrap { position: relative; display: flex; flex: none; }
+  .wb-ai-attach { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 15px; background: transparent; color: #555a66; cursor: pointer; }
+  .wb-ai-attach:hover, .wb-ai-attach[aria-expanded="true"] { background: #f0f0f2; color: #2f5fd6; }
+  .wb-ai-attach-menu { position: absolute; z-index: 6; bottom: calc(100% + 10px); left: -4px; display: flex; width: 205px; flex-direction: column; padding: 6px; border: 1px solid #d7d6d6; border-radius: 14px; background: rgba(255,255,255,.96); box-shadow: 0 12px 32px rgba(20,30,70,.2); backdrop-filter: blur(18px); }
+  .wb-ai-attach-menu button { display: flex; min-width: 0; align-items: center; gap: 9px; padding: 8px; border: 0; border-radius: 9px; background: transparent; color: #1c1c1e; font: inherit; text-align: left; cursor: pointer; }
+  .wb-ai-attach-menu button:hover:not(:disabled) { background: rgba(47,95,214,.1); }
+  .wb-ai-attach-menu button:disabled { color: #8a8f9a; cursor: default; }
+  .wb .wb-ai-composer { position: relative; display: flex; flex: none; flex-direction: column; align-items: stretch; gap: 0; padding: 7px 8px 6px 9px; }
+  .wb-ai-guide .wb-send { cursor: pointer; }
+  .wb-ai-guide .wb-send:disabled { opacity: .45; cursor: default; }
   .wb-tree { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 14px; white-space: nowrap; color: var(--tx); }
   .wb-dot-sq { width: 8px; height: 8px; flex: none; border-radius: 2px; }
   .wb-git-m {
@@ -360,10 +456,19 @@
 }
 .wb .monaco-editor .monaco-hover a:hover { background: color-mix(in srgb, var(--ac) 20%, transparent); }
 .wb .monaco-editor .monaco-hover a:focus-visible { outline: 2px solid var(--acT); outline-offset: 1px; }
-.wb .monaco-editor .suggest-widget { padding: 4px; }
-.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row { border-radius: 8px; }
+.wb .monaco-editor .suggest-widget { min-height: 42px; padding: 4px; }
+.wb .monaco-editor .suggest-widget > .tree { min-height: 32px; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row { min-height: 32px; padding-left: 6px; border-radius: 5px; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main { justify-content: flex-start; gap: 3px; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .left { min-width: 0; flex: 0 1 auto; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right { min-width: 0; max-width: 68%; flex: 0 1 auto; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right > .details-label,
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused > .contents > .main > .right > .details-label { margin-left: 0; color: var(--tx) !important; opacity: .82; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .left > .qualifier-label { margin-left: 0; }
+.wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row .suggest-icon { margin-right: 1px; }
 .wb .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused { background: var(--sel); color: var(--tx); }
-.wb .monaco-editor .suggest-widget .monaco-list-row .highlight { color: var(--acT) !important; font-weight: 600; }
+.wb .monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label .highlight { border-radius: 0; background: transparent !important; color: var(--acT) !important; font-weight: 600; }
+.wb .monaco-editor .suggest-widget .monaco-icon-label .label-name { border-radius: 0 !important; background: transparent !important; }
 .wb .monaco-editor .suggest-details-container {
   background: var(--glass); color: var(--tx); border: 1px solid var(--glass-edge); border-radius: 14px; overflow: hidden;
   backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
@@ -381,5 +486,71 @@
 .wb .monaco-editor .suggest-details-container .suggest-details pre, .wb .monaco-editor .suggest-details-container .suggest-details pre *,
 .wb .monaco-editor .suggest-details-container .suggest-details code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 11.5px; }
 
+/* Wterm's base stylesheet is unlayered, so keep these terminal surface overrides unlayered too. */
+  .wb .wb-terminal { padding: 16px; border: 1px solid var(--line); border-radius: 18px; box-shadow: none; }
+
 /* Board: line numbers are one pixel smaller than the code (calc(var(--fs) - 1px)). Outside the layer so it beats Monaco. */
 .wb .monaco-editor .margin-view-overlays .line-numbers { font-size: 12px; }
+
+/* The dev workbench's browser preview is a movable, resizable desktop window. */
+.wb-preview-float {
+  position: fixed; z-index: 60; right: 24px; bottom: 24px; display: flex; width: min(680px, calc(100vw - 24px));
+  height: min(540px, calc(100dvh - 24px)); min-width: 300px; min-height: 240px; flex-direction: column;
+  overflow: hidden; resize: both; box-sizing: border-box; border: 1px solid var(--line); border-radius: 13px; background: var(--tbar); color: var(--tx);
+  box-shadow: 0 24px 60px rgba(20, 30, 70, 0.28), 0 6px 16px rgba(20, 30, 70, 0.14);
+}
+.wb-preview-float[hidden] { display: none; }
+.wb-preview-float.wb-preview-maximized { inset: 12px; width: auto; height: auto; min-width: 0; min-height: 0; resize: none; }
+.wb-preview-float.wb-preview-minimized { height: 39px; min-height: 39px; resize: none; }
+.wb-preview-float.wb-preview-minimized > :not(.wb-preview-float-head) { display: none; }
+.wb-preview-float-head {
+  display: flex; height: 38px; min-height: 38px; align-items: center; gap: 10px; padding: 0 7px 0 11px;
+  border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--tbar) 92%, var(--mu)); cursor: grab; touch-action: none; user-select: none;
+}
+.wb-preview-float-head:active { cursor: grabbing; }
+.wb-preview-mac-dots { display: flex; flex: none; align-items: center; gap: 6px; margin-right: 3px; }
+.wb-preview-dot { display: grid; width: 11px; height: 11px; padding: 0; place-items: center; border: 1px solid rgba(0,0,0,.12); border-radius: 50%; color: rgba(0,0,0,.65); cursor: pointer; }
+.wb-preview-dot-close { background: #ff5f57; }
+.wb-preview-dot-minimize { background: #febc2e; }
+.wb-preview-dot-maximize { background: #28c840; }
+.wb-preview-dot:hover { filter: brightness(.92); }
+.wb-preview-reopen { position: fixed; z-index: 61; right: 24px; bottom: 24px; display: flex; height: 34px; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--tbar); color: var(--tx); box-shadow: 0 8px 20px rgba(20,30,70,.2); font: 12px/1 Geist, system-ui, sans-serif; cursor: pointer; }
+.wb-preview-float-title { display: flex; min-width: 0; flex: 1; align-items: center; gap: 7px; overflow: hidden; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.wb-preview-float-actions { display: flex; flex: none; align-items: center; gap: 2px; }
+.wb-preview-device { display: flex; height: 28px; align-items: center; gap: 4px; padding: 0 4px; border: 1px solid var(--line); border-radius: 7px; color: var(--mu); }
+.wb-preview-device select { max-width: 100px; border: 0; outline: 0; background: transparent; color: var(--tx); font: inherit; font-size: 10px; cursor: pointer; }
+.wb-preview-devtools-mark { font: 700 12px/1 "Geist Mono", monospace; }
+.wb-preview-address { display: flex; height: 27px; min-height: 27px; align-items: center; gap: 7px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--glass); color: var(--mu); font: 10px/1 "Geist Mono", ui-monospace, monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wb-preview-secure-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #28b463; }
+.wb-preview-viewport { display: flex; min-width: 0; min-height: 0; flex: 1; justify-content: center; overflow: auto; background: white; }
+.wb-preview-viewport-mobile, .wb-preview-viewport-tablet { justify-content: flex-start; }
+.wb-preview-float-frame { display: block; width: 100%; min-height: 100%; min-width: 0; flex: 1 0 auto; border: 0; background: white; }
+.wb-preview-viewport-mobile .wb-preview-float-frame, .wb-preview-viewport-tablet .wb-preview-float-frame { flex: 0 0 auto; }
+.wb-preview-devtools { display: flex; height: 170px; min-height: 100px; flex-direction: column; border-top: 1px solid var(--line); background: var(--tbar); font-size: 11px; }
+.wb-preview-devtools-tabs { display: flex; height: 30px; min-height: 30px; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.wb-preview-devtools-tabs button { height: 24px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--mu); font: inherit; cursor: pointer; }
+.wb-preview-devtools-tabs button[aria-selected="true"], .wb-preview-devtools-tabs .wb-preview-inspect-toggle[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+.wb-preview-devtools-tabs .wb-preview-inspect-toggle { margin-left: auto; }
+.wb-preview-devtools-tabs .wb-preview-clear { padding: 0 5px; }
+.wb-preview-console { min-height: 0; flex: 1; overflow: auto; font: 10px/1.45 "Geist Mono", ui-monospace, monospace; }
+.wb-preview-log { display: flex; gap: 8px; padding: 3px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.wb-preview-log-error { color: #c43f4b; background: rgba(220,50,60,.06); }
+.wb-preview-log-warn { color: #986312; background: rgba(230,170,30,.06); }
+.wb-preview-log time { flex: none; opacity: .65; }
+.wb-preview-log code { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wb-preview-empty, .wb-preview-elements { padding: 9px; color: var(--mu); }
+.wb-preview-elements { min-height: 0; flex: 1; overflow: auto; }
+.wb-preview-elements code { display: block; color: var(--acT); white-space: pre-wrap; overflow-wrap: anywhere; }
+.wb-preview-elements p { margin: 8px 0 0; color: var(--tx); white-space: pre-wrap; }
+@media (max-width: 640px) {
+  .wb-preview-float { right: 12px; bottom: 12px; width: calc(100vw - 24px); height: min(500px, calc(100dvh - 24px)); min-width: 280px; resize: both; }
+  .wb-preview-float-head { gap: 4px; padding-right: 3px; padding-left: 8px; }
+  .wb-preview-mac-dots { gap: 4px; margin-right: 1px; }
+  .wb-preview-dot { width: 9px; height: 9px; }
+  .wb-preview-float-title { max-width: 52px; gap: 3px; font-size: 10px; }
+  .wb-preview-float-actions { gap: 0; }
+  .wb-preview-device { gap: 2px; padding: 0 2px; }
+  .wb-preview-device select { max-width: 76px; }
+  .wb-preview-float-actions { gap: 0; }
+  .wb-preview-float-actions .wb-tb { width: 26px; }
+}

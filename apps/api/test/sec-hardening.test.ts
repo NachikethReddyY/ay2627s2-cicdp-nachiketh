@@ -3,6 +3,7 @@ import "./helpers.ts"; // points DATABASE_URL at the test database before env.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { buildApp } from "../src/app.ts";
 import { parseEnv, startupWarnings } from "../src/env.ts";
 import { dockerBackend, ensureNetwork, shellRunArgs } from "../src/sandbox/docker.ts";
@@ -76,7 +77,18 @@ test("a closed terminal's idle container still counts against the server-wide sh
     const exits: ((e: { exitCode: number }) => void)[] = [];
     return { write() {}, resize() {}, kill: () => exits.forEach((cb) => cb({ exitCode: 0 })), onData() {}, onExit: (cb: (e: { exitCode: number }) => void) => exits.push(cb) };
   }) as never;
-  const backend = dockerBackend({ image: "img", idleMs: 30, network: "lq-sbx", exec, spawn, maxContainers: () => 1 });
+  // openShell prepares the learner's shell files through spawnChild. This stub exits 0 so the shell opens without a real container.
+  const spawnChild = (() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      stdin: Object.assign(new EventEmitter(), { end() {} }),
+      kill: () => true,
+    });
+    setImmediate(() => child.emit("close", 0));
+    return child;
+  }) as never;
+  const backend = dockerBackend({ image: "img", idleMs: 30, network: "lq-sbx", exec, spawn, spawnChild, maxContainers: () => 1 });
 
   const a = await backend.openShell("learner-a", { cols: 80, rows: 24 });
   a.kill(); // the terminal closes, but its container stays up until the idle stop

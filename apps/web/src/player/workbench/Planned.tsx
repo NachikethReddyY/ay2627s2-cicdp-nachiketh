@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Bug, Folder, GitBranch, Search, TriangleAlert, type LucideIcon } from "lucide-react";
 
 // Planned parts of the workbench, drawn from the design (Main.dc.html) so the test page looks like
-// it. None of them has behaviour yet: controls are focusable but aria-disabled and say "Coming soon".
+// it. Most planned tools are still inert; AI help is a working structured guide.
 // The workbench shows them only with `showPlanned`; the practice view leaves them out.
 // This file holds the small shared pieces. The sample-text views live in PlannedParts.tsx, which the
 // workbench loads lazily so that text stays out of the main chunk.

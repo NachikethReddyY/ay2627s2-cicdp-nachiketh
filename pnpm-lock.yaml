@@ -273,15 +273,21 @@ importers:
       '@trpc/client':
         specifier: ^11.22.1
         version: 11.22.1(@trpc/server@11.22.1(typescript@7.0.2))(typescript@7.0.2)
+      '@webcontainer/api':
+        specifier: ^1.6.4
+        version: 1.6.4
+      '@wterm/dom':
+        specifier: 0.5.4
+        version: 0.5.4
+      '@wterm/ghostty':
+        specifier: 0.5.4
+        version: 0.5.4
+      '@wterm/react':
+        specifier: 0.5.4
+        version: 0.5.4(@wterm/dom@0.5.4)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@xstate/react':
         specifier: ^6.1.0
         version: 6.1.0(@types/react@19.3.0)(react@19.3.1)(xstate@5.33.3)
-      '@xterm/addon-fit':
-        specifier: 0.11.0
-        version: 0.11.0
-      '@xterm/xterm':
-        specifier: 6.0.0
-        version: 6.0.0
       better-auth:
         specifier: ^1.7.15
         version: 1.7.15(@opentelemetry/api@1.10.0)(drizzle-kit@0.31.11)(drizzle-orm@0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1))(pg@8.23.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2576,6 +2582,25 @@ packages:
       oxc-transform-react:
         optional: true
 
+  '@webcontainer/api@1.6.4':
+    resolution: {integrity: sha512-r9sHCXg1FcC1AMgppGwAc0vYWaQhqvg282cnsuPbJEzYnWifAdCVvg+8ngJUEHyHcomhJJp+/zuytite4ITHLw==}
+
+  '@wterm/core@0.5.4':
+    resolution: {integrity: sha512-yIhbn27ELHDjEDtduDIycHWEEaobJGhqR+WqKgCoSPYReCIrR+skJS67PBk3Wp6+yLImfQ3Fv1CJ4hLXKLa7Fg==}
+
+  '@wterm/dom@0.5.4':
+    resolution: {integrity: sha512-9zxZq52BFpBtVEkBEbZF5a+9dX+eIADQdlTRq6YgGxHP/G/aDXyRja+tebQtAYqx9KY8qJVm20vNOhQxwBe/FQ==}
+
+  '@wterm/ghostty@0.5.4':
+    resolution: {integrity: sha512-W6wlGhHiGf/2tF/uZo8qHtaYqA3Ebf+6VhdPidiWuqEU37Kj+YSkuXCXP/qORSD0roec/5Z16qYRyF5HsC9XJg==}
+
+  '@wterm/react@0.5.4':
+    resolution: {integrity: sha512-6piarasJdCddCQMXIoCTQGKfmzu55XFL6U3sb1xXy/AIqFhO/3cgYC/n5XmCtfg9YBT4RhQjekAjtG8ZJL/KGg==}
+    peerDependencies:
+      '@wterm/dom': 0.5.4
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+
   '@xstate/react@6.1.0':
     resolution: {integrity: sha512-ep9F0jGTI63B/jE8GHdMpUqtuz7yRebNaKv8EMUaiSi29NOglywc2X2YSOV/ygbIK+LtmgZ0q9anoEA2iBSEOw==}
     peerDependencies:
@@ -2584,12 +2609,6 @@ packages:
     peerDependenciesMeta:
       xstate:
         optional: true
-
-  '@xterm/addon-fit@0.11.0':
-    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
-
-  '@xterm/xterm@6.0.0':
-    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -6529,6 +6548,24 @@ snapshots:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
 
+  '@webcontainer/api@1.6.4': {}
+
+  '@wterm/core@0.5.4': {}
+
+  '@wterm/dom@0.5.4':
+    dependencies:
+      '@wterm/core': 0.5.4
+
+  '@wterm/ghostty@0.5.4':
+    dependencies:
+      '@wterm/core': 0.5.4
+
+  '@wterm/react@0.5.4(@wterm/dom@0.5.4)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@wterm/dom': 0.5.4
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
   '@xstate/react@6.1.0(@types/react@19.3.0)(react@19.3.1)(xstate@5.33.3)':
     dependencies:
       react: 19.3.1
@@ -6538,10 +6575,6 @@ snapshots:
       xstate: 5.33.3
     transitivePeerDependencies:
       - '@types/react'
-
-  '@xterm/addon-fit@0.11.0': {}
-
-  '@xterm/xterm@6.0.0': {}
 
   abstract-logging@2.0.1: {}
 

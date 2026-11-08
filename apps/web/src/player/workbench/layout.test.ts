@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LAYOUT, clampLayout, layoutReducer, loadLayout, resizeContainerForPanel, resolveTheme, saveLayout } from "./layout.ts";
+import { DEFAULT_LAYOUT, LEFT_MAX_FRACTION, clampLayout, layoutReducer, loadLayout, resolveTheme, saveLayout } from "./layout.ts";
 import type { Layout } from "./layout.ts";
 
 const BIG = 2000;
@@ -14,11 +14,13 @@ test("toggleLeft and toggleUtil flip only their own flag", () => {
   assert.deepEqual(s, { ...DEFAULT_LAYOUT, showUtil: false });
 });
 
-test("resizeLeft clamps to 180 and 520", () => {
-  const r = (px: number, container = BIG) => layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px, container }).leftW;
-  assert.equal(r(50), 180);
-  assert.equal(r(900), 520);
-  assert.equal(r(300), 300);
+test("resizeLeft clamps to 240 and 75% of its container", () => {
+  const state = { ...DEFAULT_LAYOUT, showUtil: false };
+  const r = (px: number, container = BIG) => layoutReducer(state, { type: "resizeLeft", px, container }).leftW;
+  assert.equal(r(50), 240);
+  assert.equal(r(900), 900);
+  assert.equal(r(400), 400);
+  assert.equal(r(1900), Math.floor(BIG * LEFT_MAX_FRACTION));
 });
 
 test("resizeUtil clamps to 200 and 420", () => {
@@ -31,10 +33,10 @@ test("resizeUtil clamps to 200 and 420", () => {
 test("resize leaves the editor its 360 px", () => {
   // 1000 - utilW 320 - 360 = 320, so the navigator cannot grow past 320.
   assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px: 520, container: 1000 }).leftW, 320);
-  // 900 - leftW 232 - 360 = 308, so the utility area cannot grow past 308.
-  assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeUtil", px: 420, container: 900 }).utilW, 308);
+  // 900 - leftW 280 - 360 = 260, so the utility area cannot grow past 260.
+  assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeUtil", px: 420, container: 900 }).utilW, 260);
   // A window too small for the minimum still stops at the minimum.
-  assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px: 520, container: 400 }).leftW, 180);
+  assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px: 520, container: 400 }).leftW, 240);
 });
 
 test("leftView, utilTab and theme actions set their field", () => {
@@ -46,7 +48,7 @@ test("leftView, utilTab and theme actions set their field", () => {
 test("clampLayout shrinks utility before navigator to keep 360 px for the editor", () => {
   const s = clampLayout({ ...DEFAULT_LAYOUT, leftW: 520, utilW: 420 }, 1100);
   assert.equal(1100 - s.leftW - s.utilW >= 360, true);
-  assert.equal(s.leftW, 520, "navigator keeps its width");
+  assert.equal(s.leftW, 520, "navigator can use its full width");
   assert.equal(s.utilW, 220, "utility shrinks first");
 });
 
@@ -59,21 +61,13 @@ test("clampLayout shrinks the navigator once the utility area is at its minimum"
 
 test("clampLayout returns the minimums when the window is too small", () => {
   const s = clampLayout({ ...DEFAULT_LAYOUT, leftW: 520, utilW: 420 }, 500);
-  assert.equal(s.leftW, 180);
+  assert.equal(s.leftW, 240);
   assert.equal(s.utilW, 200);
-});
-
-test("resizeLeft uses the displayed utility width after layout clamping", () => {
-  const stored = { ...DEFAULT_LAYOUT, utilW: 420 };
-  const shown = clampLayout(stored, 800);
-  assert.equal(shown.utilW, 208);
-  const resizeContainer = resizeContainerForPanel(800, stored.utilW, shown.utilW);
-  assert.equal(layoutReducer(stored, { type: "resizeLeft", px: 232, container: resizeContainer }).leftW, 232);
 });
 
 test("clampLayout pulls out-of-range widths into the design ranges", () => {
   const s = clampLayout({ ...DEFAULT_LAYOUT, leftW: 10, utilW: 9000 }, BIG);
-  assert.equal(s.leftW, 180);
+  assert.equal(s.leftW, 240);
   assert.equal(s.utilW, 420);
 });
 
@@ -97,7 +91,7 @@ test("loadLayout keeps valid fields and defaults the rest", () => {
   const raw = '{"leftW":300,"utilW":"wide","showLeft":false,"showUtil":"yes","leftView":"problems","utilTab":"nope"}';
   assert.deepEqual(loadLayout(store({ "lq.workbench": raw, "lq.theme": "dark" })), {
     ...DEFAULT_LAYOUT,
-    leftW: 300,
+    leftW: 280,
     showLeft: false,
     leftView: "problems",
     theme: "dark",
@@ -110,7 +104,7 @@ test("theme is read from lq.theme; a bad lq.theme falls back to system and other
   assert.equal(loadLayout(store({ "lq.theme": "light" })).theme, "light");
   const s = loadLayout(store({ "lq.theme": "neon", "lq.workbench": '{"leftW":300}' }));
   assert.equal(s.theme, "system");
-  assert.equal(s.leftW, 300);
+  assert.equal(s.leftW, 280);
 });
 
 test("a theme in the old lq.workbench blob is ignored", () => {
@@ -149,7 +143,7 @@ test("resize with a NaN px is ignored", () => {
   assert.deepEqual(layoutReducer(DEFAULT_LAYOUT, { type: "resizeUtil", px: NaN, container: BIG }), DEFAULT_LAYOUT);
 });
 
-test("clampLayout with both panels hidden leaves the widths unchanged", () => {
+test("clampLayout with both panels hidden keeps widths in range", () => {
   const s = clampLayout({ ...DEFAULT_LAYOUT, showLeft: false, showUtil: false, leftW: 520, utilW: 420 }, 500);
   assert.equal(s.leftW, 520);
   assert.equal(s.utilW, 420);

@@ -22,14 +22,15 @@ export function shellUrl(
   loc: { protocol: string; host: string },
   cols: number,
   rows: number,
-  opts?: { wsOrigin?: string; ticket?: string },
+  opts?: { wsOrigin?: string; ticket?: string; tabId?: string },
 ): string {
+  const tabId = encodeURIComponent(opts?.tabId ?? "practice");
   if (opts?.wsOrigin && opts.ticket) {
-    return `${opts.wsOrigin}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}`;
+    return `${opts.wsOrigin}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}`;
   }
   // http: -> ws:, https: -> wss:. Derived from the page protocol so plain ws only happens on an http: page (local dev).
   const scheme = loc.protocol.replace(/^http/, "ws");
-  return `${scheme}//${loc.host}/api/sandbox/shell?tab=practice&cols=${cols}&rows=${rows}`;
+  return `${scheme}//${loc.host}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}`;
 }
 
 /** Trim, drop trailing slashes and map http(s):// to ws(s)://. Empty or missing means same-origin. */
@@ -80,6 +81,8 @@ export interface ShellSocket {
   connect(cols?: number, rows?: number): void;
   /** Binary frame; dropped unless open. "\r" while exited reconnects. Returns true only when the data was written to an open socket. */
   send(data: string): boolean;
+  /** Raw bytes as a binary frame, unchanged (mouse reports can carry bytes >= 128). Dropped unless open; never reconnects. */
+  sendBytes(data: Uint8Array): boolean;
   /** {type:"resize"} text frame when open. */
   resize(cols: number, rows: number): void;
   /** Resolves when the current connection is open and has produced output. */
@@ -105,6 +108,7 @@ interface Deps {
   probe: () => Promise<number>;
   /** Origin to connect to directly with a ticket; unset or empty keeps the same-origin behaviour. */
   wsOrigin?: string;
+  tabId?: string;
   fetchTicket: () => Promise<string>;
 }
 
@@ -237,7 +241,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   const connectSocket = (gen: number, ticket?: string) => {
     const urlSize = size; // the PTY is created at this size; a resize() before onopen cannot be sent yet
     const socket = new WS(
-      shellUrl(deps.location ?? globalThis.location, urlSize.cols, urlSize.rows, ticket ? { wsOrigin, ticket } : undefined),
+      shellUrl(deps.location ?? globalThis.location, urlSize.cols, urlSize.rows, { wsOrigin, ticket, tabId: deps.tabId }),
     );
     ws = socket;
     socket.binaryType = "arraybuffer";
@@ -296,6 +300,14 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
       }
       if (state.kind === "open" && ws) {
         ws.send(encoder.encode(data));
+        return true;
+      }
+      return false;
+    },
+    sendBytes(data) {
+      if (state.kind === "open" && ws) {
+        // Copy into an ArrayBuffer-backed view: the socket types need one, and the caller may reuse its buffer.
+        ws.send(new Uint8Array(data));
         return true;
       }
       return false;

@@ -19,7 +19,7 @@ from litellm.exceptions import (
 )
 from pydantic import BaseModel, Field
 
-from learnquest_engine import llm, pipeline, visual
+from learnquest_engine import guide, llm, pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.schemas import LessonContext
@@ -36,6 +36,25 @@ class OutlineRequest(BaseModel):
 
 class VisualRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=500)
+
+
+class GuideMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class GuideWorkspaceFile(BaseModel):
+    path: str = Field(min_length=1, max_length=240)
+    content: str = Field(max_length=6000)
+
+
+class GuideRequest(BaseModel):
+    fileName: str = Field(min_length=1, max_length=240)
+    language: str = Field(min_length=1, max_length=40)
+    code: str = Field(max_length=12000)
+    selection: str = Field(default="", max_length=3000)
+    messages: list[GuideMessage] = Field(min_length=1, max_length=8)
+    workspaceFiles: list[GuideWorkspaceFile] = Field(default_factory=list, max_length=24)
 
 
 def require_token(x_engine_token: Annotated[str | None, Header()] = None) -> None:
@@ -154,6 +173,12 @@ def visual_route(body: VisualRequest) -> JSONResponse:
             content={"error": "Model output failed the visual schema", "issues": found},
         )
     return JSONResponse({"doc": doc})
+
+
+@app.post("/v1/guide/chat", dependencies=[Depends(require_token)])
+def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
+    result = guide.reply(body.model_dump())
+    return _body("guide", result)
 
 
 @app.exception_handler(visual.CheckerUnavailable)

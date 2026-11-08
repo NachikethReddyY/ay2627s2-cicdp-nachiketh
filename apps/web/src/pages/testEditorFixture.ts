@@ -131,6 +131,8 @@ export function languageOf(path: string, lessonLanguage: TestLanguage): string {
   if (path.endsWith(".md")) return "markdown";
   if (path.endsWith(".json")) return "json";
   if (path.endsWith(".py")) return "python";
+  if (path.endsWith(".html")) return "html";
+  if (path.endsWith(".css")) return "css";
   if (/\.tsx?$/.test(path)) return "typescript";
   return lessonLanguage;
 }

@@ -3,8 +3,8 @@ import type { Dispatch } from "react";
 
 export const LAYOUT_KEY = "lq.workbench";
 export const THEME_KEY = "lq.theme";
-export const LEFT_MIN = 180;
-export const LEFT_MAX = 520;
+export const LEFT_MIN = 240;
+export const LEFT_MAX_FRACTION = 0.75;
 export const UTIL_MIN = 200;
 export const UTIL_MAX = 420;
 export const EDITOR_MIN = 360;
@@ -34,7 +34,7 @@ export function resolveTheme(t: Theme, prefersDark: boolean): "light" | "dark" {
 }
 
 export const DEFAULT_LAYOUT: Layout = {
-  leftW: 232,
+  leftW: 280,
   utilW: 320,
   showLeft: true,
   showUtil: true,
@@ -51,6 +51,10 @@ function clamp(px: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, px));
 }
 
+function maxLeftWidth(container: number): number {
+  return Number.isFinite(container) ? Math.max(LEFT_MIN, Math.floor(container * LEFT_MAX_FRACTION)) : Number.MAX_SAFE_INTEGER;
+}
+
 /** Adjust reducer space for the panel width that rendering clamps but does not persist. */
 export function resizeContainerForPanel(container: number, storedWidth: number, visibleWidth: number): number {
   return container + storedWidth - visibleWidth;
@@ -58,9 +62,9 @@ export function resizeContainerForPanel(container: number, storedWidth: number, 
 
 // Largest navigator width that still leaves the editor EDITOR_MIN px.
 function leftLimit(s: Layout, container: number): number {
-  if (!Number.isFinite(container)) return LEFT_MAX;
+  if (!Number.isFinite(container)) return Number.MAX_SAFE_INTEGER;
   const room = container - (s.showUtil ? s.utilW : 0) - EDITOR_MIN;
-  return clamp(room, LEFT_MIN, LEFT_MAX);
+  return clamp(room, LEFT_MIN, maxLeftWidth(container));
 }
 
 // Largest utility width that still leaves the editor EDITOR_MIN px.
@@ -74,7 +78,7 @@ function utilLimit(s: Layout, container: number): number {
 // the editor less than EDITOR_MIN px, shrink the utility area first and the
 // navigator second. If even the minimums do not fit, the minimums are returned.
 export function clampLayout(s: Layout, container: number): Layout {
-  let leftW = clamp(s.leftW, LEFT_MIN, LEFT_MAX);
+  let leftW = s.showLeft ? clamp(s.leftW, LEFT_MIN, maxLeftWidth(container)) : clamp(s.leftW, LEFT_MIN, Number.MAX_SAFE_INTEGER);
   let utilW = clamp(s.utilW, UTIL_MIN, UTIL_MAX);
   if (Number.isFinite(container)) {
     let over = (s.showLeft ? leftW : 0) + (s.showUtil ? utilW : 0) + EDITOR_MIN - container;
@@ -144,7 +148,9 @@ export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ...DEFAULT_LAYOUT, theme };
   const p = parsed as Record<string, unknown>;
   return {
-    leftW: inRange(p.leftW, LEFT_MIN, LEFT_MAX) ? p.leftW : DEFAULT_LAYOUT.leftW,
+      // 300 px was the old navigator minimum; treat that value as the old
+      // default so existing workbench layouts pick up the slimmer navigator.
+      leftW: p.leftW === 300 ? DEFAULT_LAYOUT.leftW : inRange(p.leftW, LEFT_MIN, Number.MAX_SAFE_INTEGER) ? p.leftW : DEFAULT_LAYOUT.leftW,
     utilW: inRange(p.utilW, UTIL_MIN, UTIL_MAX) ? p.utilW : DEFAULT_LAYOUT.utilW,
     showLeft: typeof p.showLeft === "boolean" ? p.showLeft : DEFAULT_LAYOUT.showLeft,
     showUtil: typeof p.showUtil === "boolean" ? p.showUtil : DEFAULT_LAYOUT.showUtil,

@@ -66,7 +66,15 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   // Origin check instead of a CSRF token: SameSite=Lax cookies plus this hook (docs/api-plan.md §1).
   app.addHook("onRequest", async (req, reply) => {
     if (req.method === "GET" || req.method === "HEAD") return;
-    if (req.headers.origin !== undefined && req.headers.origin !== env.PUBLIC_ORIGIN) {
+    const origin = req.headers.origin;
+    let devLoopback = false;
+    if (env.NODE_ENV === "development" && origin) {
+      try {
+        const parsed = new URL(origin);
+        devLoopback = parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+      } catch { /* Invalid origins fail the exact origin check below. */ }
+    }
+    if (origin !== undefined && origin !== env.PUBLIC_ORIGIN && !devLoopback) {
       return reply.status(403).send({ error: { code: "forbidden", message: "Bad origin" } });
     }
   });
