@@ -69,15 +69,15 @@ async function pathCards(learnerId: string, official: boolean) {
 const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const me = ctx.learnerId;
 
-    // shortcut: assumes the DB session zone is UTC (true on Neon and local docker), so created_at is UTC.
+    // created_at is timestamp without time zone, written by now() in the session zone, so read it back in that zone.
     const { rows: days } = await db.execute<{ day: string; solved: number; xp: number }>(sql`
       SELECT day, sum(solved)::int AS solved, sum(xp)::int AS xp FROM (
-        SELECT to_char((a.created_at AT TIME ZONE 'UTC') AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
+        SELECT to_char((a.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
           count(*) FILTER (WHERE a.correct)::int AS solved, sum(${XP})::int AS xp
         FROM attempts a JOIN learners l ON l.id = a.learner_id
         WHERE a.learner_id = ${me} AND a.observed GROUP BY 1
         UNION ALL
-        SELECT to_char((gc.created_at AT TIME ZONE 'UTC') AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
+        SELECT to_char((gc.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
           0::int AS solved, (count(*) * 10)::int AS xp
         FROM game_completions gc JOIN learners l ON l.id = gc.learner_id
         WHERE gc.learner_id = ${me} GROUP BY 1
