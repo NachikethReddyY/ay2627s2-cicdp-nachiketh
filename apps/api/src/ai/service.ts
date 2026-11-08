@@ -78,9 +78,9 @@ function assertAiEnabled() {
 export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
   if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
-  if (!env.ANTHROPIC_API_KEY && !env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
+  if (!env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
-  // Every call that reaches Claude takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
+  // Every call that reaches the engine takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
   const slot = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me!.userId}))`);
     const {

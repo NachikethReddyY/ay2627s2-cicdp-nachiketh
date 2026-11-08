@@ -10,14 +10,13 @@ import { dockerBackend, ensureNetwork, shellRunArgs } from "../src/sandbox/docke
 import { SandboxBusyError } from "../src/sandbox/backend.ts";
 
 const base = { DATABASE_URL: "postgres://x:x@localhost:5432/x", BETTER_AUTH_SECRET: "x".repeat(32) };
-const prodAi = { ...base, NODE_ENV: "production", ANTHROPIC_API_KEY: "sk-test" };
+const prodAi = { ...base, NODE_ENV: "production", ENGINE_TOKEN: "t".repeat(32) };
 const messages = (r: ReturnType<typeof parseEnv>) => (r.success ? [] : r.error.issues.map((i) => i.message));
 
 test("production with AI on refuses to start without a spend cap", () => {
   const r = parseEnv(prodAi);
   assert.equal(r.success, false);
   assert.match(messages(r).join(), /AI_DAILY_BUDGET_USD.*AI_MONTHLY_BUDGET_USD.*AI_BUDGET_UNLIMITED=true/);
-  assert.equal(parseEnv({ ...prodAi, ENGINE_TOKEN: "t".repeat(32), ANTHROPIC_API_KEY: undefined }).success, false, "the engine path counts as AI");
 });
 
 test("a budget, an explicit opt-out, AI off, or a non-production env all start", () => {

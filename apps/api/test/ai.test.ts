@@ -43,7 +43,7 @@ const badWatch = {
 let lessonCalls = 0;
 let lessonOut: (kind: string) => unknown;
 beforeEach(() => {
-  env.ANTHROPIC_API_KEY = "test-key";
+  env.ENGINE_TOKEN = "t".repeat(32);
   lessonCalls = 0;
   lessonOut = (kind) => parts[kind as keyof typeof parts];
   generator.outline = async () => outline;
@@ -99,9 +99,9 @@ test("a non-coding outline with a watch lesson is rejected", async () => {
 
 test("missing key, non-coding topic and bad input", async () => {
   const t = trpc(app, await signUp(app));
-  env.ANTHROPIC_API_KEY = undefined;
+  env.ENGINE_TOKEN = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");
-  env.ANTHROPIC_API_KEY = "k";
+  env.ENGINE_TOKEN = "k".repeat(32);
   generator.outline = async () => ({ refused: true });
   const res = await t.m("paths.generate", { prompt: "baking sourdough" });
   assert.equal(code(res), "BAD_REQUEST");
