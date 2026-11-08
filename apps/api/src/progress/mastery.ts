@@ -189,12 +189,15 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
  */
 export const POLICY_VERSION = "2";
 
+/** Code-unit order, not localeCompare: the hash must not depend on the host's locale. */
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 /** JSON with object keys sorted at every level, so equal values always serialise equally. */
 function stableStringify(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
   if (v && typeof v === "object") {
     const o = v as Record<string, unknown>;
-    return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(",")}}`;
+    return `{${Object.keys(o).sort(byCodeUnit).filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(",")}}`;
   }
   return JSON.stringify(v) ?? "null";
 }
