@@ -3,12 +3,14 @@ import { sql } from "drizzle-orm";
 import type { Spec } from "@learnquest/ui-catalog";
 import {
   boolean,
+  check,
   index,
   numeric,
   integer,
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -220,6 +222,47 @@ export const concepts = pgTable(
   (t) => [uniqueIndex("concepts_world_slug").on(t.worldId, t.slug)],
 );
 
+// Per learner and concept; p_known is the BKT p_next after the latest observation.
+export const mastery = pgTable(
+  "mastery",
+  {
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    conceptId: text("concept_id")
+      .notNull()
+      .references(() => concepts.id),
+    pKnown: real("p_known").notNull(),
+    nObs: integer("n_obs").notNull().default(0),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.conceptId] })],
+);
+
+// One row per next-step recommendation, kept as history; the newest per (learner, world) is current.
+export const recommendations = pgTable(
+  "recommendations",
+  {
+    id: id(),
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    worldId: text("world_id")
+      .notNull()
+      .references(() => worlds.id),
+    lessonId: text("lesson_id").references(() => lessons.id),
+    conceptId: text("concept_id").references(() => concepts.id),
+    action: text("action", { enum: ["start", "learn", "practice", "advance", "done"] }).notNull(),
+    reasonCode: text("reason_code").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("recommendations_learner_world_time").on(t.learnerId, t.worldId, t.createdAt.desc()),
+    check("recommendations_action_check", sql`${t.action} IN ('start','learn','practice','advance','done')`),
+  ],
+);
+
 export type LessonSource = { repo: string; sha: string; path: string };
 
 export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
@@ -341,6 +384,8 @@ export const attempts = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    // Set once the observation has been applied to mastery; null means it still has to be.
+    masteryAppliedAt: timestamp("mastery_applied_at"),
     createdAt: createdAt(),
   },
   (t) => [

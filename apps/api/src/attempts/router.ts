@@ -8,6 +8,7 @@ import { attempts, hintEvents, learners, lessons, lessonVersions, stepProgress, 
 import { withTx } from "../db/tx.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
+import { applyObservations } from "../progress/mastery.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
 const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
@@ -83,6 +84,7 @@ function mutate(
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
     const o = r.outcome;
     let attemptId: string | undefined;
+    let observedFirst = false;
     if (o.type === "hint") {
       await tx.insert(hintEvents).values({ learnerId, stepId, rung: o.rung });
     } else {
@@ -105,9 +107,21 @@ function mutate(
         })
         .returning({ id: attempts.id });
       attemptId = row!.id;
+      observedFirst = n === 0;
     }
-    return { ...r, attemptId };
+    return { ...r, attemptId, observed: attemptId !== undefined && observedFirst };
   });
+}
+
+// Applies the learner's pending observations. Mastery is secondary: a failure never fails the attempt,
+// and the next read of me.mastery / me.next catches up.
+async function applyMastery(learnerId: string, out: { observed: boolean }) {
+  if (!out.observed) return;
+  try {
+    await applyObservations(learnerId);
+  } catch (e) {
+    console.error("mastery update failed; will catch up on read", e);
+  }
 }
 
 const Attempt = z.object({
@@ -173,6 +187,7 @@ export const stepsRouter = router({
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);
       const out = await mutate(ctx.learnerId, step, { type: "attempt", correct }, b);
       if ("conflict" in out) throw conflict(out.conflict);
+      await applyMastery(ctx.learnerId, out);
       return {
         attemptId: out.attemptId!,
         correct,
@@ -202,6 +217,7 @@ export const stepsRouter = router({
       const step = await mustStep(input.id, ctx.learnerId);
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);
+      await applyMastery(ctx.learnerId, out);
       return { state: "skipped" as const };
     }),
 
