@@ -255,6 +255,8 @@ export const recommendations = pgTable(
     action: text("action", { enum: ["start", "learn", "practice", "advance", "done"] }).notNull(),
     reasonCode: text("reason_code").notNull(),
     reason: text("reason").notNull(),
+    // sha256 of the inputs sent to the engine; an unchanged hash means the stored row is still current.
+    inputHash: text("input_hash"),
     createdAt: createdAt(),
   },
   (t) => [

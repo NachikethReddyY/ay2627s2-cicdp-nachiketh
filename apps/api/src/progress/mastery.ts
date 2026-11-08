@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { attempts, concepts, lessons, lessonVersions, mastery, recommendations, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { EngineError } from "../engine-client/client.ts";
-import { BktParamsSchema, engineLearner, type BktParams, type NextResult } from "../engine-client/learner.ts";
+import { engineLearner, type BktParams, type NextRequest, type NextResult } from "../engine-client/learner.ts";
 import { lessonDone, lessonTotal } from "./shared.ts";
 
 export const MASTERED_AT = 0.95;
@@ -40,25 +41,62 @@ function validConcepts(raw: unknown, where: string): string[] {
   return kept;
 }
 
-/** The engine's BKT ranges: pSlip and pGuess in (0, 0.5), pLearn and pInit in [0, 1]. */
-function validBkt(raw: unknown, where: string): BktParams | undefined {
+/** Engine defaults (services/engine bkt.py) for the parameters a world may override. */
+export const BKT_DEFAULTS: BktParams = { pSlip: 0.1, pLearn: 0.2, pInit: 0.2 };
+/** The engine's ranges: pSlip in (0, 0.5), pLearn and pInit in [0, 1]. */
+const BKT_RANGES: Record<keyof BktParams, (v: number) => boolean> = {
+  pSlip: (v) => v > 0 && v < 0.5,
+  pLearn: (v) => v >= 0 && v <= 1,
+  pInit: (v) => v >= 0 && v <= 1,
+};
+
+/**
+ * Merges a world's config.bkt over the engine defaults, field by field. An invalid field falls back to its
+ * default (logged). pGuess is never sent: the engine picks it by question type, so a configured one is ignored.
+ * Returns undefined when the world configures nothing, so the engine uses its own defaults.
+ */
+export function mergeBkt(raw: unknown, where: string): BktParams | undefined {
   if (raw == null) return undefined;
-  const p = BktParamsSchema.safeParse(raw);
-  const ok =
-    p.success &&
-    p.data.pSlip > 0 && p.data.pSlip < 0.5 &&
-    p.data.pGuess > 0 && p.data.pGuess < 0.5 &&
-    p.data.pLearn >= 0 && p.data.pLearn <= 1 &&
-    p.data.pInit >= 0 && p.data.pInit <= 1;
-  if (!ok) console.warn(`mastery: ${where} has invalid bkt params; using engine defaults`);
-  return ok ? p.data : undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    console.warn(`mastery: ${where} bkt config is not an object; using engine defaults`);
+    return undefined;
+  }
+  const cfg = raw as Record<string, unknown>;
+  if ("pGuess" in cfg) console.warn(`mastery: ${where} sets pGuess; ignored (the engine picks it by question type)`);
+  const out = { ...BKT_DEFAULTS };
+  for (const key of Object.keys(BKT_RANGES) as (keyof BktParams)[]) {
+    if (!(key in cfg)) continue;
+    const v = cfg[key];
+    if (typeof v === "number" && Number.isFinite(v) && BKT_RANGES[key](v)) out[key] = v;
+    else console.warn(`mastery: ${where} has invalid ${key}; using default ${BKT_DEFAULTS[key]}`);
+  }
+  return out;
 }
 
-/** Transient engine trouble (unreachable, 5xx, timeout, rate limit) is retried later; anything else will not get better. */
+/**
+ * Transient trouble is retried later: the engine answering 5xx, 408 or 429, or being unreachable (the client
+ * reports that as EngineError 502). Transient database errors (see TRANSIENT_PG_CODES) count too. Anything else (other database errors, invalid engine responses, bugs) will not
+ * get better by waiting, so the row is skipped.
+ */
+/** Postgres: serialization_failure, deadlock_detected, lock_not_available, query_canceled. */
+const TRANSIENT_PG_CODES = new Set(["40001", "40P01", "55P03", "57014"]);
+/** node-postgres puts the SQLSTATE on `code`; drizzle may wrap the driver error in `cause`. */
+const pgCode = (e: unknown): string | undefined => {
+  for (let cur: unknown = e, i = 0; cur && typeof cur === "object" && i < 3; cur = (cur as { cause?: unknown }).cause, i++) {
+    const c = (cur as { code?: unknown }).code;
+    if (typeof c === "string") return c;
+  }
+  return undefined;
+};
 const isTransient = (e: unknown) =>
-  !(e instanceof EngineError) || e.status >= 500 || e.status === 408 || e.status === 429;
+  (e instanceof EngineError && (e.status >= 500 || e.status === 408 || e.status === 429)) ||
+  TRANSIENT_PG_CODES.has(pgCode(e) ?? "");
 
-/** Distinct concept names, trimmed, keyed by slug. A step's own list wins over its lesson's. */
+/**
+ * Distinct concept names, trimmed, keyed by slug. A step's own list wins over its lesson's.
+ * Concept names are public labels: they appear in attempt feedback (missedConcepts) and in me.mastery, so
+ * they must never hold anything secret (answers, hints).
+ */
 function conceptNames(stepConcepts: unknown, lessonConcepts: string[], where: string) {
   const own = validConcepts(stepConcepts, where);
   const source = own.length ? own : validConcepts(lessonConcepts, where);
@@ -66,6 +104,11 @@ function conceptNames(stepConcepts: unknown, lessonConcepts: string[], where: st
   for (const c of source) if (slugOf(c)) bySlug.set(slugOf(c), c.trim());
   return bySlug;
 }
+
+/** The concept names an attempt on a step touches, resolved the same way mastery does (step first, then lesson). */
+export const resolveConcepts = (stepConcepts: unknown, lessonConcepts: string[], where: string): string[] => [
+  ...conceptNames(stepConcepts, lessonConcepts, where).values(),
+];
 
 /** Inserts missing concepts for the world and returns slug -> id. */
 async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string>) {
@@ -82,9 +125,9 @@ async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string
 }
 
 /** Asks the engine what comes next in the world and stores it when it is new information. */
-async function recommend(tx: Db, learnerId: string, worldId: string, force: boolean): Promise<void> {
+async function recommend(tx: Db, learnerId: string, worldId: string): Promise<void> {
   const worldLessons = await tx
-    .select({ id: lessons.id, kind: lessons.kind, concepts: lessons.concepts })
+    .select({ id: lessons.id, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
     .from(lessons)
     .where(and(eq(lessons.worldId, worldId), eq(lessons.status, "published")))
     .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.slug));
@@ -107,20 +150,23 @@ async function recommend(tx: Db, learnerId: string, worldId: string, force: bool
   const idOfSlug = new Map(ids);
   for (const k of known) idOfSlug.set(k.slug, k.conceptId);
 
-  const next = await engineLearner.next({
+  const [world] = await tx.select({ title: worlds.title }).from(worlds).where(eq(worlds.id, worldId));
+  const worldTitle = world?.title.trim() ?? "";
+  const request: NextRequest = {
     mastery: known.map((k) => ({ conceptId: k.slug, pKnown: k.pKnown })),
     edges: [], // no prerequisite edges exist yet, so every concept counts as unlocked
     lessons: worldLessons.map((l, order) => ({
       lessonId: l.id,
+      ...(l.title.trim() && { title: l.title.trim() }),
       conceptIds: [...new Set(l.concepts.map(slugOf).filter((slug) => ids.has(slug)))],
       kind: l.kind,
       done: complete.has(l.id),
       order,
     })),
+    ...(worldTitle && { worldTitle }),
     unlockAt: UNLOCK_AT,
     masteredAt: MASTERED_AT,
-  });
-  const result = { ...next, conceptId: next.conceptId ? (idOfSlug.get(next.conceptId) ?? null) : null };
+  };
 
   const [latest] = await tx
     .select()
@@ -128,16 +174,37 @@ async function recommend(tx: Db, learnerId: string, worldId: string, force: bool
     .where(and(eq(recommendations.learnerId, learnerId), eq(recommendations.worldId, worldId)))
     .orderBy(desc(recommendations.createdAt), desc(recommendations.id))
     .limit(1);
-  const same =
-    latest &&
-    latest.action === result.action &&
-    latest.lessonId === result.lessonId &&
-    latest.conceptId === result.conceptId &&
-    latest.reasonCode === result.reasonCode;
-  if (force || !same) await insertRecommendation(tx, learnerId, worldId, result);
+  // Nothing the engine sees has changed since the stored recommendation, so asking again cannot tell us more.
+  const inputHash = hashInput(request);
+  if (latest?.inputHash === inputHash) return;
+
+  const next = await engineLearner.next(request);
+  const result = { ...next, conceptId: next.conceptId ? (idOfSlug.get(next.conceptId) ?? null) : null };
+  await insertRecommendation(tx, learnerId, worldId, result, inputHash);
 }
 
-const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: NextResult) =>
+/**
+ * Bump together with POLICY_VERSION in services/engine/learnquest_engine/policy.py (a test keeps them equal).
+ * It is part of the cache hash, so a policy or reason-text change invalidates stored recommendations.
+ */
+export const POLICY_VERSION = "2";
+
+/** JSON with object keys sorted at every level, so equal values always serialise equally. */
+function stableStringify(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/** sha256 over the whole /v1/next request plus the policy version: anything the engine sees can change the answer. */
+function hashInput(r: NextRequest): string {
+  return createHash("sha256").update(stableStringify({ policyVersion: POLICY_VERSION, request: r })).digest("hex");
+}
+
+const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: NextResult, inputHash: string) =>
   tx.insert(recommendations).values({
     learnerId,
     worldId,
@@ -146,6 +213,7 @@ const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: Nex
     action: r.action,
     reasonCode: r.reasonCode,
     reason: r.reason,
+    inputHash,
   });
 
 /**
@@ -198,7 +266,7 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
             .from(mastery)
             .where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds)));
           const prior = new Map(priors.map((p) => [p.conceptId, p.pKnown]));
-          const bkt = validBkt((a.config as { bkt?: unknown } | null)?.bkt, `world ${a.worldId}`);
+          const bkt = mergeBkt((a.config as { bkt?: unknown } | null)?.bkt, `world ${a.worldId}`);
           const updates = await engineLearner.update({
             priors: conceptIds.map((conceptId) => ({ conceptId, pKnown: prior.get(conceptId) ?? null })),
             ...(bkt && { params: bkt }),
@@ -228,13 +296,13 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
       await tx.update(attempts).set({ masteryAppliedAt: new Date() }).where(eq(attempts.id, a.id));
     }
 
-    // Recompute for changed worlds (always stored) and for the requested world (stored only if it changed).
+    // Recompute for changed worlds and for the requested world; recommend() skips the engine when its inputs match the stored hash.
     // The engine can fail here without losing the mastery writes above.
-    const want = [...[...touched].map((w) => [w, true] as const), ...(opts.worldId && !touched.has(opts.worldId) ? [[opts.worldId, false] as const] : [])];
-    for (const [worldId, force] of want) {
+    const want = new Set([...touched, ...(opts.worldId ? [opts.worldId] : [])]);
+    for (const worldId of want) {
       await tx.execute(sql`SAVEPOINT recommend`);
       try {
-        await recommend(tx, learnerId, worldId, force);
+        await recommend(tx, learnerId, worldId);
         await tx.execute(sql`RELEASE SAVEPOINT recommend`);
       } catch (e) {
         await tx.execute(sql`ROLLBACK TO SAVEPOINT recommend`);

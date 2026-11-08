@@ -2,18 +2,23 @@ import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { fileURLToPath } from "node:url";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
 import { attempts, concepts, learners, mastery, recommendations, stepProgress, steps, worlds } from "../src/db/schema.ts";
 import { EngineError } from "../src/engine-client/client.ts";
 import { engineLearner } from "../src/engine-client/learner.ts";
-import { applyObservations, observationOf, type AttemptFacts } from "../src/progress/mastery.ts";
+import { readFileSync } from "node:fs";
+import { BKT_DEFAULTS, POLICY_VERSION, applyObservations, observationOf, type AttemptFacts } from "../src/progress/mastery.ts";
 
 const app = buildApp();
 after(() => app.close());
 
 const real = { update: engineLearner.update, next: engineLearner.next };
 let updateCalls = 0;
+let nextCalls = 0;
+let lastNext: Parameters<typeof engineLearner.next>[0] | undefined;
 const stubUpdate: typeof engineLearner.update = async (req) => {
   updateCalls++;
   return req.priors.map((p) => {
@@ -24,8 +29,12 @@ const stubUpdate: typeof engineLearner.update = async (req) => {
 };
 beforeEach(() => {
   updateCalls = 0;
+  nextCalls = 0;
+  lastNext = undefined;
   engineLearner.update = stubUpdate;
   engineLearner.next = async (req) => {
+    nextCalls++;
+    lastNext = req;
     const lesson = req.lessons.find((l) => !l.done) ?? null;
     return {
       action: lesson ? "practice" : "done",
@@ -133,18 +142,156 @@ test("an engine failure never fails the attempt, and a later read catches up", a
   assert.equal(list[0].nObs, 1);
 });
 
-test("invalid bkt config is ignored and observations still apply with defaults", async () => {
+test("a partial bkt config is merged over the defaults, and pGuess is ignored", async () => {
   const c = await signUp(app);
-  await db.execute(sql`UPDATE worlds SET config = '{"bkt":{"pSlip":0.9,"pGuess":0.1,"pLearn":0.3,"pInit":0.2}}'::jsonb`);
+  await db.execute(sql`UPDATE worlds SET config = '{"bkt":{"pSlip":0.3,"pGuess":0.4}}'::jsonb`);
   const seen: unknown[] = [];
   engineLearner.update = async (req) => {
     seen.push(req.params);
     return stubUpdate(req);
   };
   assert.equal((await attempt(c, 1)).statusCode, 200);
-  assert.deepEqual(seen, [undefined]);
+  assert.deepEqual(seen, [{ pSlip: 0.3, pLearn: 0.2, pInit: 0.2 }]);
   assert.equal((await pOf("functions"))?.n, 1);
 });
+
+test("an invalid bkt field falls back to its default while valid ones apply", async () => {
+  const c = await signUp(app);
+  await db.execute(sql`UPDATE worlds SET config = '{"bkt":{"pSlip":0.9,"pLearn":0.3}}'::jsonb`);
+  const seen: unknown[] = [];
+  engineLearner.update = async (req) => {
+    seen.push(req.params);
+    return stubUpdate(req);
+  };
+  assert.equal((await attempt(c, 1)).statusCode, 200);
+  assert.deepEqual(seen, [{ pSlip: 0.1, pLearn: 0.3, pInit: 0.2 }]);
+});
+
+test("a row with an invalid engine response is marked and a later valid row still applies", async () => {
+  const c = await signUp(app);
+  engineLearner.update = async () => z.array(z.string()).parse([1]) as never;
+  assert.equal((await attempt(c, 1)).statusCode, 200);
+  let rows = await db.select().from(attempts);
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0]!.masteryAppliedAt, "permanent failure is marked applied");
+  assert.equal((await db.select().from(mastery)).length, 0);
+
+  engineLearner.update = stubUpdate;
+  const s2 = await trpc(app, c).m("steps.attempt", { id: "s2", answer: { kind: "cloze", text: "discount = 0" } });
+  assert.equal(s2.statusCode, 200);
+  rows = await db.select().from(attempts);
+  assert.ok(rows.every((r) => r.masteryAppliedAt));
+  assert.equal((await db.select().from(mastery)).length > 0, true);
+});
+
+test("a database error on one row is permanent, a 429 is transient", async () => {
+  const c = await signUp(app);
+  engineLearner.update = async () => {
+    throw new EngineError("slow down", 429, null);
+  };
+  await attempt(c, 1);
+  assert.equal((await db.select().from(attempts))[0]!.masteryAppliedAt, null);
+  engineLearner.update = async () => {
+    throw new Error("relation does not exist");
+  };
+  await applyObservations(await learnerId());
+  assert.ok((await db.select().from(attempts))[0]!.masteryAppliedAt);
+});
+
+test("two reads with no change make one engine next call; new information makes one more", async () => {
+  const c = await signUp(app);
+  const read = () => trpc(app, c).q("me.next", { world: "codequest" });
+  assert.equal((await read()).statusCode, 200);
+  assert.equal((await read()).statusCode, 200);
+  assert.equal((await trpc(app, c).q("me.mastery", { world: "codequest" })).statusCode, 200);
+  assert.equal(nextCalls, 1);
+  assert.equal((await db.select().from(recommendations)).length, 1);
+  assert.match((await db.select().from(recommendations))[0]!.inputHash ?? "", /^[0-9a-f]{64}$/);
+
+  await attempt(c, 1); // a new observation changes mastery
+  assert.equal(nextCalls, 2);
+  await read();
+  await read();
+  assert.equal(nextCalls, 2);
+
+  // Another observation (s2 is a cloze step) moves mastery again.
+  assert.equal((await trpc(app, c).m("steps.attempt", { id: "s2", answer: { kind: "cloze", text: "discount = 0" } })).statusCode, 200);
+  assert.equal(nextCalls, 3);
+  await read();
+  assert.equal(nextCalls, 3);
+});
+
+test("a changed world title changes the hash and the engine receives display titles", async () => {
+  const c = await signUp(app);
+  const read = () => trpc(app, c).q("me.next", { world: "codequest" });
+  await read();
+  const [w] = await db.select().from(worlds);
+  assert.equal(lastNext?.worldTitle, w!.title);
+  assert.ok(lastNext!.lessons.every((l) => l.title));
+  await db.update(worlds).set({ title: "Renamed course" }).where(eq(worlds.slug, "codequest"));
+  await read();
+  assert.equal(nextCalls, 2);
+  assert.equal(lastNext?.worldTitle, "Renamed course");
+});
+
+test("a changed lesson title changes the hash and asks the engine again", async () => {
+  const c = await signUp(app);
+  const read = () => trpc(app, c).q("me.next", { world: "codequest" });
+  await read();
+  await read();
+  assert.equal(nextCalls, 1);
+  await db.execute(sql`UPDATE lessons SET title = title || ' (renamed)' WHERE slug = 'lesson-1'`);
+  await read();
+  assert.equal(nextCalls, 2);
+  assert.ok(lastNext!.lessons.some((l) => l.title?.endsWith("(renamed)")));
+});
+
+test("a transient database error (40001) leaves the row pending and a later read applies it", async () => {
+  const c = await signUp(app);
+  engineLearner.update = async () => {
+    throw Object.assign(new Error("could not serialize access"), { cause: { code: "40001" } });
+  };
+  assert.equal((await attempt(c, 1)).statusCode, 200);
+  assert.equal((await db.select().from(attempts))[0]!.masteryAppliedAt, null);
+  assert.equal((await db.select().from(mastery)).length, 0);
+
+  engineLearner.update = async () => {
+    throw Object.assign(new Error("deadlock detected"), { code: "40P01" });
+  };
+  await applyObservations(await learnerId());
+  assert.equal((await db.select().from(attempts))[0]!.masteryAppliedAt, null);
+
+  engineLearner.update = stubUpdate;
+  assert.equal((await trpc(app, c).q("me.mastery", { world: "codequest" })).statusCode, 200);
+  assert.ok((await db.select().from(attempts))[0]!.masteryAppliedAt);
+  assert.equal((await pOf("functions"))?.n, 1);
+});
+
+const engineFile = (name: string) =>
+  readFileSync(fileURLToPath(new URL(`../../../services/engine/learnquest_engine/${name}`, import.meta.url)), "utf8");
+const pyConst = (src: string, name: string) => {
+  const m = new RegExp(`^${name}\\s*=\\s*("?)([^\\s#"]+)\\1`, "m").exec(src);
+  assert.ok(m, `constant ${name} not found in engine source`);
+  return m[2]!;
+};
+
+test("API BKT defaults and policy version match the engine's constants", () => {
+  const bkt = engineFile("bkt.py");
+  const want = { pSlip: "P_SLIP", pLearn: "P_LEARN", pInit: "P_INIT" } as const;
+  for (const [key, pyName] of Object.entries(want) as [keyof typeof want, string][]) {
+    assert.equal(BKT_DEFAULTS[key], Number(pyConst(bkt, pyName)), `BKT default ${key} differs from ${pyName} in bkt.py`);
+  }
+  assert.equal(POLICY_VERSION, pyConst(engineFile("policy.py"), "POLICY_VERSION"), "POLICY_VERSION differs from policy.py");
+});
+
+test("a wrong attempt reports the lesson's concepts, and only names", async () => {
+  const c = await signUp(app);
+  const r = out(await attempt(c, 0));
+  assert.equal(r.correct, false);
+  assert.deepEqual([...r.missedConcepts].sort(), ["array reduce", "functions"].sort());
+  const body = JSON.stringify(r);
+  for (const key of ["answer", "hint", "explanations"]) assert.ok(!body.includes(`"${key}"`));
+})
 
 test("a row the engine rejects, or with a bad concept entry, does not block a later valid one", async () => {
   const c = await signUp(app);

@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { callEngine } from "./client.ts";
 
-const Params = z.object({ pSlip: z.number(), pGuess: z.number(), pLearn: z.number(), pInit: z.number() });
-export type BktParams = z.infer<typeof Params>;
-export { Params as BktParamsSchema };
+/** World-tunable BKT parameters. pGuess is not sent: the engine picks it by question type. */
+export type BktParams = { pSlip: number; pLearn: number; pInit: number };
 
 export type UpdateRequest = {
   priors: { conceptId: string; pKnown: number | null }[];
@@ -18,7 +17,8 @@ const UpdateResponse = z.object({
 export type NextRequest = {
   mastery: { conceptId: string; pKnown: number }[];
   edges: [string, string][];
-  lessons: { lessonId: string; conceptIds: string[]; kind: string; done: boolean; order: number }[];
+  lessons: { lessonId: string; title?: string; conceptIds: string[]; kind: string; done: boolean; order: number }[];
+  worldTitle?: string;
   unlockAt?: number;
   masteredAt?: number;
 };

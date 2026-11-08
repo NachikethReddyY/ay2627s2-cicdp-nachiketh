@@ -8,7 +8,7 @@ import { attempts, hintEvents, learners, lessons, lessonVersions, stepProgress, 
 import { withTx } from "../db/tx.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
-import { applyObservations } from "../progress/mastery.ts";
+import { applyObservations, resolveConcepts } from "../progress/mastery.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
 const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
@@ -32,7 +32,7 @@ async function mustStep(id: string, learnerId: string) {
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, pub: steps.public, secret: steps.secret, source: lessons.source })
+    .select({ id: steps.id, idx: steps.idx, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -50,6 +50,9 @@ async function loadStep(id: string, learnerId: string) {
   return row;
 }
 type Step = NonNullable<Awaited<ReturnType<typeof loadStep>>>;
+
+// Concept names only (public labels), resolved like mastery does: the step's own list, else its lesson's.
+const missedOf = (step: Step) => resolveConcepts(step.secret.concepts, step.lessonConcepts, `step ${step.id}`);
 
 const hintAt = (step: Step, rung: number) => {
   const h = step.secret.hints[rung - 1]!;
@@ -103,7 +106,7 @@ function mutate(
           correct: o.type === "skip" ? null : o.correct,
           hintsUsed: r.progress.rungsTaken,
           feedback: o.type === "skip" ? null : o.correct ? "Correct!" : "Not quite.",
-          missedConcepts: o.type === "skip" || o.correct ? [] : (step.secret.concepts ?? []),
+          missedConcepts: o.type === "skip" || o.correct ? [] : missedOf(step),
         })
         .returning({ id: attempts.id });
       attemptId = row!.id;
@@ -193,7 +196,7 @@ export const stepsRouter = router({
         correct,
         feedback: correct ? "Correct!" : "Not quite.",
         // Same list the attempt row stores.
-        missedConcepts: correct ? [] : (step.secret.concepts ?? []),
+        missedConcepts: correct ? [] : missedOf(step),
         hintsUsed: out.progress.rungsTaken,
         state: out.progress.state,
         attemptAllowed: out.progress.attemptAllowed,
