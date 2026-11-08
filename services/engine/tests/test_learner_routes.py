@@ -86,3 +86,23 @@ def test_next_done_has_null_lesson(client: TestClient) -> None:
     assert body["action"] == "done"
     assert body["lessonId"] is None
     assert body["reason"]
+
+
+def test_next_reason_uses_titles(client: TestClient) -> None:
+    body = {
+        "mastery": [],
+        "lessons": [
+            {
+                "lessonId": "l1",
+                "conceptIds": ["vars"],
+                "kind": "learn",
+                "done": False,
+                "order": 1,
+                "title": "Variables",
+            }
+        ],
+        "worldTitle": "JavaScript Basics",
+    }
+    reason = client.post("/v1/next", json=body, headers=TOKEN).json()["reason"]
+    assert "JavaScript Basics" in reason
+    assert "Variables" in reason

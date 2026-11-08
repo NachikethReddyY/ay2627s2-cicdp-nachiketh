@@ -72,6 +72,7 @@ class LessonIn(BaseModel):
     kind: str = Field(min_length=1, max_length=40)
     done: bool
     order: int
+    title: str | None = Field(default=None, max_length=200)
 
 
 class NextRequest(BaseModel):
@@ -80,6 +81,7 @@ class NextRequest(BaseModel):
     lessons: list[LessonIn] = Field(max_length=500)
     unlockAt: float = Field(default=0.8, ge=0, le=1)
     masteredAt: float = Field(default=0.95, ge=0, le=1)
+    worldTitle: str | None = Field(default=None, max_length=200)
 
 
 class NextResponse(BaseModel):
@@ -94,9 +96,13 @@ def next_step(req: NextRequest) -> NextResponse:
     rec = policy.recommend(
         [policy.Mastery(m.conceptId, m.pKnown) for m in req.mastery],
         req.edges,
-        [policy.Lesson(x.lessonId, x.conceptIds, x.kind, x.done, x.order) for x in req.lessons],
+        [
+            policy.Lesson(x.lessonId, x.conceptIds, x.kind, x.done, x.order, x.title)
+            for x in req.lessons
+        ],
         unlock_at=req.unlockAt,
         mastered_at=req.masteredAt,
+        world_title=req.worldTitle,
     )
     return NextResponse(
         action=rec.action,

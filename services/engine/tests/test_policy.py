@@ -44,6 +44,35 @@ def test_advance_when_all_mastered() -> None:
     assert "vars" in r.reason
 
 
+def test_locked_unmastered_concept_blocks_advance() -> None:
+    # vars mastered, loops below mastered but locked behind an unmet prerequisite.
+    m = [Mastery("vars", 0.97), Mastery("loops", 0.5)]
+    edges = [("prep", "loops")]
+    r = recommend(m, edges, [L1, L3])
+    assert r.action != Action.ADVANCE
+    assert (r.action, r.concept_id, r.reason_code) == (
+        Action.PRACTICE,
+        "loops",
+        ReasonCode.PRACTICE,
+    )
+    assert "prerequisites" in r.reason
+    assert "mastered" not in r.reason
+
+
+def test_advance_reason_lists_only_mastered_and_uses_titles() -> None:
+    done = Lesson("l1", ["vars"], "learn", True, 1, "Variables")
+    nxt = Lesson("l3", ["loops"], "learn", False, 3, "Loops")
+    r = recommend([Mastery("vars", 0.97)], [], [done, nxt])
+    assert r.reason == "You've mastered vars. Next up: Loops."
+
+
+def test_start_reason_uses_titles() -> None:
+    r = recommend(
+        [], [], [Lesson("l1", ["vars"], "learn", False, 1, "Variables")], world_title="JS"
+    )
+    assert r.reason == "You haven't started JS yet. Start with Variables, which introduces vars."
+
+
 def test_done_when_nothing_remains() -> None:
     r = recommend([Mastery("vars", 0.97)], [], [Lesson("l1", ["vars"], "learn", True, 1)])
     assert (r.action, r.lesson_id, r.concept_id) == (Action.DONE, None, None)
@@ -106,3 +135,25 @@ def test_every_recommendation_has_a_reason(
     assert r.reason.strip()
     assert r.reason_code in set(ReasonCode)
     assert (r.lesson_id is None) == (r.action == Action.DONE)
+
+
+def test_start_without_titles_reads_naturally() -> None:
+    r = recommend([], [], [L1])
+    assert r.reason == (
+        "You haven't started this world yet. Start with the next lesson, which introduces vars."
+    )
+    assert "l1" not in r.reason
+    assert "yet yet" not in r.reason
+
+
+def test_advance_without_title_does_not_leak_the_lesson_id() -> None:
+    r = recommend([Mastery("vars", 0.99)], [], [L3])
+    assert r.action == Action.ADVANCE
+    assert r.reason == "You've mastered vars. Next up: the next lesson."
+    assert "l3" not in r.reason
+
+
+def test_reason_default_world_has_no_double_yet() -> None:
+    from learnquest_engine.policy import _reason
+
+    assert "yet yet" not in _reason(ReasonCode.START, ["vars"], lesson="X")
