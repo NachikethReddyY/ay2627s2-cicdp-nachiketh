@@ -12,7 +12,7 @@ import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
 import { tiers } from "../config/tiers.ts";
-import { ENGINE_CALLS_PER_PART, reserveAiSpend } from "../config/budget.ts";
+import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
 import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
@@ -93,7 +93,7 @@ export async function generatePath(learnerId: string, topic: string) {
   });
   if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me!.tier as keyof typeof tiers].aiPathsPerDay} AI paths for today` });
   try {
-    await reserveAiSpend(env.AI_CALL_ESTIMATE_USD);
+    await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_REPLY);
   } catch (e) {
     await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)); // refused before any call: the daily path is not used
     throw e;
@@ -294,8 +294,8 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Before each attempt (a retry is reserved too). An engine part can make several model calls.
-    if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : 1));
+    // Before each attempt (a retry is reserved too). A part can make several model calls; so can a predict reply, with its repair.
+    if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
       const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));

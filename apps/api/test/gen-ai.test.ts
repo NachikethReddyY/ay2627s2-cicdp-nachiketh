@@ -110,6 +110,21 @@ test("an engine part reserves four calls' worth of spend", async () => {
   assert.equal(Number(r!.s), 2);
 });
 
+test("a predict reply reserves two calls' worth of spend on each attempt", async () => {
+  const { lesson, learnerId } = await firstLesson();
+  await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
+  env.AI_CALL_ESTIMATE_USD = 0.5;
+  env.AI_DAILY_BUDGET_USD = 0;
+  env.AI_MONTHLY_BUDGET_USD = 0;
+  await db.execute(sql`DELETE FROM spend_ledger`);
+  generator.lesson = async () => {
+    throw new Error("stop"); // fails both attempts; each attempt is reserved before the call
+  };
+  await assert.rejects(ensureLesson(lesson.id, learnerId));
+  const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
+  assert.equal(Number(r!.s), 2); // two attempts x (reply + repair) x 0.5
+});
+
 test("a predict lesson stored for everyone is generated without the learner's missed concepts", async () => {
   const { lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));

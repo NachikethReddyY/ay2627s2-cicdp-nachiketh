@@ -3,6 +3,9 @@ import { TRPCError } from "@trpc/server";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 
+/** Most model calls one engine reply can make: the reply and its JSON repair. Predict lessons and outlines reserve this many. */
+export const ENGINE_CALLS_PER_REPLY = 2;
+
 /**
  * Most model calls one engine lesson part can make: the reply and its JSON repair, then for a game-practice part
  * the game repair and its JSON repair. The part's reservation is this many estimates.

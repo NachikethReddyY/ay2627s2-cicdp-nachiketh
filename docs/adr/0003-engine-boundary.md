@@ -80,7 +80,7 @@ must be checked against the same list.
 - New config surface:
   - API: `ENGINE_URL`, `ENGINE_TOKEN` (optional, at least 32 characters), `ENGINE_TIMEOUT_MS`
     (default 400000).
-  - Engine: `ENGINE_TOKEN` (required, at least 32 characters, checked at startup),
+  - Engine: `ENGINE_TOKEN` (required, at least 32 characters, checked on the first request),
     `LLM_MODEL`, `LLM_API_BASE`, `LLM_API_KEY`.
   - The two `ENGINE_TOKEN` values must match.
 - The engine's total request budget must stay below the API timeout
