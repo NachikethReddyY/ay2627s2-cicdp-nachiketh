@@ -79,10 +79,11 @@ beforeEach(async () => {
 
 test("writeFile passes argv exactly and the content only on stdin", async () => {
   await b.writeFile!("learner-a", "solution.py", "print('$(rm -rf ~)')\n");
-  assert.deepEqual(child.calls[0]!.args, ["exec", "-i", "-u", "1001", containerName("learner-a"),
+  const write = child.calls.at(-1)!;
+  assert.deepEqual(write.args, ["exec", "-i", "-u", "1001", containerName("learner-a"),
     "sh", "-c", 'cat > "$1"', "sh", "/home/learner/solution.py"]);
-  assert.equal(child.calls[0]!.stdin, "print('$(rm -rf ~)')\n");
-  assert.ok(!child.calls[0]!.args.some((a) => a.includes("rm -rf")));
+  assert.equal(write.stdin, "print('$(rm -rf ~)')\n");
+  assert.ok(!write.args.some((a) => a.includes("rm -rf")));
 });
 
 test("listDir runs find as uid 1001 and parses names with spaces, tabs, newlines and non-ASCII", async () => {

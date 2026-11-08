@@ -76,6 +76,21 @@ test("URL, binary keystrokes and resize frames", () => {
   s.dispose();
 });
 
+test("sendBytes passes bytes >= 128 through unchanged as a binary frame", () => {
+  reset();
+  const s = make();
+  const bytes = new Uint8Array([0x1b, 0x5b, 0x4d, 0xff, 0xc3, 0xa9, 0x80]);
+  assert.equal(s.sendBytes(bytes), false);
+  s.connect(80, 24);
+  assert.equal(s.sendBytes(bytes), false);
+  FakeWS.last.open();
+  assert.equal(s.sendBytes(bytes), true);
+  const sent = FakeWS.last.sent[0] as Uint8Array;
+  assert.ok(sent instanceof Uint8Array);
+  assert.deepEqual([...sent], [...bytes]);
+  s.dispose();
+});
+
 test("nothing connects until connect() is called", () => {
   reset();
   const s = make();

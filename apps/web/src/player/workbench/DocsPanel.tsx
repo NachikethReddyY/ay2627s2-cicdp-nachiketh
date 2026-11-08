@@ -4,7 +4,7 @@ import { DOCS, searchDocs, type Doc } from "./docs";
 
 type Props = {
   /** Id of the doc to show. The caller owns it so the palette and hovers can open one. */
-  selected: string;
+  selected: string | null;
   onSelect(id: string): void;
 };
 
@@ -24,7 +24,7 @@ function Block({ label, text, mono }: { label: string; text: string; mono?: bool
 export default function DocsPanel({ selected, onSelect }: Props) {
   const [q, setQ] = useState("");
   const uid = useId();
-  const doc: Doc = DOCS.find((d) => d.id === selected) ?? DOCS[0];
+  const doc: Doc | undefined = selected ? DOCS.find((d) => d.id === selected) : undefined;
   const results = searchDocs(q);
   const byId = (id: string) => DOCS.find((d) => d.id === id);
 
@@ -68,25 +68,25 @@ export default function DocsPanel({ selected, onSelect }: Props) {
           </div>
         )}
       </div>
-      <article className="wb-scroll min-h-0 flex-1 px-4 pb-5 pt-4" aria-label={doc.title}>
-        <div className="text-[11.5px] text-[var(--mu)]">{doc.src}</div>
-        <h2 className="mb-2 mt-0.5 text-lg font-semibold leading-tight">{doc.title}</h2>
-        <p className="mb-3.5">{doc.snippet}</p>
-        <Block label="Syntax" text={doc.syntax} mono />
-        <Block label="Example" text={doc.example} mono />
-        <Block label="Details" text={doc.detail} />
-        <h3 className="wb-sec h-[22px] p-0">See also</h3>
-        <div className="flex flex-wrap gap-1.5">
-          {doc.see.map((id) => {
-            const r = byId(id);
-            return r && (
-              <button key={id} type="button" className="wb-chip" onClick={() => onSelect(id)}>
-                {r.title}
-              </button>
-            );
-          })}
-        </div>
-      </article>
+      {doc && <article className="wb-scroll min-h-0 flex-1 px-4 pb-5 pt-4" aria-label={doc.title}>
+          <div className="text-[11.5px] text-[var(--mu)]">{doc.src}</div>
+          <h2 className="mb-2 mt-0.5 text-lg font-semibold leading-tight">{doc.title}</h2>
+          <p className="mb-3.5">{doc.snippet}</p>
+          <Block label="Syntax" text={doc.syntax} mono />
+          <Block label="Example" text={doc.example} mono />
+          <Block label="Details" text={doc.detail} />
+          <h3 className="wb-sec h-[22px] p-0">See also</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {doc.see.map((id) => {
+              const r = byId(id);
+              return r && (
+                <button key={id} type="button" className="wb-chip" onClick={() => onSelect(id)}>
+                  {r.title}
+                </button>
+              );
+            })}
+          </div>
+        </article>}
     </div>
   );
 }

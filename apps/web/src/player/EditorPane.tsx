@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import type { IDisposable } from "monaco-editor";
+import type { IDisposable, Uri, editor as MonacoEditor } from "monaco-editor";
 import type { SeekResult } from "@learnquest/player-core";
 import { setPracticeDiagnostics } from "./monaco";
 import Loader from "../components/Loader";
 import { defineWorkbenchThemes } from "./workbench/monacoThemes";
+import { explainMarker } from "./workbench/editorHelp";
+import type { WorkbenchProblem } from "./workbench/context";
 
 export type EditorHandle = { show(r: SeekResult): void; focus(): void };
 
@@ -14,16 +16,19 @@ type Props = {
   ref?: Ref<EditorHandle>;
   transportRef: RefObject<HTMLButtonElement | null>;
   viewPath?: string; // file the user picked; falls back to the replay's active file
-  modelPath?: string; // stable Monaco model identity for editable workspace files
   overlay?: ReactNode;
   edit?: { value: string; language: string; onChange(v: string): void }; // practice: the learner types here
   theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default "vs"
   fontFamily?: string;
   onCursor?(line: number, column: number): void; // caret moves, for a status bar
+  onSelection?(selection: { startLine: number; endLine: number; text: string } | null): void;
+  onProblems?(problems: WorkbenchProblem[]): void;
+  problemFileName?: string;
+  wordWrap?: boolean;
   help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable; // practice: hovers, completion docs, squiggles
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, modelPath, overlay, edit, theme, fontFamily, onCursor, help }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, onSelection, onProblems, problemFileName, wordWrap = false, help }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -32,8 +37,14 @@ export default function EditorPane({ ref, transportRef, viewPath, modelPath, ove
   const viewRef = useRef(viewPath);
   const cursorRef = useRef(onCursor);
   cursorRef.current = onCursor;
+  const selectionRef = useRef(onSelection);
+  selectionRef.current = onSelection;
   const helpRef = useRef(help);
   helpRef.current = help;
+  const problemsRef = useRef(onProblems);
+  problemsRef.current = onProblems;
+  const problemFileRef = useRef(problemFileName);
+  problemFileRef.current = problemFileName;
   const language = edit?.language ?? langOf(viewPath ?? active);
   const helpOn = !!help;
   const [mounted, setMounted] = useState<{ ed: Parameters<OnMount>[0]; monaco: Parameters<OnMount>[1] } | null>(null);
@@ -89,6 +100,57 @@ export default function EditorPane({ ref, transportRef, viewPath, modelPath, ove
     monacoRef.current = monaco;
     caretRef.current = ed.createDecorationsCollection();
     ed.onDidChangeCursorPosition((e) => cursorRef.current?.(e.position.lineNumber, e.position.column));
+    if (edit) {
+      const syncProblems = () => {
+        const model = ed.getModel();
+        if (!model) return;
+        const current = monaco.editor.getModelMarkers({ resource: model.uri }) as MonacoEditor.IMarker[];
+        problemsRef.current?.(current
+          .filter((marker) => marker.severity === monaco.MarkerSeverity.Error || marker.severity === monaco.MarkerSeverity.Warning)
+          .map((marker) => {
+            const missingName = /^Cannot find name '([^']+)'/.exec(marker.message)?.[1];
+            const missingProperty = /^Property '([^']+)' does not exist/.exec(marker.message)?.[1];
+            const friendly = explainMarker(marker.message);
+            const title = missingName ? `“${missingName}” has not been defined` : missingProperty ? `“${missingProperty}” is not available here` : friendly ? "Check this line" : "This code needs a change";
+            const explanation = missingName
+              ? `I can’t find “${missingName}” in this file. Check its spelling or define it before this line.`
+              : missingProperty
+                ? `This value doesn’t have a “${missingProperty}” property. Check that you are using the right value or property name.`
+                : friendly ?? "There’s something in this line that the editor can’t understand yet. Check this line and the one before it.";
+            const contextStart = Math.max(1, marker.startLineNumber - 2);
+            const codeContext = model.getValue().split("\n").slice(contextStart - 1, marker.startLineNumber + 2)
+              .map((line, index) => `${contextStart + index === marker.startLineNumber ? ">" : " "} ${contextStart + index}: ${line}`).join("\n");
+            return {
+              fileName: problemFileRef.current || model.uri.path.split("/").pop() || "Current file",
+              line: marker.startLineNumber,
+              severity: marker.severity === monaco.MarkerSeverity.Error ? "error" as const : "warning" as const,
+              title,
+              explanation,
+              diagnostic: marker.message,
+              codeContext,
+            };
+          }));
+      };
+      const markers = monaco.editor.onDidChangeMarkers((resources: readonly Uri[]) => {
+        const model = ed.getModel();
+        if (model && resources.some((uri) => uri.toString() === model.uri.toString())) syncProblems();
+      });
+      syncProblems();
+      ed.onDidDispose(() => markers.dispose());
+    }
+    ed.onDidChangeCursorSelection(({ selection }) => {
+      if (selection.isEmpty()) {
+        selectionRef.current?.(null);
+        return;
+      }
+      const model = ed.getModel();
+      if (!model) return;
+      selectionRef.current?.({
+        startLine: selection.startLineNumber,
+        endLine: selection.endLineNumber,
+        text: model.getValueInRange(selection),
+      });
+    });
     ed.addCommand(
       monaco.KeyCode.Escape,
       () => {
@@ -104,9 +166,7 @@ export default function EditorPane({ ref, transportRef, viewPath, modelPath, ove
   return (
     <div className="relative h-[65dvh] min-w-0 flex-none lg:h-auto lg:min-h-0 lg:flex-1">
       <Editor
-        keepCurrentModel={Boolean(modelPath)}
-        saveViewState={Boolean(modelPath)}
-        path={modelPath ? `file:///workspace/${modelPath.split("/").map(encodeURIComponent).join("/")}` : undefined}
+        path={edit && problemFileName ? `file:///workspace/${problemFileName}` : undefined}
         loading={<div className="grid h-full place-items-center"><Loader label="Opening the editor" /></div>}
         language={language}
         value={edit?.value}
@@ -120,6 +180,8 @@ export default function EditorPane({ ref, transportRef, viewPath, modelPath, ove
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           automaticLayout: true,
+          wordWrap: wordWrap ? "on" : "off",
+          suggestLineHeight: 32,
           fontSize: 14,
           ...(fontFamily && {
             // Main.dc.html: 13 px code on 22 px rows, 8 px above the first line, scrollbars hidden, scrolling kept.

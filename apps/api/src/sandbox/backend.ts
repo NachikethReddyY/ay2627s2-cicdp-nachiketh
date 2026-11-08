@@ -43,6 +43,12 @@ export class SandboxNotRunningError extends Error {
   }
 }
 
+export class SandboxFileTooLargeError extends Error {
+  constructor() {
+    super("file is too large to edit");
+  }
+}
+
 export interface RunLimits {
   timeoutS: number;
 }
@@ -52,6 +58,11 @@ export interface SandboxBackend {
   /** Backends that can run practice code themselves. Without it, run.ts keeps its own `docker run` path. */
   /** Writes one allowlisted file into the learner's running sandbox. Throws SandboxNotRunningError without a shell. */
   writeFile?(learnerId: string, name: SandboxFileName, content: string): Promise<void>;
+  /** Reads and writes an editable workspace file by safe path relative to the learner's home. */
+  readWorkspaceFile?(learnerId: string, path: string): Promise<string | null>;
+  writeWorkspaceFile?(learnerId: string, path: string, content: string): Promise<void>;
+  /** Moves one regular workspace file into an existing directory. */
+  moveWorkspaceFile?(learnerId: string, source: string, targetDir: string): Promise<void>;
   /** relDir is "" for home or a validated "a/b"; null when it does not exist or is not a directory. */
   listDir?(learnerId: string, relDir: string): Promise<DirListing | null>;
   runCode?(learnerId: string, language: "python" | "javascript", code: string, limits: RunLimits): RunHandle;

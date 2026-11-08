@@ -13,6 +13,7 @@ type TsDefaults = {
   setDiagnosticsOptions(o: object): void;
   setCompilerOptions?(o: object): void;
   getCompilerOptions?(): object;
+  addExtraLib?(content: string, filePath?: string): { dispose(): void };
   setModeConfiguration?(o: object): void;
   modeConfiguration?: object;
 };
@@ -24,7 +25,52 @@ const DEFAULTS = ["javascriptDefaults", "typescriptDefaults"];
 for (const d of DEFAULTS) ts?.[d]?.setModeConfiguration?.({ ...ts[d].modeConfiguration, codeActions: false });
 // JavaScript is only type-checked (for "Cannot find name") with checkJs. Set once: it changes nothing
 // while semantic validation is off, and re-setting it would restart the worker.
-ts?.javascriptDefaults?.setCompilerOptions?.({ ...ts.javascriptDefaults.getCompilerOptions?.(), allowJs: true, checkJs: true, allowNonTsExtensions: true });
+ts?.javascriptDefaults?.setCompilerOptions?.({
+  ...ts.javascriptDefaults.getCompilerOptions?.(),
+  allowJs: true,
+  checkJs: true,
+  allowNonTsExtensions: true,
+  // Browser globals (document, localStorage, ...) are included so web snippets type-check
+  // instead of showing "Cannot find name". The "dom" lib also adds some extra completions.
+  lib: ["es2022", "dom"],
+});
+ts?.javascriptDefaults?.addExtraLib?.(
+  `type Task = { id: number; title: string; completed: boolean };
+declare const console: { log(...data: unknown[]): void; info(...data: unknown[]): void; warn(...data: unknown[]): void; error(...data: unknown[]): void; };
+declare const require: {
+  (id: "./taskStore"): {
+    listTasks(): Promise<Task[]>;
+    addTask(title: string): Promise<Task>;
+    completeTask(id: number): Promise<Task | null>;
+    removeTask(id: number): Promise<boolean>;
+  };
+  (id: string): any;
+};
+declare const __dirname: string;
+declare const module: { exports: any };
+declare const process: { exitCode?: number };
+declare module "node:readline/promises" {
+  export function createInterface(options: { input: unknown; output: unknown }): {
+    question(prompt: string): Promise<string>;
+    close(): void;
+  };
+}
+declare module "node:process" { export const stdin: unknown; export const stdout: unknown; }
+declare module "node:fs/promises" {
+  export function readFile(path: string, encoding: "utf8"): Promise<string>;
+  export function writeFile(path: string, data: string): Promise<void>;
+}
+declare module "node:path" { export function join(...parts: string[]): string; }`,
+  "file:///learnslop-globals.d.ts",
+);
+ts?.javascriptDefaults?.addExtraLib?.(
+  `export type Task = { id: number; title: string; completed: boolean };
+export function listTasks(): Promise<Task[]>;
+export function addTask(title: string): Promise<Task>;
+export function completeTask(id: number): Promise<Task | null>;
+export function removeTask(id: number): Promise<boolean>;`,
+  "file:///workspace/task-tracker/src/taskStore.d.ts",
+);
 
 // Diagnostics are per language, not per model. Replay snippets are partial code, so the default is
 // squiggles off. A practice editor (the `help` prop of EditorPane) turns them on while it is mounted;

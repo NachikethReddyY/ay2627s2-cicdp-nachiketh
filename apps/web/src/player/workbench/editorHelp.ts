@@ -120,19 +120,10 @@ export function wrapCompletionProvider(provider: Provider, language: string): Pr
     async provideCompletionItems(model, pos, ctx, token) {
       const r = await provider.provideCompletionItems(model, pos, ctx, token);
       if (!r || !docLang || !helpActive.get(language)) return r;
-      const lineBeforeCursor = model.getValueInRange({
-        startLineNumber: pos.lineNumber,
-        startColumn: 1,
-        endLineNumber: pos.lineNumber,
-        endColumn: pos.column,
-      });
-      let wordStart = lineBeforeCursor.length;
-      while (wordStart > 0) {
-        const code = lineBeforeCursor.charCodeAt(wordStart - 1);
-        if (!(code === 95 || (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122))) break;
-        wordStart -= 1;
-      }
-      const before = lineBeforeCursor.slice(0, wordStart); // text before the word being typed
+      const typed = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column });
+      let end = typed.length;
+      while (end > 0 && /\w/.test(typed[end - 1])) end--;
+      const before = typed.slice(0, end); // text before the word being typed
       const suggestions = r.suggestions.map((it): languages.CompletionItem => {
         const word = typeof it.label === "string" ? it.label : it.label.label;
         const doc = docForWord(hoverWord(word, before), docLang);

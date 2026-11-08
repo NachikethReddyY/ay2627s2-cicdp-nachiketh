@@ -20,6 +20,8 @@ COPY --from=checker /repo/packages /repo/packages
 WORKDIR /repo/services/engine
 COPY services/engine/pyproject.toml services/engine/uv.lock services/engine/README.md ./
 COPY services/engine/learnquest_engine ./learnquest_engine
+# guide.py reads the persona from parents[3] of the package, which is /repo, so ship the prompt there.
+COPY INSTRUCTIONS.md /repo/INSTRUCTIONS.md
 RUN uv sync --frozen --no-dev
 
 RUN useradd --system --uid 10001 engine

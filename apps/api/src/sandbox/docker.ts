@@ -1,6 +1,6 @@
 import { execFile, spawn as spawnProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync } from "node:fs";
+import { chmodSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import pty from "node-pty";
@@ -8,6 +8,7 @@ import { env } from "../env.ts";
 import {
   LIST_MAX_ENTRIES,
   SandboxBusyError,
+  SandboxFileTooLargeError,
   SandboxNotRunningError,
   type DirEntry,
   type DirListing,
@@ -65,6 +66,10 @@ type SpawnChild = typeof spawnProcess;
 
 const HOME = "/home/learner";
 const LEARNER_UID = "1001";
+const SHELL_RC = readFileSync(new URL("./learner-zshrc", import.meta.url), "utf8");
+const BASH_RC = readFileSync(new URL("./learner-bashrc", import.meta.url), "utf8");
+const SHELL_RC_DIR = `${HOME}/.learnquest-zsh`;
+const BASH_RC_PATH = `${HOME}/.learnquest-bashrc`;
 const PIPE_MAX_BYTES = 64 * 1024;
 const PIPE_TIMEOUT_MS = 10_000;
 // Exit code the listing script uses for "not a directory", distinct from the docker exec codes (125 to 127).
@@ -213,6 +218,37 @@ export function dockerBackend(opts: {
   }
 
   return {
+    async readWorkspaceFile(learnerId, relPath) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const target = `${HOME}/${relPath}`;
+      const script = 'target="$2/$1"; [ -f "$target" ] && [ ! -L "$target" ] || exit 4; [ "$(realpath -e -- "$target")" = "$target" ] || exit 4; exec cat -- "$target"';
+      const r = await pipe(["exec", "-u", LEARNER_UID, name, "sh", "-c", script, "sh", relPath, HOME]);
+      if (r.capped) throw new SandboxFileTooLargeError();
+      if (r.code === 4) return null;
+      if (r.code !== 0) throw await failed(name, "reading workspace file", r.code);
+      return r.stdout;
+    },
+
+    async writeWorkspaceFile(learnerId, relPath, content) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const script = 'set -eu; target="$2/$1"; parent=${target%/*}; [ "$(realpath -m -- "$parent")" = "$parent" ] || exit 4; mkdir -p -- "$parent"; [ "$(realpath -e -- "$parent")" = "$parent" ] || exit 4; [ ! -L "$target" ] || exit 4; [ ! -d "$target" ] || exit 4; tmp=$(mktemp "$parent/.lq-edit.XXXXXX"); trap \'rm -f -- "$tmp"\' EXIT; cat > "$tmp"; if [ -f "$target" ]; then chmod --reference="$target" "$tmp"; fi; mv -f -- "$tmp" "$target"';
+      const r = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", script, "sh", relPath, HOME], content);
+      if (r.code === 4) throw new Error("workspace path is not a regular file path");
+      if (r.code !== 0) throw await failed(name, "writing workspace file", r.code);
+    },
+
+    async moveWorkspaceFile(learnerId, source, targetDir) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const script = 'set -eu; src="$3/$1"; dir="$3/$2"; [ -f "$src" ] && [ ! -L "$src" ] || exit 4; [ "$(realpath -e -- "${src%/*}")" = "${src%/*}" ] || exit 4; [ -d "$dir" ] && [ ! -L "$dir" ] || exit 4; [ "$(realpath -e -- "$dir")" = "$dir" ] || exit 4; dst="$dir/${src##*/}"; [ ! -e "$dst" ] || exit 5; mv -n -T -- "$src" "$dst"; [ ! -e "$src" ] || exit 5';
+      const r = await pipe(["exec", "-u", LEARNER_UID, name, "sh", "-c", script, "sh", source, targetDir, HOME]);
+      if (r.code === 4) throw new Error("Workspace file or destination folder is unavailable");
+      if (r.code === 5) throw new Error("A file with that name already exists in the destination folder");
+      if (r.code !== 0) throw await failed(name, "moving workspace file", r.code);
+    },
+
     async writeFile(learnerId, fileName, content) {
       const name = containerName(learnerId);
       if (!(await isRunning(name))) throw new SandboxNotRunningError();
@@ -252,19 +288,34 @@ export function dockerBackend(opts: {
         t.unref();
         timers.set(name, t);
       };
+      let started = false;
       try {
         // A stop already in flight can't be cancelled, so let it finish before starting the container again.
         await stopping.get(name);
         claim(name); // a stop that just finished uncounted it
         await ensure(name);
+        started = true;
+        const rc = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'umask 077; mkdir -p "$1"; cat > "$1/.zshrc"', "sh", SHELL_RC_DIR], SHELL_RC);
+        if (rc.code !== 0) throw await failed(name, "preparing the shell", rc.code);
+        const bashRc = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'umask 077; cat > "$1"', "sh", BASH_RC_PATH], BASH_RC);
+        if (bashRc.code !== 0) throw await failed(name, "preparing the fallback shell", bashRc.code);
+        const workspace = await pipe(["exec", "-u", LEARNER_UID, name, "mkdir", "-p", `${HOME}/task-tracker`]);
+        if (workspace.code !== 0) throw await failed(name, "preparing the project folder", workspace.code);
       } catch (err) {
         release();
-        if (!attached.has(name)) live.delete(name); // nothing started, or the start failed: it holds no slot
+        // Only a start that failed holds no slot. Once ensure() succeeded the container is running, so it stays
+        // counted until the idle stop; a later step failing does not free it.
+        if (!started && !attached.has(name)) live.delete(name);
         throw err;
       }
       let term: ReturnType<typeof pty.spawn>;
       try {
-        term = spawn("docker", ["exec", "-it", name, "bash", "-l"], {
+        const hasZsh = await exec("docker", ["exec", name, "sh", "-c", "command -v zsh >/dev/null 2>&1"])
+          .then(() => true, () => false);
+        const command = hasZsh
+          ? ["exec", "-it", "-e", `ZDOTDIR=${SHELL_RC_DIR}`, "-e", "TERM=xterm-256color", name, "zsh", "-i"]
+          : ["exec", "-it", name, "bash", "--rcfile", BASH_RC_PATH, "-i"];
+        term = spawn("docker", command, {
           name: "xterm-256color",
           cols,
           rows,

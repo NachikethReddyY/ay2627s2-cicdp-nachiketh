@@ -5,7 +5,8 @@ import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } 
 import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
 
 function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean } = {}) {
-  const log = { created: [] as Record<string, unknown>[], deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+  const log = { created: [] as Record<string, unknown>[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+  const createdFolders = new Set<string>();
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
   const mk = (extra: Partial<DaytonaSandbox> = {}): DaytonaSandbox => ({
@@ -17,6 +18,7 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
     setAutostopInterval: async () => {},
     process: {
       createPty: async (o) => {
+        log.ptyOptions.push({ cwd: o.cwd, envs: o.envs });
         onData = (d) => void o.onData(d);
         return {
           sendInput: async (d) => void log.ptyInput.push(Buffer.from(d).toString()),
@@ -28,6 +30,7 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
         };
       },
       createSession: async () => {},
+      executeCommand: async () => ({ exitCode: 0, result: "" }),
       executeSessionCommand: async (_s, req) => (log.cmds.push(req.command), log.reqs.push(req), { cmdId: "c1" }),
       getSessionCommandLogs: async (_s, _c, out, err) => {
         if (opts.hangLogs) return new Promise(() => {});
@@ -39,12 +42,14 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
     },
     getUserHomeDir: async () => (log.homeCalls++, "home" in opts ? opts.home : "/home/daytona"),
     fs: {
+      createFolder: async (p, mode) => { log.fsOps.push(`mkdir ${p} ${mode}`); createdFolders.add(p); },
       uploadFile: async (_f, p) => (log.fsOps.push(`upload ${p}`), void log.uploaded.push(p)),
       deleteFile: async (p) => {
         if (opts.deleteFails) throw new Error("delete refused");
         log.fsOps.push(`delete ${p}`);
       },
-      getFileDetails: async () => {
+      getFileDetails: async (p) => {
+        if (createdFolders.has(p)) return { isDir: true, mode: "drwxr-xr-x" };
         if (opts.details === "fail") throw new Error("no details");
         if (!opts.details) throw Object.assign(new Error("not found"), { statusCode: 404 });
         return opts.details;
@@ -76,6 +81,16 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
   return { client, log, emit: (s: string) => onData(Buffer.from(s)), end: (code: number) => endPty({ exitCode: code }) };
 }
 
+test("writeWorkspaceFile creates missing parent folders before uploading", async () => {
+  const f = fake({ existing: [{ state: "started" }] });
+  await daytonaBackend({ client: f.client }).writeWorkspaceFile!("learner-1", "task-tracker/src/app.js", "console.log('ok')\n");
+  assert.deepEqual(f.log.fsOps, [
+    "mkdir /home/daytona/task-tracker 755",
+    "mkdir /home/daytona/task-tracker/src 755",
+    "upload /home/daytona/task-tracker/src/app.js",
+  ]);
+});
+
 test("openShell creates a labelled sandbox with auto-stop and opens a PTY", async () => {
   const f = fake();
   const b = daytonaBackend({ client: f.client, snapshot: "lq-snap", autoStopMinutes: 7 });
@@ -86,6 +101,11 @@ test("openShell creates a labelled sandbox with auto-stop and opens a PTY", asyn
     labels: { app: "learnquest", role: "shell", learner: learnerHash("learner-1") },
     autoStopInterval: 7,
   });
+  assert.deepEqual(f.log.ptyOptions[0], {
+    cwd: "/home/daytona/task-tracker",
+    envs: { TERM: "xterm-256color", ZDOTDIR: "/home/daytona/.learnquest-zsh" },
+  });
+  assert.ok(f.log.uploaded.includes("/home/daytona/.learnquest-zsh/.zshrc"));
   const got: string[] = [];
   shell.onData((d) => got.push(Buffer.from(d).toString()));
   f.emit("$ ");
