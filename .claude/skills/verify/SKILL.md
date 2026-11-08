@@ -38,16 +38,22 @@ Turbo does not run these. CI runs them in the separate `engine` job after `uv sy
 
 Hints and answers are server-side only (`AGENTS.md`). What the server keeps private, read from the code:
 
-- Step `secret` (`StepSecret` in `apps/api/src/db/schema.ts`): `answer`, `accepted`, `hints`, `hunks`, `beforeFiles`, `explanations`, `concepts`. Only `StepPublic` (`title`, `prompt`, `kind`, `options`) and `hintCount` go out in `lessons.get`.
+- Step `secret` (`StepSecret` in `apps/api/src/db/schema.ts`): `answer`, `accepted`, `hints`, `hunks`, `beforeFiles`, `explanations`, `concepts`. The API never returns these whole.
+- `lessons.get` returns step summaries only, with `hintCount` and no hint text.
+- `steps.get` (`apps/api/src/attempts/router.ts`) returns the prompt, kind, options, the hints the learner has earned so far (`hints`), and `beforeFiles`, the starting code. Earned hints and starting code are intended. Do not flag them as leaks.
+- `steps.attempt` returns the result of the attempt just made: `correct`, `feedback`, state fields, and `missedConcepts`. `missedConcepts` is copied from the private `concepts` field, but only after a wrong answer. Whether that is intended feedback is not documented; treat it as an open item, not a leak or a pass.
+- Hints are released one rung at a time by `steps.hint`. Answers come from `steps.reveal` after the learner finishes or skips; that is also intended.
 - Practice parts: `expectedOutput` is stripped in `apps/api/src/lessons/router.ts` and compared server-side by `apps/api/src/parts/practice.ts`.
-- Hints are released one rung at a time by `attempts.hint`. The answer comes only from `attempts.reveal`, which requires state `revealed` or `skipped`.
 
 Run:
 
 ```bash
 pnpm --filter @learnquest/web build   # tsc --noEmit && vite build
-grep -rn "expectedOutput" apps/web/dist || echo "no expectedOutput in client bundle"
+grep -rn "expectedOutput" apps/web/dist; rc=$?
+# rc 0 = match found (leak); rc 1 = no match (clean); rc 2 = scan did not run (missing dist, unreadable)
 ```
+
+Report rc 0 as a FAIL, rc 1 as PASS, and rc 2 as "not run". Never report a clean result when rc is 2.
 
 Then run the API leak tests (already part of step 1): `apps/api/test/lessons.test.ts` (forbidden keys list, practice `expectedOutput`) and `apps/api/test/attempts.test.ts`.
 
