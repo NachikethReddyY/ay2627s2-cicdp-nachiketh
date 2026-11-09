@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { timelineSchema } from "@learnquest/ui-catalog";
+import { BLOCKS, timelineSchema } from "@learnquest/ui-catalog";
 import { initialPlaying, keyAction, motionAction, plan, stepReduce, tick } from "./model.ts";
 
 const tl = timelineSchema.parse({
@@ -63,4 +63,20 @@ test("plan cleans alt text of rejected blocks", () => {
   const p = plan({ v: 1, blocks: [{ type: "nope", id: "a", props: { alt: "  hi\u0000 there  " } }] });
   const it = p.items[0];
   assert.equal(it?.kind === "rejected" && it.alt, "hi there");
+});
+
+test("plan keeps a full authored game with the authored registry, and drops it on the lesson path", () => {
+  const doc = {
+    v: 1,
+    blocks: [{
+      type: "game", id: "g",
+      props: {
+        title: "Quiz", goalText: "Answer", alt: "A one question quiz about booleans, practising true and false.",
+        hints: ["Think true."], shell: {},
+        kind: { kind: "quiz", questions: [{ prompt: "Is 1 < 2?", options: ["yes", "no"], answer: 0 }] },
+      },
+    }],
+  };
+  assert.equal(plan(doc, BLOCKS).items[0]?.kind, "block");
+  assert.equal(plan(doc).items[0]?.kind, "rejected");
 });

@@ -13,11 +13,13 @@ type Props = {
   /** Announced in the aria-live region: every move, bump, pick, win and lose. No timers anywhere (WCAG 2.2.1). */
   live: string;
   onRetry: () => void;
+  /** True while a check is pending: Retry waits so an old reply cannot land on the reset game. */
+  busy?: boolean;
   children: ReactNode;
 };
 
 /** What every game shares: title, goal, alt, hints, lives, win/lose banner, Retry and the live region. */
-export default function Shell({ title, goalText, alt, hintCount, onHint, lives, maxLives, outcome, live, onRetry, children }: Props) {
+export default function Shell({ title, goalText, alt, hintCount, onHint, lives, maxLives, outcome, live, onRetry, busy, children }: Props) {
   const [hints, setHints] = useState<string[]>([]);
   const [hintBusy, setHintBusy] = useState(false);
   const [hintFailed, setHintFailed] = useState(false);
@@ -48,7 +50,7 @@ export default function Shell({ title, goalText, alt, hintCount, onHint, lives, 
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={btn} onClick={onRetry}>Retry</button>
+        <button type="button" className={btn} disabled={busy} onClick={onRetry}>Retry</button>
         {hintCount > 0 && (
           <button type="button" className={btn} disabled={hints.length >= hintCount || hintBusy} onClick={showHint}>
             Show hint ({hints.length} of {hintCount})

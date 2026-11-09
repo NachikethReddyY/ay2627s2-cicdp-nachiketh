@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { PublicGameProps, PublicQuiz } from "@learnquest/ui-catalog";
 import type { GameApi } from "./api.ts";
 import Shell, { btn } from "./Shell.tsx";
@@ -12,14 +12,17 @@ export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: P
   const [outcome, setOutcome] = useState<Outcome>("play");
   const [live, setLive] = useState("");
   const [busy, setBusy] = useState(false);
+  const gen = useRef(0);
   const done = outcome === "win" || outcome === "lose";
   const index = Math.min(confirmed.length, kind.questions.length - 1);
 
   const answer = async (choice: number) => {
     if (done || busy) return;
     setBusy(true);
+    const mine = gen.current;
     try {
       const r = await api.check({ kind: "quiz", answers: [...confirmed, choice] });
+      if (mine !== gen.current) return;
       if (r.questionResults?.[confirmed.length]) {
         setConfirmed([...confirmed, choice]);
         if (r.complete) {
@@ -35,13 +38,14 @@ export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: P
         setLive("Game over, no lives left. Try again.");
       } else setLive("Not quite. Try another answer.");
     } catch {
-      setLive("Couldn't check your answer. Try again.");
+      if (mine === gen.current) setLive("Couldn't check your answer. Try again.");
     } finally {
       setBusy(false);
     }
   };
 
   const retry = () => {
+    gen.current++;
     setConfirmed([]);
     setLives(maxLives);
     setOutcome("play");
@@ -50,7 +54,7 @@ export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: P
 
   const question = kind.questions[index]!;
   return (
-    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
+    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <div role="group" aria-label={`Question ${index + 1} of ${kind.questions.length}`} className="flex min-w-0 flex-col gap-3">
         <p className="text-sm font-extrabold">Question {index + 1} of {kind.questions.length}</p>
         <p className="break-words">{question.prompt}</p>

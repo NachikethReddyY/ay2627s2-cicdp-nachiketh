@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CLIENT_BLOCKS, type Block, type Spec } from "@learnquest/ui-catalog";
+import { CLIENT_BLOCKS, type Block, type BlockModule, type Spec } from "@learnquest/ui-catalog";
 import BlockFrame from "./BlockFrame.tsx";
 import { plan } from "./model.ts";
 import { RENDERERS } from "./registry.ts";
@@ -12,13 +12,13 @@ function Rejected({ alt }: { alt: string }) {
 }
 
 // describe() runs outside BlockFrame's error boundary, so a throw must not blank the lesson.
-function describe(mod: (typeof CLIENT_BLOCKS)[number] | undefined, block: Block): string {
+function describe(mod: BlockModule | undefined, block: Block): string {
   try { return mod?.describe(block) ?? block.type; } catch { return block.type; }
 }
 
 /** Renders a visual doc. Always re-parses first, so nothing unvalidated reaches a block. */
-export default function VisualView({ doc, gameCompletion }: { doc: unknown | Spec; gameCompletion?: GameCompletionContext }) {
-  const p = useMemo(() => plan(doc), [doc]);
+export default function VisualView({ doc, gameCompletion, registry = CLIENT_BLOCKS }: { doc: unknown | Spec; gameCompletion?: GameCompletionContext; registry?: readonly BlockModule[] }) {
+  const p = useMemo(() => plan(doc, registry), [doc, registry]);
   if (p.fatal) return <Rejected alt="" />;
   return (
     <div className="flex w-full min-w-0 max-w-full flex-col gap-4 overflow-x-hidden">
@@ -27,7 +27,7 @@ export default function VisualView({ doc, gameCompletion }: { doc: unknown | Spe
         const { block } = it;
         const View = RENDERERS[block.type];
         if (!View) return <Rejected key={`b:${block.id}`} alt={(block.props as { alt?: string }).alt ?? ""} />;
-        const mod = CLIENT_BLOCKS.find((m) => m.type === block.type);
+        const mod = registry.find((m) => m.type === block.type);
         return (
           <BlockFrame key={`b:${block.id}`} describe={describe(mod, block)} raw={block}>
             <View block={block} gameCompletion={gameCompletion} />

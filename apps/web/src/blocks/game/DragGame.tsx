@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import type { PublicGameProps } from "@learnquest/ui-catalog";
 import type { GameApi } from "./api.ts";
@@ -63,6 +63,7 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const [hot, setHot] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const gen = useRef(0);
 
   const zoneName = (z: string | null) => setup.zones.find((x) => x.id === z)?.label ?? "the pool";
   const labelOf = (id: string) => setup.items.find((x) => x.id === id)!.label;
@@ -93,21 +94,24 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
     const unplaced = setup.items.filter((i) => !placed[i.id]).length;
     if (unplaced) return setLive(`${unplaced} ${unplaced === 1 ? "item is" : "items are"} still in the pool. Place everything, then check.`);
     setBusy(true);
+    const mine = gen.current;
     try {
       const r = await api.check(setup.submit(placed));
+      if (mine !== gen.current) return;
       if (r.correct) return (setOutcome("win"), setLive("You win! Everything is in the right place."));
       const left = lives === undefined ? undefined : lives - 1;
       if (left !== undefined) setLives(left);
       if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive("Game over, no lives left. Some items are in the wrong place."));
       setLive("Not yet: some items are in the wrong place. Move them and check again.");
     } catch {
-      setLive("Couldn't check your answer. Try again.");
+      if (mine === gen.current) setLive("Couldn't check your answer. Try again.");
     } finally {
       setBusy(false);
     }
   };
 
   const retry = () => {
+    gen.current++;
     setPlaced(setup.start), setSelected(null), setOutcome("play"), setLive("Back at the start.");
     setLives(maxLives);
   };
@@ -124,7 +128,7 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
   );
 
   return (
-    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
+    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd} onDragOver={(e) => setHot(e.over ? String(e.over.id) : null)} onDragCancel={() => setHot(null)}>
         <div role="group" aria-label={`${setup.title} game`} className="flex min-w-0 flex-col gap-3">
           {pool.length > 0 && (

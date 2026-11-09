@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement } from "react";
+import { useMemo, useRef, useState, type ReactElement } from "react";
 import { DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type PublicGameProps, type GridCommand, type GridProgram, type GridProps, type GridRun } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
@@ -67,6 +67,7 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
   const [lives, setLives] = useState(maxLives);
   const [live, setLive] = useState("");
   const [busy, setBusy] = useState(false);
+  const gen = useRef(0);
   const run = watch ?? ran;
   const at: At = idx > 0 && run ? run.trace[idx - 1]! : start;
   const max = g.maxBlocks ?? MAX_PROGRAM_STEPS;
@@ -76,15 +77,23 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
     if (outcome === "win" || outcome === "lose") return;
     if (busy) return;
     if (i.type === "step") {
-      if (!watch || !g.solution || idx >= watch.trace.length) return setLive(watch ? "End of the solution." : "");
-      setIdx(idx + 1);
-      const text = announceStep(watch, idx);
-      if (idx + 1 < watch.trace.length) return setLive(text);
+      if (!watch || !g.solution) return setLive("");
+      // At the end already, so the last check failed or was incomplete: Step re-runs it instead of dead-ending.
+      const atEnd = idx >= watch.trace.length;
+      const text = atEnd ? "" : announceStep(watch, idx);
+      if (!atEnd) setIdx(idx + 1);
+      if (!atEnd && idx + 1 < watch.trace.length) return setLive(text);
       // Reaching the end of a watched solution is the win, but the server decides: it replays the program and records it.
       setBusy(true);
-      api.check({ kind: "grid", program: g.solution })
-        .then((r) => (r.complete ? (setOutcome("win"), setLive(`${text} End of the solution.`)) : setLive(text)))
-        .catch(() => setLive(`${text} Couldn't check the run. Step again to retry.`))
+      const mine = gen.current;
+      const solution = g.solution;
+      api.check({ kind: "grid", program: solution })
+        .then((r) => {
+          if (mine !== gen.current) return;
+          if (r.complete) return (setOutcome("win"), setLive(`${text} End of the solution.`.trim()));
+          setLive(atEnd ? "Couldn't confirm the run. Step again to retry." : text);
+        })
+        .catch(() => { if (mine === gen.current) setLive(`${text} Couldn't check the run. Step again to retry.`.trim()); })
         .finally(() => setBusy(false));
       return;
     }
@@ -94,13 +103,15 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
       // The trace and move log come from the shared simulator; whether the run wins is the server's call.
       const r = simulate(program, g);
       setBusy(true);
+      const mine = gen.current;
       api.check({ kind: "grid", program })
         .then((res) => {
+          if (mine !== gen.current) return;
           const shown = { ...r, ok: res.correct };
           const v = verdict(shown, lives);
           setRan(shown), setIdx(shown.trace.length), setLives(v.lives), setOutcome(v.state), setLive(announceRun(shown, v.state));
         })
-        .catch(() => setLive("Couldn't check the run. Try again."))
+        .catch(() => { if (mine === gen.current) setLive("Couldn't check the run. Try again."); })
         .finally(() => setBusy(false));
       return;
     }
@@ -110,13 +121,14 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
   };
 
   const retry = () => {
+    gen.current++;
     setProgram(init), setRan(null), setIdx(0), setDraft({ times: 2, body: [] });
     if (outcome === "win" || outcome === "lose") setLives(maxLives);
     setOutcome("play"), setLive("Back at the start.");
   };
 
   return (
-    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
+    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <div
         role="group" aria-label="Game controls" tabIndex={0} className="flex min-w-0 flex-col gap-3"
         onKeyDown={(e) => {
