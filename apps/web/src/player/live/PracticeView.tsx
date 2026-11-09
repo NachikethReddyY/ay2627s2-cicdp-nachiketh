@@ -5,11 +5,13 @@ import { createShellSocket, type ShellSocket } from "../terminal/shellSocket";
 import TerminalPanel from "../terminal/TerminalPanel";
 import { isToggleKey, usePanel } from "../terminal/usePanel";
 import { RunInShellError, runInShell } from "../terminal/runInShell";
-import { checkPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
+import { checkPractice, lintPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type LintFinding, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
 import CheckPanel from "./CheckPanel";
+import LintFindings from "./LintFindings";
+import { findingPointer, lintErrorMessage } from "./lintModel";
 import { monacoLanguage, solutionFile, type CheckResponse, type PracticeLanguage, type PracticeTest } from "./checkModel";
 import type { Part } from "./types";
 
@@ -28,6 +30,10 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [sloppyOpen, setSloppyOpen] = useState(false);
+  const [findings, setFindings] = useState<LintFinding[] | null>(null); // the last lint
+  const [lintBusy, setLintBusy] = useState(false);
+  const [lintError, setLintError] = useState("");
+  const [pendingFinding, setPendingFinding] = useState<{ ruleId: string; line: number; column?: number } | null>(null);
   const [sid, setSid] = useState<string | null>(null); // the live run, if any
   const [starting, setStarting] = useState(false); // a run request is in flight; sid is not set yet
   const sidRef = useRef<string | null>(null); // mirrors sid so the unmount cleanup can stop the run
@@ -156,7 +162,32 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     setSid(id);
   };
   const actionsFor = (enabled: boolean) => practiceActions({ language, code, lessonId, sandboxEnabled: enabled });
+  const lintSeq = useRef(0); // the newest lint request; an older response must not overwrite it
+  // Findings describe the code they were run on. An edit makes them stale, so drop them and any lint still in flight.
+  useEffect(() => {
+    lintSeq.current++;
+    setFindings(null);
+    setLintError("");
+    setLintBusy(false);
+  }, [code]);
+  const lint = async () => {
+    const seq = ++lintSeq.current;
+    setLintBusy(true);
+    setLintError("");
+    try {
+      const res = await lintPractice(code, language);
+      if (live.current && seq === lintSeq.current) setFindings(res.findings);
+    } catch (e) {
+      if (live.current && seq === lintSeq.current) { setFindings(null); setLintError(lintErrorMessage(e)); }
+    }
+    if (live.current && seq === lintSeq.current) setLintBusy(false);
+  };
+  const askAbout = (f: LintFinding) => {
+    setPendingFinding(findingPointer(f)); // a fresh object each click, so asking again re-sends
+    setSloppyOpen(true);
+  };
   const check = async () => {
+    void lint();
     setCheckBusy(true);
     setCheckError("");
     try {
@@ -253,6 +284,8 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       </section>
       )}
       {checkError && <p role="alert" className="m-0 flex-none border-t-[3px] border-ink bg-pink px-3 py-2 text-sm font-extrabold text-ink">{checkError}</p>}
+      {lintError && <p role="alert" className="m-0 flex-none border-t-[3px] border-ink bg-pink px-3 py-2 text-sm font-extrabold text-ink">{lintError}</p>}
+      <LintFindings findings={findings} onAsk={askAbout} />
       <CheckPanel result={result} tests={(part as PracticePart).tests} />
     </div>
   );
@@ -269,6 +302,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
           <>
             <button ref={toggleRef} type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
             <button type="button" disabled={starting || sid !== null || shellRun || checkBusy} onClick={() => void check()} className={`btn check ${FOCUS}`}>{checkBusy ? "Checking…" : "Check"}</button>
+            <button type="button" disabled={lintBusy || code.trim() === ""} onClick={() => void lint()} className={`btn ${FOCUS}`}>{lintBusy ? "Linting…" : "Lint"}</button>
             <button type="button" aria-pressed={sloppyOpen} onClick={() => setSloppyOpen((o) => !o)} className={`btn ${FOCUS}`}>Sloppy</button>
             {next}
           </>
@@ -283,7 +317,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
           body: (
             <div className="flex min-h-0 flex-1">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
-              {sloppyOpen && <Suspense fallback={null}><SloppyPanel fileName={file} code={code} language={language} /></Suspense>}
+              {sloppyOpen && <Suspense fallback={null}><SloppyPanel fileName={file} code={code} language={language} finding={pendingFinding} onFindingSent={() => setPendingFinding(null)} /></Suspense>}
             </div>
           ),
         },
