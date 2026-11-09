@@ -20,7 +20,6 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SLOPPY_ENABLED` | `false` | Opens `POST /api/guide/chat` outside development and test, and makes `GET /api/guide/status` report enabled. Off means no model calls. |
 | `PRACTICE_STRETCH_TESTS` | `0` | Number of bonus hacker-edition tests (0 to 10) the engine adds to each practice part. They give bonus points only. |
 
 ### How the Daytona backend works

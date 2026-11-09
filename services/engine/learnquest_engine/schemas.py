@@ -187,6 +187,8 @@ class WatchPart(BaseModel):
 
 PRACTICE_TEST_ID = r"^[a-z0-9][a-z0-9-]{0,31}$"
 PRACTICE_REQUIRED = (3, 5)
+PRACTICE_SAMPLE_MIN = 1
+PRACTICE_SAMPLE_MAX = 2
 PRACTICE_STRETCH_MAX = 10
 PRACTICE_TOTAL_MAX = 25
 
@@ -233,13 +235,16 @@ class PracticePart(BaseModel):
         low, high = PRACTICE_REQUIRED
         if not low <= len(required) <= high:
             raise ValueError(f"needs {low} to {high} required tests, got {len(required)}")
-        samples = [t for t in required if t.visibility == "sample"]
-        if len(samples) != 1:
-            raise ValueError(f"exactly one required test must be sample, got {len(samples)}")
         if len(stretch) != wanted:
             raise ValueError(f"needs exactly {wanted} stretch tests, got {len(stretch)}")
         if any(t.visibility != "hidden" for t in stretch):
             raise ValueError("stretch tests must have visibility hidden")
+        samples = [t for t in required if t.visibility == "sample"]
+        if not PRACTICE_SAMPLE_MIN <= len(samples) <= PRACTICE_SAMPLE_MAX:
+            raise ValueError(
+                f"needs {PRACTICE_SAMPLE_MIN} to {PRACTICE_SAMPLE_MAX} required tests "
+                f"with visibility sample, got {len(samples)}"
+            )
         return self
 
 

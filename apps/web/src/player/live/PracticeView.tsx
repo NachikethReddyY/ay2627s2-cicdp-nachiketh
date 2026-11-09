@@ -5,7 +5,7 @@ import { createShellSocket, type ShellSocket } from "../terminal/shellSocket";
 import TerminalPanel from "../terminal/TerminalPanel";
 import { isToggleKey, usePanel } from "../terminal/usePanel";
 import { RunInShellError, runInShell } from "../terminal/runInShell";
-import { checkPractice, guideStatus, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
+import { checkPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
@@ -27,7 +27,6 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const [result, setResult] = useState<CheckResponse | null>(null); // the last Check
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
-  const [sloppyOn, setSloppyOn] = useState(false); // the server has the guide enabled
   const [sloppyOpen, setSloppyOpen] = useState(false);
   const [sid, setSid] = useState<string | null>(null); // the live run, if any
   const [starting, setStarting] = useState(false); // a run request is in flight; sid is not set yet
@@ -96,13 +95,6 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   const language = monacoLanguage((part as PracticePart).language);
   const python = language === "python";
   const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
-  // Sloppy is hidden unless the server says the guide is on; a failed request counts as off.
-  useEffect(() => {
-    let alive = true;
-    void guideStatus().then((on) => { if (alive) setSloppyOn(on); });
-    return () => { alive = false; };
-  }, []);
-
   useEffect(() => {
     live.current = true;
     return () => {
@@ -261,7 +253,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       </section>
       )}
       {checkError && <p role="alert" className="m-0 flex-none border-t-[3px] border-ink bg-pink px-3 py-2 text-sm font-extrabold text-ink">{checkError}</p>}
-      {result && <CheckPanel result={result} />}
+      <CheckPanel result={result} tests={(part as PracticePart).tests} />
     </div>
   );
   return (
@@ -277,7 +269,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
           <>
             <button ref={toggleRef} type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
             <button type="button" disabled={starting || sid !== null || shellRun || checkBusy} onClick={() => void check()} className={`btn check ${FOCUS}`}>{checkBusy ? "Checking…" : "Check"}</button>
-            {sloppyOn && <button type="button" aria-pressed={sloppyOpen} onClick={() => setSloppyOpen((o) => !o)} className={`btn ${FOCUS}`}>Sloppy</button>}
+            <button type="button" aria-pressed={sloppyOpen} onClick={() => setSloppyOpen((o) => !o)} className={`btn ${FOCUS}`}>Sloppy</button>
             {next}
           </>
         ),
@@ -291,7 +283,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
           body: (
             <div className="flex min-h-0 flex-1">
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
-              {sloppyOn && sloppyOpen && <Suspense fallback={null}><SloppyPanel fileName={file} code={code} language={language} /></Suspense>}
+              {sloppyOpen && <Suspense fallback={null}><SloppyPanel fileName={file} code={code} language={language} /></Suspense>}
             </div>
           ),
         },

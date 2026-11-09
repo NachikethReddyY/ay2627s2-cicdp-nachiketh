@@ -85,11 +85,29 @@ def test_required_tests_need_three_to_five() -> None:
     bad(part(required(3) + [case(f"extra-{i}") for i in range(3)]), "3 to 5 required")
 
 
-def test_exactly_one_required_sample() -> None:
+def test_one_sample_is_accepted() -> None:
+    assert len(build(part(required())).tests) == 3
+
+
+def test_two_samples_are_accepted() -> None:
+    tests = required()
+    tests[1]["visibility"] = "sample"
+    assert sum(t.visibility == "sample" for t in build(part(tests)).tests) == 2
+
+
+def test_three_samples_are_rejected() -> None:
+    tests = [case(f"case-{i}", visibility="sample") for i in range(3)]
+    bad(part(tests), "1 to 2 required tests with visibility sample, got 3")
+
+
+def test_zero_samples_are_rejected() -> None:
     no_sample = [case(f"case-{i}") for i in range(3)]
-    two_samples = [case("a", visibility="sample"), case("b", visibility="sample"), case("c")]
-    bad(part(no_sample), "exactly one required test must be sample, got 0")
-    bad(part(two_samples), "exactly one required test must be sample, got 2")
+    bad(part(no_sample), "1 to 2 required tests with visibility sample, got 0")
+
+
+def test_sample_stretch_test_is_rejected() -> None:
+    tests = required() + [case("edge", visibility="sample", stretch=True)]
+    bad(part(tests), "stretch tests must have visibility hidden", wanted=1)
 
 
 def test_stretch_count_must_match_the_request() -> None:
@@ -102,11 +120,6 @@ def test_stretch_count_must_match_the_request() -> None:
 
 def test_no_stretch_tests_when_none_requested() -> None:
     assert len(build(part(required()), wanted=0).tests) == 3
-
-
-def test_stretch_tests_must_be_hidden() -> None:
-    tests = required() + [case("edge", visibility="sample", stretch=True)]
-    bad(part(tests), "stretch tests must have visibility hidden", wanted=1)
 
 
 def test_test_ids_are_unique() -> None:

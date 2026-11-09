@@ -1,4 +1,4 @@
-import { guideEnabled, type CheckResponse, type PracticeLanguage } from "./live/checkModel.ts";
+import { type CheckResponse, type PracticeLanguage } from "./live/checkModel.ts";
 
 // Practice code (Python, JavaScript or TypeScript) runs on the server in a locked-down container. A run is live: the client polls its output and sends each typed answer.
 // `passed` is the server's verdict, sent only for a Check run once it has ended.
@@ -28,8 +28,6 @@ export const startPython = (code: string, language: PracticeLanguage, lessonId?:
 export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
 
-/** Whether the AI guide (Sloppy) is on. Any failure reads as off, so the control stays hidden. */
-export const guideStatus = () => call<unknown>("/api/guide/status").then(guideEnabled, () => false);
 /** A Check passes only on the server's word; a missing verdict (an older server, a dropped field) is a fail. */
 export const checkPassed = (p: Pick<PyPoll, "error" | "passed">) => !p.error && p.passed === true;
 export const pollPython = (id: string, from: number) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`);

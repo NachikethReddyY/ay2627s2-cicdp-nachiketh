@@ -51,6 +51,21 @@ test("invalid content is rejected", () => {
 });
 
 test("25 tests with one required are fine", () => {
-  const tests = Array.from({ length: 25 }, (_, i) => t({ id: `t${i}`, stretch: i > 0 }));
+  const tests = Array.from({ length: 25 }, (_, i) => t({ id: `t${i}`, stretch: i > 0, visibility: i > 0 ? "hidden" : "sample" }));
   assert.equal(parsePractice({ ...base, tests })?.tests.length, 25);
+});
+
+test("at most two sample tests: 2 are fine, 3 are rejected", () => {
+  const hidden = (i: number) => t({ id: `h${i}`, visibility: "hidden" });
+  const two = { ...base, tests: [t({ id: "s1" }), t({ id: "s2" }), hidden(1), hidden(2)] };
+  assert.equal(parsePractice(two)?.tests.length, 4);
+  const three = { ...base, tests: [t({ id: "s1" }), t({ id: "s2" }), t({ id: "s3" }), hidden(1)] };
+  assert.equal(PracticeContent.safeParse(three).success, false);
+  assert.equal(parsePractice(three), null);
+  const r = PracticeContent.safeParse(three);
+  assert.ok(!r.success && r.error.issues.some((i) => /at most 2 sample tests/.test(i.message)));
+});
+
+test("legacy expectedOutput still parses (one hidden test)", () => {
+  assert.equal(parsePractice({ kind: "practice", instructions: "x", starterCode: "", expectedOutput: "1" })?.tests[0]?.visibility, "hidden");
 });

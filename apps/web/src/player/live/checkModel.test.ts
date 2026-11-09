@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bonusRows, guideEnabled, monacoLanguage, requiredRows, scoreLine, solutionFile, statusLabel, toRows, type CheckResult } from "./checkModel.ts";
-import { checkPractice, guideStatus } from "../runPython.ts";
+import { bonusRows, previewRows, monacoLanguage, requiredRows, scoreLine, solutionFile, statusLabel, toRows, type CheckResult } from "./checkModel.ts";
+import { checkPractice } from "../runPython.ts";
 
 test("statusLabel maps every status", () => {
   assert.equal(statusLabel("pass"), "✓ Passed");
@@ -53,24 +53,6 @@ test("typescript maps to solution.ts and the typescript editor language; unknown
   assert.equal(monacoLanguage("ruby"), "javascript");
 });
 
-test("Sloppy shows only on { enabled: true }", async () => {
-  assert.equal(guideEnabled({ enabled: true }), true);
-  for (const body of [{ enabled: false }, { enabled: "true" }, {}, null, undefined, "x", 1]) assert.equal(guideEnabled(body), false);
-  const real = globalThis.fetch;
-  try {
-    globalThis.fetch = (async () => new Response(JSON.stringify({ enabled: true }), { status: 200 })) as typeof fetch;
-    assert.equal(await guideStatus(), true);
-    globalThis.fetch = (async () => new Response(JSON.stringify({ enabled: false }), { status: 200 })) as typeof fetch;
-    assert.equal(await guideStatus(), false);
-    globalThis.fetch = (async () => new Response("{}", { status: 404 })) as typeof fetch;
-    assert.equal(await guideStatus(), false);
-    globalThis.fetch = (async () => { throw new TypeError("network"); }) as typeof fetch;
-    assert.equal(await guideStatus(), false);
-  } finally {
-    globalThis.fetch = real;
-  }
-});
-
 test("checkPractice posts code, language and lessonId to /api/sandbox/check", async () => {
   const seen: { url: string; body: unknown }[] = [];
   const real = globalThis.fetch;
@@ -84,4 +66,27 @@ test("checkPractice posts code, language and lessonId to /api/sandbox/check", as
     globalThis.fetch = real;
   }
   assert.deepEqual(seen, [{ url: "/api/sandbox/check", body: { code: "x", language: "typescript", lessonId: "l1" } }]);
+});
+
+test("hidden rows are locked with a status label after a check, and Locked before it", () => {
+  const rows = toRows([
+    { id: "a", name: "Sample", stretch: false, visibility: "sample", status: "pass" },
+    { id: "b", name: "H1", stretch: false, visibility: "hidden", status: "pass" },
+    { id: "c", name: "H2", stretch: false, visibility: "hidden", status: "fail" },
+    { id: "d", name: "H3", stretch: true, visibility: "hidden", status: "timeout" },
+    { id: "e", name: "H4", stretch: false, visibility: "hidden", status: "error" },
+  ]);
+  assert.deepEqual(rows.map((r) => r.locked), [false, true, true, true, true]);
+  assert.deepEqual(rows.slice(1).map((r) => r.label), ["✓ Passed", "✗ Failed", "Timed out", "Error"]);
+  assert.deepEqual(bonusRows(rows).map((r) => r.id), ["d"]);
+  const before = previewRows([
+    { id: "a", name: "Sample", visibility: "sample", stretch: false, stdin: "1", expectedStdout: "2" },
+    { id: "b", name: "Hidden", visibility: "hidden", stretch: false },
+    { id: "c", name: "Bonus", visibility: "hidden", stretch: true },
+  ]);
+  assert.deepEqual(before.map((r) => r.label), ["Not run", "Locked", "Locked"]);
+  assert.deepEqual(before.map((r) => r.locked), [false, true, true]);
+  assert.deepEqual(before[0].detail, { stdin: "1", expectedStdout: "2" });
+  assert.equal(before[1].detail, undefined);
+  assert.deepEqual(bonusRows(before).map((r) => r.id), ["c"]);
 });

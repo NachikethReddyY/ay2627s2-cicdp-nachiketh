@@ -97,12 +97,8 @@ export async function devRoutes(app: FastifyInstance) {
 
 }
 
-// Sloppy guide. The status always answers and never calls the engine. The chat registers in development and test, or when SLOPPY_ENABLED is set; otherwise it is a normal 404.
+// Sloppy guide. The chat is always registered in every environment; it needs a signed-in learner before any engine call.
 export async function guideRoutes(app: FastifyInstance) {
-  app.get("/guide/status", async () => ({ enabled: env.SLOPPY_ENABLED }));
-
-  if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test" && !env.SLOPPY_ENABLED) return;
-
   app.post("/guide/chat", async (req, reply) => {
     const learnerId = await resolveLearnerId(req.headers);
     if (!learnerId) return reply.status(401).send({ error: { code: "unauthorized", message: "Sign in to chat with the code guide" } });

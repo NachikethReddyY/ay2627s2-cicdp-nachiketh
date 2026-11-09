@@ -1,6 +1,6 @@
-import { bonusRows, requiredRows, scoreLine, toRows, type CheckResponse, type CheckRow } from "./checkModel";
+import { bonusRows, previewRows, requiredRows, scoreLine, toRows, type CheckResponse, type CheckRow, type PracticeTest } from "./checkModel";
 
-const tone = (s: CheckRow["status"]) => (s === "pass" ? "bg-green" : s === "fail" ? "bg-pink" : "bg-sun");
+const tone = (s: CheckRow["status"]) => (s === "pass" ? "bg-green" : s === "fail" ? "bg-pink" : s === "locked" || s === "idle" ? "bg-white" : "bg-sun");
 
 function Block({ label, text }: { label: string; text: string }) {
   return (
@@ -16,6 +16,7 @@ function Row({ row }: { row: CheckRow }) {
   return (
     <li className="rounded-lg border-2 border-ink bg-white p-2">
       <div className="flex items-center gap-2">
+        {row.locked && <span role="img" aria-label="Locked test" title="Locked test">🔒</span>}
         <span className="min-w-0 flex-1 font-extrabold">{row.name}</span>
         <span className={`rounded-lg border-2 border-ink px-2 py-0.5 text-sm font-extrabold text-ink ${tone(row.status)}`}>{row.label}</span>
       </div>
@@ -31,18 +32,19 @@ function Row({ row }: { row: CheckRow }) {
   );
 }
 
-// Per-test results of a Check: required tests, then a separate Bonus group. Hidden tests show a name and a status only.
-export default function CheckPanel({ result }: { result: CheckResponse }) {
-  const rows = toRows(result.results);
+// Per-test results of a Check (or the test list before the first Check): required tests, then a Bonus group. Hidden tests show a lock, a name and a status only.
+export default function CheckPanel({ result, tests }: { result: CheckResponse | null; tests?: PracticeTest[] }) {
+  const rows = result ? toRows(result.results) : previewRows(tests ?? []);
+  if (!result && rows.length === 0) return null;
   const required = requiredRows(rows);
   const bonus = bonusRows(rows);
   return (
     <section aria-labelledby="check-h" className="flex max-h-[50%] min-h-32 flex-none flex-col overflow-auto border-t-[3px] border-ink bg-paper p-3 text-ink">
       <h3 id="check-h" className="text-sm font-extrabold">Check results</h3>
-      {result.complete && (
+      {result?.complete && (
         <p role="status" className="verdict-ok my-2 rounded-lg border-2 border-ink bg-green px-3 py-1.5 font-extrabold">Level complete! Every required test passed.</p>
       )}
-      <p className="my-1 text-sm font-bold" data-testid="score-line">{scoreLine(result)}</p>
+      {result && <p className="my-1 text-sm font-bold" data-testid="score-line">{scoreLine(result)}</p>}
       <ul aria-label="Required tests" className="m-0 flex list-none flex-col gap-2 p-0">
         {required.map((r) => <Row key={r.id} row={r} />)}
       </ul>

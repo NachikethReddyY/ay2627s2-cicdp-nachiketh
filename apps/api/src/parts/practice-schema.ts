@@ -4,6 +4,7 @@ import { z } from "zod";
 export const PRACTICE_LANGUAGES = ["python", "javascript", "typescript"] as const;
 export type PracticeLanguage = (typeof PRACTICE_LANGUAGES)[number];
 export const MAX_TESTS = 25;
+export const MAX_SAMPLE_TESTS = 2; // a part shows at most two tests; the rest are locked
 
 export const PracticeTestSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/),
@@ -28,6 +29,7 @@ export const PracticeContent = z
     if (!v.tests && v.expectedOutput === undefined) ctx.addIssue({ code: "custom", message: "tests or expectedOutput is required" });
     if (v.tests) {
       if (new Set(v.tests.map((t) => t.id)).size !== v.tests.length) ctx.addIssue({ code: "custom", path: ["tests"], message: "test ids must be unique" });
+      if (v.tests.filter((t) => t.visibility === "sample").length > MAX_SAMPLE_TESTS) ctx.addIssue({ code: "custom", path: ["tests"], message: `a practice part shows at most ${MAX_SAMPLE_TESTS} sample tests; every other test must be hidden` });
       if (v.tests.every((t) => t.stretch)) ctx.addIssue({ code: "custom", path: ["tests"], message: "at least one test must be required" });
     }
   });

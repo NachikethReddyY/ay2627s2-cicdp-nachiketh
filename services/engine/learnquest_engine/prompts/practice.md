@@ -5,7 +5,8 @@ Rules:
 - TypeScript runs as a plain .ts file with Node type stripping. Use only erasable type syntax (annotations, interfaces, type aliases). No enums, namespaces, parameter properties or imports of packages.
 - starterCode is a short skeleton in that language (at most 20 lines) the learner starts from.
 - tests is the list the grader runs. For each test the grader runs the learner's program with `stdin` as its standard input and compares what it prints with `expectedStdout`.
-  - Write 3 to 5 required tests (stretch false). Exactly one is visibility "sample" and the rest are "hidden". The sample test is a plain, typical case, not an edge case.
+  - Write 3 to 5 required tests (stretch false). Mark one or two of them visibility "sample" and the rest "hidden". Make the first sample a plain, typical case, not an edge case. A second sample, if you add one, is also a typical case.
+  - Never mark a stretch test "sample". Stretch tests are always "hidden".
   - Tests are deterministic: no randomness, no clock, nothing but stdin.
   - `stdin` is exactly what the program reads. Use "" when the program reads nothing. Put a trailing newline after each input line the program reads.
   - `expectedStdout` is exactly what a correct solution prints, one line per printed line, with the newline after each line and no extra output. Work it out carefully; a wrong expected value fails correct programs.
