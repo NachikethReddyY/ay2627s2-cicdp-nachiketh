@@ -16,7 +16,9 @@ FROM node:22-slim
 WORKDIR /app
 COPY --from=deps /app /app
 
+ARG GIT_SHA=unknown
 ENV NODE_ENV=production
+ENV GIT_SHA=$GIT_SHA
 WORKDIR /app/apps/api
 USER node
 EXPOSE 3000
