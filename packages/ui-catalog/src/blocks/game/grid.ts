@@ -65,7 +65,7 @@ export type GridRun = {
 
 const cellSchema = z.strictObject({ x: z.int().min(0).max(MAX_GRID - 1), y: z.int().min(0).max(MAX_GRID - 1) });
 const commandSchema = z.enum(GRID_COMMANDS);
-const programSchema = z
+export const programSchema = z
   .array(
     z.union([
       commandSchema,
