@@ -57,7 +57,7 @@ class Recommendation:
 
 
 # Bump when the policy or its reasons change. The API keeps a copy for its cache hash.
-POLICY_VERSION = "2"
+POLICY_VERSION = "3"
 
 LEARN_KINDS = ("learn", "watch")
 PRACTICE_KINDS = ("predict", "practice", "game-practice")
@@ -153,8 +153,12 @@ def recommend(
     for concept in known:
         course_order.setdefault(concept, len(course_order))
 
-    candidates = [c for c, p in known.items() if p < mastered_at and unlocked(c)]
-    below = [c for c, p in known.items() if p < mastered_at]
+    # Only a concept a remaining lesson teaches can be practised. Otherwise a concept
+    # below mastery with no lesson left would send the learner to an unrelated lesson.
+    remaining_concepts = {c for lesson in remaining for c in lesson.concept_ids}
+    open_below = [c for c, p in known.items() if p < mastered_at and c in remaining_concepts]
+    candidates = [c for c in open_below if unlocked(c)]
+    below = open_below
     locked = not candidates and bool(below)
     pool = candidates or below
     if pool:

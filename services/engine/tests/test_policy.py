@@ -105,6 +105,16 @@ def test_falls_back_to_any_covering_lesson() -> None:
     assert recommend([Mastery("vars", 0.1)], [], [only]).lesson_id == "l9"
 
 
+def test_unfinished_concept_with_no_remaining_lesson_is_not_practised() -> None:
+    # "vars" is below mastery, but its only lesson is done.
+    # The open lesson teaches "loops" and must be chosen.
+    vars_done = Lesson("l1", ["vars"], "learn", True, 1)
+    loops = Lesson("l3", ["loops"], "learn", False, 2)
+    rec = recommend([Mastery("vars", 0.1), Mastery("loops", 0.9)], [], [vars_done, loops])
+    assert rec.concept_id != "vars"
+    assert rec.lesson_id == "l3"
+
+
 concept_ids = st.sampled_from(["a", "b", "c", "d"])
 kinds = st.sampled_from(["learn", "watch", "practice", "game-practice", "predict"])
 lessons_st = st.lists(
