@@ -25,7 +25,7 @@ export async function importRoutes(api: FastifyInstance) {
     if (!body.success) return fail(reply, 400, "bad_request", body.error.issues[0]?.message ?? "Invalid body");
     const repo = body.data.repo.toLowerCase();
     if (!env.IMPORT_REPO_ALLOWLIST.includes(repo)) return fail(reply, 400, "bad_request", "Repo is not on the import allow-list");
-    const jobId = await startImport(me, { repo, sha: body.data.sha.toLowerCase() });
+    const jobId = await startImport(me, { repo, sha: body.data.sha.toLowerCase() }, req.log);
     return reply.status(202).send({ jobId });
   });
 

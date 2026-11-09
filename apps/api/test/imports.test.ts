@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { importJobEvents, importJobs, lessons, lessonVersions, steps, worlds } from "../src/db/schema.ts";
+import { importJobEvents, importJobs, lessons, lessonVersions, recommendations, steps, worlds } from "../src/db/schema.ts";
 import { parseEnv } from "../src/env.ts";
 import { importsIdle, setIngest, subscribe, sweepOrphanedJobs } from "../src/imports/runner.ts";
 import type { IngestFn } from "../src/imports/ingest.ts";
@@ -246,7 +246,7 @@ test("sweepOrphanedJobs fails jobs left queued or running", async () => {
   await importsIdle();
   const [owner] = await db.select({ createdBy: importJobs.createdBy }).from(importJobs).where(eq(importJobs.id, first));
   const [job] = await db.insert(importJobs).values({ createdBy: owner!.createdBy, repo: "acme/demo", sha: SHA, status: "running" }).returning();
-  assert.ok((await sweepOrphanedJobs()) >= 1);
+  assert.ok((await sweepOrphanedJobs(app.log)) >= 1);
   const [after] = await db.select().from(importJobs).where(eq(importJobs.id, job!.id));
   assert.equal(after!.status, "failed");
   assert.equal(after!.error, "interrupted by restart");
@@ -289,4 +289,25 @@ test("publish and unpublish are 409 for an archived lesson", async () => {
   }
   const [l] = await db.select().from(lessons).where(eq(lessons.id, job!.lessonId!));
   assert.equal(l!.status, "archived");
+});
+
+test("me.next does not return a stored recommendation for an unpublished lesson", async () => {
+  setIngest(fakeIngest);
+  const c = await signUp(app);
+  const jobId = await startJob(c);
+  await importsIdle();
+  const [job] = await db.select().from(importJobs).where(eq(importJobs.id, jobId));
+  const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
+  // A stored recommendation pointing at the draft, as if it were made before the lesson was unpublished.
+  await db.insert(recommendations).values({
+    learnerId: job!.createdBy,
+    worldId: world!.id,
+    lessonId: job!.lessonId!,
+    action: "learn",
+    reasonCode: "test",
+    reason: "Hidden lesson",
+  });
+  const res = await trpc(app, c).q("me.next", { world: "codequest" });
+  assert.equal(res.statusCode, 200);
+  assert.notEqual(out(res)?.reason, "Hidden lesson");
 });

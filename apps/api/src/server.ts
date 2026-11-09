@@ -30,7 +30,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
 // Jobs still queued or running belong to a process that is gone; fail them before serving.
-const swept = await sweepOrphanedJobs();
+const swept = await sweepOrphanedJobs(app.log);
 if (swept) app.log.warn(`failed ${swept} orphaned import job(s)`);
 
 await app.listen({ port: env.PORT, host: "0.0.0.0" });

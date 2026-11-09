@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { FastifyBaseLogger } from "fastify";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { importJobEvents, importJobs } from "../db/schema.ts";
@@ -59,14 +60,16 @@ async function record(jobId: string, kind: string, data: unknown): Promise<void>
 }
 
 /** Marks jobs left queued or running by a crash or restart as failed. Call once at process start, before serving. */
-export async function sweepOrphanedJobs(): Promise<number> {
+export async function sweepOrphanedJobs(log: FastifyBaseLogger): Promise<number> {
   const error = "interrupted by restart";
   const orphans = await db
     .update(importJobs)
     .set({ status: "failed", error, updatedAt: new Date() })
     .where(inArray(importJobs.status, ["queued", "running"]))
     .returning({ id: importJobs.id });
-  for (const { id } of orphans) await record(id, "status", { status: "failed", error }).catch(() => undefined);
+  for (const { id } of orphans) {
+    await record(id, "status", { status: "failed", error }).catch((err) => log.error({ err, jobId: id }, "could not record orphaned import failure"));
+  }
   return orphans.length;
 }
 
@@ -81,11 +84,13 @@ async function setStatus(
   status: "running" | "succeeded" | "failed",
   extra: { lessonId?: string; error?: string } = {},
 ) {
-  await db.update(importJobs).set({ status, updatedAt: new Date(), ...extra }).where(eq(importJobs.id, jobId));
+  // The event goes first: a finished row must never exist without its terminal event, because the SSE handler
+  // closes on the row status when it finds nothing newer to replay.
   await record(jobId, "status", { status, ...extra });
+  await db.update(importJobs).set({ status, updatedAt: new Date(), ...extra }).where(eq(importJobs.id, jobId));
 }
 
-async function run(jobId: string, input: { repo: string; sha: string }) {
+async function run(jobId: string, input: { repo: string; sha: string }, log: FastifyBaseLogger) {
   try {
     await setStatus(jobId, "running");
     let chain: Promise<void> = Promise.resolve();
@@ -93,7 +98,7 @@ async function run(jobId: string, input: { repo: string; sha: string }) {
     // Calls after ingest has settled are ignored, so nothing can land behind the terminal status.
     const emit = (kind: string, data: unknown) => {
       if (frozen) return;
-      chain = chain.then(() => record(jobId, kind, data)).catch(() => undefined);
+      chain = chain.then(() => record(jobId, kind, data)).catch((err) => log.error({ err, jobId, kind }, "could not save import event"));
     };
     let lessonId: string;
     try {
@@ -105,12 +110,12 @@ async function run(jobId: string, input: { repo: string; sha: string }) {
     await setStatus(jobId, "succeeded", { lessonId });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    await setStatus(jobId, "failed", { error }).catch(() => undefined);
+    await setStatus(jobId, "failed", { error }).catch((err) => log.error({ err, jobId }, "could not record import failure"));
   }
 }
 
 /** Inserts the job as queued and starts the ingest without waiting for it. */
-export async function startImport(createdBy: string, input: { repo: string; sha: string }): Promise<string> {
+export async function startImport(createdBy: string, input: { repo: string; sha: string }, log: FastifyBaseLogger): Promise<string> {
   const [job] = await db.insert(importJobs).values({ createdBy, ...input }).returning({ id: importJobs.id });
   const jobId = job!.id;
   try {
@@ -123,7 +128,7 @@ export async function startImport(createdBy: string, input: { repo: string; sha:
       .catch(() => undefined);
     throw err;
   }
-  const p = new Promise<void>((resolve) => setImmediate(resolve)).then(() => run(jobId, input));
+  const p = new Promise<void>((resolve) => setImmediate(resolve)).then(() => run(jobId, input, log));
   running.add(p);
   void p.finally(() => running.delete(p));
   return jobId;
