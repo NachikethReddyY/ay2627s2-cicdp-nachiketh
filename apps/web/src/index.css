@@ -12,6 +12,7 @@
   --color-blue: #3b5bff;
   --color-sun: #ffd23f;
   --color-pink: #ff8fb1;
+  --color-pink-deep: #b0245a;
   --color-lilac: #b9a4ff;
   --color-mint: #b6f0cf;
 }
@@ -37,7 +38,7 @@ body {
   border-radius: 9999px;
   padding: 0.85rem 1.75rem;
   font-weight: 800;
-  color: white;
+  color: var(--color-ink);
   background: var(--color-green);
   box-shadow: 0 5px 0 var(--color-green-deep);
   transition: transform 0.08s, box-shadow 0.08s;

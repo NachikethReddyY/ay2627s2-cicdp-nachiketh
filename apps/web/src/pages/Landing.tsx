@@ -82,11 +82,11 @@ export default function Landing() {
           <h2 className="font-display text-4xl font-black tracking-tight md:text-5xl">Why not just watch a tutorial?</h2>
           <div className="mt-10 grid gap-8 md:grid-cols-2">
             <div className="chunk bg-white p-6">
-              <p className="font-display text-2xl font-black text-ink/50">Watching</p>
+              <p className="font-display text-2xl font-black text-ink/70">Watching</p>
               <ul className="mt-4 space-y-3 font-semibold text-ink/60">
-                <li><span className="mr-2 font-black text-pink">&#10005;</span>It all makes sense while it plays</li>
-                <li><span className="mr-2 font-black text-pink">&#10005;</span>Nothing tells you what you missed</li>
-                <li><span className="mr-2 font-black text-pink">&#10005;</span>Same video for everyone</li>
+                <li><span className="mr-2 font-black text-pink-deep">&#10005;</span>It all makes sense while it plays</li>
+                <li><span className="mr-2 font-black text-pink-deep">&#10005;</span>Nothing tells you what you missed</li>
+                <li><span className="mr-2 font-black text-pink-deep">&#10005;</span>Same video for everyone</li>
               </ul>
             </div>
             <div className="chunk bg-mint p-6">

@@ -135,7 +135,7 @@ export default function Login() {
                     setError(null);
                   }}
                   className={`rounded-full px-4 py-2 text-sm font-extrabold transition ${
-                    mode === value ? "bg-sun shadow-[0_3px_0_var(--color-ink)]" : "text-ink/50 hover:bg-sun/40 hover:text-ink"
+                    mode === value ? "bg-sun shadow-[0_3px_0_var(--color-ink)]" : "text-ink/70 hover:bg-sun/40 hover:text-ink"
                   }`}
                 >
                   {label}
