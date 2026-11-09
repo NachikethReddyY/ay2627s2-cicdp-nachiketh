@@ -6,10 +6,28 @@ import { buildApp } from "../src/app.ts";
 const app = buildApp();
 after(() => app.close());
 
-test("GET /api/healthz returns ok", async () => {
-  const res = await app.inject({ method: "GET", url: "/api/healthz" });
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.json(), { ok: true });
+test("GET /api/healthz returns ok and the build sha", async () => {
+  const previous = process.env.GIT_SHA;
+  process.env.GIT_SHA = "abc123";
+  try {
+    const res = await app.inject({ method: "GET", url: "/api/healthz" });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), { ok: true, sha: "abc123" });
+  } finally {
+    if (previous === undefined) delete process.env.GIT_SHA;
+    else process.env.GIT_SHA = previous;
+  }
+});
+
+test("GET /api/healthz reports unknown when GIT_SHA is unset", async () => {
+  const previous = process.env.GIT_SHA;
+  delete process.env.GIT_SHA;
+  try {
+    const res = await app.inject({ method: "GET", url: "/api/healthz" });
+    assert.deepEqual(res.json(), { ok: true, sha: "unknown" });
+  } finally {
+    if (previous !== undefined) process.env.GIT_SHA = previous;
+  }
 });
 
 test("GET /api/readyz returns ok when the database is up", async () => {

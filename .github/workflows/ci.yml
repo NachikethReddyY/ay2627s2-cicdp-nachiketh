@@ -13,7 +13,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Cheapest first: `lint` gates the rest, so a type or lint error costs one short job.
+# Every job starts at once: each is a required check on its own, and waiting for `lint` first only added its
+# runtime to the critical path. A slow job is fixed in its own steps, not by serialising the others.
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -47,7 +48,6 @@ jobs:
         working-directory: services/engine
 
   unit:
-    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -80,7 +80,6 @@ jobs:
       - run: pnpm exec turbo run test build
 
   engine:
-    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -117,8 +116,24 @@ jobs:
           test -n "$v" || { echo "no exact litellm== pin in services/engine/pyproject.toml"; exit 1; }
           python3 spikes/litellm-advisory/check.py "$v"
 
+  # The staging deploy's shell tooling: the head-of-main guard, Render hook call, Vercel config rewrite, smoke gate,
+  # and the workflow's own structure. Nothing else runs these, so a regression would only show on a real deploy.
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - run: |
+          scripts/smoke.test.sh
+          scripts/assert-main-head.test.sh
+          scripts/render-deploy.test.sh
+          scripts/render-vercel-config.test.sh
+          scripts/deploy-staging.test.sh
+
   e2e:
-    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -133,6 +148,28 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Each service image is built here, once, with its own GitHub cache scope, so an unchanged dependency layer
+      # is reused. scripts/ci.sh starts these images without building again (E2E_PREBUILT).
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          tags: learnquest-ci-api:e2e
+          load: true
+          cache-from: type=gha,scope=e2e-api
+          cache-to: type=gha,mode=max,scope=e2e-api
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: services/engine/Dockerfile
+          tags: learnquest-ci-engine:e2e
+          load: true
+          cache-from: type=gha,scope=e2e-engine
+          cache-to: type=gha,mode=max,scope=e2e-engine
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -141,6 +178,8 @@ jobs:
       - run: pnpm --filter @learnquest/e2e --fail-if-no-match exec playwright install --with-deps chromium
 
       - run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
+        env:
+          E2E_PREBUILT: "1"
 
       # Keeps the Playwright report and traces from a red run, so a failure can be read without rerunning.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

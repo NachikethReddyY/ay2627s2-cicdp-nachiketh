@@ -153,8 +153,10 @@ export function startRun(code: string, learner: string, language: Language, spaw
   const child: RunChild = viaBackend?.child ?? (spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }) as unknown as RunChild);
   // Backstop in case the container hangs past the program's own limit. A backend run gets setup time on top,
   // and the limit restarts once the program really starts, so a slow sandbox create never eats into the learner's 60 s.
-  const armBackstop = (s: number) => { clearTimeout(run.timer); run.timer = setTimeout(() => terminate(run, STOPPED), s * 1000); };
-  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: setTimeout(() => terminate(run, STOPPED), (LIMIT_S + (viaBackend ? SETUP_S : 0) + 5) * 1000), check };
+  // unref: a live child keeps the process up on its own, so this timer must not hold a process that has nothing else to do.
+  const backstop = (s: number) => setTimeout(() => terminate(run, STOPPED), s * 1000).unref();
+  const armBackstop = (s: number) => { clearTimeout(run.timer); run.timer = backstop(s); };
+  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: backstop(LIMIT_S + (viaBackend ? SETUP_S : 0) + 5), check };
   runs.set(id, run);
   let err = "";
   child.stdout?.on("data", (d: Buffer) => {

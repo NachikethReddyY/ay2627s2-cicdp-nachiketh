@@ -13,6 +13,8 @@ services:
       retries: 30
 
   engine:
+    # The tag CI's build step gives the image (see .github/workflows/ci.yml, e2e), so `--no-build` finds it.
+    image: learnquest-ci-engine:e2e
     # CI reads only these values. A developer's services/engine/.env (which may hold a real key) is not loaded.
     env_file: !reset []
     environment:
@@ -52,6 +54,8 @@ services:
       retries: 30
 
   api:
+    # The tag CI's build step gives the image (see .github/workflows/ci.yml, e2e), so `--no-build` finds it.
+    image: learnquest-ci-api:e2e
     # The API image runs as production, which refuses to start with AI on and no spend cap. The model is
     # fake, so these caps only satisfy that check.
     environment:

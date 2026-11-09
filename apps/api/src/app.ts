@@ -125,8 +125,8 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(devRoutes);
       api.get(
         "/healthz",
-        { schema: { response: { 200: z.object({ ok: z.literal(true) }) } } },
-        async () => ({ ok: true as const }),
+        { schema: { response: { 200: z.object({ ok: z.literal(true), sha: z.string() }) } } },
+        async () => ({ ok: true as const, sha: process.env.GIT_SHA ?? "unknown" }),
       );
       api.get(
         "/readyz",
