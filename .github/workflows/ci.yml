@@ -116,6 +116,23 @@ jobs:
           test -n "$v" || { echo "no exact litellm== pin in services/engine/pyproject.toml"; exit 1; }
           python3 spikes/litellm-advisory/check.py "$v"
 
+  # The staging deploy's shell tooling: the head-of-main guard, Render hook call, Vercel config rewrite, smoke gate,
+  # and the workflow's own structure. Nothing else runs these, so a regression would only show on a real deploy.
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - run: |
+          scripts/smoke.test.sh
+          scripts/assert-main-head.test.sh
+          scripts/render-deploy.test.sh
+          scripts/render-vercel-config.test.sh
+          scripts/deploy-staging.test.sh
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30

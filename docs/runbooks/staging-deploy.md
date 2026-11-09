@@ -32,7 +32,8 @@ These steps are outside the repo. The workflow fails clearly until they are done
 
 1. Create a separate project `learnquest-web-staging`, root directory `apps/web`.
 2. Turn off Deployment Protection for this project, so smoke can reach `WEB_ORIGIN` without a login.
-3. Copy the token, org ID and project ID into the GitHub secrets above.
+3. Add a **Production** environment variable `VITE_SHELL_WS_ORIGIN=wss://lq-api-staging.onrender.com` (the API's `wss://` origin, no path). The terminal opens its WebSocket straight to the API, and Vercel cannot forward WebSockets, so without this the terminal fails on staging. `vercel pull --environment=production` writes it into the build. Changing `vercel.json` does not set it.
+4. Copy the token, org ID and project ID into the GitHub secrets above.
 
 ## What a run does
 

@@ -35,6 +35,9 @@ wait_for_sha() {
 
 wait_for_sha api "$api_origin/api/healthz"
 wait_for_sha engine "$engine_origin/healthz"
+# The web alias must serve the same release. A stale alias can forward to an old API and still pass the status
+# checks below, so its /api/healthz has to report the expected sha too.
+wait_for_sha web "$web_origin/api/healthz"
 
 failed=0
 check() {
