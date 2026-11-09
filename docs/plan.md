@@ -272,6 +272,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 - **Concept identity (PROPOSED):** concepts are upserted by `(world_id, slug)`, where slug is the lowercased, trimmed name. A step's concepts fall back to its lesson's concepts when empty.
 - **Observed actions (PROPOSED):** only predict-step first actions feed BKT. Other steps and later actions are not observed.
 - **Parameter name:** the engine uses `p_learn`, not `p_transit` as in the story.
+- **Next step and catch-up (built):** the policy only practises a concept that an unfinished lesson teaches, and `advance` names only mastered concepts. Recommendations include AI drafts, which are never done. Engine calls inside the catch-up time out after 8 s, and the catch-up stops after 12 s. Details in `docs/lq-22-plan.md` §4 and §5.
 
 ### 8.3 Player core (`packages/player-core`)
 - Events are derived from hunks. Same input and same typing config → same events. Config: hunks > 20 changed lines are inserted as one highlighted block; typing 60 WPM; 300 ms pause at line end.

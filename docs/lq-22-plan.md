@@ -146,16 +146,18 @@ Rules, applied in order; first match wins:
 
 1. **No observations in this world** → `start`. First unfinished lesson in course order.
    - Reason: "You haven't started {course} yet. This lesson introduces {concept}."
-2. Among unlocked concepts (all prerequisites ≥ 0.8) below 0.95, take the lowest `p_known`; ties go to course order.
+2. Among unlocked concepts (all prerequisites ≥ 0.8) below 0.95 that an unfinished lesson covers, take the lowest `p_known`; ties go to course order. A concept with no unfinished lesson left is never picked, so a reason never points at an unrelated lesson.
    - **p < 0.4** → `learn`. Prefer an unfinished learn or watch lesson covering the concept.
      - Reason: "{concept} is at {pct}%. A worked explanation comes first."
    - **0.4 ≤ p < 0.95** → `practice`. Prefer a predict, practice or game-practice lesson covering the concept.
      - Reason: "{concept} is at {pct}%. More practice will make it stick."
-3. **All observed concepts mastered** and a lesson remains → `advance`.
-   - Reason: "You've mastered {list}. Next up: {lesson}."
+3. **Nothing left to practise** (no concept below 0.95 has an unfinished lesson) and a lesson remains → `advance`.
+   - Reason: "You've mastered {list}. Next up: {lesson}." `{list}` names only concepts at or above 0.95, in course order.
 4. **Nothing remains** → `done`, `lessonId` null.
 
 Every output carries a `reasonCode` from a fixed enum and a learner-facing `reason`. A single function builds both, so no recommendation can be produced without a reason. The reason never mentions step content.
+
+`POLICY_VERSION` is `4`, in both `policy.py` and `progress/mastery.ts`. Bump it whenever a rule or a reason changes. It is part of the recommendation cache hash, so stored recommendations are recomputed.
 
 **Fit with the lesson mix:** the policy only chooses which lesson comes next. It does not touch step order, hints or answers. Hint depth stays with the attempt state machine (`attempts/machine.ts`). `explanationStyle` belongs to WP5.
 
@@ -184,10 +186,11 @@ Every output carries a `reasonCode` from a fixed enum and a learner-facing `reas
 
 1. After `mutate()` commits (`attempts/router.ts:76`), if the attempt was observed, call `applyObservations(learnerId)`. Errors are caught and logged; the attempt response never fails because of mastery.
 2. `applyObservations` runs one transaction:
-   - `SELECT … FROM learners WHERE id = $1 FOR UPDATE`
+   - `SELECT … FROM learners WHERE id = $1 FOR NO KEY UPDATE`. It serialises calls per learner and does not block the locks that attempt inserts take.
    - Select observed attempts with `mastery_applied_at IS NULL`, limit 50.
    - For each: call the engine update, upsert `mastery` (`n_obs + 1`), set `mastery_applied_at`.
-   - Call `/v1/next` and insert one `recommendations` row.
+   - Call `/v1/next` and insert one `recommendations` row. Its lessons are the ones the course lists show: published lessons and AI drafts. A draft is never `done`.
+   - Engine calls inside the transaction time out after 8 s (`ENGINE_CALL_TIMEOUT_MS`). That is below the 30 s `idle_in_transaction_session_timeout` in `db/client.ts`, which would otherwise close the transaction. The catch-up stops starting new rows or worlds after 12 s (`CATCH_UP_BUDGET_MS`). Rows left pending are applied by a later call.
 3. `me.mastery` and `me.next` run `applyObservations` first, so an engine outage earlier is caught up on read.
 
 ---
@@ -251,4 +254,4 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 
 - Concept slugs drift without a catalogue, so mastery can split across near-duplicates (decision 3).
 - Without prerequisite edges, the policy may recommend concepts a learner has not reached. Acceptable for the first cut only.
-- `applyObservations` holds a row lock on the learner while it calls the engine (§5). The engine is a pure, fast function, so this is acceptable for now. If latency shows up, compute the updates outside the lock and write them in a second step.
+- `applyObservations` holds a row lock on the learner while it calls the engine (§5). Each call is capped at 8 s and the catch-up at 12 s, so the lock is held for seconds at most. If latency still shows up, compute the updates outside the lock and write them in a second step.
