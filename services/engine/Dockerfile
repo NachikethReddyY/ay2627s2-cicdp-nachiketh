@@ -1,11 +1,12 @@
+# syntax=docker/dockerfile:1.7
 # Build from the repo root (see docker-compose.yml): the visual checker needs packages/ui-catalog.
 FROM node:22-slim AS checker
 # Runtime deps only. Keep the zod pin equal to the version pnpm-lock.yaml resolves for
 # packages/ui-catalog (importers: packages/ui-catalog -> zod); bump both together.
 WORKDIR /repo/packages/ui-catalog
 COPY packages/ui-catalog/package.json ./
-COPY packages/ui-catalog/src ./src
 RUN npm install --omit=dev --no-save --no-package-lock zod@4.6.7
+COPY packages/ui-catalog/src ./src
 
 FROM python:3.12-slim
 
@@ -18,11 +19,13 @@ COPY --from=checker /usr/local/bin/node /usr/local/bin/node
 COPY --from=checker /repo/packages /repo/packages
 
 WORKDIR /repo/services/engine
+# Dependencies first, from the lockfile alone: this layer and its uv cache survive a source edit.
 COPY services/engine/pyproject.toml services/engine/uv.lock services/engine/README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
 COPY services/engine/learnquest_engine ./learnquest_engine
 # guide.py reads the persona from parents[3] of the package, which is /repo, so ship the prompt there.
 COPY INSTRUCTIONS.md /repo/INSTRUCTIONS.md
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 RUN useradd --system --uid 10001 engine
 USER engine
