@@ -14,7 +14,7 @@ import { sandboxRoutes } from "./sandbox/route.ts";
 import { sandboxRunRoute } from "./sandbox/run.ts";
 import { sandboxFilesRoute } from "./sandbox/files.ts";
 import { redactUrl, sandboxTicketRoute } from "./sandbox/ticket.ts";
-import { devRoutes } from "./dev/route.ts";
+import { devRoutes, guideRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
   400: "bad_request",
@@ -123,6 +123,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(sandboxFilesRoute);
       api.register(sandboxTicketRoute);
       api.register(devRoutes);
+      api.register(guideRoutes);
       api.get(
         "/healthz",
         { schema: { response: { 200: z.object({ ok: z.literal(true), sha: z.string() }) } } },
