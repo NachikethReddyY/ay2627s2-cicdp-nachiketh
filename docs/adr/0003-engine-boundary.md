@@ -58,7 +58,8 @@ The learner-facing rules, as the code enforces them today:
 
 - `lessons.get` selects only the step columns it needs. It does not select
   `steps.secret`, which holds `answer`, `accepted` and the hunks.
-- `lessons.get` removes `expectedOutput` from practice parts
+- `lessons.get` strips every practice test to `id`, `name`, `visibility` and
+  `stretch`. It returns `stdin` and `expectedStdout` only for sample tests
   (`apps/api/src/lessons/router.ts`).
 - `steps.reveal` returns `answer` only after the step is revealed or skipped
   (`apps/api/src/attempts/router.ts`).
