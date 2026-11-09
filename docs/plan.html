@@ -449,6 +449,15 @@ llm_calls(id, lesson_job_id→lesson_jobs null, provider, model, purpose, prompt
 <p><strong>Policy:</strong> between lessons, pick the lowest <code>p_known</code> among unlocked concepts and recommend the lesson that covers it, with <code>reason</code>. Stretch: review items before steps.</p>
 <p><strong>Queue:</strong> one DB transaction first locks the <code>step_progress</code> row (<code>SELECT … FOR UPDATE</code>), then writes the attempt, <code>step_progress</code>, hint rows, and a pg-boss job <code>mastery</code> (singleton key <code>mastery:&lt;attemptId&gt;</code>, so retries are idempotent). The response returns at once. The worker, in one transaction, locks the learner&#39;s <code>learners</code> row (<code>SELECT … FOR UPDATE</code>), calls <code>/v1/mastery/update</code> and <code>/v1/next</code>, and writes <code>mastery</code> and <code>recommendations</code>. The WK-1 spike confirms pg-boss can enqueue on the transaction&#39;s connection.</p>
 <p><strong>Small data:</strong> with ~3 code lessons, BKT barely moves. Report this as a limit.</p>
+<p><strong>Implementation notes (LQ-22):</strong> what was built. Items marked PROPOSED need owner confirmation. Details in <code>docs/lq-22-plan.md</code>.</p>
+<ul>
+<li><strong>Thresholds (PROPOSED, pending owner confirmation):</strong> unlock at <code>p_known ≥ 0.8</code>, mastered at <code>p_known ≥ 0.95</code>, learn/practice boundary at <code>p &lt; 0.4</code> (<code>policy.py</code>, <code>progress/mastery.ts</code>).</li>
+<li><strong>No pg-boss (PROPOSED, pending owner confirmation):</strong> the mastery update runs inline on the attempt path after commit. The attempt response never fails because of it. Catch-up runs on read (<code>me.mastery</code>, <code>me.next</code>). Idempotency comes from <code>attempts.mastery_applied_at</code>. This departs from the queue design above.</li>
+<li><strong>Concept identity (PROPOSED):</strong> concepts are upserted by <code>(world_id, slug)</code>, where slug is the lowercased, trimmed name. A step's concepts fall back to its lesson's concepts when empty.</li>
+<li><strong>Observed actions (PROPOSED):</strong> only predict-step first actions feed BKT. Other steps and later actions are not observed.</li>
+<li><strong>Parameter name:</strong> the engine uses <code>p_learn</code>, not <code>p_transit</code> as in the story.</li>
+<li><strong>Next step and catch-up (built):</strong> the policy only practises a concept that an unfinished lesson teaches, and <code>advance</code> names only mastered concepts. Recommendations include AI drafts, which are never done. Engine calls inside the catch-up time out after 8 s, and the catch-up stops after 12 s. Details in <code>docs/lq-22-plan.md</code> §4 and §5.</li>
+</ul>
 <h3 id="83-player-core-packagesplayer-core">8.3 Player core (<code>packages/player-core</code>)<a class="headerlink" href="#83-player-core-packagesplayer-core" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Events are derived from hunks. Same input and same typing config → same events. Config: hunks &gt; 20 changed lines are inserted as one highlighted block; typing 60 WPM; 300 ms pause at line end.</li>
