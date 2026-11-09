@@ -54,9 +54,10 @@ const BROKEN = new Set(["error", "build_failed", "destroyed", "destroying"]);
 /** The label value for a learner: a hash, so no learner id is stored at Daytona. Same hash Docker uses for container names. */
 export const learnerHash = (learnerId: string) => createHash("sha256").update(learnerId).digest("hex");
 
-const FILE: Record<"python" | "javascript", { path: string; cmd: string[] }> = {
+const FILE: Record<"python" | "javascript" | "typescript", { path: string; cmd: string[] }> = {
   python: { path: "/tmp/main.py", cmd: ["python3", "-I", "-u", "/tmp/main.py"] },
   javascript: { path: "/tmp/main.js", cmd: ["node", "/tmp/main.js"] },
+  typescript: { path: "/tmp/main.ts", cmd: ["node", "/tmp/main.ts"] },
 };
 
 export function daytonaBackend(opts: {
@@ -372,7 +373,7 @@ export function daytonaBackend(opts: {
 function runInSandbox(
   client: DaytonaClient,
   o: { snapshot?: string; learner: string; stopMinutes: number },
-  language: "python" | "javascript",
+  language: "python" | "javascript" | "typescript",
   code: string,
   limits: RunLimits,
 ): RunHandle {

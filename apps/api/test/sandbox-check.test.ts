@@ -8,6 +8,7 @@ import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
 import { checkResults, lessons, lessonVersions, partCompletions, worlds, type PartSecret } from "../src/db/schema.ts";
 import { setCheckSpawnForTests } from "../src/sandbox/check.ts";
+import { atCapacity, startRun, stopRun } from "../src/sandbox/run.ts";
 
 const app = buildApp();
 after(() => app.close());
@@ -238,4 +239,55 @@ test("the legacy POST /sandbox/run Check path still reads expectedOutput", async
   const me = (await db.execute<{ id: string }>(sql`SELECT id FROM learners`)).rows[0]!.id;
   assert.equal((await practiceCheck(me, "legacy"))?.expected, "42");
   assert.equal(await practiceCheck(me, "multi"), null, "a multi-test lesson has no single expected output");
+});
+
+test("a live check and a live run share SANDBOX_MAX_RUNS: with 2, the next check and the next run are both busy (503)", async () => {
+  const cookieA = await signUp(app, "cap-a@example.com");
+  const cookieB = await signUp(app, "cap-b@example.com");
+  await addLesson("multi", "practice", part());
+  // The check's docker never answers until we say so.
+  let finishCheck = () => {};
+  setCheckSpawnForTests(((_c: string, args: string[]) => {
+    const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => {};
+    child.stdin = Object.assign(new EventEmitter(), { end() { if (args[0] === "run") finishCheck = () => child.emit("close", 1); } });
+    if (args[0] !== "run") setImmediate(() => child.emit("close", 0));
+    return child;
+  }) as never);
+  // The run's docker never exits on its own either.
+  const runSpawn = () => {
+    const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = Object.assign(new EventEmitter(), { write() {} });
+    child.kill = () => { setImmediate(() => child.emit("close", 137)); };
+    return child as never;
+  };
+  const max = env.SANDBOX_MAX_RUNS;
+  env.SANDBOX_MAX_RUNS = 2;
+  let runId: string | null = null;
+  try {
+    await withSandbox(true, async () => {
+      const first = check(cookieA, body("multi")); // live check: 1 of 2
+      for (let i = 0; i < 200 && !atCapacity() && finishCheck.toString() === "() => {}"; i++) await new Promise((r) => setTimeout(r, 10));
+      runId = startRun("print(1)", "cap-run-learner", "python", runSpawn); // live run: 2 of 2
+      assert.ok(runId, "one check plus one run fits in 2");
+      assert.equal(atCapacity(), true);
+      const next = await check(cookieB, body("multi"));
+      assert.equal(next.statusCode, 503);
+      assert.equal(next.json().error.code, "busy");
+      const nextRun = await app.inject({ method: "POST", url: "/api/sandbox/run", headers: { cookie: cookieB, origin: env.PUBLIC_ORIGIN }, payload: { code: "print(2)", language: "python" } });
+      assert.equal(nextRun.statusCode, 503);
+      assert.equal(nextRun.json().error.code, "busy");
+      finishCheck();
+      await first;
+    });
+  } finally {
+    if (runId) stopRun(runId, "cap-run-learner");
+    await new Promise((r) => setTimeout(r, 20));
+    env.SANDBOX_MAX_RUNS = max;
+  }
+  assert.equal(atCapacity(), false, "the check released its slot");
 });

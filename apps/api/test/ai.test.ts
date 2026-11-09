@@ -40,6 +40,7 @@ const badWatch = {
   hunks: parts.watch.hunks.map((h) => ({ ...h, lines: [" not in the file", "+x"] })),
 };
 
+const realEngineLesson = engineParts.lesson;
 let lessonCalls = 0;
 let lessonOut: (kind: string) => unknown;
 beforeEach(() => {
@@ -317,6 +318,38 @@ test("lessons.get returns the lesson with its image prompt resolved", async () =
   } finally {
     await idle();
     Object.assign(env, { IMAGE_BASE_URL: old.u, IMAGE_API_KEY: old.k, IMAGE_MODEL: old.m, IMAGE_API_STYLE: old.s });
+    await new Promise((r) => srv.close(r));
+  }
+});
+
+test("practice parts ask the engine for env.PRACTICE_STRETCH_TESTS stretch tests, and changing it makes new parts", async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const srv = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      bodies.push(JSON.parse(raw) as Record<string, unknown>);
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ lesson: parts.practice }));
+    });
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const old = { url: env.ENGINE_URL, n: env.PRACTICE_STRETCH_TESTS };
+  env.ENGINE_URL = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  engineParts.lesson = realEngineLesson;
+  try {
+    for (const [n, email] of [[3, "s3@example.com"], [5, "s5@example.com"]] as const) {
+      env.PRACTICE_STRETCH_TESTS = n;
+      const { t, lessons: ls } = await setup(email);
+      assert.equal((await t.q("lessons.get", { id: ls[2]!.slug })).statusCode, 200);
+      await idle();
+    }
+    const practice = bodies.filter((b) => (b.lesson as { kind: string }).kind === "practice");
+    assert.deepEqual(practice.map((b) => b.stretchTests), [3, 5], "the second setting is not served from the first one's cache row");
+    assert.ok(bodies.filter((b) => (b.lesson as { kind: string }).kind !== "practice").every((b) => !("stretchTests" in b)));
+  } finally {
+    env.ENGINE_URL = old.url;
+    env.PRACTICE_STRETCH_TESTS = old.n;
     await new Promise((r) => srv.close(r));
   }
 });

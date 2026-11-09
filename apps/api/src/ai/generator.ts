@@ -7,6 +7,7 @@ export type LessonContext = {
   course: { title: string; description: string };
   lesson: { title: string; level: number; concepts: string[]; kind: "predict" | "learn" | "watch" | "practice" | "game-practice" };
   missedConcepts: string[];
+  stretchTests?: number; // practice lessons only; part of the cache key, so changing it makes new parts
 };
 
 export const generator = {

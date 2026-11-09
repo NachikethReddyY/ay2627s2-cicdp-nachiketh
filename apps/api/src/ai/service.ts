@@ -209,6 +209,7 @@ async function lessonContext(l: LessonRow): Promise<LessonContext> {
     course: { title: world!.title, description: world!.description },
     lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
     missedConcepts: [],
+    ...(l.kind === "practice" && { stretchTests: env.PRACTICE_STRETCH_TESTS }),
   };
 }
 

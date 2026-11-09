@@ -13,7 +13,7 @@ const { classify, score, runInContainer, CheckUnavailableError } = await import(
 
 const tick = () => new Promise((r) => setImmediate(r));
 
-type Script = { stdout?: string; stderr?: string; exit?: number; hang?: boolean };
+type Script = { chunks?: string[]; stdout?: string; stderr?: string; exit?: number; hang?: boolean };
 type Spawned = { cmd: string; args: string[]; cwd: string; stdin: string };
 
 // Runs the real harness source against a fake `spawn` that plays one script per test.
@@ -34,6 +34,7 @@ function harness(scripts: Script[], input: object) {
     child.kill = () => { child.emit("close", null); };
     setImmediate(() => {
       if (script.hang) return;
+      for (const c of script.chunks ?? []) (child.stdout as EventEmitter).emit("data", Buffer.from(c));
       if (script.stdout) (child.stdout as EventEmitter).emit("data", Buffer.from(script.stdout));
       if (script.stderr) (child.stderr as EventEmitter).emit("data", Buffer.from(script.stderr));
       child.emit("close", script.exit ?? 0);
@@ -220,4 +221,14 @@ test("runInContainer: one hardened container with the code and tests on stdin", 
   const adds = args.flatMap((a, i) => (a === "--cap-add" ? [args[i + 1]] : []));
   assert.deepEqual(adds.sort(), ["KILL", "SETGID", "SETUID"]);
   assert.equal(args[args.indexOf("--cap-drop") + 1], "ALL");
+});
+
+test("output that fills MAX_STDOUT exactly and then keeps printing is an overflow and a fail, not a pass", async () => {
+  const padded = "x".repeat(MAX_STDOUT);
+  const h = harness([{ chunks: [padded, "WRONG"] }], { token: "t", language: "python", code: "", tests: [{ stdin: "" }] });
+  await h.done;
+  const [r] = h.output().results;
+  assert.equal(r!.overflow, true);
+  assert.equal((r!.stdout as string).length, MAX_STDOUT);
+  assert.equal(classify(r as never, padded), "fail");
 });

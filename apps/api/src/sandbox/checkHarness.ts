@@ -52,8 +52,10 @@ function runOne(deps, cmd, args, cwd, stdin) {
       return done(null);
     }
     child.stdout.on("data", (d) => {
-      if (stdout.length < MAX_STDOUT) stdout += d.toString();
-      if (stdout.length > MAX_STDOUT) { stdout = stdout.slice(0, MAX_STDOUT); overflow = true; }
+      const room = MAX_STDOUT - stdout.length;
+      const s = d.toString();
+      if (s.length > room) overflow = true; // any dropped byte means the output was not seen in full
+      if (room > 0) stdout += s.slice(0, room);
     });
     child.stderr.on("data", (d) => {
       if (stderr.length < MAX_STDERR) stderr = (stderr + d.toString()).slice(0, MAX_STDERR);

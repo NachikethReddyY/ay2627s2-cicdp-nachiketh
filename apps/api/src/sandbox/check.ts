@@ -8,7 +8,7 @@ import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { practiceTests, recordCompletion } from "../parts/practice.ts";
 import { PRACTICE_LANGUAGES, type PracticeLanguage, type PracticeTest } from "../parts/practice-schema.ts";
-import { atCapacity } from "./run.ts";
+import { atCapacity, reserveCheckSlot } from "./run.ts";
 import { HARNESS_SOURCE, TEST_TIMEOUT_MS } from "./checkHarness.ts";
 
 // Multi-test Check of a practice lesson: one locked-down container runs the learner's code once per test.
@@ -168,8 +168,10 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
     if (!body.success) return reply.status(400).send(fail("bad_request", "Invalid check request"));
     const found = await practiceTests(learner, body.data.lessonId);
     if (!found) return reply.status(404).send(fail("not_found", "Practice lesson not found"));
-    if (atCapacity() || active.size >= env.SANDBOX_MAX_RUNS) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
+    if (atCapacity()) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     if (active.has(learner)) return reply.status(429).send(fail("busy", "Wait for your running check to finish"));
+    const release = reserveCheckSlot(); // counts against SANDBOX_MAX_RUNS together with ordinary runs
+    if (!release) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     active.add(learner);
     try {
       const { tests } = found.practice;
@@ -183,6 +185,7 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
       return reply.status(503).send(fail("check_failed", "Could not check the code"));
     } finally {
       active.delete(learner);
+      release();
     }
   });
 }

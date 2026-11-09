@@ -85,17 +85,32 @@ function terminate(run: Run, error?: string) {
   rm.on("error", done);
 }
 
-export type Language = "python" | "javascript";
+export type Language = "python" | "javascript" | "typescript";
 const INTERPRETER: Record<Language, string[]> = {
   python: ["python3", "-I", "-u", "-c"],
   javascript: ["node", "-e"],
+  typescript: ["node", "--input-type=commonjs-typescript", "-e"], // Node strips the types; same semantics as the javascript run
 };
 
-/** True when the server already has env.SANDBOX_MAX_RUNS live runs across all learners. */
-export function atCapacity(): boolean {
-  let live = 0;
+let checkSlots = 0; // live multi-test checks, which share SANDBOX_MAX_RUNS with ordinary runs
+
+function liveCount(): number {
+  let live = checkSlots;
   for (const r of runs.values()) if (!r.done) live++;
-  return live >= env.SANDBOX_MAX_RUNS;
+  return live;
+}
+
+/** True when live runs plus live checks already fill env.SANDBOX_MAX_RUNS across all learners. */
+export function atCapacity(): boolean {
+  return liveCount() >= env.SANDBOX_MAX_RUNS;
+}
+
+/** Reserves one of the shared slots for a check, or returns null when the server is full. Call the result once to release it. */
+export function reserveCheckSlot(): (() => void) | null {
+  if (atCapacity()) return null;
+  checkSlots++;
+  let released = false;
+  return () => { if (!released) { released = true; checkSlots--; } };
 }
 
 /** Adapts a backend's RunHandle to the child-process shape startRun reads. The backend loads asynchronously, so early input and kills wait for it. */
@@ -223,7 +238,7 @@ export function stopRun(id: string, learner: string): boolean {
 export async function sandboxRunRoute(app: FastifyInstance) {
   const Start = z.object({
     code: z.string().max(MAX_CODE),
-    language: z.enum(["python", "javascript"]).default("python"),
+    language: z.enum(["python", "javascript", "typescript"]).default("python"),
     lessonId: z.string().regex(/^[\w-]{1,64}$/).optional(), // a Check run: the server judges it against this lesson
   });
   const Line = z.object({ line: z.string().max(MAX_LINE) });
