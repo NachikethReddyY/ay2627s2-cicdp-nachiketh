@@ -6,7 +6,7 @@ import { z } from "zod";
 import { fileURLToPath } from "node:url";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { attempts, concepts, learners, mastery, recommendations, stepProgress, steps, worlds } from "../src/db/schema.ts";
+import { attempts, concepts, learners, lessons, mastery, recommendations, stepProgress, steps, worlds } from "../src/db/schema.ts";
 import { EngineError } from "../src/engine-client/client.ts";
 import { engineLearner } from "../src/engine-client/learner.ts";
 import { readFileSync } from "node:fs";
@@ -361,6 +361,29 @@ test("me.next carries a reason, even before any attempt", async () => {
   assert.ok(next.reason.length > 0);
   assert.equal(next.action, "practice");
   assert.ok(next.conceptSlug);
+});
+
+test("a course of unwritten AI drafts is still sent to the engine, as unfinished", async () => {
+  const c = await signUp(app);
+  const [world] = await db.select({ id: worlds.id }).from(worlds).where(eq(worlds.slug, "codequest"));
+  // Drafts have no version yet; the learner writes them on first play, so they must count as lessons to do.
+  await db.update(lessons).set({ status: "draft", sourceKind: "ai", currentVersionId: null }).where(eq(lessons.worldId, world!.id));
+  const next = out(await trpc(app, c).q("me.next", { world: "codequest" }));
+  assert.equal(next.action, "practice");
+  assert.ok(lastNext && lastNext.lessons.length > 0);
+  assert.ok(lastNext.lessons.every((l) => !l.done));
+});
+
+test("the engine call made inside the mastery transaction times out before PostgreSQL's idle limit", async () => {
+  let timeoutMs: number | undefined;
+  engineLearner.update = async (req, opts) => {
+    timeoutMs = opts?.timeoutMs;
+    return stubUpdate(req);
+  };
+  const c = await signUp(app);
+  await attempt(c, 1);
+  // db/client.ts sets idle_in_transaction_session_timeout to 30 s; a call that outlives it kills the transaction.
+  assert.ok(timeoutMs !== undefined && timeoutMs < 30_000, `timeout ${timeoutMs}`);
 });
 
 test("me.mastery and me.next leak no answer keys, hints or explanations", async () => {

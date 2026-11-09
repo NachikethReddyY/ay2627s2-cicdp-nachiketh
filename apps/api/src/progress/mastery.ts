@@ -1,15 +1,19 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { attempts, concepts, lessons, lessonVersions, mastery, recommendations, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { EngineError } from "../engine-client/client.ts";
 import { engineLearner, type BktParams, type NextRequest, type NextResult } from "../engine-client/learner.ts";
-import { lessonDone, lessonTotal } from "./shared.ts";
+import { lessonDone, lessonTotal, listed } from "./shared.ts";
 
 export const MASTERED_AT = 0.95;
 export const UNLOCK_AT = 0.8;
 const BATCH = 50;
+/** Well under PostgreSQL's 30 s idle_in_transaction_session_timeout (db/client.ts): engine calls run inside a transaction. */
+const ENGINE_CALL_TIMEOUT_MS = 8_000;
+/** Time box for one catch-up. Rows and worlds past it stay pending (or stale) for the next call. */
+const CATCH_UP_BUDGET_MS = 12_000;
 
 export type AttemptFacts = { observed: boolean; kind: "mcq" | "cloze" | "skip"; correct: boolean | null; hintsUsed: number };
 
@@ -126,10 +130,16 @@ async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string
 
 /** Asks the engine what comes next in the world and stores it when it is new information. */
 async function recommend(tx: Db, learnerId: string, worldId: string): Promise<void> {
+  // The same lessons the course lists show (shared.ts `listed`): published, or AI drafts written on first play.
   const worldLessons = await tx
-    .select({ id: lessons.id, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
+    .select({ id: lessons.id, status: lessons.status, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
     .from(lessons)
-    .where(and(eq(lessons.worldId, worldId), eq(lessons.status, "published")))
+    .where(
+      and(
+        eq(lessons.worldId, worldId),
+        or(eq(lessons.status, "published"), and(eq(lessons.sourceKind, "ai"), eq(lessons.status, "draft"))),
+      ),
+    )
     .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.slug));
   const names = new Map<string, string>();
   for (const l of worldLessons) for (const c of validConcepts(l.concepts, `lesson ${l.id}`)) if (slugOf(c)) names.set(slugOf(c), c.trim());
@@ -137,14 +147,18 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
 
   const { rows } = await tx.execute<{ id: string; done: number; total: number }>(sql`
     SELECT l.id, ${lessonDone(learnerId)} AS done, ${lessonTotal} AS total
-    FROM lessons l WHERE l.world_id = ${worldId} AND l.status = 'published'`);
-  const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total).map((r) => r.id));
+    FROM lessons l WHERE l.world_id = ${worldId} AND ${listed}`);
+  // A draft is unfinished until it is written: an unwritten lesson has no steps or parts to complete.
+  const published = new Set(worldLessons.filter((l) => l.status === "published").map((l) => l.id));
+  const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total && published.has(r.id)).map((r) => r.id));
 
+  // Sorted by slug: the hash below depends on array order, and PostgreSQL does not order unsorted rows.
   const known = await tx
     .select({ conceptId: mastery.conceptId, slug: concepts.slug, pKnown: mastery.pKnown })
     .from(mastery)
     .innerJoin(concepts, eq(concepts.id, mastery.conceptId))
-    .where(and(eq(mastery.learnerId, learnerId), eq(concepts.worldId, worldId)));
+    .where(and(eq(mastery.learnerId, learnerId), eq(concepts.worldId, worldId)))
+    .orderBy(asc(concepts.slug));
 
   // The engine sees slugs, not UUIDs, so its reason text is readable. Slugs are unique per world.
   const idOfSlug = new Map(ids);
@@ -178,7 +192,7 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   const inputHash = hashInput(request);
   if (latest?.inputHash === inputHash) return;
 
-  const next = await engineLearner.next(request);
+  const next = await engineLearner.next(request, { timeoutMs: ENGINE_CALL_TIMEOUT_MS });
   const result = { ...next, conceptId: next.conceptId ? (idOfSlug.get(next.conceptId) ?? null) : null };
   await insertRecommendation(tx, learnerId, worldId, result, inputHash);
 }
@@ -225,9 +239,12 @@ const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: Nex
  * serialised per learner by a row lock; mastery_applied_at makes it idempotent. Each row runs in a savepoint:
  * a row that can never succeed is logged and marked applied so it cannot block the learner; transient engine
  * trouble stops the batch and leaves the row (and later ones) pending. Earlier writes are kept either way.
+ * Engine calls here hold the transaction open, so each has a short timeout and the whole catch-up is time-boxed
+ * (CATCH_UP_BUDGET_MS). Otherwise PostgreSQL would close the idle transaction and the request would wait for the full engine timeout.
  */
 export async function applyObservations(learnerId: string, opts: { worldId?: string } = {}): Promise<void> {
   await withTx(async (tx) => {
+    const started = Date.now();
     // NO KEY UPDATE still serialises concurrent calls but, unlike FOR UPDATE, does not conflict with the
     // FOR KEY SHARE lock that inserts into step_progress, attempts and hint_events take on this row.
     await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
@@ -255,6 +272,10 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
 
     const touched = new Set<string>();
     for (const a of pending) {
+      if (Date.now() - started > CATCH_UP_BUDGET_MS) {
+        console.warn(`mastery: catch-up time box reached; attempt ${a.id} and later stay pending`);
+        break;
+      }
       const obs = observationOf({ observed: a.observed, kind: a.attemptKind, correct: a.correct, hintsUsed: a.hintsUsed });
       const where = `attempt ${a.id}`;
       await tx.execute(sql`SAVEPOINT mastery_row`);
@@ -270,12 +291,15 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
             .where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds)));
           const prior = new Map(priors.map((p) => [p.conceptId, p.pKnown]));
           const bkt = mergeBkt((a.config as { bkt?: unknown } | null)?.bkt, `world ${a.worldId}`);
-          const updates = await engineLearner.update({
-            priors: conceptIds.map((conceptId) => ({ conceptId, pKnown: prior.get(conceptId) ?? null })),
-            ...(bkt && { params: bkt }),
-            questionType: a.questionType,
-            correct: obs === "correct",
-          });
+          const updates = await engineLearner.update(
+            {
+              priors: conceptIds.map((conceptId) => ({ conceptId, pKnown: prior.get(conceptId) ?? null })),
+              ...(bkt && { params: bkt }),
+              questionType: a.questionType,
+              correct: obs === "correct",
+            },
+            { timeoutMs: ENGINE_CALL_TIMEOUT_MS },
+          );
           for (const u of updates) {
             await tx
               .insert(mastery)
@@ -303,6 +327,10 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
     // The engine can fail here without losing the mastery writes above.
     const want = new Set([...touched, ...(opts.worldId ? [opts.worldId] : [])]);
     for (const worldId of want) {
+      if (Date.now() - started > CATCH_UP_BUDGET_MS) {
+        console.warn(`mastery: time box reached; recommendation for world ${worldId} is left stale`);
+        break;
+      }
       await tx.execute(sql`SAVEPOINT recommend`);
       try {
         await recommend(tx, learnerId, worldId);

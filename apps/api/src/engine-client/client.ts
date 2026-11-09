@@ -11,8 +11,11 @@ export class EngineError extends Error {
   }
 }
 
-/** POSTs JSON to a Python engine route. Throws EngineError on transport failure, timeout, or a non-2xx answer. */
-export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unknown): Promise<T> {
+/**
+ * POSTs JSON to a Python engine route. Throws EngineError on transport failure, timeout, or a non-2xx answer.
+ * `timeoutMs` overrides ENGINE_TIMEOUT_MS for one call; callers that run inside a transaction pass a short one.
+ */
+export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
   if (!env.ENGINE_TOKEN) throw new EngineError("ENGINE_TOKEN is not set", 503, null);
   let res: Response;
   try {
@@ -20,7 +23,7 @@ export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unkno
       method: "POST",
       headers: { "content-type": "application/json", "x-engine-token": env.ENGINE_TOKEN },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(env.ENGINE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? env.ENGINE_TIMEOUT_MS),
     });
   } catch (cause) {
     throw new EngineError(`Engine unreachable at ${env.ENGINE_URL}`, 502, cause);
