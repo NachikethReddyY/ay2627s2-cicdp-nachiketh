@@ -39,7 +39,7 @@ async function drain(req: IncomingMessage) {
 const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/healthz") return send(res, 200, { ok: true, repliesLeft: queue.length });
   if (req.method !== "POST" || req.url !== "/v1/chat/completions") {
-    console.error(`fake-llm: no route for ${req.method} ${req.url}`);
+    console.error("fake-llm: request to an unknown route");
     return send(res, 500, { error: { message: `fake-llm: no recorded reply for ${req.method} ${req.url}` } });
   }
   await drain(req);
