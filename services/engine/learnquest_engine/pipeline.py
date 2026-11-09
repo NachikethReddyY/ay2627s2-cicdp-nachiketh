@@ -26,8 +26,15 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
     if kind == "predict":
         return generate(_prompt("lesson"), ctx.model_dump(), Lesson)
     system = _prompt(kind.replace("-", "_"))
+    if kind == "practice":
+        system += _stretch_note(ctx.stretchTests)
     if kind not in ("learn", "game-practice"):
-        return generate(system, ctx.model_dump(), PARTS[kind])
+        return generate(
+            system,
+            ctx.model_dump(),
+            PARTS[kind],
+            context={"stretchTests": ctx.stretchTests},
+        )
     ctx_data = ctx.model_dump()
     res = generate(system + "\n\n" + visual._system(embedded=True), ctx_data, PARTS[kind])
     if kind == "game-practice":
@@ -37,6 +44,16 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
     if doc is not None:
         res.value = res.value.model_copy(update={"doc": visual.validated(doc)})
     return res
+
+
+def _stretch_note(stretch_tests: int) -> str:
+    """Per-request instruction; the practice prompt file itself is shared by all requests."""
+    if stretch_tests == 0:
+        return "\n\nThis request: write no stretch tests. Every test has stretch false."
+    return (
+        f"\n\nThis request: write exactly {stretch_tests} stretch tests (stretch true, "
+        "visibility hidden), in addition to the required tests."
+    )
 
 
 def _game_issues(part: BaseModel) -> tuple[dict[str, Any] | None, list[str]]:
