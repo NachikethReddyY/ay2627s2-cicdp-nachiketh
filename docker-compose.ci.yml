@@ -1,0 +1,72 @@
+# CI and e2e overrides. Used only with the base file: docker compose -f docker-compose.yml -f docker-compose.ci.yml
+# The engine talks to fake-llm (e2e/fake-llm) over the internal network, so it has no route to the internet
+# and no model is ever called. Never add sandbox or Daytona settings here.
+services:
+  postgres:
+    # Its own host port, so a local dev Postgres on 5432 does not clash with the e2e run.
+    ports: !override
+      - "127.0.0.1:${E2E_POSTGRES_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U learnquest -d learnquest"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  engine:
+    # CI reads only these values. A developer's services/engine/.env (which may hold a real key) is not loaded.
+    env_file: !reset []
+    environment:
+      LLM_MODEL: openai/fake-llm
+      LLM_API_BASE: http://fake-llm:8080/v1
+      # LiteLLM wants a key on openai/ routes. fake-llm ignores it.
+      LLM_API_KEY: ci-not-a-secret
+      # The internal network has no internet, so LiteLLM uses its bundled price list, not a remote fetch.
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN (scripts/ci.sh generates one)}
+    networks:
+      - llm
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  fake-llm:
+    image: node:22-slim
+    command: ["node", "/app/server.ts"]
+    working_dir: /app
+    environment:
+      PORT: "8080"
+      FAKE_LLM_FIXTURE_DIR: /fixtures
+      # Empty: no e2e flow generates a lesson, so any model call is a failure. List fixture names to replay them.
+      FAKE_LLM_FIXTURES: ""
+    volumes:
+      - ./e2e/fake-llm:/app:ro
+      - ./services/engine/tests/fixtures:/fixtures:ro
+    networks:
+      - llm
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  api:
+    # The API image runs as production, which refuses to start with AI on and no spend cap. The model is
+    # fake, so these caps only satisfy that check.
+    environment:
+      AI_DAILY_BUDGET_USD: "1"
+      AI_MONTHLY_BUDGET_USD: "10"
+    # The API stays on the default network (Postgres, host port) and joins llm to reach the engine.
+    networks:
+      - default
+      - llm
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+networks:
+  llm:
+    internal: true

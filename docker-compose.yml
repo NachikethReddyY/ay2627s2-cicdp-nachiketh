@@ -16,7 +16,9 @@ services:
       context: .
       dockerfile: services/engine/Dockerfile
     # Reads LLM_MODEL, LLM_API_BASE, LLM_API_KEY and ENGINE_TOKEN. Not published to the host.
-    env_file: services/engine/.env
+    env_file:
+      - path: services/engine/.env
+        required: false
 
   api:
     build:
