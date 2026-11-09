@@ -203,6 +203,32 @@ test("POST /sandbox/check: a result line without the matching token, such as one
   assert.equal((await db.select().from(checkResults)).length, 0);
 });
 
+test("POST /sandbox/check: a passing line with the right token is still a 503 when docker exits non-zero (killed, 137)", async () => {
+  const cookie = await signUp(app);
+  await addLesson("multi", "practice", part());
+  setCheckSpawnForTests((() => {
+    const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = () => {};
+    child.stdin = Object.assign(new EventEmitter(), {
+      end(s: string) {
+        const { token } = JSON.parse(s) as { token: string };
+        const rows = [{ exit: 0, timedOut: false, overflow: false, stdout: "5", stderr: "" }, { exit: 0, timedOut: false, overflow: false, stdout: "HIDDEN-OUT", stderr: "" }, { exit: 0, timedOut: false, overflow: false, stdout: "BONUS-OUT", stderr: "" }];
+        setImmediate(() => { (child.stdout as EventEmitter).emit("data", Buffer.from(JSON.stringify({ token, results: rows }) + "\n")); child.emit("close", 137); });
+      },
+    });
+    return child;
+  }) as never);
+  await withSandbox(true, async () => {
+    const res = await check(cookie, body("multi"));
+    assert.equal(res.statusCode, 503, res.body);
+    assert.equal(res.json().error.code, "check_failed");
+  });
+  assert.equal((await db.select().from(partCompletions)).length, 0);
+  assert.equal((await db.select().from(checkResults)).length, 0);
+});
+
 test("the legacy POST /sandbox/run Check path still reads expectedOutput", async () => {
   const { practiceCheck } = await import("../src/parts/practice.ts");
   const cookie = await signUp(app);
