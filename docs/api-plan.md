@@ -219,7 +219,7 @@ Multi-stage: `node:22-slim` → `corepack enable` → `pnpm install --frozen-loc
 2. **Render:** two Web Services (`lq-api-staging`, `lq-api-prod`), type "Existing image" `ghcr.io/<owner>/learnquest-api:<tag>`, health check path `/api/healthz`. Set the §3 env vars, with `NODE_ENV=production`, `WORKER_IN_PROCESS=true`, and `PUBLIC_ORIGIN` = the Vercel URL. Copy each service's **deploy hook URL**.
 3. **GitHub OAuth apps:** one per environment, callback `https://<vercel-host>/api/auth/github/callback`.
 4. **Vercel:** two projects (staging, prod), root `apps/web`. Copy the token, org ID and project IDs.
-5. **GitHub:** environments `staging` and `production` with secrets `DATABASE_URL`, `RENDER_DEPLOY_HOOK`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, and var `API_ORIGIN` (the Render host). Make the GHCR package public, or give Render registry credentials.
+5. **GitHub:** environment `staging` (LQ-29; `production` comes with the prod work) with secrets `DATABASE_URL`, `RENDER_DEPLOY_HOOK_API`, `RENDER_DEPLOY_HOOK_ENGINE`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, and vars `API_ORIGIN`, `ENGINE_ORIGIN` and `WEB_ORIGIN`. Make the GHCR packages public, or give Render registry credentials. Step-by-step setup: `docs/runbooks/staging-deploy.md`.
 
 ### D3. Vercel rewrite, model H
 Edit `apps/web/vercel.json`. The API rule must come **before** the SPA catch-all, because the current catch-all regex also matches `/api`:
@@ -231,8 +231,8 @@ Edit `apps/web/vercel.json`. The API rule must come **before** the SPA catch-all
 ```
 CI replaces `__API_ORIGIN__` per environment with `sed` before `vercel deploy`.
 
-### D4. Deploy workflow (`.github/workflows/main.yml` or a job in `ci.yml`), model S
-On push to `main`, after lint/test/build pass:
+### D4. Deploy workflow (`.github/workflows/deploy-staging.yml`, LQ-29), model S
+Implemented for staging in LQ-29; where this list and the workflow differ, the workflow wins. Runs on push to `main`:
 1. Build and push `ghcr.io/<owner>/learnquest-api:${{ github.sha }}` (`permissions: packages: write`).
 2. **Migrate** staging: `DATABASE_URL=${{ secrets.DATABASE_URL }} pnpm --filter @learnquest/api db:migrate` (runs from Actions, so it doesn't need Render's pre-deploy feature). Migrations must be expand-only (plan §15.10).
 3. `curl -fsS -X POST "$RENDER_DEPLOY_HOOK&imgURL=ghcr.io/<owner>/learnquest-api:${SHA}"`.
@@ -240,8 +240,8 @@ On push to `main`, after lint/test/build pass:
 5. Smoke (D5) against the staging Vercel URL.
 6. The `production` environment (protected by a required reviewer once the repo is public) repeats steps 2–5 with prod secrets.
 
-### D5. Smoke (`scripts/smoke.sh <base-url>`), model H
-Retry `GET $BASE/api/healthz` for up to 90 s (Render free tier cold starts), then require `GET /api/readyz` = 200 and `GET /api/lessons?world=codequest` = 401 (proves the rewrite reaches Fastify, not `index.html`). Exit non-zero on failure.
+### D5. Smoke (`scripts/smoke.sh <api-origin> <web-origin> <engine-origin> <sha>`), model H
+Implemented in LQ-29. Retry `GET /api/healthz` (API) and `GET /healthz` (engine) until each reports the commit SHA just deployed. The budget (default 300 s) covers Render free-tier cold starts and the rollout. Then require `GET /api/readyz` = 200, `GET /api/trpc/home.get` = 401 (a protected procedure; the `/api/lessons` route in the earlier draft does not exist, since the API serves tRPC), and the web origin's `/` = 200 and `/api/trpc/home.get` = 401 (proves the Vercel rewrite reaches Fastify, not `index.html`). Exit non-zero on failure.
 
 ### D6. Rollback (document in README)
 API: run the deploy hook with the previous SHA's `imgURL`. Web: Vercel dashboard → previous deployment → Promote. DB: migrations are expand-only, so the old code still runs against the new schema.
