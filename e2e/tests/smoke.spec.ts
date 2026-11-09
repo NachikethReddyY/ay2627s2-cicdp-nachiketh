@@ -12,6 +12,10 @@ const PASSWORD = "e2e-password-123";
 
 const newEmail = () => `e2e-${randomUUID()}@example.test`;
 
+if (!process.env.E2E_DATABASE_URL) {
+  throw new Error("E2E_DATABASE_URL is required. Run the suite with `pnpm --filter @learnquest/e2e run ci`.");
+}
+
 async function signUp(page: Page, email: string, next: string) {
   await page.goto(`/login?redirect=${encodeURIComponent(next)}`);
   await page.getByRole("button", { name: "Create account", exact: true }).click();
@@ -76,6 +80,8 @@ const SIGNED_IN_PAGES = ["/play", `/courses/${COURSE}`, "/explore"];
 
 async function expectNoSeriousA11yViolations(page: Page, path: string) {
   await page.goto(path);
+  // A lost session redirects to /login; scanning that page would pass the wrong check.
+  expect(new URL(page.url()).pathname, `landed on ${page.url()}`).toBe(path);
   await page.waitForLoadState("networkidle");
   const { violations } = await new AxeBuilder({ page }).analyze();
   const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");

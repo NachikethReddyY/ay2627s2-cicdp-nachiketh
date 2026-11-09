@@ -27,8 +27,12 @@ function send(res: ServerResponse, status: number, body: unknown) {
 }
 
 async function drain(req: IncomingMessage) {
-  for await (const _chunk of req) {
-    // The request is not checked: replies are played back in order.
+  try {
+    for await (const _chunk of req) {
+      // The request is not checked: replies are played back in order.
+    }
+  } catch {
+    // The engine aborted the request (for example on a client timeout). Nothing to read, and the server must stay up.
   }
 }
 

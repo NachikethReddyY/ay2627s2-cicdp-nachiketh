@@ -34,5 +34,4 @@ pnpm --filter @learnquest/api run db:seed
 "${COMPOSE[@]}" up -d --build --wait engine fake-llm api
 
 cd "$E2E_DIR"
-pnpm exec playwright install --with-deps chromium
 pnpm exec playwright test
