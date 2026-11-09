@@ -24,9 +24,9 @@ const baseBody = {
   messages: [{ role: "user", content: "What does this mean?" }],
 };
 
-function stubbed(findings: { ruleId: string; line: number; column: number; message: string }[], engineCalls: Record<string, unknown>[] = []) {
+function stubbed(findings: { ruleId: string; line: number; column: number; message: string }[], engineCalls: Record<string, unknown>[] = [], learnerId = "learner-1") {
   return appWithGuide({
-    resolveLearnerId: async () => "learner-1",
+    resolveLearnerId: async () => learnerId,
     getBackend: (async () => ({})) as never,
     lintCode: async () => findings,
     callEngine: (async (_path: string, body: Record<string, unknown>) => {
@@ -99,6 +99,15 @@ test("a lint failure is ignored and the call continues without the finding", asy
   const res = await app.inject({ method: "POST", url: "/guide/chat", payload: { ...baseBody, finding: { ruleId: "no-var", line: 2 } } });
   assert.equal(res.statusCode, 200);
   assert.equal("lintFinding" in calls[0]!, false);
+  await app.close();
+});
+
+test("a re-lint message longer than the engine limit is cut to 300 characters", async () => {
+  const calls: Record<string, unknown>[] = [];
+  const app = await stubbed([{ ...FOUND, message: "x".repeat(500) }], calls, "learner-long-message");
+  const res = await app.inject({ method: "POST", url: "/guide/chat", payload: { ...baseBody, finding: { ruleId: "no-var", line: 2 } } });
+  assert.equal(res.statusCode, 200);
+  assert.equal((calls[0]!.lintFinding as { message: string }).message.length, 300);
   await app.close();
 });
 

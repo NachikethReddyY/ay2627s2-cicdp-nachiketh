@@ -114,7 +114,10 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
   useEffect(() => {
     if (!pendingFinding || sending || handledFinding.current === pendingFinding) return;
     handledFinding.current = pendingFinding;
-    void ask(`Explain line ${pendingFinding.line}: ${pendingFinding.ruleId}`, pendingFinding);
+    // The server re-lints only the code the guide sends, so the finding is sent only when that code is the start of the file through the finding's line.
+    const lineCount = guideCode.code.split(/\r\n|\r|\n|\u2028|\u2029/).length;
+    const inWindow = code.startsWith(guideCode.code) && pendingFinding.line <= lineCount;
+    void ask(`Explain line ${pendingFinding.line}: ${pendingFinding.ruleId}`, inWindow ? pendingFinding : undefined);
     onFindingSent?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ask closes over the current thread; only a new finding or a free guide should fire it
   }, [pendingFinding, sending]);

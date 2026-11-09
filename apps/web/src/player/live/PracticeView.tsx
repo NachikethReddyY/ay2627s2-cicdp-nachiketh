@@ -163,6 +163,13 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
   };
   const actionsFor = (enabled: boolean) => practiceActions({ language, code, lessonId, sandboxEnabled: enabled });
   const lintSeq = useRef(0); // the newest lint request; an older response must not overwrite it
+  // Findings describe the code they were run on. An edit makes them stale, so drop them and any lint still in flight.
+  useEffect(() => {
+    lintSeq.current++;
+    setFindings(null);
+    setLintError("");
+    setLintBusy(false);
+  }, [code]);
   const lint = async () => {
     const seq = ++lintSeq.current;
     setLintBusy(true);

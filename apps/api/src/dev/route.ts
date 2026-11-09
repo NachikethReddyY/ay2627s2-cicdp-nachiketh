@@ -110,6 +110,7 @@ export type GuideDeps = {
 };
 
 const GUIDE_SOURCE_LINE_CHARS = 200;
+const GUIDE_MESSAGE_CHARS = 300; // the engine's lintFinding.message limit; a rule can echo a long identifier
 const GUIDE_LINT_TIMEOUT_MS = 2_000;
 
 export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
@@ -150,7 +151,7 @@ export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
           );
           if (match) {
             const sourceLine = sourceLineOf(rest.code, match.line).trim().slice(0, GUIDE_SOURCE_LINE_CHARS);
-            lintFinding = { ruleId: match.ruleId, message: match.message, line: match.line, sourceLine };
+            lintFinding = { ruleId: match.ruleId, message: match.message.slice(0, GUIDE_MESSAGE_CHARS), line: match.line, sourceLine };
           }
         } catch (error) {
           // Linter unavailable or failed: continue as a normal guide call.
