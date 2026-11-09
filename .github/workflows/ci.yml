@@ -8,9 +8,48 @@ on:
 permissions:
   contents: read
 
+# Superseded PR runs are cancelled; pushes to main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Cheapest first: `lint` gates the rest, so a type or lint error costs one short job.
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec turbo run lint
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/engine/uv.lock
+
+      - run: uv sync --frozen
+        working-directory: services/engine
+
+      - run: uv run ruff check learnquest_engine tests scripts
+        working-directory: services/engine
+
+      - run: uv run mypy --strict learnquest_engine
+        working-directory: services/engine
+
+  unit:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       TEST_DATABASE_URL: postgres://learnquest:learnquest@localhost:5432/learnquest_test
       BETTER_AUTH_SECRET: ci-test-secret-not-for-production-0123456789
@@ -38,10 +77,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm exec turbo run lint test build
+      - run: pnpm exec turbo run test build
 
   engine:
+    needs: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: services/engine
@@ -49,6 +90,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/engine/uv.lock
 
       # The visual checker runs ui-catalog's TypeScript under Node 22 (type stripping), so it needs node and its deps.
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
@@ -56,15 +100,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: pnpm
 
       - run: pnpm install --frozen-lockfile --filter @learnquest/ui-catalog...
         working-directory: .
 
       - run: uv sync --frozen
-
-      - run: uv run ruff check learnquest_engine tests scripts
-
-      - run: uv run mypy --strict learnquest_engine
 
       - run: uv run pytest
 
@@ -75,3 +116,36 @@ jobs:
           v=$(sed -nE 's/^ *"litellm==([^"]+)".*/\1/p' services/engine/pyproject.toml)
           test -n "$v" || { echo "no exact litellm== pin in services/engine/pyproject.toml"; exit 1; }
           python3 spikes/litellm-advisory/check.py "$v"
+
+  e2e:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Job-level `if` cannot call hashFiles, so each step is gated until the e2e package exists.
+    # Keeps the workflow green on main before that package lands.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        if: hashFiles('e2e/package.json') != ''
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: hashFiles('e2e/package.json') != ''
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        if: hashFiles('e2e/package.json') != ''
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: hashFiles('e2e/package.json') != ''
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - run: pnpm --filter @learnquest/e2e exec playwright install --with-deps chromium
+        if: hashFiles('e2e/package.json') != ''
+
+      - run: pnpm --filter @learnquest/e2e run ci
+        if: hashFiles('e2e/package.json') != ''
