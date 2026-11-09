@@ -46,6 +46,8 @@ check(not unpinned, f"every third-party action is pinned to a commit sha ({len(u
 run_blocks = [step["run"] for job in jobs.values() for step in job["steps"] if "run" in step]
 interpolated = [r for r in run_blocks if "${{" in r]
 check(not interpolated, "no expression is interpolated into run: blocks")
+on_demand = [r for r in run_blocks if re.search(r"\bnpx\b", r)]
+check(not on_demand, "no step resolves a package on demand with npx")
 
 if failures:
     print(f"{len(failures)} check(s) failed")

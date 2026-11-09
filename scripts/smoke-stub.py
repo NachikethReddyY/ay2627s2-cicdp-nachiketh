@@ -46,4 +46,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+# Loopback test stub only: no real traffic and no secrets, so plain HTTP is intended here.
+http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()  # NOSONAR

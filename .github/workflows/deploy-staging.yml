@@ -148,23 +148,32 @@ jobs:
           scripts/render-vercel-config.sh "$API_ORIGIN" "$tmp"
           mv "$tmp" apps/web/vercel.json
 
+      # Installed once at an exact version, without lifecycle scripts, so no step resolves a package on demand.
+      - name: Install Vercel CLI
+        env:
+          CLI_PREFIX: ${{ runner.temp }}/vercel
+        run: npm install --prefix "$CLI_PREFIX" --ignore-scripts --no-audit --no-fund vercel@65.12.1
+
       - name: Vercel pull and build
         working-directory: apps/web
         env:
+          VERCEL_BIN: ${{ runner.temp }}/vercel/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          npx --yes vercel@65.12.1 pull --yes --environment=production --token "$VERCEL_TOKEN"
-          npx --yes vercel@65.12.1 build --prod --token "$VERCEL_TOKEN"
+          "$VERCEL_BIN" pull --yes --environment=production --token "$VERCEL_TOKEN"
+          "$VERCEL_BIN" build --prod --token "$VERCEL_TOKEN"
 
       - name: Vercel deploy (staging project)
         working-directory: apps/web
         env:
+          VERCEL_BIN: ${{ runner.temp }}/vercel/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx --yes vercel@65.12.1 deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+        run: |
+          "$VERCEL_BIN" deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
   smoke:
     needs: deploy

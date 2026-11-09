@@ -21,11 +21,12 @@ COPY --from=checker /repo/packages /repo/packages
 WORKDIR /repo/services/engine
 # Dependencies first, from the lockfile alone: this layer and its uv cache survive a source edit.
 COPY services/engine/pyproject.toml services/engine/uv.lock services/engine/README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-build --no-install-project
 COPY services/engine/learnquest_engine ./learnquest_engine
 # guide.py reads the persona from parents[3] of the package, which is /repo, so ship the prompt there.
 COPY INSTRUCTIONS.md /repo/INSTRUCTIONS.md
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
+# The package itself is not installed: uvicorn imports learnquest_engine from the working directory, and nothing reads
+# installed metadata. Installing it would need a local build, which --no-build (no setup scripts) rules out.
 
 RUN useradd --system --uid 10001 engine
 USER engine
