@@ -22,10 +22,19 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def test_healthz_needs_no_token(client: TestClient) -> None:
+def test_healthz_needs_no_token(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_SHA", "abc123")
     r = client.get("/healthz")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    assert r.json() == {"ok": True, "sha": "abc123"}
+
+
+def test_healthz_reports_unknown_sha_when_unset(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GIT_SHA", raising=False)
+    r = client.get("/healthz")
+    assert r.json() == {"ok": True, "sha": "unknown"}
 
 
 @pytest.mark.parametrize("headers", [{}, {"X-Engine-Token": "y" * 32}])

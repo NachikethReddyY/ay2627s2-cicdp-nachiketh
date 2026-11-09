@@ -1,5 +1,6 @@
 import hmac
 import logging
+import os
 import time
 from typing import Annotated, Any
 
@@ -122,8 +123,8 @@ app.add_middleware(CapBody)
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, bool]:
-    return {"ok": True}
+def healthz() -> dict[str, Any]:
+    return {"ok": True, "sha": os.environ.get("GIT_SHA", "unknown")}
 
 
 @app.post("/v1/pipeline/outline", dependencies=[Depends(require_token)])
