@@ -7,12 +7,14 @@ Checked against the repo on 2026-11-06. Re-read the files before relying on this
 | Piece | File | Notes |
 |---|---|---|
 | CI | `.github/workflows/ci.yml` | Runs on PRs and pushes to `main`. `permissions: contents: read`. |
-| Job `check` | same | Postgres 16 service, Node 22, pnpm cache, `pnpm install --frozen-lockfile`, `pnpm exec turbo run lint test build`. |
-| Job `engine` | same | `uv sync --frozen`, ruff, `mypy --strict`, pytest, plus the LiteLLM advisory check on the exact pin. |
+| Job `lint` | same | No Postgres. Runs first (10 min). `pnpm exec turbo run lint` (tsc, eslint), then the engine's ruff and `mypy --strict`. |
+| Job `unit` | same | `needs: lint` (20 min). Postgres 16 service, Node 22, pnpm cache, `pnpm exec turbo run test build`. |
+| Job `engine` | same | `needs: lint` (20 min). `uv sync --frozen`, pytest, plus the LiteLLM advisory check on the exact pin. |
+| Job `e2e` | same | `needs: lint` (30 min). Playwright Chromium with `~/.cache/ms-playwright` cached, runs `pnpm --filter @learnquest/e2e run ci`. Each step is gated on `hashFiles('e2e/package.json')`, because a job-level `if` cannot call `hashFiles`. Skipped steps stay green until the package lands. |
 | PR automation | `.github/workflows/pr-automation.yml` | `pull_request_target`, no checkout, `permissions: {}` at top and per job, `concurrency` cancel-in-progress. Size, area and type labels, semantic title check, draft state. |
 | Labels, stale | `labels.yml`, `stale.yml` | Housekeeping only. |
 | Dependabot | `.github/dependabot.yml` | github-actions, npm, uv, docker; weekly, grouped, `ci:` and `build:` prefixes. |
-| Branch rules | `.github/rulesets/main.json` | Required checks `check` and `engine`, strict status checks, linear history, squash or rebase, threads resolved, no deletion or force-push, 0 required approvals. |
+| Branch rules | `.github/rulesets/main.json` | Required checks `lint`, `unit`, `engine` and `e2e` (matching the jobs in ci.yml; the live ruleset is synced to this file), strict status checks, linear history, squash or rebase, threads resolved, no deletion or force-push, 0 required approvals. |
 | Tag rules | `.github/rulesets/tags.json` | `v*` tags cannot be deleted, moved or updated. |
 | Turbo | `turbo.json` | `build`, `lint`, `test` (test env: `TEST_DATABASE_URL`, `BETTER_AUTH_SECRET`). |
 | API image | `infra/docker/api.Dockerfile` | Multi-stage, compiles `node-pty` in the build stage only, runs as `node`, `--frozen-lockfile`. |
@@ -22,9 +24,9 @@ All third-party actions are pinned to SHAs.
 
 ## Gaps (candidates for follow-up PRs, not yet done)
 
-1. `ci.yml` has no `concurrency` group, so superseded PR runs keep going. No `timeout-minutes` on any job.
+1. `ci.yml` now has a `concurrency` group (PR runs cancel) and `timeout-minutes` on every job.
 2. No dependency audit (`pnpm audit`, `pip-audit`), secret scan or code scanning (CodeQL) in CI.
-3. No end-to-end or accessibility job; docs/plan.md describes Playwright and axe as planned.
+3. Axe runs in the `e2e` job (`e2e/tests/smoke.spec.ts`). Its steps have no path gate, so the required check always runs.
 4. No deploy or smoke workflow in the repo. Deploys happen through Vercel and Render's own git integration, so there is no repo-visible SHA promotion, smoke check or rollback automation. `docs/plan.md` §6.9 describes a larger design (pr.yml, main.yml, GHCR, staging and prod) that has not been built.
 5. No pipeline metrics (DORA, build duration, flaky tests).
 6. Turbo uses only its local cache; there is no remote cache.

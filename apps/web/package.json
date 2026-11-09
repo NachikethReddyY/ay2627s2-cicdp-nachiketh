@@ -54,6 +54,6 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit && eslint src",
-    "test": "node --test 'src/**/*.test.ts'"
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=81 --test-coverage-branches=84 --test-coverage-exclude='**/*.test.ts' 'src/**/*.test.ts'"
   }
 }

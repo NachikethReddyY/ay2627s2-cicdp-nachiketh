@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/server.ts",
     "start": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/server.ts",
-    "test": "node --test --test-concurrency=1 'test/**/*.test.ts'",
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=87 --test-coverage-branches=83 --test-coverage-exclude='**/*.test.ts' --test-concurrency=1 'test/**/*.test.ts'",
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=../../.env.local --env-file-if-exists=../../services/engine/.env --env-file-if-exists=.env src/db/migrate.ts",

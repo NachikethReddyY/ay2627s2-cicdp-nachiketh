@@ -26,7 +26,7 @@ The older `cicd-best-practices` skill follows the aspirational design in `docs/p
 
 - Small PRs, merged often. A red `main` or red PR is fixed before new work. The size labeler tags every PR and warns from the XL tier (500+ changed lines, lockfiles excluded); aim for under ~300.
 - Run the same commands locally that CI runs, before every push: `pnpm exec turbo run lint test build` with API tests on a real Postgres (see the `test-locally-before-push` memory for the container setup). Turbo does not cover the Python engine: if `services/engine` changed, also run `uv sync --frozen`, `uv run ruff check learnquest_engine tests scripts`, `uv run mypy --strict learnquest_engine` and `uv run pytest` there. Never push a DB test you only typechecked.
-- Never bypass the pipeline for an "urgent" or tiny change. The `main` ruleset requires checks `check` and `engine`, a strict (up-to-date) branch, linear history and squash or rebase merges. Do not weaken it to get a change through.
+- Never bypass the pipeline for an "urgent" or tiny change. The `main` ruleset requires checks `lint`, `unit` and `engine`, a strict (up-to-date) branch, linear history and squash or rebase merges. Do not weaken it to get a change through.
 - Renaming or removing a job changes a required check name. Update `.github/rulesets/main.json` and the live ruleset in the same change, or merges block.
 - Unfinished work stays behind a flag or off the user path. Do not merge a half feature that breaks `main`.
 
@@ -44,7 +44,7 @@ The older `cicd-best-practices` skill follows the aspirational design in `docs/p
 ## 3. Fast feedback (HIGH)
 
 - Order work cheapest first: lint and types, then unit, then integration, then build, then e2e and scans. Fail fast.
-- Run independent jobs in parallel (`check` and `engine` already do). Cache dependencies keyed on lockfiles (`setup-node` with `cache: pnpm`).
+- Run independent jobs in parallel (`unit`, `engine` and `e2e` already do, after `lint`). Cache dependencies keyed on lockfiles (`setup-node` with `cache: pnpm`).
 - Add `concurrency` with `cancel-in-progress: true` for PR runs and `timeout-minutes` on every job, so superseded or hung runs do not burn minutes.
 - Use path filters or turbo's task graph to skip work a change cannot affect, but never on a required check unless a skipped check still reports success.
 - Aim for a PR pipeline of roughly 10 minutes or less. When it creeps up, profile the slowest step first (locally the API test suite takes about two minutes, the longest single task).
