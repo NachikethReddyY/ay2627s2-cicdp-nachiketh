@@ -121,7 +121,8 @@ export const lessonsRouter = router({
         part = { ...part, doc } as typeof part; // resolveDocImages keeps the catalog shape; its return type is unknown
       }
       // Game answers, hints and the right order never leave the server: games.hint and games.check serve them.
-      if (part?.kind === "game-practice") part = { ...part, doc: publicDoc(part.doc) } as typeof part;
+      // A learn doc can hold game blocks too, so both kinds pass through publicDoc.
+      if ((part?.kind === "game-practice" || part?.kind === "learn") && part.doc) part = { ...part, doc: publicDoc(part.doc) } as typeof part;
       return {
         id: lesson.slug,
         title: lesson.title,
