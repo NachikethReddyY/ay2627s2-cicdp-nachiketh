@@ -88,8 +88,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
+    env:
+      SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # First gate: a queued run for an older sha must not migrate the database before it is refused.
+      - name: Refuse to migrate for a sha that is not the head of main
+        run: scripts/assert-main-head.sh "$SHA"
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
 
@@ -120,16 +126,6 @@ jobs:
       - name: Refuse to deploy a sha that is not the head of main
         run: scripts/assert-main-head.sh "$SHA"
 
-      - name: Render api
-        env:
-          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
-        run: scripts/render-deploy.sh "$HOOK" "$API_IMAGE"
-
-      - name: Render engine
-        env:
-          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_ENGINE }}
-        run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE"
-
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -150,7 +146,8 @@ jobs:
 
       # Installed from infra/vercel-cli/package-lock.json (exact versions and hashes), without lifecycle scripts.
       - name: Install Vercel CLI
-        run: npm ci --prefix infra/vercel-cli --ignore-scripts --no-audit --no-fund
+        working-directory: infra/vercel-cli
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Vercel pull and build
         working-directory: apps/web
@@ -162,6 +159,16 @@ jobs:
         run: |
           "$VERCEL_BIN" pull --yes --environment=production --token "$VERCEL_TOKEN"
           "$VERCEL_BIN" build --prod --token "$VERCEL_TOKEN"
+
+      - name: Render api
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+        run: scripts/render-deploy.sh "$HOOK" "$API_IMAGE"
+
+      - name: Render engine
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_ENGINE }}
+        run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE"
 
       - name: Vercel deploy (staging project)
         working-directory: apps/web

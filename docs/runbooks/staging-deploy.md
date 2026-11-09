@@ -11,7 +11,7 @@ These steps are outside the repo. The workflow fails clearly until they are done
 1. **Environment `staging`** (Settings → Environments → New environment).
 2. **Deployment branch policy:** "Selected branches" → `main` only. This stops `workflow_dispatch` from other branches reaching staging secrets.
 3. **Secrets** (environment level, not repository level):
-   - `DATABASE_URL`: the staging Postgres connection string (Neon `staging` branch, direct host).
+   - `DATABASE_URL`: the staging Postgres connection string (Neon `staging` branch, **direct host, not the `-pooler` one**). Migrations need a session connection; a transaction pooler can misbehave with them.
    - `RENDER_DEPLOY_HOOK_API`: deploy hook URL of `lq-api-staging`.
    - `RENDER_DEPLOY_HOOK_ENGINE`: deploy hook URL of `lq-engine-staging`.
    - `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`: for the staging Vercel project.
