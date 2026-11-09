@@ -20,6 +20,8 @@ for (const name of names) {
 }
 
 let served = 0;
+// Counted on /healthz so ci.sh can fail the run: the API logs a failed background call and carries on.
+let unexpected = 0;
 
 function send(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -37,14 +39,16 @@ async function drain(req: IncomingMessage) {
 }
 
 const server = createServer(async (req, res) => {
-  if (req.method === "GET" && req.url === "/healthz") return send(res, 200, { ok: true, repliesLeft: queue.length });
+  if (req.method === "GET" && req.url === "/healthz") return send(res, 200, { ok: true, repliesLeft: queue.length, unexpected });
   if (req.method !== "POST" || req.url !== "/v1/chat/completions") {
+    unexpected += 1;
     console.error("fake-llm: request to an unknown route");
     return send(res, 500, { error: { message: `fake-llm: no recorded reply for ${req.method} ${req.url}` } });
   }
   await drain(req);
   const reply = queue.shift();
   if (!reply) {
+    unexpected += 1;
     console.error("fake-llm: chat request with no recorded reply left");
     return send(res, 500, { error: { message: "fake-llm: no recorded reply left" } });
   }

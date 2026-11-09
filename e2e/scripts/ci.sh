@@ -13,6 +13,8 @@ export ENGINE_TOKEN="${ENGINE_TOKEN:-$(openssl rand -hex 32)}"
 # Host-side migrate and seed use these. They match the compose Postgres and the API's own settings.
 export E2E_POSTGRES_PORT="${E2E_POSTGRES_PORT:-55432}"
 export DATABASE_URL="postgres://learnquest:learnquest@localhost:${E2E_POSTGRES_PORT}/learnquest"
+# env.ts prefers DATABASE_URL_UNPOOLED, so a developer's value there would send migrate and seed to their own database.
+export DATABASE_URL_UNPOOLED="$DATABASE_URL"
 export E2E_DATABASE_URL="$DATABASE_URL"
 export BETTER_AUTH_SECRET="e2e-secret-not-for-production-0123456789"
 export PUBLIC_ORIGIN="http://localhost:5173"
@@ -35,3 +37,6 @@ pnpm --filter @learnquest/api run db:seed
 
 cd "$E2E_DIR"
 pnpm exec playwright test
+
+# The API logs a failed background model call and carries on, so no test fails on it. Fail the run here instead.
+"${COMPOSE[@]}" exec -T fake-llm node -e "fetch('http://127.0.0.1:8080/healthz').then((r) => r.json()).then((b) => { if (b.unexpected !== 0) { console.error('fake-llm: ' + b.unexpected + ' unexpected call(s)'); process.exit(1); } })"

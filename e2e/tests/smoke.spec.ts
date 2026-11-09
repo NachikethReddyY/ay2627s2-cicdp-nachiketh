@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 
@@ -74,14 +74,25 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
   }
 });
 
+// Each page is scanned only once its seeded content is on screen, so axe never reads a loading or error state.
 // Signed-out pages first; the rest sit behind the session guard, so each gets its own account.
-const SIGNED_OUT_PAGES = ["/", "/login"];
-const SIGNED_IN_PAGES = ["/play", `/courses/${COURSE}`, "/explore"];
+const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
+  ["/", (page) => page.getByRole("heading", { name: "Learn code by guessing first." })],
+  ["/login", (page) => page.getByRole("heading", { name: "Sign in", exact: true })],
+];
+const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
+  ["/play", (page) => page.getByText("Pick a lesson to start.")],
+  [`/courses/${COURSE}`, (page) => page.getByRole("heading", { name: "Shopping Cart Basics" })],
+  ["/explore", (page) => page.locator("h2.explore-col-h").first()],
+];
 
-async function expectNoSeriousA11yViolations(page: Page, path: string) {
+async function expectNoSeriousA11yViolations(page: Page, path: string, ready: Locator) {
   await page.goto(path);
   // A lost session redirects to /login; scanning that page would pass the wrong check.
   expect(new URL(page.url()).pathname, `landed on ${page.url()}`).toBe(path);
+  await expect(ready, `seeded content on ${path}`).toBeVisible();
+  // A failed query keeps the URL and the heading, so the error text is checked on its own.
+  await expect(page.getByText("Couldn't load", { exact: false })).toHaveCount(0);
   await page.waitForLoadState("networkidle");
   const { violations } = await new AxeBuilder({ page }).analyze();
   const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
@@ -91,15 +102,15 @@ async function expectNoSeriousA11yViolations(page: Page, path: string) {
   ).toEqual([]);
 }
 
-for (const path of SIGNED_OUT_PAGES) {
+for (const [path, ready] of SIGNED_OUT_PAGES) {
   test(`axe: no serious or critical violations on ${path}`, async ({ page }) => {
-    await expectNoSeriousA11yViolations(page, path);
+    await expectNoSeriousA11yViolations(page, path, ready(page));
   });
 }
 
-for (const path of SIGNED_IN_PAGES) {
+for (const [path, ready] of SIGNED_IN_PAGES) {
   test(`axe: no serious or critical violations on ${path} (signed in)`, async ({ page }) => {
     await signUp(page, newEmail(), path);
-    await expectNoSeriousA11yViolations(page, path);
+    await expectNoSeriousA11yViolations(page, path, ready(page));
   });
 }
