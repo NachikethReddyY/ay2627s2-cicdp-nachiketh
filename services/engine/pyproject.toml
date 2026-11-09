@@ -20,6 +20,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "hypothesis>=6",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]
@@ -31,6 +32,11 @@ packages = ["learnquest_engine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=learnquest_engine"
+
+[tool.coverage.report]
+# Baseline 96.8% statement coverage (LQ-26): rounded down, minus 2. Thresholds only go up.
+fail_under = 94
 
 [tool.ruff]
 line-length = 100
