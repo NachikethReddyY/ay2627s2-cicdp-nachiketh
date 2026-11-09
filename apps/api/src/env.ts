@@ -57,6 +57,11 @@ const schema = z
     SANDBOX_NETWORK: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/).default("lq-sbx"),
     // Optional OCI runtime for shell containers, e.g. "runsc" (gVisor). Unset: Docker's default runtime.
     SANDBOX_RUNTIME: z.preprocess(blankIsUnset, z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional()),
+    // Comma-separated "owner/name" repos that imports may read. Empty (default): every import is rejected with 400.
+    IMPORT_REPO_ALLOWLIST: z
+      .string()
+      .default("")
+      .transform((v) => v.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean)),
     // Caps that keep one learner, or a crowd, from exhausting the host.
     SANDBOX_MAX_TABS: z.coerce.number().int().positive().default(4), // terminal tabs per learner
     SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50), // live shell sessions in all

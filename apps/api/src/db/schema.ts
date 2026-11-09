@@ -513,3 +513,38 @@ export const imageGenerations = pgTable(
   },
   (t) => [index("image_generations_learner_time").on(t.learnerId, t.createdAt)],
 );
+
+// A commit import started by an author. The creator owns the job and the lesson it produced (no owner column on lessons).
+export const importJobs = pgTable(
+  "import_jobs",
+  {
+    id: id(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    repo: text("repo").notNull(),
+    sha: text("sha").notNull(),
+    status: text("status", { enum: ["queued", "running", "succeeded", "failed"] }).notNull().default("queued"),
+    lessonId: text("lesson_id").references(() => lessons.id, { onDelete: "set null" }),
+    error: text("error"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("import_jobs_creator").on(t.createdBy), index("import_jobs_lesson").on(t.lessonId)],
+);
+
+// Progress events of an import job, replayed to the SSE stream by seq.
+export const importJobEvents = pgTable(
+  "import_job_events",
+  {
+    id: id(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => importJobs.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    kind: text("kind").notNull(),
+    data: jsonb("data").$type<unknown>(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("import_job_events_job_seq").on(t.jobId, t.seq)],
+);

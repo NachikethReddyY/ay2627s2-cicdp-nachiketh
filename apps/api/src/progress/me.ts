@@ -5,7 +5,7 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { userOfLearner, visibleWorld } from "../access.ts";
 import { applyObservations, MASTERED_AT } from "./mastery.ts";
-import { Slug } from "./shared.ts";
+import { Slug, listed } from "./shared.ts";
 
 // Names are checked against Postgres, not Intl: the zone is used in `AT TIME ZONE`, where Postgres reads
 // a POSIX offset like "+05:00" with the opposite sign to ISO. Only names in pg_timezone_names are stored.
@@ -102,6 +102,7 @@ const meNext = protectedProcedure
       LEFT JOIN lessons l ON l.id = r.lesson_id
       LEFT JOIN concepts c ON c.id = r.concept_id
       WHERE r.learner_id = ${ctx.learnerId} AND r.world_id = ${worldId}
+        AND (r.lesson_id IS NULL OR EXISTS (SELECT 1 FROM lessons l WHERE l.id = r.lesson_id AND ${listed}))
       ORDER BY r.created_at DESC, r.id DESC LIMIT 1`);
     const r = rows[0];
     if (!r) return null;
