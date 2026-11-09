@@ -26,6 +26,8 @@ export { orderKind, matchKind, sortKind, MAX_DRAG_ITEMS, MAX_SORT_CARDS, MAX_BUC
 export { physicsKind, simulateLaunch, MIN_ANGLE, MAX_ANGLE, MAX_LAUNCH_SPEED, MAX_TARGET_X, type PhysicsProps, type Launch } from "./blocks/game/physics.ts";
 export { quizKind, MIN_QUIZ_QUESTIONS, MAX_QUIZ_QUESTIONS, MIN_QUIZ_OPTIONS, MAX_QUIZ_OPTIONS, type QuizProps, type QuizQuestion } from "./blocks/game/quiz.ts";
 export { GAME_KINDS, gameSchema, type GameProps, type GameKindProps } from "./blocks/game/schema.ts";
+export { toPublicGame, publicDoc, publicGameBlock, publicGameSchema, gameBlocksOf, shuffled, type PublicGameProps, type PublicKind, type PublicQuiz, type PublicOrder, type PublicMatch, type PublicSort } from "./blocks/game/public.ts";
+export { programSchema as gridProgramSchema } from "./blocks/game/grid.ts";
 export { MAX_HINTS, MAX_LIVES, MAX_GAME_ALT, type GameKind, type ShellProps } from "./blocks/game/shell.ts";
 export {
   simulate,
@@ -53,3 +55,8 @@ export {
   type Cell,
   type Dir,
 } from "./blocks/game/grid.ts";
+
+import { BLOCKS as ALL_BLOCKS, type BlockModule } from "./core/parse.ts";
+import { publicGameBlock as clientGame } from "./blocks/game/public.ts";
+/** What the web app parses lesson docs with: the registry with the game block swapped for its client-safe form. */
+export const CLIENT_BLOCKS: readonly BlockModule[] = ALL_BLOCKS.map((m) => (m.type === "game" ? clientGame : m));

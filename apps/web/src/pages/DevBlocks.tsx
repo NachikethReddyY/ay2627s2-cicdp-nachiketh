@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { parseSpec } from "@learnquest/ui-catalog";
+import { BLOCKS, parseSpec } from "@learnquest/ui-catalog";
 import VisualView from "../blocks/VisualView";
 import "./home.css";
 import "./devblocks.css";
@@ -95,7 +95,7 @@ export default function DevBlocks() {
             <div className="lq-card db-preview-card">
               <h2>Preview</h2>
               {dropped.length > 0 && <div className="db-notice" role="alert">A visual was dropped because it failed validation. {dropped.length > 3 ? `First 3 of ${dropped.length} issues:` : "Issues:"}<ul>{dropped.slice(0, 3).map((i, n) => <li key={n}>{plainIssue(i)}</li>)}</ul></div>}
-              {res ? <VisualView doc={src} /> : <p className="db-empty">Your rendered visual will appear here.</p>}
+              {res ? <VisualView doc={src} registry={BLOCKS} /> : <p className="db-empty">Your rendered visual will appear here.</p>}
             </div>
           </section>
         </div>

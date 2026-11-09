@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"kind\": \"practice\", \"instructions\": \"Read two numbers from stdin and print their sum.\", \"language\": \"javascript\", \"starterCode\": \"const lines = require('fs').readFileSync(0, 'utf8').split('\\\\n');\\n\", \"tests\": [{\"id\": \"basic-sum\", \"name\": \"Adds two small numbers\", \"stdin\": \"1\\n2\\n\", \"expectedStdout\": \"3\\n\", \"visibility\": \"sample\", \"stretch\": false}, {\"id\": \"negative-sum\", \"name\": \"Adds a negative and a positive number\", \"stdin\": \"-4\\n10\\n\", \"expectedStdout\": \"6\\n\", \"visibility\": \"hidden\", \"stretch\": false}, {\"id\": \"zero-sum\", \"name\": \"Adds two zeros\", \"stdin\": \"0\\n0\\n\", \"expectedStdout\": \"0\\n\", \"visibility\": \"hidden\", \"stretch\": false}, {\"id\": \"big-sum\", \"name\": \"Adds two large numbers\", \"stdin\": \"999999999\\n999999999\\n\", \"expectedStdout\": \"1999999998\\n\", \"visibility\": \"hidden\", \"stretch\": true}, {\"id\": \"neg-both\", \"name\": \"Adds two negative numbers\", \"stdin\": \"-7\\n-8\\n\", \"expectedStdout\": \"-15\\n\", \"visibility\": \"hidden\", \"stretch\": true}]}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    }
+  ]
+}

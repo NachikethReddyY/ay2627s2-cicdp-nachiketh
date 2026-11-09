@@ -1,17 +1,19 @@
-import type { startPython } from "../runPython";
+import type { checkPractice, startPython } from "../runPython.ts";
+import type { PracticeLanguage } from "./checkModel.ts";
 
 type StartArgs = Parameters<typeof startPython>;
 
 export type PracticeActions = {
   run: { via: "shell" } | { via: "oneshot"; args: StartArgs };
-  check: { via: "oneshot"; args: StartArgs };
+  check: { via: "check"; args: Parameters<typeof checkPractice> };
 };
 
-// Run goes through the learner's shell when the sandbox is on; Check is always the one-shot, server-judged run.
-export function practiceActions(o: { language: "python" | "javascript"; code: string; lessonId: string; sandboxEnabled: boolean }): PracticeActions {
+// Run goes through the learner's shell when the sandbox is on; Check is always the server-judged multi-test call.
+// The shell Run copies solution.py or solution.js, so TypeScript (no shell target yet) runs one-shot.
+export function practiceActions(o: { language: PracticeLanguage; code: string; lessonId: string; sandboxEnabled: boolean }): PracticeActions {
   return {
-    run: o.sandboxEnabled ? { via: "shell" } : { via: "oneshot", args: [o.code, o.language] },
-    check: { via: "oneshot", args: [o.code, o.language, o.lessonId] },
+    run: o.sandboxEnabled && o.language !== "typescript" ? { via: "shell" } : { via: "oneshot", args: [o.code, o.language] },
+    check: { via: "check", args: [{ code: o.code, language: o.language, lessonId: o.lessonId }] },
   };
 }
 

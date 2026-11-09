@@ -79,3 +79,34 @@ test("practice lessons never return expectedOutput, but the server-side check st
   const check = await practiceCheck(learner.rows[0]!.id, lesson!.id);
   assert.equal(check?.expected, "42");
 });
+
+test("lessons.get returns stdin and expectedStdout only for sample tests (2 visible, rest locked)", async () => {
+  const { lessonVersions, worlds } = await import("../src/db/schema.ts");
+  const cookie = await signUp(app, "sample-reader@example.com");
+  const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
+  const [lesson] = await db
+    .insert(lessons)
+    .values({ slug: "rt-samples", title: "S", worldId: world!.id, sourceKind: "authored", kind: "practice", status: "published" })
+    .returning();
+  const tests = [
+    { id: "s1", name: "Sample one", stdin: "IN_S1", expectedStdout: "OUT_S1", visibility: "sample" },
+    { id: "s2", name: "Sample two", stdin: "IN_S2", expectedStdout: "OUT_S2", visibility: "sample" },
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `h${i}`, name: `Hidden ${i}`, stdin: `IN_H${i}`, expectedStdout: `OUT_H${i}`, visibility: "hidden" })),
+  ];
+  const [version] = await db
+    .insert(lessonVersions)
+    .values({ lessonId: lesson!.id, version: 1, content: { kind: "practice", instructions: "Echo.", language: "python", starterCode: "", tests } as never })
+    .returning();
+  await db.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
+
+  const res = await trpc(app, cookie).q("lessons.get", { id: "rt-samples" });
+  assert.equal(res.statusCode, 200);
+  const shown = out(res).part.tests as Array<Record<string, unknown>>;
+  assert.equal(shown.length, 12);
+  assert.equal(shown.filter((t) => t.visibility === "sample").length, 2);
+  for (const t of shown) {
+    if (t.visibility === "sample") assert.deepEqual([t.stdin, t.expectedStdout], [`IN_${String(t.id).toUpperCase()}`, `OUT_${String(t.id).toUpperCase()}`]);
+    else assert.ok(!("stdin" in t) && !("expectedStdout" in t), `hidden test ${t.id} leaked data`);
+  }
+  assert.ok(!JSON.stringify(res.json()).includes("_H"));
+});

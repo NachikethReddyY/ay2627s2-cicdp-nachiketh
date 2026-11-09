@@ -1,6 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import type { GameProps } from "@learnquest/ui-catalog";
+import type { PublicGameProps } from "@learnquest/ui-catalog";
+import type { GameApi } from "./api.ts";
 import { setupFor, type DragKind, type Item, type Placed, type Zone } from "./dragSetup.ts";
 import Shell, { btn } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
@@ -50,7 +51,7 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
   );
 }
 
-function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void | Promise<unknown> }) {
+function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: GameApi }) {
   const setup = useMemo(() => setupFor(kind), [kind]);
   const maxLives = p.shell.lives;
   const [placed, setPlaced] = useState<Placed>(setup.start);
@@ -61,6 +62,8 @@ function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onCo
   const over = outcome === "win" || outcome === "lose";
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const [hot, setHot] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const gen = useRef(0);
 
   const zoneName = (z: string | null) => setup.zones.find((x) => x.id === z)?.label ?? "the pool";
   const labelOf = (id: string) => setup.items.find((x) => x.id === id)!.label;
@@ -86,19 +89,29 @@ function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onCo
     if (e.over) place(String(e.active.id), String(e.over.id));
   };
 
-  const check = () => {
-    if (over) return;
+  const check = async () => {
+    if (over || busy) return;
     const unplaced = setup.items.filter((i) => !placed[i.id]).length;
     if (unplaced) return setLive(`${unplaced} ${unplaced === 1 ? "item is" : "items are"} still in the pool. Place everything, then check.`);
-    const wrong = setup.items.filter((i) => !setup.isRight(i.id, placed[i.id]!)).length;
-    if (wrong === 0) return (setOutcome("win"), setLive("You win! Everything is in the right place."));
-    const left = lives === undefined ? undefined : lives - 1;
-    if (left !== undefined) setLives(left);
-    if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive(`Game over, no lives left. ${wrong} ${wrong === 1 ? "item is" : "items are"} in the wrong place.`));
-    setLive(`Not yet: ${wrong} ${wrong === 1 ? "item is" : "items are"} in the wrong place. Move them and check again.`);
+    setBusy(true);
+    const mine = gen.current;
+    try {
+      const r = await api.check(setup.submit(placed));
+      if (mine !== gen.current) return;
+      if (r.correct) return (setOutcome("win"), setLive("You win! Everything is in the right place."));
+      const left = lives === undefined ? undefined : lives - 1;
+      if (left !== undefined) setLives(left);
+      if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive("Game over, no lives left. Some items are in the wrong place."));
+      setLive("Not yet: some items are in the wrong place. Move them and check again.");
+    } catch {
+      if (mine === gen.current) setLive("Couldn't check your answer. Try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const retry = () => {
+    gen.current++;
     setPlaced(setup.start), setSelected(null), setOutcome("play"), setLive("Back at the start.");
     setLives(maxLives);
   };
@@ -115,7 +128,7 @@ function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onCo
   );
 
   return (
-    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} onComplete={onComplete}>
+    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd} onDragOver={(e) => setHot(e.over ? String(e.over.id) : null)} onDragCancel={() => setHot(null)}>
         <div role="group" aria-label={`${setup.title} game`} className="flex min-w-0 flex-col gap-3">
           {pool.length > 0 && (
@@ -136,7 +149,7 @@ function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onCo
           </div>
           <p className="text-xs">Drag an item into a box, or tap an item and then tap a box. Keyboard: Tab to an item, press Space to pick it up, arrows to move, Space to drop.</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={`${btn} bg-green`} disabled={over} onClick={check}>Check</button>
+            <button type="button" className={`${btn} bg-green`} disabled={over || busy} onClick={check}>Check</button>
           </div>
         </div>
       </DndContext>
@@ -144,6 +157,6 @@ function DragBoard({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onCo
   );
 }
 
-export default function DragGame({ p, kind, onComplete }: { p: GameProps; kind: DragKind; onComplete?: () => void | Promise<unknown> }) {
-  return <DragBoard p={p} kind={kind} onComplete={onComplete} />;
+export default function DragGame({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: GameApi }) {
+  return <DragBoard p={p} kind={kind} api={api} />;
 }

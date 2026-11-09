@@ -6,6 +6,8 @@ export type PartContext = {
   course: { title: string; description: string };
   lesson: { title: string; level: number; concepts: string[]; kind: string };
   missedConcepts: string[];
+  /** Practice lessons only: how many hidden stretch tests the engine writes. */
+  stretchTests?: number;
 };
 
 // Test seam, like `generator` in ai/generator.ts: tests replace `lesson` to avoid the engine.

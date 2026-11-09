@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseSpec } from "@learnquest/ui-catalog";
 import { buildTimeline, seek } from "@learnquest/player-core";
+import { PracticeContent } from "../parts/practice-schema.ts";
 import type { PartSecret } from "../db/schema.ts";
 
 // Every lesson part from the engine or the model passes through here before it is stored.
@@ -15,13 +16,7 @@ const Part = z.discriminatedUnion("kind", [
     beforeFiles: z.record(text(200), z.string().max(6000)).refine((f) => Object.keys(f).length >= 1 && Object.keys(f).length <= 4),
     hunks: z.array(Hunk).min(1).max(6),
   }),
-  z.object({
-    kind: z.literal("practice"),
-    instructions: text(1000),
-    language: z.enum(["python", "javascript"]).optional(),
-    starterCode: z.string().max(3000),
-    expectedOutput: z.string().max(1000),
-  }),
+  PracticeContent,
   z.object({ kind: z.literal("game-practice"), intro: text(500), doc: z.unknown() }),
 ]);
 

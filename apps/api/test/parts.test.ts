@@ -31,7 +31,10 @@ const learnPart: PartSecret = { kind: "learn", body: "Read this first." };
 const gamePart: PartSecret = {
   kind: "game-practice",
   intro: "Sort the cart.",
-  doc: { v: 1, blocks: [{ type: "game", id: "sort-game", props: {} }] },
+  doc: {
+    v: 1,
+    blocks: [{ type: "game", id: "quiz-game", props: { title: "Quiz", goalText: "Answer.", alt: "A one question quiz about the cart.", hints: [], shell: {}, kind: { kind: "quiz", questions: [{ prompt: "2 + 2?", options: ["3", "4"], answer: 1 }] } } }],
+  },
 };
 
 test("parts.complete: idempotent, predict is a no-op, invisible lessons are 404", async () => {
@@ -79,21 +82,21 @@ test("a completed learn lesson counts as done in course, path and home progress"
   assert.deepEqual([home.paths[0].courses[0].lessonsDone, home.paths[0].courses[0].lessonsTotal], [1, 2]);
 });
 
-test("games.complete: only a real game block of a game-practice lesson at partIdx 0", async () => {
+test("games.check: only a real game of a game-practice lesson records a win", async () => {
   const cookie = await signUp(app);
   await addLesson("game-1", "game-practice", gamePart);
-  const real = { lessonId: "game-1", partIdx: 0, blockId: "sort-game" };
+  const win = { lessonId: "game-1", gameIndex: 0, submission: { kind: "quiz", answers: [1] } };
 
-  assert.deepEqual(out(await m(cookie, "games.complete", { ...real, blockId: "made-up" })), { awarded: false });
-  assert.deepEqual(out(await m(cookie, "games.complete", { ...real, partIdx: 1 })), { awarded: false });
+  assert.equal((await m(cookie, "games.check", { ...win, gameIndex: 1 })).statusCode, 404);
+  assert.deepEqual(out(await m(cookie, "games.check", { ...win, submission: { kind: "quiz", answers: [0] } })).complete, false);
   assert.equal((await db.select().from(partCompletions)).length, 0, "no win, no completion");
-  assert.deepEqual(out(await m(cookie, "games.complete", real)), { awarded: true });
+  assert.equal(out(await m(cookie, "games.check", win)).complete, true);
   assert.equal((await db.select().from(partCompletions)).length, 1, "a recorded win completes the part");
-  assert.deepEqual(out(await m(cookie, "games.complete", real)), { awarded: false });
+  assert.equal(out(await m(cookie, "games.check", win)).complete, true);
   assert.equal(out(await get(cookie)).stats.xp, 10);
 
   await addLesson("learn-1", "learn", learnPart);
-  assert.deepEqual(out(await m(cookie, "games.complete", { lessonId: "learn-1", partIdx: 0, blockId: "sort-game" })), { awarded: false });
+  assert.equal((await m(cookie, "games.check", { ...win, lessonId: "learn-1" })).statusCode, 404);
 });
 
 test("parts.complete rejects practice and game-practice without evidence", async () => {

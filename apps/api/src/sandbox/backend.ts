@@ -65,7 +65,7 @@ export interface SandboxBackend {
   moveWorkspaceFile?(learnerId: string, source: string, targetDir: string): Promise<void>;
   /** relDir is "" for home or a validated "a/b"; null when it does not exist or is not a directory. */
   listDir?(learnerId: string, relDir: string): Promise<DirListing | null>;
-  runCode?(learnerId: string, language: "python" | "javascript", code: string, limits: RunLimits): RunHandle;
+  runCode?(learnerId: string, language: "python" | "javascript" | "typescript", code: string, limits: RunLimits): RunHandle;
 }
 
 let backend: Promise<SandboxBackend> | null = null;

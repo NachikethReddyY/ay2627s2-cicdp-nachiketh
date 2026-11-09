@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { MAX_ANGLE, MIN_ANGLE, simulateLaunch, type GameProps, type PhysicsProps } from "@learnquest/ui-catalog";
+import { useMemo, useRef, useState } from "react";
+import { MAX_ANGLE, MIN_ANGLE, simulateLaunch, type PublicGameProps, type PhysicsProps } from "@learnquest/ui-catalog";
+import type { GameApi } from "./api.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import Shell, { btn } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
@@ -7,7 +8,7 @@ import type { Outcome } from "./model.ts";
 const W = 400;
 const H = 160;
 
-export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kind: PhysicsProps; onComplete?: () => void | Promise<unknown> }) {
+export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind: PhysicsProps; api: GameApi }) {
   const reduced = useReducedMotion();
   const maxLives = p.shell.lives;
   const [angle, setAngle] = useState(45);
@@ -16,6 +17,8 @@ export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kin
   const [lives, setLives] = useState(maxLives);
   const [outcome, setOutcome] = useState<Outcome>("play");
   const [live, setLive] = useState("");
+  const [busy, setBusy] = useState(false);
+  const gen = useRef(0);
   const over = outcome === "win" || outcome === "lose";
   // Scale so the target and the farthest throw both fit the picture.
   const span = Math.max(kind.target.x + kind.target.width, (kind.maxSpeed * kind.maxSpeed) / 9.8) * 1.1;
@@ -23,18 +26,30 @@ export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kin
   const sy = (y: number) => H - 10 - (y / span) * W;
   const preview = useMemo(() => simulateLaunch(kind, angle, speed), [kind, angle, speed]);
 
-  const launch = () => {
-    if (over) return;
-    setShot(preview);
-    const miss = `${preview.landX < kind.target.x ? "Short" : "Long"}: it landed ${preview.landX.toFixed(1)} metres out, the target is at ${kind.target.x}.`;
-    if (preview.hit) return (setOutcome("win"), setLive(`You win! It landed ${preview.landX.toFixed(1)} metres out, inside the target.`));
-    const left = lives === undefined ? undefined : lives - 1;
-    if (left !== undefined) setLives(left);
-    if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive(`Game over, no lives left. ${miss}`));
-    setLive(`${miss} Change a slider and launch again.`);
+  // The picture comes from the shared simulator; whether the throw wins is the server's call.
+  const launch = async () => {
+    if (over || busy) return;
+    setBusy(true);
+    const mine = gen.current;
+    try {
+      const r = await api.check({ kind: "physics", angle, speed });
+      if (mine !== gen.current) return;
+      setShot(preview);
+      const miss = `${preview.landX < kind.target.x ? "Short" : "Long"}: it landed ${preview.landX.toFixed(1)} metres out, the target is at ${kind.target.x}.`;
+      if (r.correct) return (setOutcome("win"), setLive(`You win! It landed ${preview.landX.toFixed(1)} metres out, inside the target.`));
+      const left = lives === undefined ? undefined : lives - 1;
+      if (left !== undefined) setLives(left);
+      if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive(`Game over, no lives left. ${miss}`));
+      setLive(`${miss} Change a slider and launch again.`);
+    } catch {
+      if (mine === gen.current) setLive("Couldn't check your throw. Try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const retry = () => {
+    gen.current++;
     setShot(null), setOutcome("play"), setLives(maxLives), setLive("Back at the start.");
   };
 
@@ -48,7 +63,7 @@ export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kin
   // Reduced motion: the finished flight is drawn at once. Otherwise the CSS draw-in animation plays it; it has no timer, so nothing times the learner out.
   const d = shot ? shot.path.map((q, i) => `${i ? "L" : "M"}${sx(q.x).toFixed(1)} ${sy(q.y).toFixed(1)}`).join(" ") : "";
   return (
-    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} onComplete={onComplete}>
+    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <div role="group" aria-label="Physics game" className="flex min-w-0 flex-col gap-3">
         <svg role="img" aria-label={`Ground with a target ${kind.target.width} metres wide at ${kind.target.x} metres${shot ? `; last throw landed at ${shot.landX.toFixed(1)} metres` : ""}`} viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full rounded-2xl border-2 border-ink bg-paper">
           <line x1={0} x2={W} y1={H - 10} y2={H - 10} stroke="var(--color-ink)" strokeWidth={2} />
@@ -59,7 +74,7 @@ export default function PhysicsGame({ p, kind, onComplete }: { p: GameProps; kin
         {slider("Angle", angle, MIN_ANGLE, MAX_ANGLE, setAngle, "degrees")}
         {slider("Speed", speed, 1, kind.maxSpeed, setSpeed, "m/s")}
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={`${btn} bg-green`} disabled={over} onClick={launch}>Launch</button>
+          <button type="button" className={`${btn} bg-green`} disabled={over || busy} onClick={launch}>Launch</button>
         </div>
       </div>
     </Shell>

@@ -34,14 +34,18 @@ plan made of **Learn → Watch → Practice** parts.
 |------|-----------------------|--------|
 | **Learn** | Short explanation with code snippets, then Next. | `Page`, `PipEmpty` from `components/Bits.tsx` |
 | **Watch** | The code replay "video": the editor types out the change, with play/pause/seek. | `Player` in video mode (`player/PlayerPage.tsx`), `buildTimeline` from `player-core` |
-| **Practice** | Instructions on the left, Monaco editor on the right, a **Run** button and an output panel. Optional **Check** compares output to the expected output. | `EditorPane.tsx`, `Window.tsx` |
+| **Practice** | Instructions on the left, Monaco editor on the right, a **Run** button and an output panel. Optional **Check** runs the practice tests. | `EditorPane.tsx`, `Window.tsx` |
 
 **Run** executes JavaScript in a Web Worker in the browser: no server, no tokens.
 It captures `console.log` into the output panel and stops the worker after 3 s so
 an infinite loop can't freeze the tab. JS only for v1.
 
-**Check** is a plain string compare against `expectedOutput` from the generated
-task. No AI grading.
+**Check** runs all of a practice part's `tests` in one sandbox container via
+`POST /api/sandbox/check`. Each test has `id`, `name`, `stdin`, `expectedStdout`,
+`visibility` (`sample` or `hidden`) and `stretch`. The sample test's input and
+expected output are visible; hidden tests show only pass or fail. Stretch tests
+give bonus points only. `expectedOutput` is kept as a legacy single test. No AI
+grading.
 
 ## Frontend changes
 
@@ -71,7 +75,7 @@ These are small and can be a sub-task or done in the same PR:
 - Engine lesson prompt branches on `kind`:
   - learn → `{ body }`
   - watch → existing `{ beforeFiles, hunks }`
-  - practice → `{ instructions, starterCode, expectedOutput }`
+  - practice → `{ instructions, starterCode, tests }` (each test has `id`, `name`, `stdin`, `expectedStdout`, `visibility`, `stretch`; `expectedOutput` is kept as a legacy single test)
 - `lessons.get` returns `kind` plus the public content for that kind.
 - **Remove `prefetchNext`** and its call in `lessons/router.ts` (token rule).
 

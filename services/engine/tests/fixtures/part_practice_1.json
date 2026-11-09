@@ -7,7 +7,7 @@
           "finish_reason": "stop",
           "message": {
             "role": "assistant",
-            "content": "{\"kind\": \"practice\", \"instructions\": \"Write sum(a, b) that returns a + b, then print sum(1, 2).\", \"language\": \"javascript\", \"starterCode\": \"function sum(a, b) {\\n}\\n\", \"expectedOutput\": \"3\"}"
+            "content": "{\"kind\": \"practice\", \"instructions\": \"Read two numbers from stdin and print their sum.\", \"language\": \"javascript\", \"starterCode\": \"const lines = require('fs').readFileSync(0, 'utf8').split('\\\\n');\\n\", \"tests\": [{\"id\": \"basic-sum\", \"name\": \"Adds two small numbers\", \"stdin\": \"1\\n2\\n\", \"expectedStdout\": \"3\\n\", \"visibility\": \"sample\", \"stretch\": false}, {\"id\": \"negative-sum\", \"name\": \"Adds a negative and a positive number\", \"stdin\": \"-4\\n10\\n\", \"expectedStdout\": \"6\\n\", \"visibility\": \"hidden\", \"stretch\": false}, {\"id\": \"zero-sum\", \"name\": \"Adds two zeros\", \"stdin\": \"0\\n0\\n\", \"expectedStdout\": \"0\\n\", \"visibility\": \"hidden\", \"stretch\": false}]}"
           }
         }
       ],

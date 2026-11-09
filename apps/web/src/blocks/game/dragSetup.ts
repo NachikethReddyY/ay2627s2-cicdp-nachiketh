@@ -1,45 +1,55 @@
-import type { MatchProps, OrderProps, SortProps } from "@learnquest/ui-catalog";
+import type { PublicMatch, PublicOrder, PublicSort } from "@learnquest/ui-catalog";
+import type { Submission } from "./api.ts";
 
-export type DragKind = OrderProps | MatchProps | SortProps;
+export type DragKind = PublicOrder | PublicMatch | PublicSort;
 export type Item = { id: string; label: string };
 export type Zone = { id: string; label: string };
 /** Where each item sits: a zone id, or null while it waits in the pool. */
 export type Placed = Record<string, string | null>;
-export type Setup = { items: Item[]; zones: Zone[]; start: Placed; capacity: number; isRight: (item: string, zone: string) => boolean; title: string };
+export type Setup = {
+  items: Item[]; zones: Zone[]; start: Placed; capacity: number; title: string;
+  /** The board as a games.check submission. Only call it once every item is placed. */
+  submit: (placed: Placed) => Submission;
+};
 
-export const rotate = <T,>(xs: T[]) => (xs.length > 1 ? [...xs.slice(1), xs[0]!] : xs);
-
-/** Builds the items, zones and answer key for one drag kind. Starts are never already solved. */
+/**
+ * Builds the items, zones and submission for one drag kind. The browser knows no answer key: the server sends the
+ * items already shuffled (an order game never arrives solved) and grades what `submit` returns.
+ */
 export function setupFor(kind: DragKind): Setup {
   if (kind.kind === "order") {
-    const n = kind.items.length;
-    const right = (item: string, zone: string) => zone === `z${item.slice(1)}`;
-    // Items start rotated by one place, so the list is never already in order.
-    const shown = rotate(kind.items.map((t, i) => ({ id: `i${i}`, label: t })));
+    const items = kind.items.map((t, i) => ({ id: `i${i}`, label: t }));
+    const zones = items.map((_, i) => ({ id: `z${i}`, label: `Position ${i + 1}` }));
     const start: Placed = {};
-    shown.forEach((it, pos) => (start[it.id] = `z${pos}`));
-    return { items: shown, zones: Array.from({ length: n }, (_, i) => ({ id: `z${i}`, label: `Position ${i + 1}` })), start, capacity: 1, isRight: right, title: "order" };
+    items.forEach((it, pos) => (start[it.id] = `z${pos}`));
+    const submit = (placed: Placed): Submission => ({
+      kind: "order",
+      order: zones.map((z) => items.find((it) => placed[it.id] === z.id)?.label ?? ""),
+    });
+    return { items, zones, start, capacity: 1, title: "order", submit };
   }
   if (kind.kind === "match") {
-    const items = rotate(kind.pairs.map((x, j) => ({ id: `r${j}`, label: x.right })));
-    const start: Placed = Object.fromEntries(items.map((it) => [it.id, null]));
+    const items = kind.rights.map((t, j) => ({ id: `r${j}`, label: t }));
+    const zones = kind.lefts.map((t, j) => ({ id: `l${j}`, label: t }));
     return {
       items,
-      zones: kind.pairs.map((x, j) => ({ id: `l${j}`, label: x.left })),
-      start,
+      zones,
+      start: Object.fromEntries(items.map((it) => [it.id, null])),
       capacity: 1,
-      isRight: (item, zone) => item.slice(1) === zone.slice(1),
       title: "match",
+      submit: (placed) => ({
+        kind: "match",
+        pairs: zones.map((z) => ({ left: z.label, right: items.find((it) => placed[it.id] === z.id)?.label ?? "" })),
+      }),
     };
   }
-  const items = kind.cards.map((c, i) => ({ id: `c${i}`, label: c.text }));
+  const items = kind.cards.map((c, i) => ({ id: `c${i}`, label: c }));
   return {
     items,
     zones: kind.buckets.map((b, k) => ({ id: `b${k}`, label: b })),
     start: Object.fromEntries(items.map((it) => [it.id, null])),
     capacity: Infinity,
-    isRight: (item, zone) => kind.cards[Number(item.slice(1))]!.bucket === Number(zone.slice(1)),
     title: "sort",
+    submit: (placed) => ({ kind: "sort", cards: items.map((it) => ({ text: it.label, bucket: Number(placed[it.id]!.slice(1)) })) }),
   };
 }
-

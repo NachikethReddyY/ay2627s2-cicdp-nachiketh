@@ -9,10 +9,14 @@ test("Run uses the shell when the sandbox is on, and the one-shot path without a
   assert.equal((off as { args: unknown[] }).args.length, 2, "no lessonId slot at all");
 });
 
-test("Check always uses the one-shot path with the lessonId", () => {
+test("Check always goes through checkPractice with the lessonId", () => {
   for (const sandboxEnabled of [true, false])
     assert.deepEqual(practiceActions({ language: "python", code: "c", lessonId: "prac-1", sandboxEnabled }).check,
-      { via: "oneshot", args: ["c", "python", "prac-1"] });
+      { via: "check", args: [{ code: "c", language: "python", lessonId: "prac-1" }] });
+});
+
+test("TypeScript Run is one-shot even with the sandbox on (no shell target)", () => {
+  assert.deepEqual(practiceActions({ language: "typescript", code: "c", lessonId: "l", sandboxEnabled: true }).run, { via: "oneshot", args: ["c", "typescript"] });
 });
 
 test("shouldFallBack: disabled always; starting/unavailable only when the socket is failing", () => {

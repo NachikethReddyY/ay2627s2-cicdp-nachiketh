@@ -1,15 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { buildTimeline } from "@learnquest/player-core";
 import EditorPane from "../EditorPane";
 import { createShellSocket, type ShellSocket } from "../terminal/shellSocket";
 import TerminalPanel from "../terminal/TerminalPanel";
 import { isToggleKey, usePanel } from "../terminal/usePanel";
 import { RunInShellError, runInShell } from "../terminal/runInShell";
-import { checkPassed, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
+import { checkPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type PyPoll } from "../runPython";
 import { FOCUS } from "../ui";
 import { Player } from "./LazyPlayer";
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
+import CheckPanel from "./CheckPanel";
+import { monacoLanguage, solutionFile, type CheckResponse, type PracticeLanguage, type PracticeTest } from "./checkModel";
 import type { Part } from "./types";
+
+const SloppyPanel = lazy(() => import("./SloppyPanel"));
+
+// The API's part type lists python and javascript; the practice view also takes typescript and a list of tests.
+type PracticePart = Omit<Extract<Part, { kind: "practice" }>, "language"> & { language?: PracticeLanguage; tests?: PracticeTest[] };
 
 const MAX_POLL_FAILURES = 4;
 
@@ -17,14 +24,16 @@ const MAX_POLL_FAILURES = 4;
 export default function PracticeView({ lessonId, title, part, next }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode }) {
   const [code, setCode] = useState(part.starterCode);
   const [term, setTerm] = useState(""); // what the terminal shows: program output plus the answers typed
-  const [ok, setOk] = useState<boolean | null>(null);
+  const [result, setResult] = useState<CheckResponse | null>(null); // the last Check
+  const [checkBusy, setCheckBusy] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const [sloppyOpen, setSloppyOpen] = useState(false);
   const [sid, setSid] = useState<string | null>(null); // the live run, if any
   const [starting, setStarting] = useState(false); // a run request is in flight; sid is not set yet
   const sidRef = useRef<string | null>(null); // mirrors sid so the unmount cleanup can stop the run
   const live = useRef(true); // false once the page is gone, so a late startPython result is stopped
   const [typed, setTyped] = useState("");
   const stdout = useRef(""); // program output only, without the echoed answers
-  const checking = useRef(false);
   const runRef = useRef<HTMLButtonElement>(null);
   const timeline = useMemo(() => buildTimeline([{ beforeFiles: {}, hunks: [] }]), []);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -83,14 +92,9 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     }
     wasOpen.current = panel.state.open;
   }, [panel.state.open]);
-  const python = part.language === "python";
+  const language = monacoLanguage((part as PracticePart).language);
+  const python = language === "python";
   const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
-  // The server judges a Check run and records the completion; the player only shows its verdict.
-  const judge = (p: Pick<PyPoll, "error" | "passed">) => {
-    if (!checking.current) return;
-    setOk(checkPassed(p));
-  };
-
   useEffect(() => {
     live.current = true;
     return () => {
@@ -128,18 +132,13 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       if (!p.done) { timer = setTimeout(poll, 300); return; }
       if (p.error) setTerm((t) => `${t}${t && !t.endsWith("\n") ? "\n" : ""}${p.error}\n`);
       else if (!stdout.current) setTerm((t) => t || "The program ran and printed nothing.");
-      judge(p);
       setSid(null);
     };
     void poll();
     return () => { live = false; clearTimeout(timer); };
   }, [sid]);
 
-  const [lastWasCheck, setLastWasCheck] = useState(false);
-  const oneShot = async (args: Parameters<typeof startPython>, check: boolean) => {
-    checking.current = check;
-    setLastWasCheck(check);
-    setOk(null); // clearing first remounts the badge, so its animation plays on every check
+  const oneShot = async (args: Parameters<typeof startPython>) => {
     stdout.current = "";
     setTerm("");
     setStarting(true);
@@ -150,29 +149,36 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
       if (!live.current) return;
       setStarting(false);
       setTerm(msg(e));
-      judge({ error: msg(e) });
       return;
     }
     if (!live.current) { void stopPython(id).catch(() => {}); return; } // the page closed while the request was pending
     setStarting(false);
     setSid(id);
   };
-  const actionsFor = (enabled: boolean) => practiceActions({ language: python ? "python" : "javascript", code, lessonId, sandboxEnabled: enabled });
-  const check = () => void oneShot(actionsFor(sandboxEnabled).check.args, true);
+  const actionsFor = (enabled: boolean) => practiceActions({ language, code, lessonId, sandboxEnabled: enabled });
+  const check = async () => {
+    setCheckBusy(true);
+    setCheckError("");
+    try {
+      const res = await checkPractice(...actionsFor(sandboxEnabled).check.args);
+      if (live.current) setResult(res);
+    } catch (e) {
+      if (live.current) { setResult(null); setCheckError(msg(e)); }
+    }
+    if (live.current) setCheckBusy(false);
+  };
   const run = async () => {
     const a = actionsFor(sandboxEnabled).run;
-    if (a.via === "oneshot") { await oneShot(a.args, false); return; }
+    if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
     if (skipShellWait(shellUnreachable.current, shell.state())) {
       setRunNote(undefined);
       const fb = actionsFor(false).run;
-      if (fb.via === "oneshot") await oneShot(fb.args, false);
+      if (fb.via === "oneshot") await oneShot(fb.args);
       return;
     }
     setRunNote(undefined);
     setShellRun(true);
-    checking.current = false;
-    setOk(null);
     stdout.current = "";
     setTerm("");
     try {
@@ -191,7 +197,7 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         shellUnreachable.current = true;
         setShellRun(false);
         const fb = actionsFor(false).run;
-        if (fb.via === "oneshot") await oneShot(fb.args, false);
+        if (fb.via === "oneshot") await oneShot(fb.args);
         return;
       }
       setRunNote(msg(e));
@@ -212,28 +218,16 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
     setTerm((t) => `${t}${line}\n`);
     void sendPythonLine(sid, line).catch(() => setTerm((t) => `${t}[could not send that line]\n`));
   };
-  const badge = (
-    <span role="status" aria-live="polite" className="ml-auto">
-      {ok !== null && (
-        <span className={`inline-block rounded-lg border-2 border-ink px-2 py-0.5 font-sans text-sm font-extrabold text-ink ${ok ? "verdict-ok bg-green" : "verdict-no bg-pink"}`}>
-          {ok ? "Correct!" : "Not quite. Compare your output with the task."}
-        </span>
-      )}
-    </span>
-  );
-  const panelShown = panel.state.open; // a closed panel is hidden, so the badge lives in the Check output block then
-  const showCheckOutput = sid !== null || starting || term !== "" || (ok !== null && !panelShown);
-  const file = python ? "solution.py" : "solution.js";
+  const showCheckOutput = sid !== null || starting || term !== "";
+  const file = solutionFile(language);
   const body = (
     <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
-      <EditorPane transportRef={runRef} edit={{ value: code, language: part.language ?? "javascript", onChange: setCode }} />
-      {shell && <TerminalPanel shell={shell} panel={panel} badge={panelShown ? badge : null} note={runNote} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />}
+      <EditorPane transportRef={runRef} edit={{ value: code, language, onChange: setCode }} />
+      {shell && <TerminalPanel shell={shell} panel={panel} badge={null} note={runNote} treeKey={treeKey} onRefreshTree={() => setTreeKey((k) => k + 1)} />}
       {showCheckOutput && (
       <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-32 flex-none flex-col border-t-[3px] border-ink bg-ink font-mono text-white">
         <div className="flex flex-none items-center gap-2 border-b-2 border-white/20 px-3 py-1">
-          <h3 id="out-h" className="text-sm font-extrabold">{lastWasCheck ? "Check output" : "Output"}</h3>
-          {lastWasCheck && <span className="text-xs opacity-80">Checked in a clean sandbox</span>}
-          {!panelShown && badge}
+          <h3 id="out-h" className="text-sm font-extrabold">Output</h3>
           {sid && (
             <button type="button" onClick={stop} className={`pill ml-auto flex min-h-7 items-center gap-1 bg-pink px-3 text-sm font-extrabold text-ink ${FOCUS}`}>
               <span aria-hidden="true">■</span> Stop
@@ -258,6 +252,8 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         )}
       </section>
       )}
+      {checkError && <p role="alert" className="m-0 flex-none border-t-[3px] border-ink bg-pink px-3 py-2 text-sm font-extrabold text-ink">{checkError}</p>}
+      <CheckPanel result={result} tests={(part as PracticePart).tests} />
     </div>
   );
   return (
@@ -272,7 +268,8 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
         footer: (
           <>
             <button ref={toggleRef} type="button" aria-pressed={panel.state.open} onClick={() => panelDispatch({ type: "toggle" })} className={`btn ${FOCUS}`}>Terminal</button>
-            <button type="button" disabled={starting || sid !== null || shellRun} onClick={check} className={`btn check ${FOCUS}`}>Check</button>
+            <button type="button" disabled={starting || sid !== null || shellRun || checkBusy} onClick={() => void check()} className={`btn check ${FOCUS}`}>{checkBusy ? "Checking…" : "Check"}</button>
+            <button type="button" aria-pressed={sloppyOpen} onClick={() => setSloppyOpen((o) => !o)} className={`btn ${FOCUS}`}>Sloppy</button>
             {next}
           </>
         ),
@@ -283,7 +280,12 @@ export default function PracticeView({ lessonId, title, part, next }: { lessonId
               <span aria-hidden="true">▶</span> Run
             </button>
           ),
-          body,
+          body: (
+            <div className="flex min-h-0 flex-1">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
+              {sloppyOpen && <Suspense fallback={null}><SloppyPanel fileName={file} code={code} language={language} /></Suspense>}
+            </div>
+          ),
         },
       }}
     />

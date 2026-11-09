@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
 import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
 
-function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean } = {}) {
-  const log = { created: [] as Record<string, unknown>[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; mktemp?: { exitCode?: number; result?: string }; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean } = {}) {
+  const log = { created: [] as Record<string, unknown>[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], execs: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   const createdFolders = new Set<string>();
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
@@ -30,7 +30,11 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
         };
       },
       createSession: async () => {},
-      executeCommand: async () => ({ exitCode: 0, result: "" }),
+      executeCommand: async (c) => {
+        log.execs.push(c);
+        if (c === "mktemp -d") return { exitCode: 0, result: "/tmp/tmp.Ab3dEf9x\n", ...opts.mktemp };
+        return { exitCode: 0, result: "" };
+      },
       executeSessionCommand: async (_s, req) => (log.cmds.push(req.command), log.reqs.push(req), { cmdId: "c1" }),
       getSessionCommandLogs: async (_s, _c, out, err) => {
         if (opts.hangLogs) return new Promise(() => {});
@@ -168,10 +172,48 @@ test("runCode runs in a network-blocked ephemeral sandbox, streams output and de
   assert.deepEqual(err, ["warn\n"]);
   assert.equal(f.log.created[0]!.networkBlockAll, true);
   assert.equal(f.log.created[0]!.ephemeral, true);
-  assert.deepEqual(f.log.uploaded, ["/tmp/main.py"]);
-  assert.equal(f.log.cmds[0], "timeout -s KILL 60 python3 -I -u /tmp/main.py");
+  assert.deepEqual(f.log.uploaded, ["/tmp/tmp.Ab3dEf9x/main.py"]);
+  assert.equal(f.log.cmds[0], "timeout -s KILL 60 python3 -I -u '/tmp/tmp.Ab3dEf9x/main.py'");
   assert.deepEqual(f.log.input, ["early answer\n"]);
   assert.equal(f.log.deleted, 1);
+});
+
+test("runCode uses a private mktemp directory, not a fixed /tmp name, and removes it after the run", async () => {
+  for (const [language, name] of [["python", "main.py"], ["javascript", "main.js"], ["typescript", "main.ts"]] as const) {
+    const f = fake({ mktemp: { result: "/tmp/tmp.Zq81\n" } });
+    const run = daytonaBackend({ client: f.client }).runCode!("l", language, "x", { timeoutS: 5 });
+    await new Promise((res) => run.onExit(res));
+    assert.deepEqual(f.log.uploaded, [`/tmp/tmp.Zq81/${name}`]);
+    assert.notEqual(f.log.uploaded[0], `/tmp/${name}`);
+    assert.ok(f.log.cmds[0]!.endsWith(` '/tmp/tmp.Zq81/${name}'`));
+    assert.equal(f.log.execs[0], "mktemp -d");
+    assert.equal(f.log.execs.at(-1), "rm -rf -- '/tmp/tmp.Zq81'");
+  }
+});
+
+test("a failing or empty mktemp fails the run and never falls back to /tmp", async () => {
+  for (const mktemp of [{ exitCode: 1, result: "" }, { exitCode: 0, result: "  \n" }, { exitCode: 0, result: "relative" }]) {
+    const f = fake({ mktemp });
+    const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
+    const r = await new Promise<[number | null, string | undefined]>((res) => run.onExit((c, e) => res([c, e])));
+    assert.deepEqual(r, [null, "Could not run the code"]);
+    assert.deepEqual(f.log.uploaded, []);
+    assert.equal(f.log.cmds.length, 0);
+    assert.equal(f.log.deleted, 1);
+  }
+});
+
+test("a failing directory cleanup does not fail the run", async () => {
+  const f = fake();
+  const orig = f.client.create;
+  f.client.create = async (p) => {
+    const s = await orig(p);
+    const exec = s.process.executeCommand;
+    s.process.executeCommand = async (c, ...a) => { if (c.startsWith("rm ")) throw new Error("rm failed"); return exec(c, ...a); };
+    return s;
+  };
+  const run = daytonaBackend({ client: f.client }).runCode!("l", "python", "x", { timeoutS: 5 });
+  assert.equal(await new Promise((res) => run.onExit((c) => res(c))), 0);
 });
 
 test("runCode kill deletes the sandbox and reports no exit code", async () => {

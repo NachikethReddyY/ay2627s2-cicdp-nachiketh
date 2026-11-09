@@ -74,13 +74,18 @@ def _system(system: str, schema: dict[str, Any], mode: str) -> str:
     )
 
 
-def _parse[T: BaseModel](content: str, model: type[T]) -> T:
+def _parse[T: BaseModel](content: str, model: type[T], context: dict[str, Any] | None = None) -> T:
     body = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
-    return model.model_validate(json.loads(body))
+    return model.model_validate(json.loads(body), context=context)
 
 
 def generate[T: BaseModel](
-    system: str, data: object, model: type[T], *, max_tokens: int | None = None
+    system: str,
+    data: object,
+    model: type[T],
+    *,
+    max_tokens: int | None = None,
+    context: dict[str, Any] | None = None,
 ) -> Result[T]:
     cfg = get_settings()
     schema = json_schema(model)
@@ -156,7 +161,7 @@ def generate[T: BaseModel](
         done(1)
         raise GenerationError("model output was truncated (max tokens reached)") from None
     try:
-        value = _parse(content, model)
+        value = _parse(content, model, context)
         done(1)
         return Result(value, usage, 1)
     except (ValidationError, json.JSONDecodeError) as e:
@@ -169,7 +174,7 @@ def generate[T: BaseModel](
         },
     ]
     try:
-        value = _parse(call(), model)
+        value = _parse(call(), model, context)
     except _Truncated:
         done(2)
         raise GenerationError("model output was truncated (max tokens reached)") from None

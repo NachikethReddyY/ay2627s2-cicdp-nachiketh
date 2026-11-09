@@ -1,6 +1,6 @@
 # Configuration
 
-Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox ones are listed here.
+Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, guide and practice ones are listed here.
 
 ## Sandbox (LQ-76)
 
@@ -15,6 +15,12 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox on
 | `DAYTONA_SNAPSHOT` | Daytona default image | Snapshot built from `services/sandbox` so Python/Node match the Docker image. |
 | `DAYTONA_AUTO_STOP_MINUTES` | `15` | Idle minutes before Daytona stops a learner's shell sandbox. |
 | `SANDBOX_MAX_TABS` / `SANDBOX_MAX_SHELLS` / `SANDBOX_MAX_RUNS` | 4 / 50 / 20 | Per-learner tabs, live terminals, live runs. |
+
+## Guide and practice
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PRACTICE_STRETCH_TESTS` | `0` | Number of bonus hacker-edition tests (0 to 10) the engine adds to each practice part. They give bonus points only. |
 
 ### How the Daytona backend works
 
