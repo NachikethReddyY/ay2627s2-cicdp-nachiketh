@@ -72,6 +72,33 @@ test("lessons.get sends each game kind as an exact allowlist of keys", async () 
   for (const secret of ["hint 1", "hint 2", "grid hint", "\"answer\"", "\"solution\"", "\"pairs\"", "\"bucket\""]) assert.ok(!raw.includes(secret), secret);
 });
 
+test("lessons.get strips quiz answers and hints from game blocks in a learn doc", async () => {
+  const cookie = await signUp(app);
+  const world = (await db.select().from(worlds).where(eq(worlds.slug, "codequest")))[0]!.id;
+  const learn: PartSecret = {
+    kind: "learn",
+    body: "Read this first.",
+    doc: { v: 1, blocks: [game("learn-quiz", "Learn quiz", ["learn hint secret"], { kind: "quiz", questions: [{ prompt: "Which is 3?", options: ["x", "y", "z"], answer: 2 }] })] } as never,
+  };
+  const [lesson] = await db.insert(lessons).values({ slug: "learn-1", title: "learn-1", worldId: world, sourceKind: "authored", kind: "learn", status: "published" }).returning();
+  const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, content: learn }).returning();
+  await db.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
+
+  const res = await q(cookie, "lessons.get", { id: "learn-1" });
+  assert.equal(res.statusCode, 200);
+  const doc = out(res).part.doc as { blocks: { id: string; props: Record<string, any> }[] };
+  const props = doc.blocks[0]!.props;
+  assert.equal(props.hintCount, 1);
+  assert.ok(!("hints" in props), "no hints array");
+  assert.deepEqual(keys(props.kind), ["kind", "questions"]);
+  assert.deepEqual(props.kind.questions.map((x: object) => keys(x)), [["options", "prompt"]]);
+  assert.equal(props.kind.questions[0].prompt, "Which is 3?");
+  assert.deepEqual(props.kind.questions[0].options, ["x", "y", "z"]);
+
+  const raw = res.body;
+  for (const secret of ["learn hint secret", "\"answer\"", "\"hints\""]) assert.ok(!raw.includes(secret), secret);
+});
+
 test("watch mode sends its solution, debug mode its starter, and nothing else extra", () => {
   const base = { title: "T", goalText: "G", alt: "A", hints: ["h"], shell: { lives: 2 } };
   const grid = { kind: "grid", size: { w: 3, h: 1 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 2, y: 0 }, walls: [], gems: [], commands: ["forward"], maxSteps: 5, solution: ["forward", "forward"] };
