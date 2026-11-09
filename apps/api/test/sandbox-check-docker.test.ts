@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
 const { env } = await import("../src/env.ts");
-const { runInContainer, score } = await import("../src/sandbox/check.ts");
+const { runInContainer, score, CheckUnavailableError } =await import("../src/sandbox/check.ts");
 type T = Parameters<typeof score>[0][number];
 
 const hasImage = spawnSync("docker", ["image", "inspect", env.SANDBOX_IMAGE], { stdio: "ignore" }).status === 0;
@@ -59,4 +59,59 @@ test("a program that prints too much fails instead of passing", { skip, timeout:
   const tests = [mk("big", "a".repeat(5000))];
   const s = score(tests.map((t) => ({ ...t, expectedStdout: t.expectedStdout.slice(0, 1000) })), await runInContainer(code, "javascript", tests));
   assert.equal(s.results[0]!.status, "fail");
+});
+
+// Privilege separation: the harness is root, the learner is uid 1001, so the learner cannot reach the harness through /proc.
+const dockerUp = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
+const skipPriv = (!dockerUp && "docker is not running") || skip;
+const isPass = (s: ReturnType<typeof score>) => s.results[0]!.status === "pass";
+
+test("a learner that forges a pass line on the harness stdout and kills the harness does not pass", { skip: skipPriv, timeout: 60_000 }, async () => {
+  const forged = JSON.stringify({ token: "guess", results: [{ exit: 0, timedOut: false, overflow: false, stdout: "42", stderr: "" }] });
+  const code = `
+const fs = require("node:fs");
+const ppid = process.ppid;
+console.log("wrong");
+try { fs.writeFileSync("/proc/" + ppid + "/fd/1", ${JSON.stringify(forged)} + "\\n"); } catch (e) { console.error("write " + e.code); }
+try { process.kill(ppid, "SIGKILL"); } catch (e) { console.error("kill " + e.code); }
+`;
+  const tests = [mk("t", "42")];
+  let passed = false;
+  try {
+    passed = isPass(score(tests, await runInContainer(code, "javascript", tests)));
+  } catch (e) {
+    assert.ok(e instanceof CheckUnavailableError, "a harness failure, not another error");
+  }
+  assert.equal(passed, false);
+});
+
+test("a learner cannot open the harness's /proc fd directory or memory", { skip: skipPriv, timeout: 60_000 }, async () => {
+  const code = `
+const fs = require("node:fs");
+const p = "/proc/" + process.ppid;
+const tryIt = (f) => { try { f(); return "OPENED"; } catch (e) { return e.code; } };
+const r = [
+  tryIt(() => fs.readdirSync(p + "/fd")),
+  tryIt(() => fs.openSync(p + "/mem", "r")),
+  tryIt(() => fs.readFileSync(p + "/environ")),
+];
+console.log(r.join(","));
+`;
+  const tests = [mk("t", "EACCES,EACCES,EACCES")];
+  const s = score(tests, await runInContainer(code, "javascript", tests));
+  assert.equal(s.results[0]!.actualStdout?.trim(), "EACCES,EACCES,EACCES");
+  assert.equal(isPass(s), true);
+});
+
+test("the learner runs as uid 1001 with no capabilities, and a normal solution still passes", { skip: skipPriv, timeout: 60_000 }, async () => {
+  const code = `
+const fs = require("node:fs");
+const caps = fs.readFileSync("/proc/self/status", "utf8").match(/CapEff:\\s*(\\w+)/)[1];
+const n = Number(fs.readFileSync(0, "utf8").trim());
+console.log(process.getuid(), process.getgid(), caps, n * 2);
+`;
+  const tests = [mk("t", "1001 1001 0000000000000000 8", { stdin: "4" })];
+  const s = score(tests, await runInContainer(code, "javascript", tests));
+  assert.equal(s.results[0]!.actualStdout?.trim(), "1001 1001 0000000000000000 8");
+  assert.equal(s.complete, true);
 });

@@ -42,7 +42,7 @@ function fakeDocker(pass: boolean[], calls: { stdin: string[] } = { stdin: [] })
         calls.stdin.push(s);
         const n = (JSON.parse(s) as { tests: unknown[] }).tests.length;
         const results = Array.from({ length: n }, (_, i) => ({ exit: 0, timedOut: false, overflow: false, stdout: pass[i] ? ["5", "HIDDEN-OUT", "BONUS-OUT"][i] : "wrong", stderr: "" }));
-        setImmediate(() => { (child.stdout as EventEmitter).emit("data", Buffer.from(JSON.stringify({ results }) + "\n")); child.emit("close", 0); });
+        setImmediate(() => { (child.stdout as EventEmitter).emit("data", Buffer.from(JSON.stringify({ token: (JSON.parse(s) as { token: string }).token, results }) + "\n")); child.emit("close", 0); });
       },
     });
     if (args[0] !== "run") setImmediate(() => child.emit("close", 0));
@@ -174,6 +174,31 @@ test("POST /sandbox/check: a harness that reports nothing usable is a 503, never
     assert.equal(res.statusCode, 503);
     assert.equal(res.json().error.message, "Could not check the code");
   });
+  assert.equal((await db.select().from(partCompletions)).length, 0);
+  assert.equal((await db.select().from(checkResults)).length, 0);
+});
+
+test("POST /sandbox/check: a result line without the matching token, such as one forged by learner code, is a 503 and no pass", async () => {
+  const cookie = await signUp(app);
+  await addLesson("multi", "practice", part());
+  const rows = [{ exit: 0, timedOut: false, overflow: false, stdout: "5", stderr: "" }, { exit: 0, timedOut: false, overflow: false, stdout: "HIDDEN-OUT", stderr: "" }, { exit: 0, timedOut: false, overflow: false, stdout: "BONUS-OUT", stderr: "" }];
+  for (const line of [{ results: rows }, { token: "forged", results: rows }]) {
+    setCheckSpawnForTests((() => {
+      const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {};
+      child.stdin = Object.assign(new EventEmitter(), {
+        end() { setImmediate(() => { (child.stdout as EventEmitter).emit("data", Buffer.from(JSON.stringify(line) + "\n")); child.emit("close", 0); }); },
+      });
+      return child;
+    }) as never);
+    await withSandbox(true, async () => {
+      const res = await check(cookie, body("multi"));
+      assert.equal(res.statusCode, 503);
+      assert.equal(res.json().error.code, "check_failed");
+    });
+  }
   assert.equal((await db.select().from(partCompletions)).length, 0);
   assert.equal((await db.select().from(checkResults)).length, 0);
 });
