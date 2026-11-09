@@ -23,15 +23,18 @@ Each package fails its test run when coverage is below its threshold.
   fail_under = 94` sets the floor. The engine gate measures statement coverage.
   Branch coverage is not configured.
 
-The CI jobs that run these commands are the existing `turbo run lint test build`
-step and `uv run pytest`. Whether a failing gate blocks a merge depends on branch
-protection requiring those checks. This ADR does not change branch protection.
+The CI jobs that run these commands are `unit` (turbo test) and `engine`
+(`uv run pytest`). `.github/rulesets/main.json` requires `lint`, `unit` and
+`engine`, so the gates block merge once that ruleset is applied to the live
+repository. The live ruleset is changed by the owner, not by this ADR.
 
 ### Measured baselines
 
 Measured on this branch with the same flags as the gate, on a clean Postgres 16
-test database (migrated). The API suite was run with `BETTER_AUTH_SECRET` set,
-as CI does.
+test database (migrated), with Node v26.13 locally. CI runs Node 22, and branch
+coverage can differ between V8 versions. The first CI run on Node 22 must be
+green before the thresholds count as agreed. The API suite was run with
+`BETTER_AUTH_SECRET` set, as CI does.
 
 | Package | Lines | Branches | Functions | Tests |
 |---|---|---|---|---|
@@ -61,7 +64,8 @@ Each threshold is the measured baseline rounded down, minus 2 points.
 
 A threshold may be raised when coverage rises. It may never be lowered in a
 pull request. A change that lowers a threshold needs a separate ADR update and
-the owner's approval.
+the owner's approval. This rule is a convention. Nothing in CI enforces it yet,
+so reviewers check threshold changes in `package.json` and `pyproject.toml`.
 
 ### Owner approval
 
@@ -71,19 +75,14 @@ owner's approval as well.
 
 ## Verification
 
-- `pnpm test` in `apps/api`: coverage met the 87/83 thresholds in every run
-  (lines 89.02 to 89.08, branches 85.39 to 85.46). Of the three full runs with
-  the gate on, two exited 1 because `the server exits cleanly on SIGTERM` failed
-  (a race, see Consequences). The third run, with lines raised to 99 to test
-  the gate, passed all tests and failed only on the threshold. With the real
-  thresholds, coverage met the floor in both runs. Raising lines to 99 failed
-  with `89.08% line coverage does not meet threshold of 99%` (exit code 1).
-- `pnpm test` in `apps/web` passes at 81/84 and fails when lines is raised to 99
-  (exit code 1: `83.39% line coverage does not meet threshold of 99%`).
-- `uv run pytest` in `services/engine` passes at 94 and fails when `fail_under`
-  is raised to 99 (exit code 1: `Required test coverage of 99.0% not reached`).
+Each gate was run with the gate on, then with its threshold raised to 99 to
+confirm that it fails. Each raised value was reverted before the commit.
 
-Each raised value was reverted before the commit.
+| Package | Real thresholds | Raised to 99 |
+|---|---|---|
+| apps/api | Coverage met 87/83 in both full runs that reached the threshold check (lines 89.02 to 89.08, branches 85.39 to 85.46). Two of three full runs exited 1 on the SIGTERM race (see Consequences), so the API gate was never seen fully green. | Exit 1: `89.08% line coverage does not meet threshold of 99%` |
+| apps/web | Passes at 81/84 | Exit 1: `83.39% line coverage does not meet threshold of 99%` |
+| services/engine | Passes at 94 (96.81%) | Exit 1: `Required test coverage of 99.0% not reached` |
 
 ## Consequences
 
@@ -91,13 +90,10 @@ Each raised value was reverted before the commit.
   used by another run at the same time, gave deadlocks and 401/422 failures in the
   API suite, and the coverage numbers moved with them. Measure and run the gate
   on a database that no other run uses. Any `TEST_DATABASE_URL` must end in `_test`.
-- Known blocker for a green API gate: `test/sec-hardening.test.ts`, "the server
-  exits cleanly on SIGTERM", races `src/server.ts`. The test sends SIGTERM as
-  soon as it sees the listen log. The handler is registered after
-  `await app.listen()` (`src/server.ts`, line 31), so the signal can arrive
-  first and the process exits with `null`, not 0. Fix it in a separate change
-  (register the handler before listen, or have the test wait for a later log
-  line). This ADR does not touch either file.
+- The API gate was intermittently red because of the SIGTERM race in
+  `test/sec-hardening.test.ts`. The test sent SIGTERM as soon as it saw the
+  listen log, before `src/server.ts` had registered its handler. The handler is
+  now registered before listen, in the same change as this ADR.
 - A raised threshold makes the next pull request that lowers coverage fail.
   That is intended.
 - `pytest-cov` is a new dev dependency in `services/engine`.
@@ -107,4 +103,13 @@ Each raised value was reverted before the commit.
 - Branch coverage for the engine.
 - Gating functions coverage.
 - Per-file thresholds.
-- Making the gate a required check in branch protection. This needs the owner.
+- Making the gates required in the live ruleset. `.github/rulesets/main.json`
+  now names `lint`, `unit` and `engine`. The owner must apply it to the live
+  repository.
+- Coverage for files no test loads. Node's coverage only reports files that a
+  test imports, so a new untested source file does not lower the percentage.
+  The `.tsx` components in `apps/web` and the child-process entry point
+  `src/server.ts` are not loaded by the unit tests, so they are invisible to
+  this gate too. Closing this needs a test that imports every module, or a
+  switch to a tool that reports unloaded files (for example c8 with `--all`).
+- Helper files under `apps/api/test/` count towards the API numbers.
