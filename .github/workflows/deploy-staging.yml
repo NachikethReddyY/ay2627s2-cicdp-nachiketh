@@ -148,16 +148,14 @@ jobs:
           scripts/render-vercel-config.sh "$API_ORIGIN" "$tmp"
           mv "$tmp" apps/web/vercel.json
 
-      # Installed once at an exact version, without lifecycle scripts, so no step resolves a package on demand.
+      # Installed from infra/vercel-cli/package-lock.json (exact versions and hashes), without lifecycle scripts.
       - name: Install Vercel CLI
-        env:
-          CLI_PREFIX: ${{ runner.temp }}/vercel
-        run: npm install --prefix "$CLI_PREFIX" --ignore-scripts --no-audit --no-fund vercel@65.12.1
+        run: npm ci --prefix infra/vercel-cli --ignore-scripts --no-audit --no-fund
 
       - name: Vercel pull and build
         working-directory: apps/web
         env:
-          VERCEL_BIN: ${{ runner.temp }}/vercel/node_modules/.bin/vercel
+          VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -168,7 +166,7 @@ jobs:
       - name: Vercel deploy (staging project)
         working-directory: apps/web
         env:
-          VERCEL_BIN: ${{ runner.temp }}/vercel/node_modules/.bin/vercel
+          VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

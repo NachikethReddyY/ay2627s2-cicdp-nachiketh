@@ -1,0 +1,7 @@
+{
+  "name": "learnquest-vercel-cli",
+  "private": true,
+  "dependencies": {
+    "vercel": "65.12.1"
+  }
+}
