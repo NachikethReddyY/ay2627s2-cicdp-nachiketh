@@ -61,6 +61,10 @@ const schema = z
     SANDBOX_MAX_TABS: z.coerce.number().int().positive().default(4), // terminal tabs per learner
     SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50), // live shell sessions in all
     SANDBOX_MAX_RUNS: z.coerce.number().int().positive().default(20), // live code runs in all
+    // Sloppy, the AI guide in the player. Off: its route answers 404 outside development, so no model calls are made.
+    SLOPPY_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+    // Hacker-edition stretch tests the engine adds to each practice part. They give bonus points only. 0 turns them off.
+    PRACTICE_STRETCH_TESTS: z.coerce.number().int().min(0).max(10).default(0),
   })
   .refine((e) => !e.SANDBOX_ENABLED || e.SANDBOX_BACKEND !== "daytona" || !!e.DAYTONA_API_KEY, {
     message: "SANDBOX_BACKEND=daytona needs DAYTONA_API_KEY",
