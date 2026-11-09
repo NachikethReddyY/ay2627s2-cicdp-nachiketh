@@ -201,7 +201,7 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
  * Bump together with POLICY_VERSION in services/engine/learnquest_engine/policy.py (a test keeps them equal).
  * It is part of the cache hash, so a policy or reason-text change invalidates stored recommendations.
  */
-export const POLICY_VERSION = "3";
+export const POLICY_VERSION = "4";
 
 /** Code-unit order, not localeCompare: the hash must not depend on the host's locale. */
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

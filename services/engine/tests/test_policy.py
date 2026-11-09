@@ -66,6 +66,16 @@ def test_advance_reason_lists_only_mastered_and_uses_titles() -> None:
     assert r.reason == "You've mastered vars. Next up: Loops."
 
 
+def test_weak_concept_with_no_lesson_left_is_not_claimed_as_mastered() -> None:
+    # "vars" is at 60% but its only lesson is done. Advancing must not say it was mastered.
+    done = Lesson("l1", ["vars"], "learn", True, 1, "Variables")
+    nxt = Lesson("l2", ["loops"], "learn", False, 2, "Loops")
+    r = recommend([Mastery("vars", 0.6)], [], [done, nxt])
+    assert r.action == Action.ADVANCE
+    assert r.lesson_id == "l2"
+    assert "vars" not in r.reason
+
+
 def test_start_reason_uses_titles() -> None:
     r = recommend(
         [], [], [Lesson("l1", ["vars"], "learn", False, 1, "Variables")], world_title="JS"

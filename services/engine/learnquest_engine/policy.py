@@ -57,7 +57,7 @@ class Recommendation:
 
 
 # Bump when the policy or its reasons change. The API keeps a copy for its cache hash.
-POLICY_VERSION = "3"
+POLICY_VERSION = "4"
 
 LEARN_KINDS = ("learn", "watch")
 PRACTICE_KINDS = ("predict", "practice", "game-practice")
@@ -173,7 +173,8 @@ def recommend(
         reason = _reason(code, [concept], p, locked=locked)
         return Recommendation(action, chosen.lesson_id, concept, code, reason)
 
-    mastered = sorted(known, key=lambda c: course_order[c])
+    # Only concepts at mastery count as mastered; a weak one with no lesson left is not claimed.
+    mastered = sorted((c for c in known if known[c] >= mastered_at), key=lambda c: course_order[c])
     open_lessons = [lesson for lesson in remaining if all(unlocked(c) for c in lesson.concept_ids)]
     chosen = (open_lessons or remaining)[0]
     return Recommendation(
