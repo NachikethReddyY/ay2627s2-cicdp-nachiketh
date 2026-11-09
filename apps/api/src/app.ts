@@ -15,6 +15,8 @@ import { sandboxRunRoute } from "./sandbox/run.ts";
 import { sandboxCheckRoute } from "./sandbox/check.ts";
 import { sandboxFilesRoute } from "./sandbox/files.ts";
 import { redactUrl, sandboxTicketRoute } from "./sandbox/ticket.ts";
+import { importRoutes } from "./imports/routes.ts";
+import { importsIdle } from "./imports/runner.ts";
 import { devRoutes, guideRoutes } from "./dev/route.ts";
 
 const CODES: Record<number, string> = {
@@ -102,6 +104,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
     // onClose runs after in-flight requests finish, so no read can start a new prefetch now.
     // Let background prefetches save what they generated before the pool goes away.
     await idle();
+    await importsIdle();
     // A test helper may already have ended the pool; pg rejects a second end().
     await pool.end().catch(() => undefined);
   });
@@ -124,6 +127,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(sandboxCheckRoute);
       api.register(sandboxFilesRoute);
       api.register(sandboxTicketRoute);
+      api.register(importRoutes);
       api.register(devRoutes);
       api.register(guideRoutes);
       api.get(

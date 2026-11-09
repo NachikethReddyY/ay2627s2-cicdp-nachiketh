@@ -141,6 +141,13 @@
       "when": 1794217284225,
       "tag": "0019_check_results",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794235828096,
+      "tag": "0020_condemned_zaran",
+      "breakpoints": true
     }
   ]
 }

@@ -303,6 +303,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 - `GET /me/progress` · `GET /me/next?world=` → `{lessonId, conceptId, reason}`
 - `POST /lessons/import` (author; body `{repo, sha}`; repo not on the allow-list → 400) → `202 {jobId}` · `GET /jobs/:id/events` (SSE, creator only)
 - `GET /author/lessons?status=draft` (author only) · `POST /lessons/:id/publish` · `POST /lessons/:id/unpublish` (author)
+- **Status (LQ-23):** import, job events and publish/unpublish are built. There is no author role: "author" is any signed-in learner, and the creator is `import_jobs.created_by`; only the creator of the job that produced a lesson can read its events or publish it (others get 404). The allow-list is `IMPORT_REPO_ALLOWLIST` (empty rejects all). The runner is in-process (events stored in `import_job_events`, live fan-out via an in-memory emitter, replay by `Last-Event-ID` or `?after=`), not pg-boss. The repo-to-lesson ingest is a seam (`apps/api/src/imports/ingest.ts`) that fails with "not available yet (WP6)" until WP6 lands. `GET /author/lessons` is not built.
 
 **Stretch:** `GET/PUT /admin/providers` (cut 12); embed endpoints (Appendix A); `GET /attempts/:id/events` for T3 (cut 12).
 

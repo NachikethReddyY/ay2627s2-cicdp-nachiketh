@@ -10,6 +10,7 @@ process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-01234567
 process.env.PUBLIC_ORIGIN ??= "http://localhost:5173";
 // inject() connects from 127.0.0.1, so that address stands in for the proxy and its forwarded IP is honoured.
 process.env.TRUSTED_PROXY ??= "127.0.0.1";
+process.env.IMPORT_REPO_ALLOWLIST ??= "acme/demo";
 
 import { randomInt } from "node:crypto";
 import { after, beforeEach } from "node:test";
