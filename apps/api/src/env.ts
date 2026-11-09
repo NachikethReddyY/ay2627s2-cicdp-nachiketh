@@ -41,6 +41,8 @@ const schema = z
     ENGINE_TOKEN: z.string().min(32).optional(),
     // A lesson's visual pass can make up to three model calls, so the default covers the worst case.
     ENGINE_TIMEOUT_MS: z.coerce.number().int().positive().default(400_000),
+    // Opens the Sloppy guide chat (/api/guide/chat) outside development and test. Off: the chat answers 404 and the status reports enabled false.
+    SLOPPY_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     // Per-learner Docker shell (docs/plans/sandbox-editor-plan.md). Off: /sandbox/shell answers 503 and Docker is never touched.
     SANDBOX_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     SANDBOX_IMAGE: z.string().min(1).default("lq-sandbox:dev"),

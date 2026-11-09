@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { callEngine, EngineError } from "../engine-client/client.ts";
+import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { parseDir } from "../sandbox/files.ts";
 import { getBackend, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxBackend, type DirEntry } from "../sandbox/backend.ts";
@@ -72,7 +73,7 @@ export function guideBodyTooLarge(engineBody: unknown): boolean {
   return Buffer.byteLength(JSON.stringify(engineBody), "utf8") > GUIDE_ENGINE_BODY_LIMIT_BYTES;
 }
 
-// Dev playground only: any env other than development/test (including unset NODE_ENV, as in app.ts) never registers it, so it answers the normal 404.
+// Dev playground only: /dev/visual registers in development and test. Any other env (including unset NODE_ENV, as in app.ts) answers the normal 404.
 export async function devRoutes(app: FastifyInstance) {
   if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test") return;
 
@@ -94,7 +95,15 @@ export async function devRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post("/dev/guide-chat", async (req, reply) => {
+}
+
+// Sloppy guide. The status always answers and never calls the engine. The chat registers in development and test, or when SLOPPY_ENABLED is set; otherwise it is a normal 404.
+export async function guideRoutes(app: FastifyInstance) {
+  app.get("/guide/status", async () => ({ enabled: env.SLOPPY_ENABLED }));
+
+  if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test" && !env.SLOPPY_ENABLED) return;
+
+  app.post("/guide/chat", async (req, reply) => {
     const learnerId = await resolveLearnerId(req.headers);
     if (!learnerId) return reply.status(401).send({ error: { code: "unauthorized", message: "Sign in to chat with the code guide" } });
     const body = GuideBody.safeParse(req.body);
