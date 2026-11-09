@@ -54,11 +54,14 @@ const BROKEN = new Set(["error", "build_failed", "destroyed", "destroying"]);
 /** The label value for a learner: a hash, so no learner id is stored at Daytona. Same hash Docker uses for container names. */
 export const learnerHash = (learnerId: string) => createHash("sha256").update(learnerId).digest("hex");
 
-const FILE: Record<"python" | "javascript" | "typescript", { path: string; cmd: string[] }> = {
-  python: { path: "/tmp/main.py", cmd: ["python3", "-I", "-u", "/tmp/main.py"] },
-  javascript: { path: "/tmp/main.js", cmd: ["node", "/tmp/main.js"] },
-  typescript: { path: "/tmp/main.ts", cmd: ["node", "/tmp/main.ts"] },
+// The program goes in a private directory made per run (see runInSandbox), never at a fixed name in /tmp.
+const FILE: Record<"python" | "javascript" | "typescript", { name: string; cmd: (path: string) => string[] }> = {
+  python: { name: "main.py", cmd: (p) => ["python3", "-I", "-u", p] },
+  javascript: { name: "main.js", cmd: (p) => ["node", p] },
+  typescript: { name: "main.ts", cmd: (p) => ["node", p] },
 };
+
+const shQuote = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
 
 export function daytonaBackend(opts: {
   client: DaytonaClient;
@@ -438,14 +441,23 @@ function runInSandbox(
       }).then((c) => (sbx = c));
   const createSettled = createP.then(() => {}, () => {});
   void (async () => {
+    let created: DaytonaSandbox | undefined;
+    let dir: string | undefined;
+    let result: { code: number | null; error?: string } | undefined;
     try {
-      const created = await createP;
+      created = await createP;
       if (killed) return void end(null); // stopped while it was being created: delete it now
       const f = FILE[language];
-      await created.fs.uploadFile(Buffer.from(code), f.path);
+      // mktemp -d makes a 0700 directory with a random name, so no other process can pre-create or swap the file.
+      const made = await created.process.executeCommand("mktemp -d", undefined, undefined, 30);
+      const madeDir = made.result?.trim();
+      if (made.exitCode !== 0 || !madeDir || !madeDir.startsWith("/") || madeDir.includes("\n")) throw new Error("mktemp failed");
+      dir = madeDir;
+      const path = `${dir}/${f.name}`;
+      await created.fs.uploadFile(Buffer.from(code), path);
       await created.process.createSession(session);
       const res = await created.process.executeSessionCommand(session, {
-        command: `timeout -s KILL ${limits.timeoutS} ${f.cmd.join(" ")}`,
+        command: `timeout -s KILL ${limits.timeoutS} ${f.cmd(shQuote(path)).join(" ")}`,
         runAsync: true,
         suppressInputEcho: true, // typed answers must not come back as program output
       });
@@ -456,12 +468,20 @@ function runInSandbox(
       for (const l of pending.splice(0)) sendLine(l);
       await created.process.getSessionCommandLogs(session, cmd, (c) => out.forEach((cb) => cb(c)), (c) => err.forEach((cb) => cb(c)));
       const exitCode = await exitCodeOf(created, cmd);
-      if (killed) end(null);
-      else if (exitCode === undefined) end(null, "The code stopped with an error.");
-      else end(exitCode);
+      result = killed
+        ? { code: null }
+        : exitCode === undefined
+          ? { code: null, error: "The code stopped with an error." }
+          : { code: exitCode };
     } catch {
-      end(null, killed ? undefined : "Could not run the code");
+      result = { code: null, error: killed ? undefined : "Could not run the code" };
+    } finally {
+      // Best effort: the sandbox is deleted next anyway, so a failed removal is ignored.
+      if (created && dir && !killed) {
+        await created.process.executeCommand(`rm -rf -- ${shQuote(dir)}`, undefined, undefined, 10).catch(() => {});
+      }
     }
+    if (result) end(result.code, result.error);
   })();
 
   return {
