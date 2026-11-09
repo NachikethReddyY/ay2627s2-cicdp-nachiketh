@@ -1,0 +1,38 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"kind\": \"practice\", \"instructions\": \"Print 3.\", \"language\": \"javascript\", \"starterCode\": \"console.log(3);\\n\", \"expectedOutput\": \"3\\n\"}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    },
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"kind\": \"practice\", \"instructions\": \"Print 3.\", \"language\": \"javascript\", \"starterCode\": \"console.log(3);\\n\", \"expectedOutput\": \"3\\n\"}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    }
+  ]
+}
