@@ -3,6 +3,9 @@ import lesson1 from "../../../web/src/player/fixtures/lesson1.ts";
 import { db, pool } from "./client.ts";
 import { collectionPaths, collections, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
+// Concepts the mastery model tracks for lesson-1's steps.
+const LESSON1_CONCEPTS = ["functions", "array reduce"];
+
 // shortcut: seeds from the web fixture, switch to reading worlds/codequest JSON once WP11 content exists.
 export async function seed() {
   await db.transaction(async (tx) => {
@@ -40,11 +43,12 @@ export async function seed() {
         title: lesson1.title,
         sourceKind: "repo",
         source: lesson1.source,
+        concepts: LESSON1_CONCEPTS,
         status: "published",
       })
       .onConflictDoUpdate({
         target: lessons.slug,
-        set: { title: lesson1.title, source: lesson1.source, status: "published" },
+        set: { title: lesson1.title, source: lesson1.source, concepts: LESSON1_CONCEPTS, status: "published" },
       });
     const [lesson] = await tx.select().from(lessons).where(eq(lessons.slug, "lesson-1"));
 

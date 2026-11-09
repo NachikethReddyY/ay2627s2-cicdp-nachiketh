@@ -186,10 +186,10 @@ Endpoints (plan §9 shapes, all `requireUser`, the lesson must be published):
 - `GET /api/steps/:id/reveal` → `{answer, hunks, explanations:{workedExample, practice, inferred:true}, source}`. **409** unless the state is `revealed`/`skipped`.
 - **Test:** `machine.test.ts` has one test per table row. `attempts.test.ts` covers: the full MCQ path (wrong → hint → wrong → hint → wrong → retry wrong → revealed); a correct first try; skip; reveal is 409 before and 200 after; 20 parallel identical attempts produce exactly one `observed=true` row (the lock works); a rollback leaves no pg-boss job; the leak walk from T5 run on `GET /steps/:id` and on the hint response before reveal.
 
-### T7. Engine client, mastery worker, progress
-- **Files:** `src/engine-client/index.ts`, `src/worker/{queue.ts,mastery.ts}`, `src/progress/routes.ts`, `test/mastery.test.ts`.
-- **Do:** the `Engine` interface has `masteryUpdate`, `next`, `ingest` and `pedagogy` (plan §9 engine shapes). The real version is `fetch` + bearer token + a 30 s timeout + Zod-parsed responses. `queue.ts` starts pg-boss, creates the `mastery` and `import` queues (`policy:"short"`), and registers the workers when `WORKER_IN_PROCESS`. The mastery handler, in `withTx`: `SELECT … FROM learners WHERE id=$1 FOR UPDATE` → load priors (missing → world `p_init`) → `engine.masteryUpdate` → upsert `mastery` (`p_known = pNext`, `n_obs+1`) → `engine.next` → insert into `recommendations`. `GET /api/me/progress` → `[{conceptId, slug, name, pKnown, nObs}]`. `GET /api/me/next?world=` → the latest recommendation or `null`.
-- **Test:** with a fake engine, an observed correct attempt raises `p_known`; running the same job twice does not double `n_obs` (record the processed `attemptId`, or check `singletonKey`); a non-observed attempt doesn't call the engine.
+### T7. Engine client, mastery update, progress
+- **Files:** `src/engine-client/learner.ts`, `src/progress/mastery.ts`, `src/progress/me.ts`, `test/mastery.test.ts`.
+- **Do:** no pg-boss worker (PROPOSED, see `docs/plan.md` §8.2). The mastery update runs inline after the attempt commits, and `me.mastery` and `me.next` catch up on read. Idempotency comes from `attempts.mastery_applied_at`. The engine client is a seam object `engineLearner = { update, next }` with Zod-parsed responses. `GET /api/me/progress` → `[{conceptId, slug, name, pKnown, nObs}]`. `GET /api/me/next?world=` → the latest recommendation or `null`. Full design: `docs/lq-22-plan.md`.
+- **Test:** with a fake engine, an observed correct attempt raises `p_known`; applying the same observation twice does not double `n_obs`; a non-observed attempt doesn't call the engine; an engine failure leaves the attempt at 200 and a later read catches up.
 
 ### T8. Author: import, job status, publish
 - **Files:** `src/worker/import.ts`, more routes in `src/lessons/routes.ts`, `test/import.test.ts`.
