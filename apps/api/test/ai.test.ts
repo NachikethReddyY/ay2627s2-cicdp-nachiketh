@@ -149,8 +149,9 @@ test("two concurrent plays write the part once", async () => {
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
   assert.equal(out(a).kind, "practice");
-  const { expectedOutput: _hidden, ...visiblePractice } = parts.practice; // the router hides the expected output
-  assert.deepEqual(out(a).part, { ...visiblePractice, language: "javascript" }); // and defaults the language
+  // The router hides the expected output, defaults the language and reads the legacy lesson as one hidden test.
+  const { expectedOutput: _hidden, ...visiblePractice } = parts.practice;
+  assert.deepEqual(out(a).part, { ...visiblePractice, language: "javascript", tests: [{ id: "legacy", name: "Expected output", visibility: "hidden", stretch: false }] });
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
