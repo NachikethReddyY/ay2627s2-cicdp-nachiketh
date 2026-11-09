@@ -1,8 +1,8 @@
 import { useMemo, useState, type ReactElement } from "react";
-import { BLOCKS, DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type GameProps, type GridCommand, type GridProgram, type GridProps, type GridRun } from "@learnquest/ui-catalog";
+import { DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type PublicGameProps, type GridCommand, type GridProgram, type GridProps, type GridRun } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
-import { trpc } from "../../lib/trpc.ts";
+import { gameApi, type GameApi } from "./api.ts";
 import Shell, { btn } from "./Shell.tsx";
 import DragGame from "./DragGame.tsx";
 import PhysicsGame from "./PhysicsGame.tsx";
@@ -52,7 +52,7 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
   );
 }
 
-function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete?: () => void | Promise<unknown> }) {
+function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameApi }) {
   const reduced = useReducedMotion();
   const c = controls(g.mode);
   const start: At = { x: g.start.x, y: g.start.y, dir: g.start.dir, collected: [] };
@@ -66,6 +66,7 @@ function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete
   const [outcome, setOutcome] = useState<Outcome>("play");
   const [lives, setLives] = useState(maxLives);
   const [live, setLive] = useState("");
+  const [busy, setBusy] = useState(false);
   const run = watch ?? ran;
   const at: At = idx > 0 && run ? run.trace[idx - 1]! : start;
   const max = g.maxBlocks ?? MAX_PROGRAM_STEPS;
@@ -73,19 +74,34 @@ function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete
   // One place for buttons, keys and taps.
   const dispatch = (i: Intent) => {
     if (outcome === "win" || outcome === "lose") return;
+    if (busy) return;
     if (i.type === "step") {
-      if (!watch || idx >= watch.trace.length) return setLive(watch ? "End of the solution." : "");
+      if (!watch || !g.solution || idx >= watch.trace.length) return setLive(watch ? "End of the solution." : "");
       setIdx(idx + 1);
-      // Reaching the end of a watched solution is the win, so the Shell reports completion like any other win.
-      if (idx + 1 === watch.trace.length) setOutcome("win");
-      return setLive(announceStep(watch, idx) + (idx + 1 === watch.trace.length ? " End of the solution." : ""));
+      const text = announceStep(watch, idx);
+      if (idx + 1 < watch.trace.length) return setLive(text);
+      // Reaching the end of a watched solution is the win, but the server decides: it replays the program and records it.
+      setBusy(true);
+      api.check({ kind: "grid", program: g.solution })
+        .then((r) => (r.complete ? (setOutcome("win"), setLive(`${text} End of the solution.`)) : setLive(text)))
+        .catch(() => setLive(`${text} Couldn't check the run. Step again to retry.`))
+        .finally(() => setBusy(false));
+      return;
     }
     if (!c.build) return;
     if (i.type === "run") {
       if (!program.length) return setLive("Add a command first.");
+      // The trace and move log come from the shared simulator; whether the run wins is the server's call.
       const r = simulate(program, g);
-      const v = verdict(r, lives);
-      setRan(r), setIdx(r.trace.length), setLives(v.lives), setOutcome(v.state), setLive(announceRun(r, v.state));
+      setBusy(true);
+      api.check({ kind: "grid", program })
+        .then((res) => {
+          const shown = { ...r, ok: res.correct };
+          const v = verdict(shown, lives);
+          setRan(shown), setIdx(shown.trace.length), setLives(v.lives), setOutcome(v.state), setLive(announceRun(shown, v.state));
+        })
+        .catch(() => setLive("Couldn't check the run. Try again."))
+        .finally(() => setBusy(false));
       return;
     }
     const next = edit(program, i, max);
@@ -100,7 +116,7 @@ function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete
   };
 
   return (
-    <Shell {...p} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} onComplete={onComplete}>
+    <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry}>
       <div
         role="group" aria-label="Game controls" tabIndex={0} className="flex min-w-0 flex-col gap-3"
         onKeyDown={(e) => {
@@ -161,15 +177,12 @@ function GridGame({ p, g, onComplete }: { p: GameProps; g: GridProps; onComplete
   );
 }
 
-export default function GameView({ block, gameCompletion }: BlockViewProps<GameProps>) {
+export default function GameView({ block, gameCompletion }: BlockViewProps<PublicGameProps>) {
   const p = block.props;
-  const onComplete = useMemo(
-    () => (gameCompletion ? () => trpc.games.complete.mutate({ ...gameCompletion, blockId: block.id }) : undefined),
-    [gameCompletion, block.id],
-  );
-  if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} onComplete={onComplete} />;
-  if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} onComplete={onComplete} />;
-  if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} onComplete={onComplete} />;
-  if (p.kind.kind === "quiz") return <QuizGame p={p} kind={p.kind} onComplete={onComplete} />;
-  return <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{BLOCKS.find((m) => m.type === "game")!.describe(block)}</p>;
+  const api = useMemo(() => gameApi(gameCompletion, p.gameIndex), [gameCompletion, p.gameIndex]);
+  if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} api={api} />;
+  if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} api={api} />;
+  if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} api={api} />;
+  if (p.kind.kind === "quiz") return <QuizGame p={p} kind={p.kind} api={api} />;
+  return <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{p.alt}</p>;
 }

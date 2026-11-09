@@ -1,5 +1,5 @@
 // Pure helpers for the renderer shell. No React or DOM, so node --test can run them.
-import { parseSpec, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
+import { CLIENT_BLOCKS, parseSpec, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
 
 type Item = { kind: "block"; block: Block } | { kind: "rejected"; alt: string; reasons: string[] };
 export type Plan = { items: Item[]; issues: Issue[]; fatal: boolean };
@@ -11,7 +11,8 @@ const altOf = (raw: unknown): string => {
 
 /** Re-parses a doc and lines every raw block up with either its parsed block or a rejection (keeping its alt text). */
 export function plan(doc: unknown): Plan {
-  const res = parseSpec(doc);
+  // Lesson docs reach the browser with answers and hints already removed (games are public), so parse with the client registry.
+  const res = parseSpec(doc, CLIENT_BLOCKS);
   if (!res.ok && res.issues.every((i) => !i.path.startsWith("blocks.")))
     return { items: [], issues: res.issues, fatal: true };
 

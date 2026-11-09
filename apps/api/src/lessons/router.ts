@@ -10,6 +10,7 @@ import { tiers } from "../config/tiers.ts";
 import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
+import { publicDoc } from "@learnquest/ui-catalog";
 
 const Lesson = z.object({
   id: z.string(),
@@ -119,6 +120,8 @@ export const lessonsRouter = router({
         const doc = await resolveDocImages(part.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId, tier: found!.tier as keyof typeof tiers });
         part = { ...part, doc } as typeof part; // resolveDocImages keeps the catalog shape; its return type is unknown
       }
+      // Game answers, hints and the right order never leave the server: games.hint and games.check serve them.
+      if (part?.kind === "game-practice") part = { ...part, doc: publicDoc(part.doc) } as typeof part;
       return {
         id: lesson.slug,
         title: lesson.title,
