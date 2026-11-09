@@ -1,6 +1,9 @@
 // The program that runs inside the sandbox container for one Check (passed to `node -e`).
-// It reads {language, code, tests: [{stdin}]} as JSON on stdin, runs the code once per test, and prints ONE JSON line:
-//   {"results":[{"exit":number|null,"timedOut":boolean,"overflow":boolean,"stdout":string,"stderr":string}]}
+// It reads {token, language, code, tests: [{stdin}]} as JSON on stdin, runs the code once per test, and prints ONE JSON line:
+//   {"token":string,"results":[{"exit":number|null,"timedOut":boolean,"overflow":boolean,"stdout":string,"stderr":string}]}
+// The token is a per-check random value the host sends in the stdin JSON and requires back, so a line the learner forges cannot pass.
+// The harness runs as root and starts each learner interpreter as uid/gid 1001 through setpriv, so the learner cannot open
+// /proc/<harness pid>/fd or read its memory (which holds the token and the hidden test stdin).
 // It never sees the expected output: the host classifies the results, so learner code cannot read an answer key from this process.
 // The source is a string so it can ship to the container and be unit tested with a fake spawn (see test/sandbox-check.test.ts).
 
@@ -19,6 +22,8 @@ const COMMANDS = {
   javascript: ["node", ["solution.js"], "solution.js"],
   typescript: ["node", ["solution.ts"], "solution.ts"],
 };
+// Drops root before exec: uid/gid 1001, no supplementary groups, no capabilities left to inherit.
+const DROP = ["--reuid=1001", "--regid=1001", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
 
 function runOne(deps, cmd, args, cwd, stdin) {
   return new Promise((resolve) => {
@@ -40,7 +45,7 @@ function runOne(deps, cmd, args, cwd, stdin) {
       setTimeout(() => done(null), 200); // a child that ignores the kill must not hold the whole check
     }, TEST_TIMEOUT_MS);
     try {
-      child = deps.spawn(cmd, args, { cwd, stdio: ["pipe", "pipe", "pipe"], env: { PATH: process.env.PATH, HOME: "/tmp", PYTHONDONTWRITEBYTECODE: "1" } });
+      child = deps.spawn("setpriv", [...DROP, cmd, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], env: { PATH: process.env.PATH, HOME: "/tmp", PYTHONDONTWRITEBYTECODE: "1" } });
     } catch {
       return done(null);
     }
@@ -64,14 +69,14 @@ async function runHarness(deps) {
   if (!cmd) throw new Error("unknown language");
   const dir = "/tmp/work";
   deps.mkdir(dir);
-  deps.writeFile(dir + "/" + cmd[2], input.code);
+  deps.writeFile(dir + "/" + cmd[2], input.code); // root-owned and world-readable: the learner can run it but not edit it
   const results = [];
   const start = Date.now();
   for (const t of input.tests) {
     if (Date.now() - start > TOTAL_MS) { results.push({ exit: null, timedOut: true, overflow: false, stdout: "", stderr: "" }); continue; }
     results.push(await runOne(deps, cmd[0], cmd[1], dir, String(t.stdin || "")));
   }
-  deps.write(JSON.stringify({ results }) + "\n");
+  deps.write(JSON.stringify({ token: input.token, results }) + "\n");
 }
 
 if (!globalThis.__LQ_HARNESS_TEST__) {
@@ -79,8 +84,8 @@ if (!globalThis.__LQ_HARNESS_TEST__) {
   runHarness({
     spawn: require("node:child_process").spawn,
     readStdin: () => new Promise((resolve) => { let s = ""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (d) => (s += d)); process.stdin.on("end", () => resolve(s)); }),
-    mkdir: (d) => fs.mkdirSync(d, { recursive: true }),
-    writeFile: (p, c) => fs.writeFileSync(p, c),
+    mkdir: (d) => fs.mkdirSync(d, { recursive: true, mode: 0o755 }),
+    writeFile: (p, c) => fs.writeFileSync(p, c, { mode: 0o644 }),
     write: (s) => process.stdout.write(s, () => process.exit(0)),
   }).catch(() => process.exit(2));
 }
