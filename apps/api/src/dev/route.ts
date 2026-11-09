@@ -4,6 +4,8 @@ import { callEngine, EngineError } from "../engine-client/client.ts";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { parseDir } from "../sandbox/files.ts";
+import { PRACTICE_LANGUAGES, type PracticeLanguage } from "../parts/practice-schema.ts";
+import { lintCode, sourceLineOf } from "../lint/index.ts";
 import { getBackend, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxBackend, type DirEntry } from "../sandbox/backend.ts";
 
 const Body = z.object({ prompt: z.string().min(1).max(500) });
@@ -12,6 +14,8 @@ const GuideBody = z.object({
   projectRoot: z.string().min(1).max(64),
   language: z.string().min(1).max(40),
   code: z.string().max(12_000),
+  // A pointer only. The server re-lints the code; any other field the client sends is dropped by zod.
+  finding: z.object({ ruleId: z.string().min(1).max(120), line: z.number().int().min(1).max(100_000), column: z.number().int().min(1).max(100_000).optional() }).optional(),
   selection: z.string().max(3_000).default(""),
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(2_000) })).min(1).max(8),
 });
@@ -98,9 +102,24 @@ export async function devRoutes(app: FastifyInstance) {
 }
 
 // Sloppy guide. The chat is always registered in every environment; it needs a signed-in learner before any engine call.
-export async function guideRoutes(app: FastifyInstance) {
+export type GuideDeps = {
+  resolveLearnerId?: typeof resolveLearnerId;
+  callEngine?: typeof callEngine;
+  lintCode?: typeof lintCode;
+  getBackend?: typeof getBackend;
+};
+
+const GUIDE_SOURCE_LINE_CHARS = 200;
+const GUIDE_MESSAGE_CHARS = 300; // the engine's lintFinding.message limit; a rule can echo a long identifier
+const GUIDE_LINT_TIMEOUT_MS = 2_000;
+
+export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
+  const resolve = deps.resolveLearnerId ?? resolveLearnerId;
+  const engine = deps.callEngine ?? callEngine;
+  const lint = deps.lintCode ?? lintCode;
+  const backendOf = deps.getBackend ?? getBackend;
   app.post("/guide/chat", async (req, reply) => {
-    const learnerId = await resolveLearnerId(req.headers);
+    const learnerId = await resolve(req.headers);
     if (!learnerId) return reply.status(401).send({ error: { code: "unauthorized", message: "Sign in to chat with the code guide" } });
     const body = GuideBody.safeParse(req.body);
     if (!body.success) return reply.status(400).send({ error: { code: "bad_request", message: "The chat message or code context is too large" } });
@@ -117,18 +136,36 @@ export async function guideRoutes(app: FastifyInstance) {
     try {
       let workspaceFiles: { path: string; content: string }[] = [];
       try {
-        workspaceFiles = await readGuideWorkspaceFiles(await getBackend(), learnerId, body.data.projectRoot);
+        workspaceFiles = await readGuideWorkspaceFiles(await backendOf(), learnerId, body.data.projectRoot);
       } catch (error) {
         if (!(error instanceof SandboxNotRunningError)) req.log.warn({ err: error }, "editor guide could not read workspace files");
       }
-      const engineBody = { ...body.data, workspaceFiles };
+      const { finding, ...rest } = body.data;
+      let lintFinding: { ruleId: string; message: string; line: number; sourceLine: string } | undefined;
+      const lintLanguage = (PRACTICE_LANGUAGES as readonly string[]).includes(rest.language) ? (rest.language as PracticeLanguage) : undefined;
+      if (finding && lintLanguage) {
+        try {
+          // Re-lint the submitted code: the message comes from the server, never from the client.
+          const match = (await lint(rest.code, lintLanguage, { timeoutMs: GUIDE_LINT_TIMEOUT_MS })).find(
+            (f) => f.ruleId === finding.ruleId && f.line === finding.line && (finding.column === undefined || f.column === finding.column),
+          );
+          if (match) {
+            const sourceLine = sourceLineOf(rest.code, match.line).trim().slice(0, GUIDE_SOURCE_LINE_CHARS);
+            lintFinding = { ruleId: match.ruleId, message: match.message.slice(0, GUIDE_MESSAGE_CHARS), line: match.line, sourceLine };
+          }
+        } catch (error) {
+          // Linter unavailable or failed: continue as a normal guide call.
+          req.log.warn({ err: error }, "editor guide could not lint the code");
+        }
+      }
+      const engineBody = { ...rest, workspaceFiles, ...(lintFinding ? { lintFinding } : {}) };
       while (workspaceFiles.length && Buffer.byteLength(JSON.stringify(engineBody), "utf8") > 60 * 1024) {
         workspaceFiles.pop();
       }
       if (guideBodyTooLarge(engineBody)) {
         return reply.status(413).send({ error: { code: "guide_too_large", message: "That is too much text for the guide. Shorten the selection or the question." } });
       }
-      return await callEngine<{ guide: { message: string; widgets: unknown[] } }>("/v1/guide/chat", engineBody);
+      return await engine<{ guide: { message: string; widgets: unknown[] } }>("/v1/guide/chat", engineBody);
     } catch (error) {
       const engineError = error instanceof EngineError ? error : null;
       req.log.warn({ status: engineError?.status }, "editor guide request failed");

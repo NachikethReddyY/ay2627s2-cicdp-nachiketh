@@ -57,7 +57,7 @@ function clipGuideCode(code: string, selection: { startLine: number; endLine: nu
 
 /** A useful, source-aware learning guide for the isolated /test/editor fixture. */
 // The guide sends the current editor context to the server-side AI engine.
-export function AIGuide({ fileName, filePath, projectRoot, code, language, selection }: { fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null }) {
+export function AIGuide({ fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent }: { fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void }) {
   const guideCode = clipGuideCode(code, selection);
   const [messages, setMessages] = useState<GuideMessage[]>([]);
   const [question, setQuestion] = useState("");
@@ -85,7 +85,7 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
     imageUrls.current.forEach((url) => URL.revokeObjectURL(url));
     imageUrls.current.clear();
   }, [filePath]);
-  const ask = async (prompt: string) => {
+  const ask = async (prompt: string, finding?: { ruleId: string; line: number; column?: number }) => {
     if (sending) return;
     const id = ++requestId.current;
     const next: GuideMessage[] = [...messages, { role: "user", text: prompt }];
@@ -100,6 +100,7 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
         code: guideCode.code,
         selection: selection?.text ?? "",
         messages: next.slice(-8).map(({ role, text }) => ({ role, content: text })),
+        ...(finding ? { finding } : {}),
       });
       if (id === requestId.current) setMessages((current) => [...current, { role: "assistant", text: guide.message, widgets: guide.widgets }]);
     } catch (error) {
@@ -108,6 +109,18 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
       if (id === requestId.current) setSending(false);
     }
   };
+  // A lint finding handed in by the parent is asked once, as soon as the guide is free, then cleared.
+  const handledFinding = useRef<object | null>(null);
+  useEffect(() => {
+    if (!pendingFinding || sending || handledFinding.current === pendingFinding) return;
+    handledFinding.current = pendingFinding;
+    // The server re-lints only the code the guide sends, so the finding is sent only when that code is the start of the file through the finding's line.
+    const lineCount = guideCode.code.split(/\r\n|\r|\n|\u2028|\u2029/).length;
+    const inWindow = code.startsWith(guideCode.code) && pendingFinding.line <= lineCount;
+    void ask(`Explain line ${pendingFinding.line}: ${pendingFinding.ruleId}`, inWindow ? pendingFinding : undefined);
+    onFindingSent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ask closes over the current thread; only a new finding or a free guide should fire it
+  }, [pendingFinding, sending]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const value = question.trim();

@@ -1,11 +1,22 @@
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .llm import Result, generate
 
 PROMPT = Path(__file__).resolve().parents[3] / "INSTRUCTIONS.md"
+
+
+class LintFinding(BaseModel):
+    """One static-analysis note about a single line of learner code. Sent as data only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ruleId: str = Field(max_length=80)
+    message: str = Field(max_length=300)
+    line: int = Field(ge=1)
+    sourceLine: str = Field(max_length=200)
 
 
 class HintWidget(BaseModel):

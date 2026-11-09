@@ -28,6 +28,11 @@ export const startPython = (code: string, language: PracticeLanguage, lessonId?:
 export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
 
+export type LintFinding = { ruleId: string; line: number; column: number; message: string };
+/** Style lint, done on the server (POST /api/practice/lint). Only the code and language are sent. */
+export const lintPractice = (code: string, language: PracticeLanguage) =>
+  call<{ findings: LintFinding[] }>("/api/practice/lint", { method: "POST", body: JSON.stringify({ code, language }) });
+
 /** A Check passes only on the server's word; a missing verdict (an older server, a dropped field) is a fail. */
 export const checkPassed = (p: Pick<PyPoll, "error" | "passed">) => !p.error && p.passed === true;
 export const pollPython = (id: string, from: number) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`);
@@ -120,6 +125,8 @@ export const askEditorGuide = (input: {
   code: string;
   selection: string;
   messages: GuideChatMessage[];
+  /** A lint finding to explain: a pointer only (rule, line and column), never the finding text. */
+  finding?: { ruleId: string; line: number; column?: number };
 }) => call<{ guide: { message: string; widgets: GuideWidget[] } }>("/api/guide/chat", {
   method: "POST",
   body: JSON.stringify(input),
