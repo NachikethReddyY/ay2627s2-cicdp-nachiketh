@@ -272,7 +272,14 @@ export type Hunk = { id: string; file: string; oldStart: number; lines: string[]
 export type PartSecret =
   | { kind: "learn"; body: string; doc?: Spec }
   | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
-  | { kind: "practice"; instructions: string; language?: "python" | "javascript"; starterCode: string; expectedOutput: string }
+  | {
+      kind: "practice";
+      instructions: string;
+      language?: "python" | "javascript" | "typescript";
+      starterCode: string;
+      tests?: Array<{ id: string; name: string; stdin?: string; expectedStdout: string; visibility: "sample" | "hidden"; stretch?: boolean }>;
+      expectedOutput?: string; // legacy: read as one required hidden test with id "legacy"
+    }
   | { kind: "game-practice"; intro: string; doc: Spec };
 
 export const lessons = pgTable(
@@ -445,6 +452,24 @@ export const partCompletions = pgTable(
       .notNull()
       .references(() => lessons.id, { onDelete: "cascade" }),
     completedAt: timestamp("completed_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.lessonId] })],
+);
+
+// A learner's best multi-test Check result per practice lesson (POST /api/sandbox/check).
+export const checkResults = pgTable(
+  "check_results",
+  {
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    lessonId: text("lesson_id")
+      .notNull()
+      .references(() => lessons.id, { onDelete: "cascade" }),
+    bestPoints: integer("best_points").notNull(),
+    maxPoints: integer("max_points").notNull(),
+    complete: boolean("complete").notNull(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId] })],
 );

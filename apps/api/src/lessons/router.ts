@@ -9,6 +9,7 @@ import { ensureLesson, prefetchNext } from "../ai/service.ts";
 import { tiers } from "../config/tiers.ts";
 import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
+import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
 
 const Lesson = z.object({
   id: z.string(),
@@ -23,7 +24,22 @@ const Lesson = z.object({
         beforeFiles: z.record(z.string(), z.string()),
         hunks: z.array(z.object({ id: z.string(), file: z.string(), oldStart: z.number(), lines: z.array(z.string()) })),
       }),
-      z.object({ kind: z.literal("practice"), instructions: z.string(), language: z.enum(["python", "javascript"]).default("javascript"), starterCode: z.string() }),
+      z.object({
+        kind: z.literal("practice"),
+        instructions: z.string(),
+        language: z.enum(PRACTICE_LANGUAGES).default("javascript"),
+        starterCode: z.string(),
+        tests: z.array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+            visibility: z.enum(["sample", "hidden"]),
+            stretch: z.boolean(),
+            stdin: z.string().optional(), // sample tests only
+            expectedStdout: z.string().optional(), // sample tests only
+          }),
+        ),
+      }),
       z.object({ kind: z.literal("game-practice"), intro: z.string(), doc: z.unknown() }),
     ])
     .nullable(),
@@ -84,8 +100,20 @@ export const lessonsRouter = router({
       let part = version?.content ?? null;
       // Never send a practice lesson's expected output: the sandbox Check compares stdout to it server-side (parts/practice.ts).
       if (part?.kind === "practice") {
-        const { expectedOutput: _hidden, ...visible } = part;
-        part = visible as typeof part;
+        const practice = parsePractice(part);
+        if (!practice) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Practice lesson is malformed" });
+        part = {
+          kind: "practice",
+          instructions: practice.instructions,
+          language: practice.language,
+          starterCode: practice.starterCode,
+          // Hidden tests keep no stdin or output; sample tests show both to the learner.
+          tests: practice.tests.map((t) =>
+            t.visibility === "sample"
+              ? { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch, stdin: t.stdin, expectedStdout: t.expectedStdout }
+              : { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch },
+          ),
+        } as unknown as typeof part; // the stripped shape is validated by the output schema, not PartSecret
       }
       if (part && (part.kind === "learn" || part.kind === "game-practice") && part.doc) {
         const doc = await resolveDocImages(part.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId, tier: found!.tier as keyof typeof tiers });
@@ -95,7 +123,7 @@ export const lessonsRouter = router({
         id: lesson.slug,
         title: lesson.title,
         kind: lesson.kind,
-        part,
+        part: part as never, // a practice part is rebuilt above in the stripped shape the output schema checks
         steps: rows.map((r) => ({
           id: r.id,
           idx: r.idx,
