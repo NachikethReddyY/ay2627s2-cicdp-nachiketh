@@ -1,0 +1,182 @@
+name: Deploy staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time. A deploy in flight is never cancelled, so staging is not left half-updated.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_image: ${{ steps.names.outputs.api_image }}
+      engine_image: ${{ steps.names.outputs.engine_image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: names
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          owner=${OWNER,,}
+          echo "api_image=ghcr.io/$owner/learnquest-api:$SHA" >> "$GITHUB_OUTPUT"
+          echo "engine_image=ghcr.io/$owner/learnquest-engine:$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Each image is built at most once per SHA: a rerun reuses the image already pushed.
+      - id: exists-api
+        env:
+          IMAGE: ${{ steps.names.outputs.api_image }}
+        run: |
+          if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.exists-api.outputs.built == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.api_image }}
+          build-args: GIT_SHA=${{ github.sha }}
+
+      - id: exists-engine
+        env:
+          IMAGE: ${{ steps.names.outputs.engine_image }}
+        run: |
+          if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.exists-engine.outputs.built == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: services/engine/Dockerfile
+          push: true
+          tags: ${{ steps.names.outputs.engine_image }}
+          build-args: GIT_SHA=${{ github.sha }}
+
+  migrate:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Migrations must be expand-only: the previous SHA keeps running against the new schema until it is replaced.
+      - run: pnpm --filter @learnquest/api db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  deploy:
+    needs: [build, migrate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      SHA: ${{ github.sha }}
+      API_IMAGE: ${{ needs.build.outputs.api_image }}
+      ENGINE_IMAGE: ${{ needs.build.outputs.engine_image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Refuse to deploy a sha that is not the head of main
+        run: scripts/assert-main-head.sh "$SHA"
+
+      - name: Render api
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+        run: scripts/render-deploy.sh "$HOOK" "$API_IMAGE"
+
+      - name: Render engine
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_ENGINE }}
+        run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE"
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The committed vercel.json keeps the production API host; CI points it at the staging API for this build only.
+      - name: Point the web rewrite at staging
+        env:
+          API_ORIGIN: ${{ vars.API_ORIGIN }}
+        run: |
+          tmp=$(mktemp)
+          scripts/render-vercel-config.sh "$API_ORIGIN" "$tmp"
+          mv "$tmp" apps/web/vercel.json
+
+      - name: Vercel pull and build
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npx --yes vercel@65.12.1 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx --yes vercel@65.12.1 build --prod --token "$VERCEL_TOKEN"
+
+      - name: Vercel deploy (staging project)
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx --yes vercel@65.12.1 deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      API_ORIGIN: ${{ vars.API_ORIGIN }}
+      ENGINE_ORIGIN: ${{ vars.ENGINE_ORIGIN }}
+      WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The budget inside the script covers Render's free-tier cold start and the rollout.
+      - run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$GITHUB_SHA"
