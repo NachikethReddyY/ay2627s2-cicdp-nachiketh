@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { BLOCKS, type Block, type Spec } from "@learnquest/ui-catalog";
+import { CLIENT_BLOCKS, type Block, type Spec } from "@learnquest/ui-catalog";
 import BlockFrame from "./BlockFrame.tsx";
 import { plan } from "./model.ts";
 import { RENDERERS } from "./registry.ts";
@@ -12,7 +12,7 @@ function Rejected({ alt }: { alt: string }) {
 }
 
 // describe() runs outside BlockFrame's error boundary, so a throw must not blank the lesson.
-function describe(mod: (typeof BLOCKS)[number] | undefined, block: Block): string {
+function describe(mod: (typeof CLIENT_BLOCKS)[number] | undefined, block: Block): string {
   try { return mod?.describe(block) ?? block.type; } catch { return block.type; }
 }
 
@@ -27,7 +27,7 @@ export default function VisualView({ doc, gameCompletion }: { doc: unknown | Spe
         const { block } = it;
         const View = RENDERERS[block.type];
         if (!View) return <Rejected key={`b:${block.id}`} alt={(block.props as { alt?: string }).alt ?? ""} />;
-        const mod = BLOCKS.find((m) => m.type === block.type);
+        const mod = CLIENT_BLOCKS.find((m) => m.type === block.type);
         return (
           <BlockFrame key={`b:${block.id}`} describe={describe(mod, block)} raw={block}>
             <View block={block} gameCompletion={gameCompletion} />
