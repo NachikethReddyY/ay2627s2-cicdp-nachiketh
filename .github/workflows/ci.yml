@@ -10,7 +10,7 @@ permissions:
 
 # Superseded PR runs are cancelled; pushes to main always finish.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Cheapest first: `lint` gates the rest, so a type or lint error costs one short job.
@@ -144,8 +144,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - run: pnpm --filter @learnquest/e2e exec playwright install --with-deps chromium
+      - run: pnpm --filter @learnquest/e2e --fail-if-no-match exec playwright install --with-deps chromium
         if: hashFiles('e2e/package.json') != ''
 
-      - run: pnpm --filter @learnquest/e2e run ci
+      - run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
         if: hashFiles('e2e/package.json') != ''
