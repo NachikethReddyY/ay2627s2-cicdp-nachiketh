@@ -38,17 +38,24 @@ export function setCheckSpawnForTests(s?: Spawn): void {
 }
 
 const RawSchema = z.object({
+  token: z.string(),
   results: z.array(z.object({ exit: z.number().int().nullable(), timedOut: z.boolean(), overflow: z.boolean(), stdout: z.string(), stderr: z.string() })),
 });
 
 /** Runs the code against every test in one container. Throws CheckUnavailableError unless the harness reports on every test. */
 export function runInContainer(code: string, language: PracticeLanguage, tests: PracticeTest[], spawn: Spawn = spawnImpl): Promise<RawResult[]> {
   const name = `lq-check-${randomUUID()}`;
+  const token = randomUUID(); // sent on stdin only (argv and env are visible to the learner) and must come back in the result
   const args = [
     "run", "--rm", "-i", "--name", name, "--network", "none",
     "--cpus", "0.5", "--memory", "256m", "--pids-limit", "64",
-    "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-    "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "1001:1001",
+    // The harness runs as root so the learner (uid 1001, started through setpriv) is a different uid and cannot
+    // open /proc/<harness pid>/fd or read its memory: that is what stops a forged result line and a read of the
+    // hidden test stdin. Root keeps only SETUID and SETGID (to drop to 1001) and KILL (to stop a timed-out learner
+    // process it does not own); the learner itself gets an empty capability set. no-new-privileges still applies.
+    "--cap-drop", "ALL", "--cap-add", "SETUID", "--cap-add", "SETGID", "--cap-add", "KILL",
+    "--security-opt", "no-new-privileges",
+    "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "0:0",
     env.SANDBOX_IMAGE, "timeout", "-s", "KILL", String(CONTAINER_LIMIT_S), "node", "-e", HARNESS_SOURCE,
   ];
   return new Promise((resolve, reject) => {
@@ -73,12 +80,15 @@ export function runInContainer(code: string, language: PracticeLanguage, tests: 
     child.stderr?.on("data", () => {});
     child.stdin?.on("error", () => {});
     child.on("error", () => settle(() => reject(new CheckUnavailableError("spawn failed"))));
-    child.on("close", () =>
+    child.on("close", (code: number | null) =>
       settle(() => {
-        // One JSON line; anything else (missing, malformed, wrong length) is never read as a pass.
+        // The LAST line only, from a container that exited cleanly, carrying this check's token. Anything else
+        // (missing, malformed, wrong length, wrong token, killed harness) is a harness failure, never a pass.
         const line = out.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
         try {
+          if (code !== 0) throw new Error("exit");
           const parsed = RawSchema.parse(JSON.parse(line ?? ""));
+          if (parsed.token !== token) throw new Error("token");
           if (parsed.results.length !== tests.length) throw new Error("length");
           resolve(parsed.results);
         } catch {
@@ -86,7 +96,7 @@ export function runInContainer(code: string, language: PracticeLanguage, tests: 
         }
       }),
     );
-    child.stdin?.end(JSON.stringify({ language, code, tests: tests.map((t) => ({ stdin: t.stdin })) }));
+    child.stdin?.end(JSON.stringify({ token, language, code, tests: tests.map((t) => ({ stdin: t.stdin })) }));
   });
 }
 
