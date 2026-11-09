@@ -8,7 +8,7 @@ flowchart TB
     A3["Assign author, review labels"]
   end
   subgraph CI["CI workflow"]
-    C1["check job: PostgreSQL 16 service, frozen-lockfile install, turbo lint + test + build"]
+    C1["lint job first, then unit job: PostgreSQL 16 service, turbo test + build"]
     C2["engine job: uv sync, ruff, mypy --strict, pytest, LiteLLM advisory"]
   end
   PR --> Auto

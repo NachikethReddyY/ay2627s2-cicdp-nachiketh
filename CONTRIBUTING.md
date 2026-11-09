@@ -74,7 +74,7 @@ In the PR description, say what you ran. If a check was skipped or failed, say s
 - One concern per PR, and keep the change set small.
 - Update the relevant doc in the same PR when behaviour or scope changes.
 - Add or update tests for the change.
-- Open the PR against `main`. Branch protection on `main` requires the `check` and `engine` status checks to pass, an up-to-date branch, resolved review threads, and linear history. Merges are squash or rebase.
+- Open the PR against `main`. Branch protection on `main` requires the `lint`, `unit` and `engine` status checks to pass, an up-to-date branch, resolved review threads, and linear history. Merges are squash or rebase.
 - Area labels are applied automatically from the files you touch.
 
 ## Project principles

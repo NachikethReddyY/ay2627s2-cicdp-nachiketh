@@ -97,7 +97,7 @@ Verdict: <one line, e.g. "CI green locally, UI unchecked" or "Not ready: 2 API t
 - `apps/web` `lint` and `build` both run `tsc --noEmit`. A green `build` therefore also typechecks.
 - The engine uses `uv` (`uv sync --frozen`, `uv run ...`), not pip. The `engine` CI job also needs `pnpm install --filter @learnquest/ui-catalog...` because the visual checker runs ui-catalog TypeScript under Node 22.
 - `docker compose up postgres` fails without `ENGINE_TOKEN` set (`docker-compose.yml`, `AGENTS.md`). Set it, or run a separate Postgres for tests on another port.
-- The `main` ruleset requires checks named `check` and `engine`. Local runs mirror those two jobs, not more.
+- The `main` ruleset requires checks named `lint`, `unit` and `engine`. Local runs mirror those jobs, not more.
 - `docs/evals/README.md`: dry-run numbers come from recorded fixtures and are not evidence of generation quality.
 
 ## Related

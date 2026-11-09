@@ -149,3 +149,14 @@ jobs:
 
       - run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
         if: hashFiles('e2e/package.json') != ''
+
+      # Keeps the Playwright report and traces from a red run, so a failure can be read without rerunning.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() && hashFiles('e2e/package.json') != ''
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 7

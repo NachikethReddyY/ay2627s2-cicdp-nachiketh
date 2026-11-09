@@ -26,7 +26,8 @@
       "parameters": {
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          {"context": "check"},
+          {"context": "lint"},
+          {"context": "unit"},
           {"context": "engine"}
         ]
       }

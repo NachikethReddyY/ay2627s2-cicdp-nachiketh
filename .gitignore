@@ -7,9 +7,10 @@ dist/
 .env.local
 *.env.render
 
-# Python bytecode
+# Python bytecode and coverage output
 __pycache__/
 *.pyc
+.coverage
 
 # macOS Finder metadata
 .DS_Store
