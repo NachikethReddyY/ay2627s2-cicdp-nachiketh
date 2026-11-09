@@ -1,4 +1,6 @@
-// Practice code (Python or JavaScript) runs on the server in a locked-down container. A run is live: the client polls its output and sends each typed answer.
+import { guideEnabled, type CheckResponse, type PracticeLanguage } from "./live/checkModel.ts";
+
+// Practice code (Python, JavaScript or TypeScript) runs on the server in a locked-down container. A run is live: the client polls its output and sends each typed answer.
 // `passed` is the server's verdict, sent only for a Check run once it has ended.
 export type PyPoll = { output: string; next: number; done: boolean; error?: string; passed?: boolean };
 
@@ -19,8 +21,15 @@ async function call<T>(fullPath: string, init: RequestInit = {}): Promise<T> {
 }
 
 // With `lessonId` the run is a Check: the server compares the output and records the lesson as complete on a match.
-export const startPython = (code: string, language: "python" | "javascript", lessonId?: string) =>
+export const startPython = (code: string, language: PracticeLanguage, lessonId?: string) =>
   call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId }) });
+
+/** Check: the server runs every test for the lesson and returns per-test results (POST /api/sandbox/check). */
+export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string }) =>
+  call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
+
+/** Whether the AI guide (Sloppy) is on. Any failure reads as off, so the control stays hidden. */
+export const guideStatus = () => call<unknown>("/api/guide/status").then(guideEnabled, () => false);
 /** A Check passes only on the server's word; a missing verdict (an older server, a dropped field) is a fail. */
 export const checkPassed = (p: Pick<PyPoll, "error" | "passed">) => !p.error && p.passed === true;
 export const pollPython = (id: string, from: number) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`);
@@ -28,7 +37,7 @@ export const sendPythonLine = (id: string, line: string) => call<{ ok: boolean }
 export const stopPython = (id: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}`, { method: "DELETE" });
 
 /** Writes the learner's editor file into their sandbox home (PUT /api/sandbox/files/:name). */
-export const putFile = (name: "solution.py" | "solution.js", content: string) =>
+export const putFile = (name: "solution.py" | "solution.js" | "solution.ts", content: string) =>
   call<unknown>(`/api/sandbox/files/${name}`, { method: "PUT", body: JSON.stringify({ content }) }).then(() => undefined);
 
 export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; size: number };
@@ -113,7 +122,7 @@ export const askEditorGuide = (input: {
   code: string;
   selection: string;
   messages: GuideChatMessage[];
-}) => call<{ guide: { message: string; widgets: GuideWidget[] } }>("/api/dev/guide-chat", {
+}) => call<{ guide: { message: string; widgets: GuideWidget[] } }>("/api/guide/chat", {
   method: "POST",
   body: JSON.stringify(input),
 });
