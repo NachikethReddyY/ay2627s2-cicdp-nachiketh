@@ -13,6 +13,7 @@ import { createContext } from "./trpc/trpc.ts";
 import { sandboxRoutes } from "./sandbox/route.ts";
 import { sandboxRunRoute } from "./sandbox/run.ts";
 import { sandboxCheckRoute } from "./sandbox/check.ts";
+import { lintRoute } from "./lint/route.ts";
 import { sandboxFilesRoute } from "./sandbox/files.ts";
 import { redactUrl, sandboxTicketRoute } from "./sandbox/ticket.ts";
 import { devRoutes, guideRoutes } from "./dev/route.ts";
@@ -122,6 +123,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(sandboxRoutes);
       api.register(sandboxRunRoute);
       api.register(sandboxCheckRoute);
+      api.register(lintRoute);
       api.register(sandboxFilesRoute);
       api.register(sandboxTicketRoute);
       api.register(devRoutes);

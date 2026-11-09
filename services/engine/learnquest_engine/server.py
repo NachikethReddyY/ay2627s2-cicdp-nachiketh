@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from learnquest_engine import guide, learner, llm, pipeline, visual
 from learnquest_engine.config import get_settings
+from learnquest_engine.guide import LintFinding
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.schemas import LessonContext
 
@@ -56,6 +57,7 @@ class GuideRequest(BaseModel):
     selection: str = Field(default="", max_length=3000)
     messages: list[GuideMessage] = Field(min_length=1, max_length=8)
     workspaceFiles: list[GuideWorkspaceFile] = Field(default_factory=list, max_length=24)
+    lintFinding: LintFinding | None = None
 
 
 def require_token(x_engine_token: Annotated[str | None, Header()] = None) -> None:
@@ -178,7 +180,8 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 
 @app.post("/v1/guide/chat", dependencies=[Depends(require_token)])
 def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
-    result = guide.reply(body.model_dump())
+    # exclude_none keeps the model input unchanged when no lint finding is sent.
+    result = guide.reply(body.model_dump(exclude_none=True))
     return _body("guide", result)
 
 
