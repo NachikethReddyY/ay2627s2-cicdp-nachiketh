@@ -55,6 +55,7 @@ export async function importRoutes(api: FastifyInstance) {
     });
     let closed = false;
     let done = false;
+    let ping: NodeJS.Timeout | undefined;
     // Subscribe before replaying so an event written in between is buffered, then deduplicated by seq.
     const buffer: JobEvent[] = [];
     let replaying = true;
@@ -70,6 +71,7 @@ export async function importRoutes(api: FastifyInstance) {
     const unsubscribe = subscribe(job.id, (e) => (replaying ? buffer.push(e) : send(e)));
     function finish() {
       unsubscribe();
+      clearInterval(ping);
       if (!closed) {
         closed = true;
         res.end();
@@ -77,12 +79,25 @@ export async function importRoutes(api: FastifyInstance) {
     }
     req.raw.on("close", () => {
       closed = true;
+      clearInterval(ping);
       unsubscribe();
     });
+    // Comment line keeps proxies from dropping an idle stream.
+    ping = setInterval(() => {
+      if (!closed) res.write(": ping\n\n");
+    }, 15_000);
     try {
       for (const e of await eventsAfter(job.id, cursor)) send(e);
       replaying = false;
       for (const e of buffer.sort((a, b) => a.seq - b.seq)) send(e);
+      // A cursor at or past the last event replays nothing; a finished job must still close the stream.
+      if (!closed && !done) {
+        const [row] = await db.select({ status: importJobs.status }).from(importJobs).where(eq(importJobs.id, job.id));
+        if (row && (row.status === "succeeded" || row.status === "failed")) {
+          done = true;
+          finish();
+        }
+      }
     } catch (err) {
       req.log.error(err);
       finish();
@@ -97,13 +112,14 @@ export async function importRoutes(api: FastifyInstance) {
     const result = await db.transaction(async (tx) => {
       // Only the creator of the import job that produced the lesson may change it; others see 404.
       const [owned] = await tx
-        .select({ id: lessons.id, versionId: lessons.currentVersionId })
+        .select({ id: lessons.id, versionId: lessons.currentVersionId, status: lessons.status, sourceKind: lessons.sourceKind })
         .from(lessons)
         .innerJoin(importJobs, and(eq(importJobs.lessonId, lessons.id), eq(importJobs.createdBy, me)))
         .where(eq(lessons.id, id.data))
         .limit(1)
         .for("update", { of: lessons });
       if (!owned) return "missing" as const;
+      if (owned.sourceKind !== "repo" || owned.status === "archived") return "not-allowed" as const;
       if (publish) {
         if (!owned.versionId) return "no-version" as const;
         await tx.update(lessons).set({ status: "published" }).where(eq(lessons.id, owned.id));
@@ -117,6 +133,7 @@ export async function importRoutes(api: FastifyInstance) {
       return "ok" as const;
     });
     if (result === "missing") return fail(reply, 404, "not_found", "Lesson not found");
+    if (result === "not-allowed") return fail(reply, 409, "conflict", "Only imported, non-archived lessons can be published or unpublished");
     if (result === "no-version") return fail(reply, 409, "conflict", "Lesson has no version to publish");
     return { id: id.data, status: publish ? ("published" as const) : ("draft" as const) };
   };

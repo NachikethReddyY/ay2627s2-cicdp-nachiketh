@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import { importJobEvents, importJobs } from "../db/schema.ts";
 import { defaultIngest, type IngestFn } from "./ingest.ts";
@@ -47,7 +47,27 @@ async function record(jobId: string, kind: string, data: unknown): Promise<void>
       seq: sql`(SELECT coalesce(max(seq), 0) + 1 FROM import_job_events WHERE job_id = ${jobId})`,
     })
     .returning({ seq: importJobEvents.seq });
-  bus.emit(channel(jobId), { seq: row!.seq, kind, data: data ?? null } satisfies JobEvent);
+  const event = { seq: row!.seq, kind, data: data ?? null } satisfies JobEvent;
+  // One throwing subscriber must not fail the job or starve the others.
+  for (const fn of bus.listeners(channel(jobId)) as Array<(e: JobEvent) => void>) {
+    try {
+      fn(event);
+    } catch {
+      /* ignore: the subscriber owns its own errors */
+    }
+  }
+}
+
+/** Marks jobs left queued or running by a crash or restart as failed. Call once at process start, before serving. */
+export async function sweepOrphanedJobs(): Promise<number> {
+  const error = "interrupted by restart";
+  const orphans = await db
+    .update(importJobs)
+    .set({ status: "failed", error, updatedAt: new Date() })
+    .where(inArray(importJobs.status, ["queued", "running"]))
+    .returning({ id: importJobs.id });
+  for (const { id } of orphans) await record(id, "status", { status: "failed", error }).catch(() => undefined);
+  return orphans.length;
 }
 
 const running = new Set<Promise<void>>();
@@ -69,11 +89,19 @@ async function run(jobId: string, input: { repo: string; sha: string }) {
   try {
     await setStatus(jobId, "running");
     let chain: Promise<void> = Promise.resolve();
+    let frozen = false;
+    // Calls after ingest has settled are ignored, so nothing can land behind the terminal status.
     const emit = (kind: string, data: unknown) => {
+      if (frozen) return;
       chain = chain.then(() => record(jobId, kind, data)).catch(() => undefined);
     };
-    const { lessonId } = await ingest(input, emit);
-    await chain;
+    let lessonId: string;
+    try {
+      ({ lessonId } = await ingest(input, emit));
+    } finally {
+      frozen = true;
+      await chain;
+    }
     await setStatus(jobId, "succeeded", { lessonId });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -85,7 +113,16 @@ async function run(jobId: string, input: { repo: string; sha: string }) {
 export async function startImport(createdBy: string, input: { repo: string; sha: string }): Promise<string> {
   const [job] = await db.insert(importJobs).values({ createdBy, ...input }).returning({ id: importJobs.id });
   const jobId = job!.id;
-  await record(jobId, "status", { status: "queued" });
+  try {
+    await record(jobId, "status", { status: "queued" });
+  } catch (err) {
+    await db
+      .update(importJobs)
+      .set({ status: "failed", error: "could not start", updatedAt: new Date() })
+      .where(eq(importJobs.id, jobId))
+      .catch(() => undefined);
+    throw err;
+  }
   const p = new Promise<void>((resolve) => setImmediate(resolve)).then(() => run(jobId, input));
   running.add(p);
   void p.finally(() => running.delete(p));

@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { importJobs, lessons, lessonVersions, steps, worlds } from "../src/db/schema.ts";
+import { importJobEvents, importJobs, lessons, lessonVersions, steps, worlds } from "../src/db/schema.ts";
 import { parseEnv } from "../src/env.ts";
-import { importsIdle, setIngest } from "../src/imports/runner.ts";
+import { importsIdle, setIngest, subscribe, sweepOrphanedJobs } from "../src/imports/runner.ts";
 import type { IngestFn } from "../src/imports/ingest.ts";
 
 const app = buildApp();
@@ -224,4 +224,69 @@ test("publish without a current version is 409; an unknown lesson is 404", async
   assert.equal(res.statusCode, 409);
   assert.equal(res.json().error.code, "conflict");
   assert.equal((await post(c, "/api/lessons/nope/publish")).statusCode, 404);
+});
+
+test("a cursor at the terminal seq closes the stream immediately", async () => {
+  setIngest(fakeIngest);
+  const c = await signUp(app);
+  const jobId = await startJob(c);
+  await importsIdle();
+  const res = await Promise.race([
+    events(c, jobId, { "last-event-id": "5" }),
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error("stream hung")), 3000)),
+  ]);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body, "");
+});
+
+test("sweepOrphanedJobs fails jobs left queued or running", async () => {
+  const c = await signUp(app, "sweep@example.com");
+  setIngest(fakeIngest);
+  const first = await startJob(c); // creates the learner row
+  await importsIdle();
+  const [owner] = await db.select({ createdBy: importJobs.createdBy }).from(importJobs).where(eq(importJobs.id, first));
+  const [job] = await db.insert(importJobs).values({ createdBy: owner!.createdBy, repo: "acme/demo", sha: SHA, status: "running" }).returning();
+  assert.ok((await sweepOrphanedJobs()) >= 1);
+  const [after] = await db.select().from(importJobs).where(eq(importJobs.id, job!.id));
+  assert.equal(after!.status, "failed");
+  assert.equal(after!.error, "interrupted by restart");
+  const got = frames((await events(c, job!.id)).body);
+  assert.deepEqual(got.at(-1)!.data, { status: "failed", error: "interrupted by restart" });
+  assert.equal((await db.select().from(importJobEvents).where(eq(importJobEvents.jobId, job!.id))).length, 1);
+});
+
+test("a throwing subscriber and a late emit do not affect the job", async () => {
+  let late!: (k: string, d: unknown) => void;
+  setIngest(async (input, emit) => {
+    late = emit;
+    return fakeIngest(input, emit);
+  });
+  const c = await signUp(app);
+  const jobId = await startJob(c);
+  const off = subscribe(jobId, () => {
+    throw new Error("bad subscriber");
+  });
+  await importsIdle();
+  off();
+  late("progress", { step: "too-late" });
+  await new Promise((r) => setTimeout(r, 50));
+  const got = frames((await events(c, jobId)).body);
+  assert.equal(got.at(-1)!.data.status, "succeeded");
+  assert.ok(!got.some((f) => f.data.step === "too-late"));
+});
+
+test("publish and unpublish are 409 for an archived lesson", async () => {
+  setIngest(fakeIngest);
+  const c = await signUp(app);
+  const jobId = await startJob(c);
+  await importsIdle();
+  const [job] = await db.select().from(importJobs).where(eq(importJobs.id, jobId));
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.id, job!.lessonId!));
+  for (const action of ["publish", "unpublish"]) {
+    const res = await post(c, `/api/lessons/${job!.lessonId}/${action}`);
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.json().error.code, "conflict");
+  }
+  const [l] = await db.select().from(lessons).where(eq(lessons.id, job!.lessonId!));
+  assert.equal(l!.status, "archived");
 });
