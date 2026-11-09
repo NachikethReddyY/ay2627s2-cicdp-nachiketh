@@ -29,11 +29,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# CI builds the api and engine images in an earlier step (with a layer cache) and sets E2E_PREBUILT. Locally, compose builds them.
+BUILD=(--build)
+if [[ -n ${E2E_PREBUILT:-} ]]; then BUILD=(--no-build); fi
+
 cd "$ROOT"
-"${COMPOSE[@]}" up -d --build --wait postgres
+"${COMPOSE[@]}" up -d "${BUILD[@]}" --wait postgres
 pnpm --filter @learnquest/api run db:migrate
 pnpm --filter @learnquest/api run db:seed
-"${COMPOSE[@]}" up -d --build --wait engine fake-llm api
+"${COMPOSE[@]}" up -d "${BUILD[@]}" --wait engine fake-llm api
 
 cd "$E2E_DIR"
 pnpm exec playwright test
