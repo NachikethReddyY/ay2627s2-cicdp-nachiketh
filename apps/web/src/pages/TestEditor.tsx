@@ -201,11 +201,14 @@ export default function TestEditor() {
   const previewAutoStarted = useRef(false);
   const previewDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
   const runRef = useRef<HTMLButtonElement>(null);
-  // The demo entry is open from the first paint, so typing before the sandbox answers is kept and saved later.
+  // The demo entry is open from the first paint, but it stays read-only until the sandbox copy confirms it,
+  // so typing cannot save over work the sandbox already holds.
   const activePath = useRef(DEMO_ENTRY_FILE);
   const activeContent = useRef(DEMO_ENTRY_TEXT);
-  // False until the open file has been read from the sandbox, so the bundled copy is checked against it once.
+  // False until the open buffer matches the sandbox copy. Read by the loaders; bufferConfirmed mirrors it for rendering.
   const openConfirmed = useRef(false);
+  const [bufferConfirmed, setBufferConfirmed] = useState(false);
+  const draftInput = useRef<HTMLInputElement>(null);
   const treeRef = useRef<TreeNode[]>(demoTree());
   const dirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -227,6 +230,11 @@ export default function TestEditor() {
   useEffect(() => {
     setPreviewHost(document.querySelector(".wb"));
   }, []);
+
+  // Focus the new-entry field when it opens, instead of autoFocus.
+  useEffect(() => {
+    if (draftEntry) draftInput.current?.focus();
+  }, [draftEntry]);
 
   useEffect(() => {
     const receivePreviewMessage = (event: MessageEvent) => {
@@ -335,13 +343,14 @@ export default function TestEditor() {
       }
       if (!dirty.current || activePath.current !== path) return true;
       const nextContent = activeContent.current;
-      dirty.current = false;
+      // Stays dirty until the PUT succeeds, so a file switch waits for this save and a failed save keeps the buffer.
       try {
         await putWorkspaceFile(path, nextContent, { keepalive: options.keepalive === true });
         fileCache.current.set(path, nextContent);
+        // Edits typed while the PUT ran are newer than nextContent and stay dirty for the next save.
+        if (activeContent.current === nextContent) dirty.current = false;
         return true;
       } catch (error) {
-        dirty.current = true;
         setShellNote(error instanceof Error ? `Could not save ${path}: ${error.message}` : `Could not save ${path}`);
         return false;
       }
@@ -416,6 +425,7 @@ export default function TestEditor() {
           activeContent.current = result.content;
           dirty.current = false;
           openConfirmed.current = true;
+          setBufferConfirmed(true);
           setOpen(selected);
           setContent(result.content);
           void syncWebPreviewFile(selected, result.content).catch(() => {});
@@ -491,10 +501,17 @@ export default function TestEditor() {
     };
   }, [flushSave]);
 
-  const showFile = (path: string, text: string) => {
+  // Sets the ref the loaders read and the state the editor renders from, together.
+  const confirmBuffer = (confirmed: boolean) => {
+    openConfirmed.current = confirmed;
+    setBufferConfirmed(confirmed);
+  };
+
+  const showFile = (path: string, text: string, confirmed = true) => {
     activePath.current = path;
     activeContent.current = text;
     dirty.current = false;
+    confirmBuffer(confirmed);
     setOpen(path);
     setContent(text);
     void syncWebPreviewFile(path, text).catch(() => {});
@@ -509,15 +526,17 @@ export default function TestEditor() {
     // With no unsaved edits, a cached file shows at once. The sandbox copy is re-read behind it and only replaces the view if it changed.
     if (cached !== undefined && !dirty.current) {
       const request = ++openRequest.current;
-      showFile(path, cached);
+      // Read-only until the sandbox copy matches, so the cached text cannot be saved over a newer sandbox copy.
+      showFile(path, cached, false);
       try {
         const result = await getWorkspaceFile(path);
         fileCache.current.set(path, result.content);
-        if (request === openRequest.current && !dirty.current && activePath.current === path && result.content !== activeContent.current) {
-          showFile(path, result.content);
+        if (request === openRequest.current && !dirty.current && activePath.current === path) {
+          if (result.content !== activeContent.current) showFile(path, result.content);
+          else confirmBuffer(true);
         }
       } catch {
-        // Keep the cached text; the next open or refresh reads the sandbox again.
+        // Keep the cached text, read-only; the next open or refresh reads the sandbox again.
       }
       return;
     }
@@ -534,7 +553,6 @@ export default function TestEditor() {
         if (!(await flushSave()) || request !== openRequest.current) return;
       }
       showFile(path, result.content);
-      openConfirmed.current = true;
     } catch (error) {
       setShellNote(error instanceof Error ? error.message : `Could not open ${path}`);
     } finally {
@@ -788,7 +806,7 @@ export default function TestEditor() {
         <>
         {draftEntry && (
           <input
-            autoFocus
+            ref={draftInput}
             aria-label={draftEntry === "file" ? "New file name" : "New folder name"}
             placeholder={draftEntry === "file" ? "New file, e.g. src/utils.js" : "New folder, e.g. src/components"}
             className="mx-1 mb-1 w-[calc(100%-0.5rem)] rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs text-[var(--tx)]"
@@ -828,6 +846,10 @@ export default function TestEditor() {
         <Check size={15} strokeWidth={1.75} aria-hidden="true" />
         Check
       </button>
+      {browserPreview.state === "idle" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
+        <MonitorPlay size={13} aria-hidden="true" />
+        Preview
+      </button>}
       {browserPreview.state === "error" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
         <RefreshCw size={13} aria-hidden="true" />
         Retry preview
@@ -921,7 +943,7 @@ export default function TestEditor() {
       editor={open ? <WorkbenchEditor
         key={open}
         transportRef={runRef}
-        edit={{ value: content, language: openLang, onChange: changeContent }}
+        edit={{ value: content, language: openLang, onChange: changeContent, readOnly: !bufferConfirmed }}
       /> : <div role={workspaceLoading || shellState.kind === "connecting" ? "status" : undefined} aria-live={workspaceLoading || shellState.kind === "connecting" ? "polite" : undefined} className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-[var(--mu)]">
         {workspaceLoading || shellState.kind === "connecting" ? <><LoaderCircle size={15} aria-hidden="true" className="motion-safe:animate-spin" />{workspaceLoading ? "Loading workspace files…" : "Connecting to the sandbox…"}</> : "Open the terminal to load container files."}
       </div>}

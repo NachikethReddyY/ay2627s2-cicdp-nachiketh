@@ -17,7 +17,7 @@ type Props = {
   transportRef: RefObject<HTMLButtonElement | null>;
   viewPath?: string; // file the user picked; falls back to the replay's active file
   overlay?: ReactNode;
-  edit?: { value: string; language: string; onChange(v: string): void }; // practice: the learner types here
+  edit?: { value: string; language: string; onChange(v: string): void; readOnly?: boolean }; // practice: the learner types here; readOnly holds the text until it is confirmed
   theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default "vs"
   fontFamily?: string;
   onCursor?(line: number, column: number): void; // caret moves, for a status bar
@@ -175,7 +175,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
         beforeMount={theme ? (m) => defineWorkbenchThemes(m) : undefined}
         onMount={onMount}
         options={{
-          readOnly: !edit,
+          readOnly: !edit || edit.readOnly === true,
           ariaLabel: edit ? "Your code. Press Escape to leave the editor." : "Code replay, read only. Press Escape to leave the editor.",
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
