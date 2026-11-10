@@ -322,7 +322,15 @@ test("a hung provider fails that step after the timeout, and the next step still
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
     if (body.text === HANG) {
       const signal = init.signal!;
-      return new Promise<Response>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+      return new Promise<Response>((_, reject) => {
+        // The timeout signal's timer is unref'd, so on Node 22 an otherwise idle loop would exit with this promise pending.
+        // A ref'd timer keeps the loop alive until the abort, and is cleared then.
+        const keepAlive = setTimeout(() => {}, 10_000);
+        signal.addEventListener("abort", () => {
+          clearTimeout(keepAlive);
+          reject(signal.reason);
+        });
+      });
     }
     return new Response(MP3, { status: 200 });
   };
@@ -341,7 +349,14 @@ test("a hung response body also fails the step after the timeout", { timeout: 20
     const res = {
       ok: true,
       status: 200,
-      arrayBuffer: () => new Promise<ArrayBuffer>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason))),
+      arrayBuffer: () =>
+        new Promise<ArrayBuffer>((_, reject) => {
+          const keepAlive = setTimeout(() => {}, 10_000); // ref'd, as above: keeps Node 22 from exiting while the body hangs
+          signal.addEventListener("abort", () => {
+            clearTimeout(keepAlive);
+            reject(signal.reason);
+          });
+        }),
     };
     return res as unknown as Response;
   };
