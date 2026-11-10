@@ -119,7 +119,9 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
   // Record what the player hands to speechSynthesis; real voices are not needed.
   await page.addInitScript(() => {
     const spoken: string[] = [];
-    (globalThis as unknown as { __spoken: string[] }).__spoken = spoken;
+    const calls: string[] = [];
+    (globalThis as unknown as { __spoken: string[]; __calls: string[] }).__spoken = spoken;
+    (globalThis as unknown as { __calls: string[] }).__calls = calls;
     class FakeUtterance {
       volume = 1;
       onend: (() => void) | null = null;
@@ -132,7 +134,12 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
     Object.defineProperty(globalThis, "SpeechSynthesisUtterance", { value: FakeUtterance, configurable: true });
     Object.defineProperty(globalThis, "speechSynthesis", {
       configurable: true,
-      value: { speak: (u: { text: string }) => spoken.push(u.text), cancel() {}, pause() {}, resume() {} },
+      value: {
+        speak: (u: { text: string }) => spoken.push(u.text),
+        cancel() {},
+        pause: () => calls.push("pause"),
+        resume: () => calls.push("resume"),
+      },
     });
   });
   await signUp(page, newEmail(), `/courses/${COURSE}`);
@@ -150,4 +157,10 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
   expect(workedExample.length).toBeGreaterThan(0);
   await expect.poll(async () => (await spoken()).length).toBeGreaterThan(0);
   expect(workedExample.startsWith((await spoken()).split(" ").slice(0, 3).join(" "))).toBe(true);
+
+  // The replay auto-starts on reveal; the pause effect fires first, so speech must be resumed after it.
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  const lastToggle = () =>
+    page.evaluate(() => (globalThis as unknown as { __calls: string[] }).__calls.at(-1));
+  await expect.poll(lastToggle).toBe("resume");
 });

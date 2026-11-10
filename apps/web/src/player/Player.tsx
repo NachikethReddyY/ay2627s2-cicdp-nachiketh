@@ -180,13 +180,19 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const stepTitle = stepTitles[cur] ?? "";
   // Each reveal swaps in a longer timeline; play it from the start.
   const playLatest = useRef(r.play); // the effect below must run on a new reveal only, not whenever play's identity changes
+  const resumeSpeech = useRef(() => {});
   useEffect(() => {
     playLatest.current = r.play;
+    resumeSpeech.current = () => {
+      if (useSpeech) speaker?.resume();
+    };
   });
   useEffect(() => {
     if (live?.playKey) {
       setPicked(null); // follow the replay's active file
       playLatest.current();
+      // The pause effect above ran first in this commit (the replay was not playing yet); undo it so speech is heard.
+      resumeSpeech.current();
     }
   }, [live?.playKey]);
 
