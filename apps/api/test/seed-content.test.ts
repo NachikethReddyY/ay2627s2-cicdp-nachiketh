@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { eq } from "drizzle-orm";
 import fixture from "../../web/src/player/fixtures/lesson1.ts";
 import { db } from "../src/db/client.ts";
-import { LessonFile } from "../src/db/lesson-file.ts";
+import { assertUniqueAcrossFiles, LessonFile } from "../src/db/lesson-file.ts";
 import { concepts, lessons, steps } from "../src/db/schema.ts";
 import { seed } from "../src/db/seed.ts";
 
@@ -79,6 +79,35 @@ test("seed is idempotent and gives the expected ids", async () => {
   assert.deepEqual(await ids(l2.currentVersionId), ["lesson-2-0", "lesson-2-1", "lesson-2-2"]);
   const [s1] = await db.select().from(steps).where(eq(steps.id, "s1"));
   assert.ok(s1!.secret.narration);
+});
+
+test("reseed keeps an author's status change but restores repo-owned step content", async () => {
+  await seed();
+  await db.update(lessons).set({ status: "published" }).where(eq(lessons.slug, "lesson-2"));
+  await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-1")); // unpublished by the author
+  await db.update(steps).set({ public: { title: "edited", prompt: "edited", kind: "mcq" }, secret: { ...(await s1()).secret, narration: "edited" } }).where(eq(steps.id, "s1"));
+  await seed();
+  const status = async (slug: string) => (await db.select().from(lessons).where(eq(lessons.slug, slug)))[0]!.status;
+  assert.equal(await status("lesson-1"), "draft");
+  assert.equal(await status("lesson-2"), "published");
+  const row = await s1();
+  const file = await load("lesson-1.json");
+  assert.deepEqual(row.public, file.steps[0]!.public);
+  assert.deepEqual(row.secret, file.steps[0]!.secret);
+});
+
+const s1 = async () => (await db.select().from(steps).where(eq(steps.id, "s1")))[0]!;
+
+test("duplicate lesson slugs or step ids across files are errors", async () => {
+  const a = await load("lesson-1.json");
+  const b = await load("lesson-2.json");
+  assertUniqueAcrossFiles([a, b]);
+  assert.throws(() => assertUniqueAcrossFiles([a, { ...b, slug: a.slug }]), /Duplicate lesson slug: lesson-1/);
+  const clash = { ...b, steps: b.steps.map((s, i) => (i === 0 ? { ...s, id: "s1" } : s)) };
+  assert.throws(() => assertUniqueAcrossFiles([a, clash]), /Duplicate step id: s1/);
+  // An explicit id can also collide with another lesson's default id.
+  const explicit = { ...a, slug: "lesson-3", steps: a.steps.map((s, i) => ({ ...s, id: `lesson-2-${i}` })) };
+  assert.throws(() => assertUniqueAcrossFiles([b, explicit]), /Duplicate step id: lesson-2-0/);
 });
 
 type Hunk = { file: string; oldStart: number; lines: string[] };

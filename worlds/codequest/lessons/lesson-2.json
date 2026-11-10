@@ -131,7 +131,7 @@
         "answer": 0,
         "hints": [
           {
-            "text": "Both comparisons use >=, so each boundary value belongs to the higher group."
+            "text": "Compare each boundary value with the rule in the code above: does that rule include the edge itself?"
           },
           {
             "text": "Check 50 first, then 20, just as the code does.",

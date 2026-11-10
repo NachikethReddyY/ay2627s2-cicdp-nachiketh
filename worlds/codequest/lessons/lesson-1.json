@@ -92,7 +92,8 @@
         "answer": "discount = 0",
         "accepted": [
           "discount = 0",
-          "discount=0"
+          "discount=0",
+          "discount = 0.0"
         ],
         "hints": [
           {

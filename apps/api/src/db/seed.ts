@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { db, pool } from "./client.ts";
-import { LessonFile, Manifest } from "./lesson-file.ts";
+import { assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
 import { collectionPaths, collections, concepts, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
@@ -23,6 +23,7 @@ async function loadWorld(world: string) {
       return parsed.data;
     }),
   );
+  assertUniqueAcrossFiles(files);
   const known = new Set(manifest.concepts.map((c) => c.name));
   for (const f of files) {
     const missing = f.concepts.filter((c) => !known.has(c));
@@ -83,8 +84,8 @@ export async function seed() {
         .values({ ...values, status: file.status })
         .onConflictDoUpdate({
           target: lessons.slug,
-          // A draft file never unpublishes a lesson an author has since approved.
-          set: published ? { ...values, status: "published" } : values,
+          // Status is set on insert only: once the row exists, publish and unpublish belong to the author, not the file.
+          set: values,
         });
       const [lesson] = await tx.select().from(lessons).where(eq(lessons.slug, file.slug));
 
@@ -96,6 +97,7 @@ export async function seed() {
       await tx.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
 
       for (const [idx, s] of file.steps.entries()) {
+        // Repo-owned content: a reseed overwrites public and secret on purpose, so the JSON files stay the source of truth.
         const row = {
           // Lesson 1 pins s1..s3 (the web contract); other lessons default to <slug>-<idx>.
           id: s.id ?? `${file.slug}-${idx}`,

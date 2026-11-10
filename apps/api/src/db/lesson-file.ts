@@ -57,3 +57,18 @@ export const Manifest = z.object({
   concepts: z.array(z.object({ slug: z.string().min(1), name: z.string().min(1) })),
 });
 export type Manifest = z.infer<typeof Manifest>;
+
+// Cross-file rules a single-file schema cannot see: slugs and step ids are global keys in the database.
+export function assertUniqueAcrossFiles(files: LessonFile[]) {
+  const slugs = new Set<string>();
+  const ids = new Set<string>();
+  for (const f of files) {
+    if (slugs.has(f.slug)) throw new Error(`Duplicate lesson slug: ${f.slug}`);
+    slugs.add(f.slug);
+    for (const [idx, s] of f.steps.entries()) {
+      const id = s.id ?? `${f.slug}-${idx}`;
+      if (ids.has(id)) throw new Error(`Duplicate step id: ${id} (lesson ${f.slug})`);
+      ids.add(id);
+    }
+  }
+}
