@@ -101,18 +101,24 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   );
   const [failedAudio, setFailedAudio] = useState<string | undefined>();
   const useSpeech = !!speaker && !!narrationText && (!narration || failedAudio === narration);
-  const hasNarration = !!narration || (!!narrationText && !!speaker);
+  // Playable: an audio URL that has not failed, or speech for the text.
+  const hasNarration = (!!narration && failedAudio !== narration) || (!!narrationText && !!speaker);
   const volRef = useRef(vol);
   volRef.current = vol;
   const level = (v: { volume: number; muted: boolean }) => (v.muted ? 0 : v.volume / 100);
+  const appliedLevel = useRef(-1); // the speech volume already in effect
   useEffect(() => {
     if (!speaker || !useSpeech || !narrationText) return;
+    appliedLevel.current = level(volRef.current);
     speaker.speak(narrationText, { volume: volRef.current.volume / 100, muted: volRef.current.muted });
     speaker.resume(); // a pause from the previous step must not leave the new one silent
     return () => speaker.cancel(); // step change and unmount
   }, [speaker, useSpeech, narrationText]);
   useEffect(() => {
-    if (useSpeech) speaker?.setVolume(level(vol));
+    const l = level(vol);
+    if (!useSpeech || l === appliedLevel.current) return; // the mount run must not re-speak the sentence just started
+    appliedLevel.current = l;
+    speaker?.setVolume(l);
   }, [speaker, useSpeech, vol]);
   useEffect(() => {
     const a = audioRef.current;

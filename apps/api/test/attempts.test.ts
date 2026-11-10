@@ -199,6 +199,34 @@ test("a step of a superseded lesson version is not playable", async () => {
   assert.equal((await get(c, "s1")).statusCode, 200);
 });
 
+test("reveal returns the step's own narration, not the worked example", async () => {
+  const { lessons, lessonVersions, steps } = await import("../src/db/schema.ts");
+  const c = await signUp(app);
+  const [lesson] = await db.select().from(lessons).where(eq(lessons.slug, "lesson-1"));
+  const [v] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson!.currentVersionId!));
+  const [own] = await db
+    .insert(steps)
+    .values({
+      lessonVersionId: v!.id,
+      idx: 51,
+      public: { title: "own", prompt: "own", kind: "mcq", options: ["a", "b"] },
+      secret: {
+        beforeFiles: {},
+        hunks: [],
+        answer: 0,
+        hints: [],
+        explanations: { workedExample: "Worked example text.", practice: "" },
+        narration: "Spoken narration text.",
+      },
+    })
+    .returning();
+  assert.equal((await reveal(c, own!.id)).statusCode, 409); // not before the answer
+  assert.equal(out(await attempt(c, own!.id, { kind: "mcq", choice: 0 })).correct, true);
+  const rev = out(await reveal(c, own!.id));
+  assert.equal(rev.narration, "Spoken narration text.");
+  assert.equal(rev.explanations.workedExample, "Worked example text.");
+});
+
 test("mcq choice is validated against the step's option count", async () => {
   const { lessons, lessonVersions, steps } = await import("../src/db/schema.ts");
   const c = await signUp(app);
