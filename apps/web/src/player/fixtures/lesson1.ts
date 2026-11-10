@@ -94,7 +94,7 @@ const steps: Step[] = [
       "cartTotal gets a second, optional parameter for a discount. Type that parameter exactly as it will appear in the signature.",
     kind: "cloze",
     answer: "discount = 0",
-    accepted: ["discount = 0", "discount=0"],
+    accepted: ["discount = 0", "discount=0", "discount = 0.0"],
     hints: [
       { text: "Old callers pass only the cart, so the parameter must be optional." },
       { text: "Give it a default value that means no discount at all." },

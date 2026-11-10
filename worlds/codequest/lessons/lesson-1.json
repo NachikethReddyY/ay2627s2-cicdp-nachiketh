@@ -1,0 +1,163 @@
+{
+  "slug": "lesson-1",
+  "title": "Build a shopping cart total",
+  "concepts": [
+    "functions",
+    "array reduce"
+  ],
+  "position": 0,
+  "status": "published",
+  "source": {
+    "repo": "NachikethReddyY/LearnQuest",
+    "sha": "c01e6797afa12e0ae94a872ce7ef69f362b5b42e",
+    "path": "apps/web/src/player/fixtures/lesson1.ts"
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "public": {
+        "title": "Add a cartTotal function",
+        "prompt": "cartTotal(cart) is added next. How will it add up the prices?",
+        "kind": "mcq",
+        "options": [
+          "A for loop that pushes each price into a new array",
+          "reduce, with the sum starting at 0",
+          "reduce, with no starting value",
+          "Math.max over the prices"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/cart.js": "export function addItem(cart, item) {\n  return [...cart, item];\n}\n",
+          "src/cart.test.js": "import { cartTotal } from \"./cart.js\";\n\nconsole.assert(cartTotal([]) === 0);\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/cart.js",
+            "oldStart": 3,
+            "lines": [
+              " }",
+              "+",
+              "+export function cartTotal(cart) {",
+              "+  return cart.reduce((sum, item) => sum + item.price, 0);",
+              "+}"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "Look at addItem: this file prefers array methods to loops.",
+            "eliminate": 3
+          },
+          {
+            "text": "An empty cart must total 0, not throw an error."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Write cartTotal(cart), which adds up the price of every item in the cart. Notice how reduce starts from 0 so an empty cart totals 0.",
+          "practice": "Write cartCount(cart) that returns how many items are in the cart, using reduce."
+        },
+        "narration": "The cart needs a total. Reduce walks the items and keeps a running sum. It starts at zero, so an empty cart totals zero instead of throwing. That is why reduce with an initial value of zero is the right choice here."
+      }
+    },
+    {
+      "id": "s2",
+      "public": {
+        "title": "Support a discount",
+        "prompt": "cartTotal gets a second, optional parameter for a discount. Type that parameter exactly as it will appear in the signature.",
+        "kind": "cloze"
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/cart.js": "export function addItem(cart, item) {\n  return [...cart, item];\n}\n\nexport function cartTotal(cart) {\n  return cart.reduce((sum, item) => sum + item.price, 0);\n}\n",
+          "src/cart.test.js": "import { cartTotal } from \"./cart.js\";\n\nconsole.assert(cartTotal([]) === 0);\n"
+        },
+        "hunks": [
+          {
+            "id": "h2",
+            "file": "src/cart.js",
+            "oldStart": 5,
+            "lines": [
+              "-export function cartTotal(cart) {",
+              "-  return cart.reduce((sum, item) => sum + item.price, 0);",
+              "+export function cartTotal(cart, discount = 0) {",
+              "+  const subtotal = cart.reduce((sum, item) => sum + item.price, 0);",
+              "+  return subtotal * (1 - discount);",
+              " }"
+            ]
+          }
+        ],
+        "answer": "discount = 0",
+        "accepted": [
+          "discount = 0",
+          "discount=0",
+          "discount = 0.0"
+        ],
+        "hints": [
+          {
+            "text": "Old callers pass only the cart, so the parameter must be optional."
+          },
+          {
+            "text": "Give it a default value that means no discount at all."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Give cartTotal an optional discount between 0 and 1. Watch how the subtotal is computed first, then scaled by (1 - discount).",
+          "practice": "Add an optional taxRate parameter that defaults to no tax."
+        },
+        "narration": "Old callers pass only the cart, so the discount must be optional. A default of zero means no discount. The subtotal is computed first, then scaled by one minus the discount."
+      }
+    },
+    {
+      "id": "s3",
+      "public": {
+        "title": "Test the total and the discount",
+        "prompt": "The test adds a check for a 50% discount on items priced 10 and 5. What value will it assert?",
+        "kind": "mcq",
+        "options": [
+          "15",
+          "7.5",
+          "5",
+          "2.5"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/cart.js": "export function addItem(cart, item) {\n  return [...cart, item];\n}\n\nexport function cartTotal(cart, discount = 0) {\n  const subtotal = cart.reduce((sum, item) => sum + item.price, 0);\n  return subtotal * (1 - discount);\n}\n",
+          "src/cart.test.js": "import { cartTotal } from \"./cart.js\";\n\nconsole.assert(cartTotal([]) === 0);\n"
+        },
+        "hunks": [
+          {
+            "id": "h3",
+            "file": "src/cart.test.js",
+            "oldStart": 3,
+            "lines": [
+              " console.assert(cartTotal([]) === 0);",
+              "+",
+              "+const items = [{ price: 10 }, { price: 5 }];",
+              "+console.assert(cartTotal(items) === 15);",
+              "+console.assert(cartTotal(items, 0.5) === 7.5);"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "Work out the plain total first.",
+            "eliminate": 0
+          },
+          {
+            "text": "Then multiply it by (1 - 0.5)."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Add console.assert checks for a plain total and for a 50% discount, so the behaviour from the last two steps is pinned down.",
+          "practice": "Add an assertion for a 20% discount on the same items."
+        },
+        "narration": "The plain total is fifteen. A fifty percent discount multiplies it by one minus point five, which gives seven and a half. The test pins down both behaviours."
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "slug": "codequest",
+  "title": "Shopping Cart Basics",
+  "description": "Build a cart total, then test it.",
+  "path": "worlds/codequest",
+  "concepts": [
+    {
+      "slug": "functions",
+      "name": "functions"
+    },
+    {
+      "slug": "array reduce",
+      "name": "array reduce"
+    },
+    {
+      "slug": "conditionals",
+      "name": "conditionals"
+    }
+  ]
+}

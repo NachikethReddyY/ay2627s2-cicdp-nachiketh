@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 
 // Seeded by apps/api/src/db/seed.ts: course "codequest", lesson "lesson-1", whose first step is an MCQ.
@@ -152,11 +153,14 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
 
   await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
   const spoken = () => page.evaluate(() => (globalThis as unknown as { __spoken: string[] }).__spoken.join(" "));
-  // The seeded step has no narration of its own, so the worked example is what gets spoken (sentence by sentence).
-  const workedExample = (await page.locator("p:has(code) + p").first().innerText()).replace(/\s+/g, " ").trim();
-  expect(workedExample.length).toBeGreaterThan(0);
-  await expect.poll(async () => (await spoken()).length).toBeGreaterThan(0);
-  expect(workedExample.startsWith((await spoken()).split(" ").slice(0, 3).join(" "))).toBe(true);
+  // Lesson 1 has narration text but no audio, so that text is what gets spoken. Compare against the seed file, not the caption.
+  const file = JSON.parse(readFileSync(new URL("../../worlds/codequest/lessons/lesson-1.json", import.meta.url), "utf8")) as {
+    steps: { id: string; secret: { narration: string } }[];
+  };
+  const narration = file.steps.find((st) => st.id === FIRST_STEP_ID)!.secret.narration;
+  // The fake utterance never ends, so only the first sentence is spoken.
+  const firstSentence = narration.match(/.+?[.!?](?=\s|$)/s)![0].trim();
+  await expect.poll(spoken).toBe(firstSentence);
 
   // The replay auto-starts on reveal; the pause effect fires first, so speech must be resumed after it.
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();

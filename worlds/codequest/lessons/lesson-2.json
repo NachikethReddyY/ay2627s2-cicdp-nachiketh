@@ -1,0 +1,149 @@
+{
+  "slug": "lesson-2",
+  "title": "Choose a shipping rate with conditionals",
+  "concepts": [
+    "conditionals"
+  ],
+  "position": 1,
+  "status": "draft",
+  "steps": [
+    {
+      "public": {
+        "title": "Free shipping on big orders",
+        "prompt": "shippingCost gets a free-shipping rule for orders of 50 or more. Which condition will the new if use?",
+        "kind": "mcq",
+        "options": [
+          "total > 50",
+          "total >= 50",
+          "total == 50",
+          "total <= 50"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/shipping.js": "export function shippingCost(total) {\n  return 5;\n}\n",
+          "src/shipping.test.js": "import { shippingCost } from \"./shipping.js\";\n\nconsole.assert(shippingCost(10) === 5);\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/shipping.js",
+            "oldStart": 1,
+            "lines": [
+              " export function shippingCost(total) {",
+              "+  if (total >= 50) {",
+              "+    return 0;",
+              "+  }",
+              "   return 5;"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "An order of exactly 50 is also a big order.",
+            "eliminate": 0
+          },
+          {
+            "text": "Free shipping applies as the total goes up, not down.",
+            "eliminate": 3
+          }
+        ],
+        "explanations": {
+          "workedExample": "An if runs its block only when the condition is true. Using >= includes an order of exactly 50, and the return inside the block ends the function early.",
+          "practice": "Add a rule that orders under 10 pay a handling fee of 3 on top, using another if."
+        },
+        "narration": "The new rule uses an if. The condition has to be true for fifty and for anything above it, so the comparison is greater than or equal to. When it is true the function returns zero straight away, and the flat rate of five is only reached by smaller orders."
+      }
+    },
+    {
+      "public": {
+        "title": "A cheaper middle rate",
+        "prompt": "Orders from 20 up to 49 get a reduced rate of 2. Type the two keywords that chain the new check onto the first one.",
+        "kind": "cloze"
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/shipping.js": "export function shippingCost(total) {\n  if (total >= 50) {\n    return 0;\n  }\n  return 5;\n}\n",
+          "src/shipping.test.js": "import { shippingCost } from \"./shipping.js\";\n\nconsole.assert(shippingCost(10) === 5);\n"
+        },
+        "hunks": [
+          {
+            "id": "h2",
+            "file": "src/shipping.js",
+            "oldStart": 4,
+            "lines": [
+              "-  }",
+              "+  } else if (total >= 20) {",
+              "+    return 2;",
+              "+  }"
+            ]
+          }
+        ],
+        "answer": "else if",
+        "accepted": [
+          "else if"
+        ],
+        "hints": [
+          {
+            "text": "The second check only matters when the first one was false."
+          },
+          {
+            "text": "Two words. The first means otherwise, the second starts a new test."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Checks in a chain run top to bottom and stop at the first true one. Putting the 50 check first means an order of 60 never reaches the 20 check.",
+          "practice": "Add a third tier for orders from 10 up to 19 that costs 4."
+        },
+        "narration": "The second rule only matters when the first one did not match, so it is chained onto the same if. The checks run from the top and stop at the first true one. That is why the fifty check comes first: an order of sixty never reaches the check for twenty."
+      }
+    },
+    {
+      "public": {
+        "title": "Test the boundaries",
+        "prompt": "The test adds checks at exactly 20 and at exactly 50. What will shippingCost(20) and shippingCost(50) return?",
+        "kind": "mcq",
+        "options": [
+          "2 and 0",
+          "5 and 2",
+          "2 and 2",
+          "5 and 0"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/shipping.js": "export function shippingCost(total) {\n  if (total >= 50) {\n    return 0;\n  } else if (total >= 20) {\n    return 2;\n  }\n  return 5;\n}\n",
+          "src/shipping.test.js": "import { shippingCost } from \"./shipping.js\";\n\nconsole.assert(shippingCost(10) === 5);\n"
+        },
+        "hunks": [
+          {
+            "id": "h3",
+            "file": "src/shipping.test.js",
+            "oldStart": 3,
+            "lines": [
+              " console.assert(shippingCost(10) === 5);",
+              "+console.assert(shippingCost(20) === 2);",
+              "+console.assert(shippingCost(50) === 0);"
+            ]
+          }
+        ],
+        "answer": 0,
+        "hints": [
+          {
+            "text": "Compare each boundary value with the rule in the code above: does that rule include the edge itself?"
+          },
+          {
+            "text": "Check 50 first, then 20, just as the code does.",
+            "eliminate": 1
+          }
+        ],
+        "explanations": {
+          "workedExample": "Boundary values are where off-by-one mistakes hide. Testing exactly 20 and exactly 50 proves that >= puts each edge in the higher tier.",
+          "practice": "Add assertions for 19 and 49, the last values of each lower tier."
+        },
+        "narration": "Bugs hide at the edges, so the test checks exactly twenty and exactly fifty. Both comparisons use greater than or equal to, so each edge falls into the higher tier. Twenty costs two and fifty costs zero."
+      }
+    }
+  ]
+}

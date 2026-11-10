@@ -229,7 +229,7 @@ Import (`POST /lessons/import`) → pg-boss job `import` in the API process:
 
 **Fallback** (LLM off or invalid): synthetic lessons use hand-written content (WP11). The OSS lesson uses the LLM, with the deterministic fallback below. Imported lessons get a deterministic prediction. Cloze: one identifier or literal token of an added line with ≥ 3 tokens (§15.1). MCQ: the added line as the answer; distractors are drawn only from lines absent from the visible `beforeFiles` (added lines from other hunks, or mutated variants of the answer), so the answer is not the only absent option. Hints are generic (§15.1). The explanation is the commit title, labelled `inferred`.
 
-Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scripts/narrate.ts|py` (WP11) renders one MP3 per step into `apps/web/public/audio/<lesson>/`, run locally by the author. Narration plays on reveal; a missing MP3 falls back to browser speech.
+Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scripts/narrate.ts|py` (WP11) renders one MP3 per step into a local folder, run by the author. `pnpm --filter @learnquest/api media:narration` then uploads them to private object storage (R2). Narration plays on reveal; a step without audio falls back to browser speech reading `secret.narration`.
 
 ### 8.2 Learner model and adaptivity (engine: `bkt`, `policy`)
 
@@ -299,7 +299,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 - `POST /steps/:id/hints` → `{rung, text, eliminate?}`. `eliminate` (MCQ rung 1 only) is the index of the distractor to cross out, picked by the API deterministically from the non-answer options (no schema change); never the answer. Allowed in `predicting` or `hinting`. `409` when all rungs are used.
 - `POST /steps/:id/skip` → `{state:"skipped"}`. Always available until revealed. Writes an `attempts` row with `kind=skip`.
 - `GET /steps/:id/reveal` → `{answer, hunks, explanations:{workedExample, practice, inferred:true}, source:{repo, sha, path}}`. `answer` is `{type:"mcq", index}` or `{type:"cloze", text}`, so the prompt can mark it. `409` unless the state is `revealed` or `skipped`.
-- Narration MP3s are static files (`/audio/<lesson>/<step>.mp3`), not gated by the API. The client requests one only after reveal or skip (§12).
+- Narration MP3s live in private object storage. `lessons.get` returns short-lived signed URLs for them, under the same visibility check as the lesson. The client requests one only after reveal or skip (§12).
 - `GET /me/progress` · `GET /me/next?world=` → `{lessonId, conceptId, reason}`
 - `POST /lessons/import` (author; body `{repo, sha}`; repo not on the allow-list → 400) → `202 {jobId}` · `GET /jobs/:id/events` (SSE, creator only)
 - `GET /author/lessons?status=draft` (author only) · `POST /lessons/:id/publish` · `POST /lessons/:id/unpublish` (author)
@@ -341,7 +341,7 @@ Stretch engine endpoints: `/v1/pipeline/segment`, `/v1/narrate`, `/v1/grade`.
 ## 10. Repository layout
 
 ```
-apps/web/        src/{shell,player,author,quest,worlds}/ (core); src/{sandbox}/ (stretch); scripts/gen-registry.ts; public/audio/
+apps/web/        src/{shell,player,author,quest,worlds}/ (core); src/{sandbox}/ (stretch); scripts/gen-registry.ts
 apps/api/        src/{auth,lessons,attempts,progress,grading,worker,sse,engine-client,db}/; drizzle/; test/security/
 services/engine/ app.py (WP2); ingest/, pipeline/, llm/, bkt/, policy/, worlds/ (§8.4); snapshot/ (WP12); prompts/, evals/ (WP18)
 packages/        lesson-schema/, player-core/ (core); ui-catalog/, sdk-ts/, sdk-py/, embed/ (stretch)
@@ -421,7 +421,7 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 - Replays are **reconstructed from a diff**, not recorded. Badge: "Reconstructed replay".
 - AI explanations of *why* the author wrote something are **inferred**. Label them.
 - Seeking is bounded by snapshot spacing (K), not O(1).
-- **The step gate is friction, not a security boundary.** The commit is public, so the answer can be read from git. Its purpose is learning, not secrecy. The same holds for narration MP3s: they are static files that anyone can fetch, and the player simply does not request one before reveal.
+- **The step gate is friction, not a security boundary.** The commit is public, so the answer can be read from git. Its purpose is learning, not secrecy. Narration MP3s sit behind signed URLs from `lessons.get`, and the player does not request one before reveal.
 - Evidence supports "attempt before answer" but does not test this product. S2 tests it, weakly.
 - Competitors (Scrimba, DeepWiki, Code Wiki, Pocket Flow, CodeTour): the gap is in search, not proof that nobody built it.
 
@@ -534,7 +534,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in `docs/study/
 | **WP8** | Job workers, SSE, publish | `apps/api/src/{worker,sse,engine-client}`, `apps/web/src/author` | WP5, WP6, WP7 | Mastery worker (learner row lock; idempotent); import job with SSE (creator only); recommendation with reason; publish and unpublish. Stretch: editing (cut 6) |
 | **WP9** | SDKs (stretch) | `packages/sdk-ts`, `packages/sdk-py` | WP5 | Generated clients; publish is cuts 4 and 11 |
 | **WP10** | Second language track (stretch, Rec-1) | `worlds/python/`, `apps/web/src/worlds/python/`, `e2e/python/` | WP2, WP4, WP6, WP7 | Appendix A; no engine-core change (S5) |
-| **WP11** | CodeQuest content | `worlds/codequest/{manifest.json,prompts/,lessons/,repos.yml}`, seed script, `scripts/narrate.ts\|py`, `apps/web/public/audio/` | WP2 | Synthetic lessons 1–2 hand-written (Wk 2–3); OSS lesson LLM-generated with deterministic fallback (Wk 4–5); answers in `secret`; `narrate` renders one MP3 per step |
+| **WP11** | CodeQuest content | `worlds/codequest/{manifest.json,prompts/,lessons/,repos.yml}`, seed script, `scripts/narrate.ts\|py` | WP2 | Synthetic lessons 1–2 hand-written (Wk 2–3); OSS lesson LLM-generated with deterministic fallback (Wk 4–5); answers in `secret`; `narrate` renders one MP3 per step |
 | **WP12** | Sandbox and embed (stretch) | `apps/web/src/sandbox/`, `packages/embed`, `services/engine/snapshot`, `apps/api/src/embed` | WP4, WP5, WP6 | Appendix A |
 | **WP13** | Deployment | `infra/{render,vercel}`, `.github/workflows/jobs/deploy.yml`; stretch: `infra/k8s`, `k8s.yml`, OTel | WP1, WP4, WP5, WP6, WP7 | GHCR images; Vercel static web and rewrites; Render api and engine with in-process worker; staging (Wk 5), prod (Wk 6); smoke |
 | **WP14** | QA | `e2e/` (except `smoke/`), `docs/study/`; stretch: k6, mutation, Schemathesis | WP4, WP8 | PR e2e on compose from Wk 5; axe; coverage gates; study protocol, consent form, results template |
