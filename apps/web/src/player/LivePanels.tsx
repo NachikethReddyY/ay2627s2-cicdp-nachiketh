@@ -104,6 +104,12 @@ export function RevealPanel({ idx, total, state, correct, step, reveal, last, on
         <>
           <p className="mt-2 text-sm font-semibold">Answer: <code className="font-mono font-bold">{answer}</code></p>
           <p className="mt-2 font-semibold">{reveal.explanations.workedExample}</p>
+          {reveal.narration && reveal.narration !== reveal.explanations.workedExample && (
+            <div className="mt-2">
+              <p className="text-xs font-extrabold uppercase tracking-wide text-ink/70">Narration</p>
+              <p className="text-sm font-semibold">{reveal.narration}</p>
+            </div>
+          )}
           <p className="mt-2 text-sm font-semibold"><span className="font-extrabold">Try it: </span>{reveal.explanations.practice}</p>
           <p className="mt-2 text-xs font-bold text-ink/70">Watch the change in the player, then move on.</p>
           <button type="button" onClick={onNext} className={`btn mt-4 !px-5 !py-1.5 text-sm ${FOCUS}`}>{last ? "Finish lesson" : "Next step"}</button>

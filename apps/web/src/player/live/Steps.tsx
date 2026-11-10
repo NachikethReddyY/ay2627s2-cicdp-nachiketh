@@ -64,6 +64,8 @@ export default function Steps({ lesson }: { lesson: Lesson }) {
   const answered = state === "revealed" || state === "skipped";
   const narration = answered ? lesson.media.find((m) => m.stepId === stepId && m.kind === "narration")?.url : undefined;
 
+  const narrationText = answered ? reveal?.narration : undefined;
+
   const id = stepId ?? "";
   let panel: ReactNode;
   if (state === "finished") {
@@ -102,7 +104,7 @@ export default function Steps({ lesson }: { lesson: Lesson }) {
       title={lesson.title}
       stepTitles={lesson.steps.map((s) => s.title)}
       timeline={timeline}
-      live={{ idx: Math.min(idx, n - 1), panel, playKey: reveal, narration }}
+      live={{ idx: Math.min(idx, n - 1), panel, playKey: reveal, narration, narrationText }}
     />
   );
 }

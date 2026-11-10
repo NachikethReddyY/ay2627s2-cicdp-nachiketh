@@ -114,3 +114,53 @@ for (const [path, ready] of SIGNED_IN_PAGES) {
     await expectNoSeriousA11yViolations(page, path, ready(page));
   });
 }
+
+test("a step with no narration audio is spoken with browser speech on reveal", async ({ page }) => {
+  // Record what the player hands to speechSynthesis; real voices are not needed.
+  await page.addInitScript(() => {
+    const spoken: string[] = [];
+    const calls: string[] = [];
+    (globalThis as unknown as { __spoken: string[]; __calls: string[] }).__spoken = spoken;
+    (globalThis as unknown as { __calls: string[] }).__calls = calls;
+    class FakeUtterance {
+      volume = 1;
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      text: string;
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    Object.defineProperty(globalThis, "SpeechSynthesisUtterance", { value: FakeUtterance, configurable: true });
+    Object.defineProperty(globalThis, "speechSynthesis", {
+      configurable: true,
+      value: {
+        speak: (u: { text: string }) => spoken.push(u.text),
+        cancel() {},
+        pause: () => calls.push("pause"),
+        resume: () => calls.push("resume"),
+      },
+    });
+  });
+  await signUp(page, newEmail(), `/courses/${COURSE}`);
+  await page.locator(`a.lesson-hit[href*="lesson=${LESSON}"]`).click();
+  await page.locator(`a.lesson-pop-btn[href*="lesson=${LESSON}"]`).click();
+  await expect(page.getByRole("button", { name: "Mute" })).toHaveCount(0); // nothing to hear before the reveal
+  await page.getByLabel(CORRECT_OPTION).check();
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
+
+  await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
+  const spoken = () => page.evaluate(() => (globalThis as unknown as { __spoken: string[] }).__spoken.join(" "));
+  // The seeded step has no narration of its own, so the worked example is what gets spoken (sentence by sentence).
+  const workedExample = (await page.locator("p:has(code) + p").first().innerText()).replace(/\s+/g, " ").trim();
+  expect(workedExample.length).toBeGreaterThan(0);
+  await expect.poll(async () => (await spoken()).length).toBeGreaterThan(0);
+  expect(workedExample.startsWith((await spoken()).split(" ").slice(0, 3).join(" "))).toBe(true);
+
+  // The replay auto-starts on reveal; the pause effect fires first, so speech must be resumed after it.
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  const lastToggle = () =>
+    page.evaluate(() => (globalThis as unknown as { __calls: string[] }).__calls.at(-1));
+  await expect.poll(lastToggle).toBe("resume");
+});
