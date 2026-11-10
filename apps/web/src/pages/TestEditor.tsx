@@ -214,7 +214,8 @@ export default function TestEditor() {
   const openRequest = useRef(0);
   // Last known text of each file, so a click shows it at once while the sandbox copy is re-read behind it.
   const fileCache = useRef(new Map<string, string>(DEMO_PROJECT_FILES.map((file): [string, string] => [file.path, file.content])));
-  const loadedFolders = useRef(new Set<string>([""]));
+  // The demo's folders are already in the tree, so opening them needs no listing.
+  const loadedFolders = useRef(new Set<string>(["", DEMO_DIRECTORY, `${DEMO_DIRECTORY}/src`, `${DEMO_DIRECTORY}/web`]));
   const loadingWorkspace = useRef(false);
   const queuedWorkspaceRefresh = useRef(false);
   const workspaceLoad = useRef<Promise<void>>(Promise.resolve());
@@ -542,11 +543,11 @@ export default function TestEditor() {
   };
 
   const toggleWorkspaceFolder = async (path: string) => {
-    if (folders.has(path)) {
-      setFolders((current) => toggleFolder(current, path));
-      return;
-    }
-    if (!loadedFolders.current.has(path)) {
+    // Open or close at once, from the children the tree already shows. The listing refreshes them behind it, and a failed
+    // listing (for example, when the learner is signed out) leaves the folder open.
+    const wasOpen = folders.has(path);
+    setFolders((current) => toggleFolder(current, path));
+    if (!wasOpen && !loadedFolders.current.has(path)) {
       try {
         const { entries } = await listFiles(path);
         const children = entries.filter((entry) => entry.type === "file" || entry.type === "dir")
@@ -566,11 +567,9 @@ export default function TestEditor() {
         });
         loadedFolders.current.add(path);
       } catch (error) {
-        setShellNote(error instanceof Error ? error.message : `Could not list ${path}`);
-        return;
+        toast.error(error instanceof Error ? error.message : `Could not refresh ${path}`);
       }
     }
-    setFolders((current) => toggleFolder(current, path));
   };
 
   const changeContent = (next: string) => {
