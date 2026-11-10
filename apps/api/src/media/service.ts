@@ -31,15 +31,17 @@ const KINDS: Record<MediaKind, { maxBytes: number; types: Record<string, { ext: 
   },
 };
 
-// The server generates the bytes, so the browser never uploads and no presigned write URL exists.
-export async function saveMedia(input: {
+export type MediaInput = {
   lessonVersionId: string;
   stepId?: string;
   kind: MediaKind;
   body: Uint8Array;
   contentType: string;
   promptHash?: string;
-}) {
+};
+
+/** Validates the bytes and writes the object. Throws before anything is written if a check fails. Returns the key. */
+export async function storeMedia(input: MediaInput): Promise<string> {
   if (!storage) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Media storage is not configured" });
   const spec = KINDS[input.kind];
   const type = Object.hasOwn(spec.types, input.contentType) ? spec.types[input.contentType] : undefined;
@@ -50,8 +52,12 @@ export async function saveMedia(input: {
   // Key built here, never from input: no traversal, no overwrite, and the UUID makes it immutable.
   const key = `v/${input.lessonVersionId}/${randomUUID()}.${type.ext}`;
   await storage.put(key, input.body, input.contentType);
-  // Object first, row second: a failed insert leaves a harmless orphan object, never a row with nothing behind it.
-  await db.insert(lessonMedia).values({
+  return key;
+}
+
+/** The lesson_media row for a stored object. */
+export function mediaRow(input: MediaInput, key: string) {
+  return {
     lessonVersionId: input.lessonVersionId,
     stepId: input.stepId ?? null,
     kind: input.kind,
@@ -59,7 +65,14 @@ export async function saveMedia(input: {
     key,
     contentType: input.contentType,
     bytes: input.body.byteLength,
-  });
+  };
+}
+
+// The server generates the bytes, so the browser never uploads and no presigned write URL exists.
+export async function saveMedia(input: MediaInput) {
+  const key = await storeMedia(input);
+  // Object first, row second: a failed insert leaves a harmless orphan object, never a row with nothing behind it.
+  await db.insert(lessonMedia).values(mediaRow(input, key));
   return key;
 }
 

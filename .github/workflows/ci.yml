@@ -79,6 +79,8 @@ jobs:
 
       - run: pnpm exec turbo run test build
 
+      - run: pnpm run test:scripts
+
   engine:
     runs-on: ubuntu-latest
     timeout-minutes: 20
