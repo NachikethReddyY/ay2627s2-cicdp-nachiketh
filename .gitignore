@@ -5,6 +5,8 @@ dist/
 .env
 .neon
 .env.local
+# Narration MP3s rendered by scripts/narrate.ts (local, never committed)
+.narration/
 *.env.render
 
 # Python bytecode and coverage output
