@@ -9,7 +9,7 @@ import { attempts } from "../src/db/schema.ts";
 const app = buildApp();
 after(() => app.close());
 
-const FORBIDDEN = ["secret", "answer", "accepted", "hunks", "explanations", "source"];
+const FORBIDDEN = ["secret", "answer", "accepted", "hunks", "explanations", "narration", "source"];
 function walk(v: unknown, path = "") {
   if (Array.isArray(v)) return v.forEach((x) => walk(x, path));
   if (v && typeof v === "object") {
@@ -79,6 +79,7 @@ test("full MCQ path ends revealed after a failed retry", async () => {
   assert.equal(rev.statusCode, 200);
   assert.deepEqual(out(rev).answer, { type: "mcq", index: 1 });
   assert.equal(out(rev).explanations.inferred, true);
+  assert.equal(out(rev).narration, out(rev).explanations.workedExample); // no own narration: falls back
 
   const rows = await db.select().from(attempts).where(eq(attempts.stepId, "s1"));
   assert.equal(rows.filter((x) => x.observed).length, 1);
@@ -196,6 +197,34 @@ test("a step of a superseded lesson version is not playable", async () => {
   assert.equal((await get(c, stale!.id)).statusCode, 404);
   assert.equal((await attempt(c, stale!.id, { kind: "mcq", choice: 0 })).statusCode, 404);
   assert.equal((await get(c, "s1")).statusCode, 200);
+});
+
+test("reveal returns the step's own narration, not the worked example", async () => {
+  const { lessons, lessonVersions, steps } = await import("../src/db/schema.ts");
+  const c = await signUp(app);
+  const [lesson] = await db.select().from(lessons).where(eq(lessons.slug, "lesson-1"));
+  const [v] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson!.currentVersionId!));
+  const [own] = await db
+    .insert(steps)
+    .values({
+      lessonVersionId: v!.id,
+      idx: 51,
+      public: { title: "own", prompt: "own", kind: "mcq", options: ["a", "b"] },
+      secret: {
+        beforeFiles: {},
+        hunks: [],
+        answer: 0,
+        hints: [],
+        explanations: { workedExample: "Worked example text.", practice: "" },
+        narration: "Spoken narration text.",
+      },
+    })
+    .returning();
+  assert.equal((await reveal(c, own!.id)).statusCode, 409); // not before the answer
+  assert.equal(out(await attempt(c, own!.id, { kind: "mcq", choice: 0 })).correct, true);
+  const rev = out(await reveal(c, own!.id));
+  assert.equal(rev.narration, "Spoken narration text.");
+  assert.equal(rev.explanations.workedExample, "Worked example text.");
 });
 
 test("mcq choice is validated against the step's option count", async () => {
