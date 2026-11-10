@@ -1,11 +1,10 @@
 // Renders one MP3 per lesson step from the step's narration text, so `media:narration` can store them.
-// Run locally with your own keys: node scripts/narrate.ts --lesson <slug> [--out <dir>] [--provider elevenlabs|openai]
-// --out defaults to .narration/<slug> under the repo root (gitignored).
+// Run locally with your own keys: node scripts/narrate.ts --lesson <slug> [--provider elevenlabs|openai]
+// Reads worlds/codequest/lessons/<slug>.json and writes .narration/<slug>/ (gitignored). No other paths are taken from the CLI.
 // Keys come only from environment variables. They are never printed, logged or written to disk.
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { access, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -18,13 +17,34 @@ export type TtsConfig =
   | { provider: "elevenlabs"; apiKey: string; voiceId: string; modelId: string }
   | { provider: "openai"; baseUrl: string; model: string; voice: string };
 
-// Usage problems exit 2; missing configuration and other failures exit 1.
+/** Where lessons are read from and audio is written to. Tests inject their own; the CLI always uses the defaults. */
+export type RunOptions = { lessonsDir?: string; narrationRoot?: string; timeoutMs?: number };
+
+// Usage problems exit 2; missing configuration, a held lock and other failures exit 1.
 class UsageError extends Error {}
 class ConfigError extends Error {}
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export const DEFAULT_LESSONS_DIR = join(repoRoot, "worlds", "codequest", "lessons");
+export const DEFAULT_NARRATION_ROOT = join(repoRoot, ".narration");
+/** Each provider request, including reading its body, gives up after this long. */
+const DEFAULT_TIMEOUT_MS = 120_000;
+/** The importer's narration size limit (apps/api/src/media/service.ts). Larger files would be refused later. */
+const MAX_MP3_BYTES = 10 * 1024 * 1024;
+const LOCK_NAME = ".narration.lock";
+
+/** A lesson slug: lowercase letters, digits and hyphens. It is the only thing that names a path. */
+export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
 const nonEmpty = (v: string | undefined): v is string => v !== undefined && v.trim() !== "";
 const hashText = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+/** Same check as the importer: an ID3 tag or an MPEG frame sync. */
+export function isMp3(bytes: Uint8Array): boolean {
+  const id3 = bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+  const frame = bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0;
+  return id3 || frame;
+}
 
 /** Picks the provider: the --provider flag, else ElevenLabs when its key is set, else the OpenAI-compatible server. */
 export function chooseProvider(flag: string | undefined, env: Env): Provider {
@@ -73,8 +93,10 @@ export function ttsRequest(cfg: TtsConfig, text: string): { url: string; init: R
       },
     };
   }
+  let base = cfg.baseUrl;
+  while (base.endsWith("/")) base = base.slice(0, -1); // a loop, not /\/+$/, which is super-linear on long runs of slashes
   return {
-    url: `${cfg.baseUrl.replace(/\/+$/, "")}/v1/audio/speech`,
+    url: `${base}/v1/audio/speech`,
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -118,123 +140,145 @@ async function writeManifest(path: string, manifest: Record<string, string>) {
   await rename(tmp, path);
 }
 
-/** A lesson slug: lowercase letters, digits and hyphens. Anything else could steer a path. */
-export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-
-/** realpath of the nearest existing ancestor, with the missing tail re-attached. Resolves symlinks such as /var -> /private/var. */
-async function realpathOfNearest(path: string): Promise<string> {
-  const tail: string[] = [];
-  let cur = path;
-  for (;;) {
-    try {
-      return join(await realpath(cur), ...tail);
-    } catch {
-      const parent = dirname(cur);
-      if (parent === cur) return path;
-      tail.unshift(basename(cur));
-      cur = parent;
-    }
+/** Whether a process with this pid exists. EPERM means it exists but belongs to someone else. */
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
 /**
- * Resolves a path and confines it to the allowed roots. Returns the real path to use for reads and writes.
- * Throws a UsageError for anything outside every root, including via a symlink.
+ * Takes an exclusive lock on the output folder, recording this process's pid. Returns the release function.
+ * A lock whose owner is gone (a run that was killed) is stale and is taken over. A live owner gets a ConfigError.
  */
-export async function assertInsideRoots(path: string, roots: string[]): Promise<string> {
-  const target = await realpathOfNearest(resolve(path));
-  const allowed = await Promise.all(roots.map((r) => realpathOfNearest(resolve(r))));
-  if (!allowed.some((root) => target === root || target.startsWith(root.endsWith(sep) ? root : root + sep))) {
-    throw new UsageError(`${path} must be inside the repo or the OS temp dir (${allowed.join(", ")})`);
+async function acquireLock(dir: string): Promise<() => Promise<void>> {
+  const path = join(dir, LOCK_NAME);
+  const create = () => writeFile(path, String(process.pid), { flag: "wx" });
+  try {
+    await create();
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    const owner = Number(await readFile(path, "utf8").catch(() => ""));
+    if (Number.isInteger(owner) && owner > 0 && processAlive(owner)) {
+      throw new ConfigError(`another narrate run is writing ${dir} (pid ${owner}). If none is running, delete ${LOCK_NAME} and rerun.`);
+    }
+    await rm(path, { force: true }); // stale: its owner was killed before it could release the lock
+    await create();
   }
-  return target;
+  return () => rm(path, { force: true });
 }
 
-/** Default --out for a lesson: .narration/<slug> under the repo root (gitignored). */
-export function defaultOutDir(slug: string): string {
-  return join(repoRoot, ".narration", slug);
+type RenderArgs = {
+  steps: Step[];
+  cfg: TtsConfig;
+  provider: Provider;
+  outDir: string;
+  fetchImpl: Fetch;
+  io: Io;
+  timeoutMs: number;
+};
+
+/** Renders the steps that changed and clears what no longer belongs. Returns the exit code. */
+async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeoutMs }: RenderArgs): Promise<number> {
+  const manifestPath = join(outDir, "narration.json");
+  // `state` is the manifest on disk, updated and written at every step, so it never claims audio that is not there.
+  const state = await readManifest(manifestPath);
+
+  let rendered = 0;
+  let skipped = 0;
+  let failed = 0;
+  let missing = 0;
+  for (const step of steps) {
+    const key = String(step.idx);
+    const mp3 = join(outDir, `${key}.mp3`);
+    if (step.text === undefined) {
+      missing++;
+      await rm(mp3, { force: true }); // Delete the audio first, then drop the hash.
+      delete state[key];
+      await writeManifest(manifestPath, state);
+      continue;
+    }
+    const hash = hashText(step.text);
+    if (state[key] === hash && (await exists(mp3))) {
+      skipped++;
+      continue;
+    }
+    // Drop the old audio and its hash before rendering. If the run is killed mid-render, the step has
+    // no entry to match, so the next run renders it instead of keeping stale audio.
+    await rm(mp3, { force: true });
+    delete state[key];
+    await writeManifest(manifestPath, state);
+    try {
+      const req = ttsRequest(cfg, step.text);
+      // One signal covers the request and the body read, so a hung provider fails this step only.
+      const res = await fetchImpl(req.url, { ...req.init, signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) throw new Error(`provider returned HTTP ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength === 0) throw new Error("provider returned an empty body");
+      if (bytes.byteLength > MAX_MP3_BYTES) throw new Error(`provider returned ${bytes.byteLength} bytes, over the ${MAX_MP3_BYTES} byte limit`);
+      if (!isMp3(bytes)) throw new Error("provider did not return MP3 audio");
+      await writeFile(mp3, bytes);
+      state[key] = hash;
+      await writeManifest(manifestPath, state);
+      rendered++;
+    } catch (e) {
+      failed++;
+      io.error(`step ${step.idx}: ${e instanceof Error ? e.message : String(e)}`);
+      await rm(mp3, { force: true }); // A failed step has no audio, so the next run renders it again.
+    }
+  }
+
+  // Steps no longer in the lesson lose their audio first, then their hash.
+  const current = new Set(steps.map((s) => String(s.idx)));
+  for (const name of await readdir(outDir)) {
+    const m = /^(\d+)\.mp3$/.exec(name);
+    if (m && !current.has(m[1]!)) await rm(join(outDir, name), { force: true });
+  }
+  for (const key of Object.keys(state)) {
+    if (!current.has(key)) delete state[key];
+  }
+  await writeManifest(manifestPath, state);
+  io.log(`${provider}: rendered ${rendered}, skipped ${skipped} unchanged, failed ${failed}, no narration ${missing} -> ${outDir}`);
+  return failed > 0 ? 1 : 0;
 }
 
 /** Runs the script. Returns the exit code. */
-export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io): Promise<number> {
+export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io, options: RunOptions = {}): Promise<number> {
   try {
-    let values: { lesson?: string; out?: string; "lesson-file"?: string; provider?: string };
+    let values: { lesson?: string; provider?: string };
     try {
       ({ values } = parseArgs({
         args: argv,
         strict: true,
-        options: { lesson: { type: "string" }, out: { type: "string" }, "lesson-file": { type: "string" }, provider: { type: "string" } },
+        options: { lesson: { type: "string" }, provider: { type: "string" } },
       }));
     } catch (e) {
       throw new UsageError(e instanceof Error ? e.message : String(e));
     }
-    if (!values.lesson && !values["lesson-file"]) throw new UsageError("--lesson <slug> or --lesson-file <path> is required");
-    const slug = values.lesson ?? basename(values["lesson-file"]!, ".json");
-    if (!SLUG_PATTERN.test(slug)) {
-      throw new UsageError(`lesson slug "${slug}" must be lowercase letters, digits and hyphens (pass --lesson, or rename the lesson file)`);
-    }
+    if (!values.lesson) throw new UsageError("--lesson <slug> is required");
+    const slug = values.lesson;
+    if (!SLUG_PATTERN.test(slug)) throw new UsageError(`lesson slug "${slug}" must be lowercase letters, digits and hyphens`);
 
     const provider = chooseProvider(values.provider, env);
     const cfg = providerConfig(provider, env);
-    const roots = [repoRoot, tmpdir()];
-    const lessonFile = await assertInsideRoots(values["lesson-file"] ?? join(repoRoot, "worlds/codequest/lessons", `${slug}.json`), roots);
-    const outDir = await assertInsideRoots(values.out ?? defaultOutDir(slug), roots);
+    const lessonFile = join(options.lessonsDir ?? DEFAULT_LESSONS_DIR, `${slug}.json`);
+    const outDir = join(options.narrationRoot ?? DEFAULT_NARRATION_ROOT, slug);
+    if (!(await exists(lessonFile))) throw new ConfigError(`no lesson file for ${slug} at ${lessonFile}`);
     const steps = await readSteps(lessonFile);
+
     await mkdir(outDir, { recursive: true });
-    const manifestPath = join(outDir, "narration.json");
-    // `state` is the manifest on disk, updated and written at every step, so it never claims audio that is not there.
-    const state = await readManifest(manifestPath);
-
-    let rendered = 0;
-    let skipped = 0;
-    let failed = 0;
-    let missing = 0;
-    for (const step of steps) {
-      const key = String(step.idx);
-      const mp3 = join(outDir, `${key}.mp3`);
-      if (step.text === undefined) {
-        missing++;
-        delete state[key];
-        await rm(mp3, { force: true }); // An old file would be stored for text the lesson no longer has.
-        await writeManifest(manifestPath, state);
-        continue;
-      }
-      const hash = hashText(step.text);
-      if (state[key] === hash && (await exists(mp3))) {
-        skipped++;
-        continue;
-      }
-      // Drop the old audio and its hash before rendering. If the run is killed mid-render, the step has
-      // no entry to match, so the next run renders it instead of keeping stale audio.
-      delete state[key];
-      await rm(mp3, { force: true });
-      await writeManifest(manifestPath, state);
-      try {
-        const req = ttsRequest(cfg, step.text);
-        const res = await fetchImpl(req.url, req.init);
-        if (!res.ok) throw new Error(`provider returned HTTP ${res.status}`);
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (bytes.byteLength === 0) throw new Error("provider returned an empty body");
-        await writeFile(mp3, bytes);
-        state[key] = hash;
-        await writeManifest(manifestPath, state);
-        rendered++;
-      } catch (e) {
-        failed++;
-        io.error(`step ${step.idx}: ${e instanceof Error ? e.message : String(e)}`);
-        await rm(mp3, { force: true }); // A failed step has no audio, so the next run renders it again.
-      }
+    const release = await acquireLock(outDir);
+    try {
+      return await renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS });
+    } finally {
+      await release();
     }
-
-    // Entries for steps that no longer exist in the lesson go too.
-    const current = new Set(steps.map((s) => String(s.idx)));
-    for (const key of Object.keys(state)) if (!current.has(key)) delete state[key];
-    await writeManifest(manifestPath, state);
-    io.log(`${provider}: rendered ${rendered}, skipped ${skipped} unchanged, failed ${failed}, no narration ${missing} -> ${outDir}`);
-    return failed > 0 ? 1 : 0;
   } catch (e) {
     if (e instanceof UsageError) {
-      io.error(`${e.message}\nusage: node scripts/narrate.ts --lesson <slug> [--out <dir>] [--lesson-file <path>] [--provider elevenlabs|openai]`);
+      io.error(`${e.message}\nusage: node scripts/narrate.ts --lesson <slug> [--provider elevenlabs|openai]`);
       return 2;
     }
     io.error(e instanceof Error ? e.message : String(e));

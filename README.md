@@ -37,12 +37,12 @@ export TTS_BASE_URL=http://localhost:8880
 export TTS_VOICE=...                 # required
 export TTS_MODEL=...                 # optional, default tts-1
 
-node scripts/narrate.ts --lesson <slug> [--out <dir>] [--provider elevenlabs|openai] [--lesson-file <path>]
+node scripts/narrate.ts --lesson <slug> [--provider elevenlabs|openai]
 ```
 
-`--out` is optional and defaults to `.narration/<slug>` under the repo root, which is gitignored. Lesson files and output folders must live inside the repo or the OS temp dir, and `--lesson` must be lowercase letters, digits and hyphens. The script reads `worlds/codequest/lessons/<slug>.json` (or `--lesson-file`) and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) into the output folder. A rerun renders only steps whose text changed. A step's old audio is removed before it is rendered, and the manifest is updated after each step, so an interrupted run never leaves audio that a rerun would skip. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration.
+`--lesson` is required and must be lowercase letters, digits and hyphens. The script reads `worlds/codequest/lessons/<slug>.json` and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) to `.narration/<slug>/` under the repo root. That folder is gitignored, and there is no option to write anywhere else. To use the files elsewhere, copy the folder. A rerun renders only steps whose text changed. Audio for steps removed from the lesson is deleted. A step's old audio is removed before it is rendered, and the manifest is updated after each step, so an interrupted run never leaves audio that a rerun would skip. Each provider request, including reading its body, times out after 120 seconds and counts as a failed step. A run takes a lock file (`.narration.lock`) in the output folder, so two runs cannot write the same folder. A lock left by a killed run is taken over automatically. Each MP3 must have an MP3 signature and be at most 10 MiB, or the step fails and is not cached. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration.
 
-Then store the files with the importer, using an absolute `--dir` (the default folder is `$PWD/.narration/<slug>` when you run from the repo root):
+Then store the files with the importer, using an absolute `--dir`:
 
 ```bash
 pnpm --filter @learnquest/api media:narration --lesson <slug> --dir "$PWD/.narration/<slug>"
