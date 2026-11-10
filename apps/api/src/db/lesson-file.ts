@@ -29,6 +29,7 @@ const LessonStepFile = z
     const { answer, accepted } = s.secret;
     if (kind === "mcq") {
       if (!options || options.length < 2) ctx.addIssue({ code: "custom", message: "mcq needs options" });
+      else if (options.length > 4) ctx.addIssue({ code: "custom", message: "mcq allows at most 4 options" });
       else if (typeof answer !== "number" || answer < 0 || answer >= options.length)
         ctx.addIssue({ code: "custom", message: "mcq answer must be an option index" });
     } else if (typeof answer !== "string" || !accepted?.length) {
@@ -69,6 +70,42 @@ export function assertUniqueAcrossFiles(files: LessonFile[]) {
       const id = s.id ?? `${f.slug}-${idx}`;
       if (ids.has(id)) throw new Error(`Duplicate step id: ${id} (lesson ${f.slug})`);
       ids.add(id);
+    }
+  }
+}
+
+type FileHunk = { file: string; oldStart: number; lines: string[] };
+
+/** Applies hunks to a copy of files; throws when a context or removed line does not match, naming the file. */
+export function applyHunks(files: Record<string, string>, hunks: FileHunk[]) {
+  const out = { ...files };
+  for (const h of hunks) {
+    const text = out[h.file];
+    if (text === undefined) throw new Error(`hunk targets ${h.file}, which is not in beforeFiles`);
+    const src = text.split("\n");
+    const body: string[] = [];
+    let pos = h.oldStart - 1;
+    for (const l of h.lines) {
+      const line = l.slice(1);
+      if (l[0] === "+") body.push(line);
+      else {
+        if (src[pos] !== line) throw new Error(`hunk does not apply to ${h.file} at line ${pos + 1}`);
+        pos++;
+        if (l[0] === " ") body.push(line);
+      }
+    }
+    out[h.file] = [...src.slice(0, h.oldStart - 1), ...body, ...src.slice(pos)].join("\n");
+  }
+  return out;
+}
+
+/** Rejects a lesson whose step hunks do not apply to that step's beforeFiles, so the replay cannot fail at reveal. */
+export function assertHunksApply(file: LessonFile) {
+  for (const [idx, s] of file.steps.entries()) {
+    try {
+      applyHunks(s.secret.beforeFiles, s.secret.hunks);
+    } catch (e) {
+      throw new Error(`${file.slug} step ${s.id ?? `${file.slug}-${idx}`}: ${(e as Error).message}`, { cause: e });
     }
   }
 }

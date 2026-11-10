@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { slugOf } from "../progress/mastery.ts";
 import { db, pool } from "./client.ts";
-import { assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
+import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
 import { collectionPaths, collections, concepts, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
@@ -24,6 +25,10 @@ async function loadWorld(world: string) {
     }),
   );
   assertUniqueAcrossFiles(files);
+  files.forEach(assertHunksApply);
+  // Mastery keys concepts by slugOf(name); a different seeded slug would make a second row on a learner's first attempt.
+  for (const c of manifest.concepts)
+    if (c.slug !== slugOf(c.name)) throw new Error(`manifest concept "${c.name}": slug must be "${slugOf(c.name)}"`);
   const known = new Set(manifest.concepts.map((c) => c.name));
   for (const f of files) {
     const missing = f.concepts.filter((c) => !known.has(c));

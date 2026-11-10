@@ -6,8 +6,9 @@ import { test } from "node:test";
 import { eq } from "drizzle-orm";
 import fixture from "../../web/src/player/fixtures/lesson1.ts";
 import { db } from "../src/db/client.ts";
-import { assertUniqueAcrossFiles, LessonFile } from "../src/db/lesson-file.ts";
+import { applyHunks, assertHunksApply, assertUniqueAcrossFiles, LessonFile } from "../src/db/lesson-file.ts";
 import { concepts, lessons, steps } from "../src/db/schema.ts";
+import { slugOf } from "../src/progress/mastery.ts";
 import { seed } from "../src/db/seed.ts";
 
 const DIR = join(import.meta.dirname, "../../../worlds/codequest/lessons");
@@ -118,24 +119,28 @@ test("duplicate lesson slugs or step ids across files are errors", async () => {
   assert.throws(() => assertUniqueAcrossFiles([b, explicit]), /Duplicate step id: lesson-2-0/);
 });
 
-type Hunk = { file: string; oldStart: number; lines: string[] };
-function applyHunks(files: Record<string, string>, hunks: Hunk[]) {
-  const out = { ...files };
-  for (const h of hunks) {
-    const src = out[h.file]!.split("\n");
-    const head = src.slice(0, h.oldStart - 1);
-    let pos = h.oldStart - 1;
-    const body: string[] = [];
-    for (const l of h.lines) {
-      const text = l.slice(1);
-      if (l[0] === "+") body.push(text);
-      else {
-        assert.equal(src[pos], text, `hunk context mismatch in ${h.file}`);
-        pos++;
-        if (l[0] === " ") body.push(text);
-      }
-    }
-    out[h.file] = [...head, ...body, ...src.slice(pos)].join("\n");
-  }
-  return out;
-}
+test("a hunk that does not apply is rejected, naming the step and file", async () => {
+  const f = await load("lesson-2.json");
+  assertHunksApply(f);
+  const bad = structuredClone(f);
+  bad.steps[1]!.secret.hunks[0]!.lines[0] = "-  this line is not in the file";
+  assert.throws(() => assertHunksApply(bad), /lesson-2 step lesson-2-1: hunk does not apply to src\/shipping\.js/);
+});
+
+test("manifest concept slugs equal what mastery computes", async () => {
+  const manifest = JSON.parse(await readFile(join(DIR, "../manifest.json"), "utf8")) as { concepts: { slug: string; name: string }[] };
+  for (const c of manifest.concepts) assert.equal(c.slug, slugOf(c.name));
+  const names = (await Promise.all((await readdir(DIR)).map((n) => load(n)))).flatMap((l) => l.concepts.map(slugOf));
+  for (const slug of names) assert.ok(manifest.concepts.some((c) => c.slug === slug), `no seeded concept for ${slug}`);
+});
+
+test("mcq steps allow at most four options and need an in-range answer", async () => {
+  const f = await load("lesson-1.json");
+  const mcq = structuredClone(f.steps[0]!);
+  const parse = (patch: { options?: string[]; answer?: number }) =>
+    LessonFile.safeParse({ ...f, steps: [{ ...mcq, public: { ...mcq.public, options: patch.options ?? mcq.public.options }, secret: { ...mcq.secret, answer: patch.answer ?? mcq.secret.answer } }] });
+  assert.ok(parse({}).success);
+  assert.ok(!parse({ options: ["a", "b", "c", "d", "e"] }).success);
+  assert.ok(!parse({ answer: 4 }).success);
+  assert.ok(!parse({ answer: -1 }).success);
+});
