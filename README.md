@@ -22,6 +22,36 @@ pnpm dev
 TEST_DATABASE_URL=postgres://learnquest:learnquest@localhost:5432/learnquest_test pnpm exec turbo run lint test build
 ```
 
+## Rendering narration
+
+`scripts/narrate.ts` renders one MP3 per lesson step from the step's `secret.narration` text. Run it on your own machine with your own keys. Keys come only from environment variables and are never printed or written to the repo.
+
+```bash
+# ElevenLabs (used when ELEVENLABS_API_KEY is set)
+export ELEVENLABS_API_KEY=...        # required
+export ELEVENLABS_VOICE_ID=...       # required
+export ELEVENLABS_MODEL_ID=...       # optional, default eleven_multilingual_v2
+
+# Or an OpenAI-compatible local server, such as Kokoro behind a wrapper (used when TTS_BASE_URL is set)
+export TTS_BASE_URL=http://localhost:8880
+export TTS_VOICE=...                 # required
+export TTS_MODEL=...                 # optional, default tts-1
+
+node scripts/narrate.ts --lesson <slug> --out "$PWD/.narration/<slug>" [--provider elevenlabs|openai] [--lesson-file <path>]
+```
+
+The script reads `worlds/codequest/lessons/<slug>.json` (or `--lesson-file`) and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) into `--out`. A rerun renders only steps whose text changed. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration. `.narration/` is gitignored.
+
+Then store the files with the importer, using an absolute `--dir`:
+
+```bash
+pnpm --filter @learnquest/api media:narration --lesson <slug> --dir "$PWD/.narration/<slug>"
+```
+
+The importer skips steps that already have narration. Add `--replace` to swap the stored narration for those steps with the new files. The old row is marked `failed`, and its object stays in storage.
+
+The script's tests run with `pnpm run test:scripts`.
+
 ## Lesson engine (inference engine)
 
 The "Learn anything" builder calls the Python engine in `services/engine`, which talks to any OpenAI-compatible model. Set `LLM_MODEL`, `LLM_API_BASE` and `LLM_API_KEY` in `services/engine/.env`, then:

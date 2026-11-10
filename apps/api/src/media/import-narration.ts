@@ -13,8 +13,9 @@ type NarrationFile = { idx: number; body: Uint8Array };
 /**
  * Stores one narration MP3 per step of a lesson's current version.
  * Safe to rerun: a step that already has ready narration for this version is skipped.
+ * With `replace`, a step's old ready narration is marked failed (superseded) and the new file is stored instead.
  */
-export async function importNarration(slug: string, files: NarrationFile[]) {
+export async function importNarration(slug: string, files: NarrationFile[], { replace = false }: { replace?: boolean } = {}) {
   if (!storage) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Media storage is not configured" });
   const [lesson] = await db.select({ versionId: lessons.currentVersionId }).from(lessons).where(eq(lessons.slug, slug));
   if (!lesson?.versionId) throw new Error(`Lesson ${slug} not found or has no current version`);
@@ -39,8 +40,16 @@ export async function importNarration(slug: string, files: NarrationFile[]) {
   for (const f of files) {
     const stepId = byIdx.get(f.idx)!;
     if (have.has(stepId)) {
-      skipped.push(f.idx);
-      continue;
+      if (!replace) {
+        skipped.push(f.idx);
+        continue;
+      }
+      // Retire the old row before saving the new one, so the one-ready-per-step index lets the new row in.
+      // lesson_media has no "superseded" status, so the old row is marked failed; its object is left in place.
+      await db
+        .update(lessonMedia)
+        .set({ status: "failed" })
+        .where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.stepId, stepId), eq(lessonMedia.kind, "narration"), eq(lessonMedia.status, "ready")));
     }
     try {
       await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: f.body, contentType: "audio/mpeg" });
@@ -68,13 +77,13 @@ async function readNarrationDir(dir: string): Promise<NarrationFile[]> {
 }
 
 if (import.meta.main) {
-  const { values } = parseArgs({ options: { lesson: { type: "string" }, dir: { type: "string" } } });
+  const { values } = parseArgs({ options: { lesson: { type: "string" }, dir: { type: "string" }, replace: { type: "boolean", default: false } } });
   if (!values.lesson || !values.dir) {
-    console.error("usage: pnpm media:narration --lesson <slug> --dir <folder of <idx>.mp3 files>");
+    console.error("usage: pnpm media:narration --lesson <slug> --dir <absolute folder of <idx>.mp3 files> [--replace]");
     process.exitCode = 1;
   } else {
     try {
-      const r = await importNarration(values.lesson, await readNarrationDir(values.dir));
+      const r = await importNarration(values.lesson, await readNarrationDir(values.dir), { replace: values.replace });
       console.log(`saved steps [${r.saved.join(", ")}], skipped (already stored) [${r.skipped.join(", ")}]`);
     } catch (e) {
       console.error(e instanceof Error ? e.message : e);

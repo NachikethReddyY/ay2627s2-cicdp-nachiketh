@@ -136,6 +136,25 @@ test("importNarration refuses unknown steps, bad bytes and missing storage befor
   assert.equal((await db.select().from(lessonMedia)).length, 0);
 });
 
+test("importNarration with replace retires the old ready narration and stores the new one", async () => {
+  await signUp(app);
+  const { versionId } = await lessonVersion();
+  const mem = memoryStorage();
+  setStorage(mem);
+  const [a] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
+  const NEW_MP3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 1]);
+
+  assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }]), { saved: [a!.idx], skipped: [] });
+  // Without the flag a second file for a stored step is still skipped.
+  assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: NEW_MP3 }]), { saved: [], skipped: [a!.idx] });
+  // With the flag the old row is retired and the new file is stored.
+  assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: NEW_MP3 }], { replace: true }), { saved: [a!.idx], skipped: [] });
+
+  const rows = await db.select().from(lessonMedia).where(eq(lessonMedia.stepId, a!.id)).orderBy(asc(lessonMedia.createdAt));
+  assert.deepEqual(rows.map((r) => [r.status, r.bytes]), [["failed", MP3.byteLength], ["ready", NEW_MP3.byteLength]]);
+  assert.equal(mem.objects.size, 2, "the superseded object is kept, not deleted");
+});
+
 test("lessons.get leaks no media URL for a lesson the caller cannot see", async () => {
   const cookie = await signUp(app);
   const { versionId, stepId } = await lessonVersion();
