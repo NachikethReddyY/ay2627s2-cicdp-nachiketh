@@ -142,7 +142,7 @@ await boss.send("mastery", { attemptId }, {
 
 ### T3. DB schema, migrations, seed
 - **Files:** `src/db/{schema.ts,migrate.ts,seed.ts,tx.ts}`, `drizzle.config.ts`, `drizzle/*`, `test/fixtures/lesson-fixture.json`, `test/seed.test.ts`.
-- **Do:** every **core** table in plan §7, exactly as named (snake_case columns). Enums as pgEnums. Add a partial unique index `attempts (learner_id, step_id) WHERE observed`. Skip the stretch tables. `seed.ts` reads `worlds/codequest/manifest.json` and `worlds/codequest/lessons/*.json` (validated with `LessonFile`), then upserts `worlds`, `concepts`, `concept_edges`, `lessons`, version 1, and `steps`. It marks lessons `published` (synthetic lessons are hand-reviewed) and is idempotent by lesson slug. Before WP11 writes real content, tests use `test/fixtures/` with one 2-step lesson (one MCQ step, one cloze step).
+- **Do:** every **core** table in plan §7, exactly as named (snake_case columns). Enums as pgEnums. Add a partial unique index `attempts (learner_id, step_id) WHERE observed`. Skip the stretch tables. `seed.ts` reads `worlds/codequest/manifest.json` and `worlds/codequest/lessons/*.json` (validated with `LessonFile`), then upserts `worlds`, `concepts`, `concept_edges`, `lessons`, version 1, and `steps`. It marks lessons `published` (synthetic lessons are hand-reviewed) and is idempotent by lesson slug. A file's `status` applies only on insert; to change an existing lesson's status, use the publish path. Before WP11 writes real content, tests use `test/fixtures/` with one 2-step lesson (one MCQ step, one cloze step).
 - **Test:** migrate on an empty DB; seeding twice leaves the same row counts; `steps.secret` round-trips.
 
 ### T4. Auth (email/password)

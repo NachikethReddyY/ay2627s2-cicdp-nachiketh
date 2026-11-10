@@ -81,22 +81,30 @@ test("seed is idempotent and gives the expected ids", async () => {
   assert.ok(s1!.secret.narration);
 });
 
+const s1 = async () => (await db.select().from(steps).where(eq(steps.id, "s1")))[0]!;
+
 test("reseed keeps an author's status change but restores repo-owned step content", async () => {
   await seed();
-  await db.update(lessons).set({ status: "published" }).where(eq(lessons.slug, "lesson-2"));
-  await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-1")); // unpublished by the author
-  await db.update(steps).set({ public: { title: "edited", prompt: "edited", kind: "mcq" }, secret: { ...(await s1()).secret, narration: "edited" } }).where(eq(steps.id, "s1"));
-  await seed();
-  const status = async (slug: string) => (await db.select().from(lessons).where(eq(lessons.slug, slug)))[0]!.status;
-  assert.equal(await status("lesson-1"), "draft");
-  assert.equal(await status("lesson-2"), "published");
-  const row = await s1();
-  const file = await load("lesson-1.json");
-  assert.deepEqual(row.public, file.steps[0]!.public);
-  assert.deepEqual(row.secret, file.steps[0]!.secret);
+  const original = await s1();
+  try {
+    await db.update(lessons).set({ status: "published" }).where(eq(lessons.slug, "lesson-2"));
+    await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-1")); // unpublished by the author
+    await db.update(steps).set({ public: { title: "edited", prompt: "edited", kind: "mcq" }, secret: { ...original.secret, narration: "edited" } }).where(eq(steps.id, "s1"));
+    await seed();
+    const status = async (slug: string) => (await db.select().from(lessons).where(eq(lessons.slug, slug)))[0]!.status;
+    assert.equal(await status("lesson-1"), "draft");
+    assert.equal(await status("lesson-2"), "published");
+    const row = await s1();
+    const file = await load("lesson-1.json");
+    assert.deepEqual(row.public, file.steps[0]!.public);
+    assert.deepEqual(row.secret, file.steps[0]!.secret);
+  } finally {
+    // Leave the shared test database as the seed made it.
+    await db.update(lessons).set({ status: "published" }).where(eq(lessons.slug, "lesson-1"));
+    await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-2"));
+    await db.update(steps).set({ public: original.public, secret: original.secret }).where(eq(steps.id, "s1"));
+  }
 });
-
-const s1 = async () => (await db.select().from(steps).where(eq(steps.id, "s1")))[0]!;
 
 test("duplicate lesson slugs or step ids across files are errors", async () => {
   const a = await load("lesson-1.json");
