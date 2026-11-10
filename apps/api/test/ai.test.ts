@@ -157,7 +157,7 @@ test("two concurrent plays write the part once", async () => {
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
   assert.equal(row!.status, "published");
-  assert.equal((await db.select().from(steps)).length, 3); // only seeded lesson-1
+  assert.equal((await db.select().from(steps)).length, 6); // only the seeded lessons 1 and 2 (3 steps each)
 });
 
 test("playing a part writes only that part, not the next one", async () => {

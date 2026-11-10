@@ -101,9 +101,9 @@ Signing is local HMAC (no network call), so this costs microseconds per item.
 Access control stays in one place: the visibility check that already guards `lessons.get`. No separate media endpoint to secure.
 
 ### 3.7 Web (`apps/web`)
-- Player renders `<audio src={url} preload="none">` for narration and `<img>` for step images from `media`.
+- Player renders `<audio src={url} preload="auto">` for narration (as `Player.tsx` does today) and `<img>` for step images from `media`.
 - If the player stays open past expiry, a failed `<audio>` load triggers a `lessons.get` refetch (the existing tRPC query invalidation) to get fresh URLs.
-- Remove the `audio/` exclusion from the SPA rewrite in `vercel.json` once nothing serves from `public/audio`.
+- The `audio/` exclusion is removed from the SPA rewrite in `vercel.json`; nothing serves from `public/audio`.
 - The web CSP (`apps/web/vercel.json`) allows the R2 endpoint in `media-src`; `img-src` already allows any `https:` host.
 
 ## 4. Tests (no live calls)

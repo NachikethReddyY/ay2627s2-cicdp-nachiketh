@@ -79,7 +79,7 @@ test("full MCQ path ends revealed after a failed retry", async () => {
   assert.equal(rev.statusCode, 200);
   assert.deepEqual(out(rev).answer, { type: "mcq", index: 1 });
   assert.equal(out(rev).explanations.inferred, true);
-  assert.equal(out(rev).narration, out(rev).explanations.workedExample); // no own narration: falls back
+  assert.match(out(rev).narration, /^The cart needs a total\./); // lesson-1.json supplies the narration text
 
   const rows = await db.select().from(attempts).where(eq(attempts.stepId, "s1"));
   assert.equal(rows.filter((x) => x.observed).length, 1);
