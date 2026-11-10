@@ -7,7 +7,7 @@ import { createShellSocket, type ShellSocket, type ShellState } from "../player/
 import { ApiError, getWorkspaceFile, listFileDirectories, listFiles, moveWorkspaceFile, putFile, putWorkspaceFile, readWorkspaceFiles } from "../player/runPython";
 import { runInShell, runShellCommand, RunInShellError } from "../player/terminal/runInShell";
 import FileTreeView from "../player/workbench/FileTreeView";
-import { ancestors, initialOpen, toggleFolder, type TreeNode } from "../player/workbench/fileTree";
+import { ancestors, initialOpen, sortTree, toggleFolder, type TreeNode } from "../player/workbench/fileTree";
 import DocsPanel from "../player/workbench/DocsPanel";
 import { DOCS } from "../player/workbench/docs";
 import Workbench from "../player/workbench/Workbench";
@@ -15,12 +15,36 @@ import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
 import { languageOf } from "./testEditorFixture";
 import { DEMO_DIRECTORY, DEMO_ENTRY_FILE, DEMO_PROJECT_FILES } from "./testEditorDemo";
+import { Toaster, toast } from "sonner";
 import { removeWebPreviewFile, startWebPreview, syncWebPreviewFile, type PreviewFile } from "./webContainerPreview";
 
 // Dev-only workbench for browsing and editing the authenticated container workspace.
 
 const READY: WorkbenchStatus = { text: "Ready" };
 const DEMO_WEB_FILES = DEMO_PROJECT_FILES.filter((file) => file.path.includes("/web/"));
+const DEMO_ENTRY_TEXT = DEMO_PROJECT_FILES.find((file) => file.path === DEMO_ENTRY_FILE)?.content ?? "";
+
+// The bundled demo as a file tree, so the editor paints at once while the sandbox is still starting.
+function demoTree(): TreeNode[] {
+  const root: TreeNode[] = [];
+  for (const { path } of DEMO_PROJECT_FILES) {
+    const parts = path.split("/");
+    let level = root;
+    parts.forEach((name, index) => {
+      if (index === parts.length - 1) {
+        level.push({ name });
+        return;
+      }
+      let folder = level.find((node) => node.name === name);
+      if (!folder) {
+        folder = { name, open: index === 0 && name === DEMO_DIRECTORY, children: [] };
+        level.push(folder);
+      }
+      level = folder.children!;
+    });
+  }
+  return sortTree(root);
+}
 
 const LANGUAGE_LABELS: Record<string, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python", markdown: "Markdown", json: "JSON", html: "HTML", css: "CSS" };
 const joinPath = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
@@ -143,14 +167,16 @@ async function savedProjectFiles(): Promise<{ files: PreviewFile[]; binarySkippe
 }
 
 export default function TestEditor() {
-  const [tree, setTree] = useState<TreeNode[]>([]);
-  const [open, setOpen] = useState("");
-  const [content, setContent] = useState("");
-  const [folders, setFolders] = useState<ReadonlySet<string>>(() => new Set());
+  const [tree, setTree] = useState<TreeNode[]>(demoTree);
+  const [open, setOpen] = useState(DEMO_ENTRY_FILE);
+  const [content, setContent] = useState(DEMO_ENTRY_TEXT);
+  const [folders, setFolders] = useState<ReadonlySet<string>>(() => initialOpen(demoTree()));
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [fileLoading, setFileLoading] = useState(false);
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const [shellNote, setShellNote] = useState<string>();
+  // The name field shown under the tree while a new file or folder is being named.
+  const [draftEntry, setDraftEntry] = useState<"file" | "folder" | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState("terminal-1");
   const [terminalStates, setTerminalStates] = useState<Record<string, ShellState>>({});
@@ -175,24 +201,40 @@ export default function TestEditor() {
   const previewAutoStarted = useRef(false);
   const previewDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
   const runRef = useRef<HTMLButtonElement>(null);
-  const activePath = useRef("");
-  const activeContent = useRef("");
-  const treeRef = useRef<TreeNode[]>([]);
+  // The demo entry is open from the first paint, but it stays read-only until the sandbox copy confirms it,
+  // so typing cannot save over work the sandbox already holds.
+  const activePath = useRef(DEMO_ENTRY_FILE);
+  const activeContent = useRef(DEMO_ENTRY_TEXT);
+  // False until the open buffer matches the sandbox copy. Read by the loaders; bufferConfirmed mirrors it for rendering.
+  const openConfirmed = useRef(false);
+  const [bufferConfirmed, setBufferConfirmed] = useState(false);
+  const draftInput = useRef<HTMLInputElement>(null);
+  const treeRef = useRef<TreeNode[]>(demoTree());
   const dirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const shellSockets = useRef(new Set<ShellSocket>());
   const openRequest = useRef(0);
-  const loadedFolders = useRef(new Set<string>([""]));
+  // Last known text of each file, so a click shows it at once while the sandbox copy is re-read behind it.
+  const fileCache = useRef(new Map<string, string>(DEMO_PROJECT_FILES.map((file): [string, string] => [file.path, file.content])));
+  // The demo's folders are already in the tree, so opening them needs no listing.
+  const loadedFolders = useRef(new Set<string>(["", DEMO_DIRECTORY, `${DEMO_DIRECTORY}/src`, `${DEMO_DIRECTORY}/web`]));
   const loadingWorkspace = useRef(false);
   const queuedWorkspaceRefresh = useRef(false);
   const workspaceLoad = useRef<Promise<void>>(Promise.resolve());
   const terminalNumber = useRef(1);
+  // Shell tab ids carry a per-page tag, so two windows never replace each other's terminal.
+  const windowTag = useRef(Math.random().toString(36).slice(2, 10));
   const panel = usePanel(); // no container: the workbench clamps the height at render
 
   useEffect(() => {
     setPreviewHost(document.querySelector(".wb"));
   }, []);
+
+  // Focus the new-entry field when it opens, instead of autoFocus.
+  useEffect(() => {
+    if (draftEntry) draftInput.current?.focus();
+  }, [draftEntry]);
 
   useEffect(() => {
     const receivePreviewMessage = (event: MessageEvent) => {
@@ -226,10 +268,14 @@ export default function TestEditor() {
   }, [previewPosition]);
 
   useEffect(() => {
-    const socket = createShellSocket({ tabId: "terminal-1" });
+    const socket = createShellSocket({ tabId: `terminal-1-${windowTag.current}` });
     shellSockets.current.add(socket);
     setTerminals([{ id: "terminal-1", label: "Terminal 1", socket }]);
     setTerminalStates({ "terminal-1": socket.state() });
+    // Start the sandbox on open so the files load without opening the terminal. The terminal view's own connect() is a no-op once this one is connecting.
+    // Deferred, and cancelled on cleanup: React's development double-mount would otherwise open a socket and drop it at once.
+    const timer = setTimeout(() => socket.connect(), 0);
+    return () => clearTimeout(timer);
   }, []);
   useEffect(() => () => {
     shellSockets.current.forEach((socket) => socket.dispose());
@@ -243,8 +289,9 @@ export default function TestEditor() {
   }, [terminals]);
   const shell = terminals.find((terminal) => terminal.id === activeTerminalId)?.socket ?? null;
   const shellState = useMemo<ShellState>(() => terminalStates[activeTerminalId] ?? { kind: "idle" as const }, [activeTerminalId, terminalStates]);
-  const workspaceStatus: WorkbenchStatus = workspaceLoading || fileLoading
-    ? { text: fileLoading ? "Opening workspace file…" : "Loading workspace files…", tone: "busy" }
+  // Switching files shows no spinner: the previous text stays until the new file arrives. Only the first load is busy.
+  const workspaceStatus: WorkbenchStatus = workspaceLoading
+    ? { text: "Loading workspace files…", tone: "busy" }
     : shellState.kind === "connecting"
       ? { text: "Connecting to sandbox…", tone: "busy" }
       : browserPreview.state === "error"
@@ -255,7 +302,7 @@ export default function TestEditor() {
     if (terminals.length >= MAX_TERMINALS) return;
     const number = ++terminalNumber.current;
     const id = `terminal-${number}`;
-    const socket = createShellSocket({ tabId: id });
+    const socket = createShellSocket({ tabId: `${id}-${windowTag.current}` });
     shellSockets.current.add(socket);
     setTerminals((current) => [...current, { id, label: `Terminal ${number}`, socket }]);
     setTerminalStates((current) => ({ ...current, [id]: socket.state() }));
@@ -296,12 +343,14 @@ export default function TestEditor() {
       }
       if (!dirty.current || activePath.current !== path) return true;
       const nextContent = activeContent.current;
-      dirty.current = false;
+      // Stays dirty until the PUT succeeds, so a file switch waits for this save and a failed save keeps the buffer.
       try {
         await putWorkspaceFile(path, nextContent, { keepalive: options.keepalive === true });
+        fileCache.current.set(path, nextContent);
+        // Edits typed while the PUT ran are newer than nextContent and stay dirty for the next save.
+        if (activeContent.current === nextContent) dirty.current = false;
         return true;
       } catch (error) {
-        dirty.current = true;
         setShellNote(error instanceof Error ? `Could not save ${path}: ${error.message}` : `Could not save ${path}`);
         return false;
       }
@@ -323,7 +372,8 @@ export default function TestEditor() {
     loadingWorkspace.current = true;
     let finishLoad = () => {};
     workspaceLoad.current = new Promise<void>((resolve) => { finishLoad = resolve; });
-    const showLoading = seedIfEmpty || treeRef.current.length === 0;
+    // Only an empty tree is a loading state; the bundled demo already fills it at first paint.
+    const showLoading = treeRef.current.length === 0;
     if (showLoading) setWorkspaceLoading(true);
     try {
       const loadListings = async () => {
@@ -357,7 +407,7 @@ export default function TestEditor() {
         if (!listings.has(DEMO_DIRECTORY) || !listings.has(`${DEMO_DIRECTORY}/src`) || seedIfEmpty) listings = await loadListings();
       }
       const isInitial = treeRef.current.length === 0;
-      const nextTree = mergeWorkspaceTree(treeRef.current, listings);
+      const nextTree = sortTree(mergeWorkspaceTree(treeRef.current, listings));
       treeRef.current = nextTree;
       setTree(nextTree);
       if (isInitial) setFolders(initialOpen(nextTree));
@@ -365,7 +415,8 @@ export default function TestEditor() {
       // A file renamed or removed in the terminal keeps its unsaved buffer; the next save recreates it.
       const keepDirtyBuffer = dirty.current && activePath.current !== "";
       const selected = keepDirtyBuffer || paths.includes(activePath.current) ? activePath.current : paths.includes(DEMO_ENTRY_FILE) ? DEMO_ENTRY_FILE : (paths[0] ?? "");
-      if (selected && selected !== activePath.current) {
+      // The first refresh also reads the open file, so the bundled copy shown at first paint is replaced by the sandbox's.
+      if (selected && (selected !== activePath.current || !openConfirmed.current)) {
         const request = ++openRequest.current;
         const result = await getWorkspaceFile(selected);
         // Skip the switch if the learner typed while the file loaded: replacing the buffer would drop those edits.
@@ -373,6 +424,8 @@ export default function TestEditor() {
           activePath.current = selected;
           activeContent.current = result.content;
           dirty.current = false;
+          openConfirmed.current = true;
+          setBufferConfirmed(true);
           setOpen(selected);
           setContent(result.content);
           void syncWebPreviewFile(selected, result.content).catch(() => {});
@@ -421,10 +474,14 @@ export default function TestEditor() {
   }, [refreshWorkspace, shellState]);
 
   useEffect(() => {
-    if (shellState.kind !== "open" || !shellState.ready) return;
-    const timer = setInterval(() => { void refreshWorkspace(false); }, 10_000);
+    // Pause while a file is opening, so the folder poll does not queue ahead of that read.
+    // Every poll is a sandbox round trip per folder, so it runs every 30 s and only while the tab is visible.
+    if (shellState.kind !== "open" || !shellState.ready || fileLoading) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void refreshWorkspace(false);
+    }, 30_000);
     return () => clearInterval(timer);
-  }, [folders, refreshWorkspace, shellState]);
+  }, [fileLoading, folders, refreshWorkspace, shellState]);
 
   // Save pending edits when the page unmounts, and warn before a reload can drop them.
   // Unmount and pagehide saves use keepalive, so an interrupted navigation does not drop the last edit.
@@ -444,28 +501,58 @@ export default function TestEditor() {
     };
   }, [flushSave]);
 
+  // Sets the ref the loaders read and the state the editor renders from, together.
+  const confirmBuffer = (confirmed: boolean) => {
+    openConfirmed.current = confirmed;
+    setBufferConfirmed(confirmed);
+  };
+
+  const showFile = (path: string, text: string, confirmed = true) => {
+    activePath.current = path;
+    activeContent.current = text;
+    dirty.current = false;
+    confirmBuffer(confirmed);
+    setOpen(path);
+    setContent(text);
+    void syncWebPreviewFile(path, text).catch(() => {});
+    setFolders((f) => new Set([...f, ...ancestors(path)]));
+  };
+
   const openFile = async (path: string) => {
     // Reopening the open file has nothing to load. Replacing the buffer here would drop edits typed while the fetch was pending.
     if (path === activePath.current) return;
-    setFileLoading(true);
     setShellNote(undefined);
+    const cached = fileCache.current.get(path);
+    // With no unsaved edits, a cached file shows at once. The sandbox copy is re-read behind it and only replaces the view if it changed.
+    if (cached !== undefined && !dirty.current) {
+      const request = ++openRequest.current;
+      // Read-only until the sandbox copy matches, so the cached text cannot be saved over a newer sandbox copy.
+      showFile(path, cached, false);
+      try {
+        const result = await getWorkspaceFile(path);
+        fileCache.current.set(path, result.content);
+        if (request === openRequest.current && !dirty.current && activePath.current === path) {
+          if (result.content !== activeContent.current) showFile(path, result.content);
+          else confirmBuffer(true);
+        }
+      } catch {
+        // Keep the cached text, read-only; the next open or refresh reads the sandbox again.
+      }
+      return;
+    }
+    setFileLoading(true);
     try {
       // A failed save keeps the current buffer open, so its unsaved edits are not replaced.
       if (!(await flushSave())) return;
       const request = ++openRequest.current;
       const result = await getWorkspaceFile(path);
+      fileCache.current.set(path, result.content);
       if (request !== openRequest.current) return;
       // Save edits typed while the file loaded, so the new content does not replace them.
       while (dirty.current) {
         if (!(await flushSave()) || request !== openRequest.current) return;
       }
-      activePath.current = path;
-      activeContent.current = result.content;
-      dirty.current = false;
-      setOpen(path);
-      setContent(result.content);
-      void syncWebPreviewFile(path, result.content).catch(() => {});
-      setFolders((f) => new Set([...f, ...ancestors(path)]));
+      showFile(path, result.content);
     } catch (error) {
       setShellNote(error instanceof Error ? error.message : `Could not open ${path}`);
     } finally {
@@ -474,11 +561,11 @@ export default function TestEditor() {
   };
 
   const toggleWorkspaceFolder = async (path: string) => {
-    if (folders.has(path)) {
-      setFolders((current) => toggleFolder(current, path));
-      return;
-    }
-    if (!loadedFolders.current.has(path)) {
+    // Open or close at once, from the children the tree already shows. The listing refreshes them behind it, and a failed
+    // listing (for example, when the learner is signed out) leaves the folder open.
+    const wasOpen = folders.has(path);
+    setFolders((current) => toggleFolder(current, path));
+    if (!wasOpen && !loadedFolders.current.has(path)) {
       try {
         const { entries } = await listFiles(path);
         const children = entries.filter((entry) => entry.type === "file" || entry.type === "dir")
@@ -498,11 +585,9 @@ export default function TestEditor() {
         });
         loadedFolders.current.add(path);
       } catch (error) {
-        setShellNote(error instanceof Error ? error.message : `Could not list ${path}`);
-        return;
+        toast.error(error instanceof Error ? error.message : `Could not refresh ${path}`);
       }
     }
-    setFolders((current) => toggleFolder(current, path));
   };
 
   const changeContent = (next: string) => {
@@ -553,6 +638,7 @@ export default function TestEditor() {
       try {
         const saved = await savedProjectFiles();
         sources = saved.files;
+        for (const file of sources) fileCache.current.set(file.path, file.content);
         if (saved.binarySkipped) setShellNote("Preview skips binary files such as images and fonts.");
       } catch (error) {
         // Say so when the demo stands in for the saved project, so edits are not silently hidden.
@@ -583,13 +669,10 @@ export default function TestEditor() {
     if (previewAutoStarted.current) return;
     previewAutoStarted.current = true;
     void (async () => {
-      // Preview startup and workspace loading are independent of the
-      // interactive terminal and run in parallel as soon as the page opens.
-      // The preview reads the saved project, so it starts after the workspace has loaded and seeded.
+      // Only the workspace loads on open. The preview starts when the learner clicks Run or Preview, not by itself.
       await refreshWorkspace(true);
-      await startPreview();
     })();
-  }, [refreshWorkspace, startPreview]);
+  }, [refreshWorkspace]);
 
   const run = async () => {
     panel.dispatch({ type: "open" });
@@ -647,48 +730,42 @@ export default function TestEditor() {
     { id: "check", title: "Check", run: check },
   ];
 
-  const createWorkspaceFile = async () => {
-    const name = window.prompt("New file name (for example, src/utils.js)");
-    if (!name?.trim()) return;
-    const path = `${DEMO_DIRECTORY}/${name.trim().replace(/^\/+/, "")}`;
+  const createWorkspaceFile = () => setDraftEntry("file");
+  const createWorkspaceFolder = () => setDraftEntry("folder");
+
+  // Runs when the name field is submitted: Enter creates, Escape or leaving the field cancels.
+  const commitDraftEntry = async (kind: "file" | "folder", rawName: string) => {
+    setDraftEntry(null);
+    const name = rawName.trim().replace(/^\/+/, "");
+    if (!name) return;
+    const path = `${DEMO_DIRECTORY}/${name}`;
     if (path.split("/").some((part) => !part || part === "." || part === "..")) {
-      setShellNote("Use a file name inside the project folder.");
+      toast.error(`Use a ${kind} name inside the project folder.`);
       return;
     }
     try {
       const parts = path.split("/");
       for (let index = 1; index < parts.length; index++) loadedFolders.current.add(parts.slice(0, index).join("/"));
-      // Create only: an existing file keeps its contents.
-      if (await workspaceFileExists(path)) {
-        setShellNote(`${path} already exists. Open it from the file list instead.`);
+      if (kind === "file") {
+        // Create only: an existing file keeps its contents.
+        if (await workspaceFileExists(path)) {
+          toast.error(`${path} already exists. Open it from the file list instead.`);
+          return;
+        }
+        await putWorkspaceFile(path, "");
+        await refreshWorkspace(false);
+        await openFile(path);
+        toast.success(`Created ${path}`);
         return;
       }
-      await putWorkspaceFile(path, "");
-      await refreshWorkspace(false);
-      await openFile(path);
-    } catch (error) {
-      setShellNote(error instanceof Error ? error.message : "Could not create file");
-    }
-  };
-
-  const createWorkspaceFolder = async () => {
-    const name = window.prompt("New folder name (for example, src/components)");
-    if (!name?.trim()) return;
-    const path = `${DEMO_DIRECTORY}/${name.trim().replace(/^\/+/, "")}`;
-    if (path.split("/").some((part) => !part || part === "." || part === "..")) {
-      setShellNote("Use a folder name inside the project folder.");
-      return;
-    }
-    try {
       // Workspace writes create parent directories. A hidden marker keeps a newly created folder visible to the file listing.
       await putWorkspaceFile(`${path}/.learnquest-folder`, "");
-      const parts = path.split("/");
-      for (let index = 1; index < parts.length; index++) loadedFolders.current.add(parts.slice(0, index).join("/"));
       loadedFolders.current.add(path);
       setFolders((current) => new Set([...current, DEMO_DIRECTORY, path]));
       await refreshWorkspace(false);
+      toast.success(`Created folder ${path}`);
     } catch (error) {
-      setShellNote(error instanceof Error ? error.message : "Could not create folder");
+      toast.error(error instanceof Error ? error.message : `Could not create the ${kind}`);
     }
   };
 
@@ -726,6 +803,20 @@ export default function TestEditor() {
   const navigator = (
     <div className="min-w-0">
       {workspaceLoading && tree.length === 0 ? <p className="px-2 py-1 text-xs text-[var(--mu)]">Loading container files…</p> : tree.length === 0 ? <p className="px-2 py-1 text-xs text-[var(--mu)]">Open the terminal to load its files.</p> : (
+        <>
+        {draftEntry && (
+          <input
+            ref={draftInput}
+            aria-label={draftEntry === "file" ? "New file name" : "New folder name"}
+            placeholder={draftEntry === "file" ? "New file, e.g. src/utils.js" : "New folder, e.g. src/components"}
+            className="mx-1 mb-1 w-[calc(100%-0.5rem)] rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs text-[var(--tx)]"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void commitDraftEntry(draftEntry, event.currentTarget.value);
+              else if (event.key === "Escape") setDraftEntry(null);
+            }}
+            onBlur={() => setDraftEntry(null)}
+          />
+        )}
         <FileTreeView
           label="Workspace files"
           nodes={tree}
@@ -740,6 +831,7 @@ export default function TestEditor() {
             <button type="button" className="wb-tb wb-n34" aria-label="Refresh files" title="Refresh files" onClick={() => void refreshWorkspace(false)}><RefreshCw size={14} aria-hidden="true" /></button>
           </span>}
         />
+        </>
       )}
     </div>
   );
@@ -754,6 +846,10 @@ export default function TestEditor() {
         <Check size={15} strokeWidth={1.75} aria-hidden="true" />
         Check
       </button>
+      {browserPreview.state === "idle" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
+        <MonitorPlay size={13} aria-hidden="true" />
+        Preview
+      </button>}
       {browserPreview.state === "error" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
         <RefreshCw size={13} aria-hidden="true" />
         Retry preview
@@ -847,7 +943,7 @@ export default function TestEditor() {
       editor={open ? <WorkbenchEditor
         key={open}
         transportRef={runRef}
-        edit={{ value: content, language: openLang, onChange: changeContent }}
+        edit={{ value: content, language: openLang, onChange: changeContent, readOnly: !bufferConfirmed }}
       /> : <div role={workspaceLoading || shellState.kind === "connecting" ? "status" : undefined} aria-live={workspaceLoading || shellState.kind === "connecting" ? "polite" : undefined} className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-[var(--mu)]">
         {workspaceLoading || shellState.kind === "connecting" ? <><LoaderCircle size={15} aria-hidden="true" className="motion-safe:animate-spin" />{workspaceLoading ? "Loading workspace files…" : "Connecting to the sandbox…"}</> : "Open the terminal to load container files."}
       </div>}
@@ -874,7 +970,7 @@ export default function TestEditor() {
         ref={previewWindowRef}
         className={`wb-preview-float${previewMinimized ? " wb-preview-minimized" : ""}${previewMaximized ? " wb-preview-maximized" : ""}`}
         aria-label="Floating browser preview window"
-        aria-hidden={!previewOpen}
+        inert={!previewOpen}
         hidden={!previewOpen}
         style={previewPosition && !previewMaximized ? { left: previewPosition.left, top: previewPosition.top, right: "auto", bottom: "auto" } : undefined}
       >
@@ -949,6 +1045,7 @@ export default function TestEditor() {
       </button>,
       previewHost,
     )}
+    <Toaster position="bottom-right" richColors closeButton />
     </>
   );
 }
