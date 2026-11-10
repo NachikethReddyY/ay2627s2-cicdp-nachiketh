@@ -23,6 +23,7 @@ export type Reveal = {
   // Same shape as player-core's Hunk; defined here so this file stays import-free for node --test.
   hunks: { id: string; file: string; oldStart: number; lines: string[] }[];
   explanations: { workedExample: string; practice: string; inferred: true };
+  narration: string; // spoken or captioned on reveal; the worked example unless the step has its own
   source: { repo: string; sha: string; path: string } | null; // null for AI lessons
 };
 

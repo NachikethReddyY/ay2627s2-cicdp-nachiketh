@@ -22,6 +22,7 @@ const result = (o: Partial<AttemptResult> = {}): AttemptResult => ({
 const reveal: Reveal = {
   answer: { type: "mcq", index: 0 }, hunks: [],
   explanations: { workedExample: "w", practice: "p", inferred: true },
+  narration: "w",
   source: { repo: "r", sha: "s", path: "p" },
 };
 const hint = (rung: number) => ({ rung, text: `h${rung}` });

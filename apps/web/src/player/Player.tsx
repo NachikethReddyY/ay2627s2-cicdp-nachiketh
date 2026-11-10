@@ -9,6 +9,7 @@ import MenuBar from "./MenuBar";
 import { stepIndexAt, useReplay } from "./useReplay";
 import { useWindows, type Kind, type WinId } from "./useWindows";
 import { FOCUS } from "./ui";
+import { createSpeaker, type Synth, type Utterance } from "./speech";
 import "./player.css";
 
 const KEYS: [string, string][] = [
@@ -51,7 +52,7 @@ const useDesktop = () =>
 // `live` = a lesson from the API: one step at a time, the instructions window holds the predict/reveal panel.
 // `code` swaps the replay (editor + transport bar) for the learner's own editor: practice lessons, no video.
 // `narration` is the signed URL of this step's audio, when it has one; it drives the volume controls.
-type Live = { idx: number; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; narration?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
+type Live = { idx: number; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
 // Without `live` this is the bundled sample (dev only): `sample` supplies its mode and worked examples.
 type Sample = { mode: "task" | "video"; examples: string[] };
 type Props = { title: string; stepTitles: string[]; timeline: Timeline; live?: Live; sample?: Sample };
@@ -88,7 +89,31 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   // Volume and mute drive the step's narration audio; with no narration the controls are hidden.
   const [vol, setVol] = useState(loadVolume);
   const narration = live?.narration;
+  const narrationText = live?.narrationText;
   const audioRef = useRef<HTMLAudioElement>(null);
+  // Speech reads the same narration text when the step has no audio URL, or its audio fails to load (signed URLs expire).
+  const speaker = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? null
+        : createSpeaker(window.speechSynthesis as Synth | undefined, (text) => new SpeechSynthesisUtterance(text) as Utterance),
+    [],
+  );
+  const [failedAudio, setFailedAudio] = useState<string | undefined>();
+  const useSpeech = !!speaker && !!narrationText && (!narration || failedAudio === narration);
+  const hasNarration = !!narration || (!!narrationText && !!speaker);
+  const volRef = useRef(vol);
+  volRef.current = vol;
+  const level = (v: { volume: number; muted: boolean }) => (v.muted ? 0 : v.volume / 100);
+  useEffect(() => {
+    if (!speaker || !useSpeech || !narrationText) return;
+    speaker.speak(narrationText, { volume: volRef.current.volume / 100, muted: volRef.current.muted });
+    speaker.resume(); // a pause from the previous step must not leave the new one silent
+    return () => speaker.cancel(); // step change and unmount
+  }, [speaker, useSpeech, narrationText]);
+  useEffect(() => {
+    if (useSpeech) speaker?.setVolume(level(vol));
+  }, [speaker, useSpeech, vol]);
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
@@ -114,8 +139,11 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   // just reaches its end, the narration is left to finish its sentence.
   const ended = r.t >= timeline.duration;
   useEffect(() => {
-    if (!r.playing && !ended) audioRef.current?.pause();
-  }, [r.playing, ended]);
+    if (!r.playing && !ended) {
+      audioRef.current?.pause();
+      if (useSpeech) speaker?.pause();
+    }
+  }, [r.playing, ended, useSpeech, speaker]);
   const paths = Object.keys(frame.files);
   const viewed = picked && picked in frame.files ? picked : frame.activePath;
   const toggle = () => {
@@ -123,6 +151,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
     // Narration follows the Play/Pause control. Play is a user gesture, so it also recovers from a refused autoplay.
     const a = audioRef.current;
     if (a && !r.playing && a.paused) void a.play().catch(() => {}); // pausing is handled by the effect below
+    if (useSpeech && !r.playing) speaker?.resume();
     r.toggle();
   };
 
@@ -174,7 +203,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
     else if (k === "ArrowRight") e.shiftKey ? r.stepBoundary(1) : r.seekBy(5000);
     else if (k === ",") r.slower();
     else if (k === ".") r.faster();
-    else if ((k === "m" || k === "M") && narration) toggleMute();
+    else if ((k === "m" || k === "M") && hasNarration) toggleMute();
     else if (k === "b" || k === "B") setExplorer((o) => !o);
     else if ((k === "f" || k === "F") && desktop) W.toggleFull(target);
     else if (k === "e" || k === "E") editorRef.current?.focus();
@@ -223,7 +252,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           playing={r.playing}
           speed={r.speed}
           muted={vol.muted}
-          audio={!!narration}
+          audio={hasNarration}
           explorer={explorer}
           desktop={desktop}
           full={W.fill?.kind === "full"}
@@ -342,7 +371,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
                   speed={r.speed}
                   volume={vol.volume}
                   muted={vol.muted}
-                  audio={!!narration}
+                  audio={hasNarration}
                   onVolume={setVolume}
                   onMute={toggleMute}
                   faded={idle && r.playing && desktop}
@@ -370,7 +399,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
       <div role="status" aria-live="polite" className="sr-only">
         Step {cur + 1}: {stepTitle}
       </div>
-      {narration && <audio ref={audioRef} key={narration} src={narration} preload="auto" />}
+      {narration && <audio ref={audioRef} key={narration} src={narration} preload="auto" onError={() => setFailedAudio(narration)} />}
 
       <dialog ref={aboutRef} aria-labelledby="about-h" className="chunk m-auto max-w-sm bg-paper p-5">
         <h2 id="about-h" className="font-display text-xl font-black">
@@ -387,7 +416,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           Keyboard shortcuts
         </h2>
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          {KEYS.filter(([k]) => k !== "M" || narration).map(([k, d]) => (
+          {KEYS.filter(([k]) => k !== "M" || hasNarration).map(([k, d]) => (
             <div key={k} className="contents">
               <dt className="font-mono font-bold">{k}</dt>
               <dd>{d}</dd>

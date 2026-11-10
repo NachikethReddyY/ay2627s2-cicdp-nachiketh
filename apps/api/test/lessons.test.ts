@@ -9,7 +9,7 @@ import { lessons } from "../src/db/schema.ts";
 const app = buildApp();
 after(() => app.close());
 
-const FORBIDDEN = ["secret", "answer", "accepted", "hints", "hunks", "beforeFiles", "explanations", "source"];
+const FORBIDDEN = ["secret", "answer", "accepted", "hints", "hunks", "beforeFiles", "explanations", "narration", "source"];
 function walk(v: unknown) {
   if (Array.isArray(v)) return v.forEach(walk);
   if (v && typeof v === "object") {

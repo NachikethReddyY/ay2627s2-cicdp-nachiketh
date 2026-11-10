@@ -234,6 +234,7 @@ export const stepsRouter = router({
         ]),
         hunks: z.array(z.unknown()),
         explanations: z.object({ workedExample: z.string(), practice: z.string(), inferred: z.literal(true) }),
+        narration: z.string(),
         source: z.object({ repo: z.string(), sha: z.string(), path: z.string() }).nullable(),
       }),
     )
@@ -249,6 +250,7 @@ export const stepsRouter = router({
             : { type: "cloze" as const, text: s.answer as string },
         hunks: s.hunks,
         explanations: { ...s.explanations, inferred: true as const },
+        narration: s.narration ?? s.explanations.workedExample,
         source: step.source,
       };
     }),

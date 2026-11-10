@@ -9,7 +9,7 @@ import { attempts } from "../src/db/schema.ts";
 const app = buildApp();
 after(() => app.close());
 
-const FORBIDDEN = ["secret", "answer", "accepted", "hunks", "explanations", "source"];
+const FORBIDDEN = ["secret", "answer", "accepted", "hunks", "explanations", "narration", "source"];
 function walk(v: unknown, path = "") {
   if (Array.isArray(v)) return v.forEach((x) => walk(x, path));
   if (v && typeof v === "object") {
@@ -79,6 +79,7 @@ test("full MCQ path ends revealed after a failed retry", async () => {
   assert.equal(rev.statusCode, 200);
   assert.deepEqual(out(rev).answer, { type: "mcq", index: 1 });
   assert.equal(out(rev).explanations.inferred, true);
+  assert.equal(out(rev).narration, out(rev).explanations.workedExample); // no own narration: falls back
 
   const rows = await db.select().from(attempts).where(eq(attempts.stepId, "s1"));
   assert.equal(rows.filter((x) => x.observed).length, 1);

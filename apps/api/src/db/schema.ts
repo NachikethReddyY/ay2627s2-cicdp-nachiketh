@@ -335,6 +335,8 @@ export type StepSecret = {
   accepted?: string[];
   hints: { text: string; eliminate?: number }[];
   explanations: { workedExample: string; practice: string };
+  // Text spoken or captioned on reveal when the step has no narration audio; falls back to workedExample.
+  narration?: string;
   // Recorded as attempts.missed_concepts on a wrong answer (AI lessons only).
   concepts?: string[];
 };
