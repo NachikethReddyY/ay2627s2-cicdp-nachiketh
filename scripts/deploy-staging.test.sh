@@ -26,7 +26,7 @@ def check(ok: bool, message: str) -> None:
         failures.append(message)
 
 
-check(triggers.get("push", {}).get("branches") == ["main"], "triggers on push to main only")
+check(set(triggers) == {"workflow_dispatch"}, "manual trigger only, no push")
 check(wf.get("permissions") == {"contents": "read"}, "top-level permissions are contents: read")
 check(wf["concurrency"] == {"group": "deploy-staging", "cancel-in-progress": False},
       "one deploy at a time, in-flight deploys are never cancelled")
