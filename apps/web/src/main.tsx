@@ -11,6 +11,7 @@ import { clearReloadGuard, reloadOnce } from "./lib/chunkReload";
 
 const PlayerPage = lazy(() => import("./player/PlayerPage"));
 const DiffPage = import.meta.env.DEV ? lazy(() => import("./player/DiffPage")) : null;
+const Changelog = lazy(() => import("./pages/Changelog"));
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
@@ -53,6 +54,7 @@ const root = createRootRoute({ component: Root });
 const r = { getParentRoute: () => root };
 const routeTree = root.addChildren([
   createRoute({ ...r, path: "/", component: Index }),
+  createRoute({ ...r, path: "/changelog", component: () => <Changelog /> }),
   createRoute({
     ...r,
     path: "/login",

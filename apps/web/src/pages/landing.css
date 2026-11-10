@@ -1,0 +1,413 @@
+/* Landing page only. It borrows the practice editor's language (player/workbench/workbench.css, shown at
+   /test/editor): Geist and Geist Mono, cool grey surfaces, 1px hairlines, one blue accent, glass windows
+   over the desktop wallpaper, pill segmented controls. The LearnSlop voice and the sprout mark stay; the sticker outlines
+   of DESIGN.md do not, because the editor never used them.
+   Everything is scoped under .lp, so Home, Course and Login keep index.css untouched. */
+
+html:has(.lp), body:has(.lp) { background: #f6f6f8; }
+@media (prefers-color-scheme: dark) { html:has(.lp), body:has(.lp) { background: #1e1e1e; } }
+html:has(.lp) { scroll-padding-top: 88px; }
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.lp) { scroll-behavior: smooth; }
+}
+
+.lp {
+  /* tokens: same names and values as .wb in workbench.css, plus page-level extras */
+  --tx: #1c1c1e; --mu: #555a66; --line: #d7d6d6; --side: #edecec; --code: #ffffff; --tbar: #ffffff;
+  --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
+  --ac: #2f5fd6; --acT: #2f5fd6; --cur: #fff6cf; --numdim: #b4b8c0;
+  --ok: #1f9d55; --okT: #177a42; --bad: #c2362f; --warn: #b7791f;
+  --kw: #9b2393; --fn: #326d74; --nu: #1c00cf; --str: #c41a16;
+  --win: rgba(255, 255, 255, 0.3); --edge: rgba(255, 255, 255, 0.7); --vib: rgba(237, 236, 236, 0.82);
+  --glass: rgba(255, 255, 255, 0.82); --glass-line: rgba(20, 30, 70, 0.1); --chip: #ffffff;
+  --jsbg: #f2b63a; --jstx: #3b2a00; --folder: #7aa2d8;
+  --page: #f6f6f8; --track: #e4e4e8;
+  --sans: "Geist", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --gutter: 16px;
+
+  position: relative;
+  min-height: 100dvh;
+  /* clip, not hidden: hidden would make .lp a scroll container */
+  overflow-x: clip;
+  color: var(--tx);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+
+  @media (min-width: 640px) { --gutter: 32px; }
+
+  @media (prefers-color-scheme: dark) {
+    --tx: #ececec; --mu: #a3a3a8; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
+    --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
+    --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
+    --ok: #3fc07a; --okT: #3fc07a; --bad: #ff6b61; --warn: #e0a84a;
+    --kw: #ff7ab2; --fn: #78c2ff; --nu: #d9c97c; --str: #ff8170;
+    --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
+    --glass: rgba(38, 38, 38, 0.78); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
+    --jsbg: #f5d37a; --folder: #89b4fa;
+    --page: #1e1e1e; --track: #3a3a3a;
+  }
+
+  h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; }
+
+  /* one focus ring everywhere, as in the editor: 2px accent just outside the control */
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--acT); outline-offset: 2px; }
+
+  .lp-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .lp-skip {
+    position: absolute; left: 16px; top: -120px; z-index: 20;
+    padding: 10px 16px; border-radius: 12px; background: var(--code); color: var(--tx);
+    border: 1px solid var(--line); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14); font-weight: 600;
+  }
+  .lp-skip:focus { top: 12px; }
+
+  .lp-wrap { max-width: 1200px; margin: 0 auto; padding: 0 var(--gutter); }
+
+  /* ---------- buttons ---------- */
+  .lp-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 44px; padding: 0 20px; border: 1px solid transparent; border-radius: 22px;
+    background: var(--ac); color: #fff; font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(20, 30, 70, 0.2);
+    transition: background-color 0.14s ease-out, border-color 0.14s ease-out, box-shadow 0.14s ease-out, transform 0.14s var(--out);
+  }
+  .lp-btn:hover { background: #2550b8; }
+  .lp-btn:active:enabled { transform: scale(0.97); }
+  .lp-btn svg { transition: transform 0.18s var(--out); }
+  .lp-btn:hover svg { transform: translateX(2px); }
+  .lp-btn-quiet { background: var(--code); color: var(--tx); border-color: var(--line); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08); }
+  .lp-btn-quiet:hover:enabled { background: var(--side); border-color: color-mix(in srgb, var(--mu) 45%, var(--line)); }
+  .lp-btn:disabled { opacity: 0.45; cursor: default; }
+  .lp-btn-sm { min-height: 44px; padding: 0 16px; font-size: 14px; }
+  .lp-link { transition: color 0.14s ease-out, text-underline-offset 0.14s var(--out); color: var(--acT); font-weight: 600; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
+
+  /* ---------- nav: the editor's toolbar ---------- */
+  .lp-nav {
+    position: sticky; top: max(8px, env(safe-area-inset-top, 0px)); z-index: 10;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    max-width: calc(1200px - 2 * var(--gutter)); margin: 8px var(--gutter) 0; padding: 6px 6px 6px 12px;
+    border: 1px solid var(--glass-line); border-radius: 26px;
+    background: var(--glass); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08), 0 8px 24px rgba(20, 30, 70, 0.08);
+    backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+  @media (min-width: 1264px) { .lp-nav { margin-left: auto; margin-right: auto; width: calc(100% - 2 * var(--gutter)); } }
+  .lp-logo { display: inline-flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; letter-spacing: -0.01em; border-radius: 8px; }
+  .lp-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--ac); color: #fff; }
+  .lp-navr { display: flex; align-items: center; gap: 4px; }
+  .lp-seg {
+    display: inline-flex; align-items: center; gap: 1px; height: 34px; padding: 0 3px; box-sizing: border-box;
+    border: 1px solid var(--line); border-radius: 17px; background: color-mix(in srgb, var(--code) 50%, transparent);
+  }
+  .lp-segl { transition: background-color 0.14s ease-out, color 0.14s ease-out; display: inline-flex; align-items: center; height: 28px; padding: 0 14px; border-radius: 14px; font-size: 14px; color: var(--mu); }
+  .lp-segl:hover { background: var(--hov); color: var(--tx); }
+  .lp-signin { transition: background-color 0.14s ease-out, transform 0.14s var(--out); display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 22px; font-size: 14px; font-weight: 500; }
+  .lp-signin:hover { background: var(--hov); }
+  .lp-signin:active, .lp-segl:active { transform: scale(0.97); }
+  .lp-logo { transition: opacity 0.14s ease-out; }
+  .lp-logo:hover { opacity: 0.8; }
+  @media (max-width: 719px) { .lp-seg { display: none; } }
+
+  /* ---------- type ---------- */
+  .lp-h1 {
+    font-size: clamp(38px, 5.6vw, 76px); font-weight: 600; line-height: 1.02; letter-spacing: -0.05em;
+    text-wrap: balance;
+  }
+  .lp-line { display: block; }
+  .lp-h1-2 { color: var(--mu); }
+  .lp-blank {
+    display: inline-block; padding: 0 0.16em 0.04em; border-radius: 0.2em;
+    background: var(--cur); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 55%, transparent);
+    font-family: var(--mono); font-weight: 500; font-size: 0.84em; letter-spacing: -0.03em; color: var(--tx);
+  }
+  .lp-blank::after { content: ""; display: inline-block; width: 0.07em; height: 0.8em; margin-left: 0.06em; vertical-align: -0.06em; background: var(--ac); animation: lp-caret 1.1s steps(1) infinite; }
+  .lp-h2 { max-width: 20ch; font-size: clamp(28px, 4vw, 46px); font-weight: 600; line-height: 1.08; letter-spacing: -0.035em; text-wrap: balance; }
+  .lp-body { margin-top: 16px; max-width: 34rem; font-size: 17px; line-height: 1.55; color: var(--mu); text-wrap: pretty; }
+  .lp-body + .lp-body { margin-top: 12px; }
+
+  /* ---------- hero: headline and subline share one row on wide screens, so the product window starts
+     high enough that its editor and question sit inside the first screen ---------- */
+  .lp-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px 56px; align-items: end; padding-top: clamp(28px, 4.5vw, 56px); padding-bottom: clamp(20px, 3vw, 32px); }
+  @media (min-width: 1000px) { .lp-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); } }
+  .lp-hero-head { display: grid; gap: clamp(16px, 2vw, 24px); justify-items: start; }
+  .lp-hero-copy { display: grid; gap: 20px; justify-items: start; }
+  .lp-lead { max-width: 32rem; font-size: clamp(17px, 1.5vw, 19px); line-height: 1.5; color: var(--mu); text-wrap: pretty; }
+  .lp-cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .lp-hero-side { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+  .lp-fine { font-size: 14px; color: var(--mu); }
+  .lp-pill {
+    display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px 0 8px;
+    border: 1px solid var(--line); border-radius: 22px; background: var(--chip); font-size: 14px; color: var(--mu);
+    box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08);
+    transition: border-color 0.14s ease-out, color 0.14s ease-out, transform 0.14s var(--out);
+  }
+  .lp-pill b { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--sel); color: var(--acT); font-weight: 600; font-size: 13px; }
+  .lp-pill svg { transition: transform 0.18s var(--out); }
+  .lp-pill:hover { border-color: var(--acT); color: var(--tx); }
+  .lp-pill:hover svg { transform: translateX(3px); }
+  .lp-pill:active { transform: scale(0.97); }
+
+  /* the entrance: headline lines rise with a stagger, then the subline, then the product. The window itself
+     never animates opacity or filter: an animated ancestor of a backdrop-filter element leaves it unpainted
+     in Chromium. Only transforms go on its wrapper, and fades go on its siblings and contents. */
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-line { animation: lp-rise 0.8s var(--out) backwards; }
+    .lp-line + .lp-line { animation-delay: 110ms; }
+    .lp-hero-side, .lp-hero-copy { animation: lp-in 0.7s var(--out) 260ms backwards; }
+    .lp-stage::before { animation: lp-fade 1s ease-out 400ms backwards; }
+    .lp-win > * { animation: lp-fade 0.7s ease-out 500ms backwards; }
+    .lp-stage-in { animation: lp-lift 0.9s var(--out) 380ms backwards; }
+    @supports (animation-timeline: view()) {
+      /* scroll-linked: the panel settles as it enters. Inside the first viewport it is already close to done. */
+      .lp-stage-in { animation: lp-lift linear both; animation-timeline: view(); animation-range: entry 0% entry 70%; }
+    }
+  }
+
+  /* ---------- stage: the desktop, with the demo as a window on it ---------- */
+  .lp-stage { position: relative; isolation: isolate; padding: 8px var(--gutter) clamp(24px, 5vw, 56px); }
+  /* the wallpaper sits behind the window and fades out at its top and bottom edges, so it has a soft edge */
+  .lp-stage::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background:
+      radial-gradient(60% 55% at 50% 8%, color-mix(in srgb, var(--ac) 26%, transparent), transparent 70%),
+      radial-gradient(45% 50% at 88% 92%, color-mix(in srgb, #8b6cff 20%, transparent), transparent 70%),
+      var(--side);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 120px, #000 calc(100% - 96px), transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 120px, #000 calc(100% - 96px), transparent);
+  }
+  .lp-stage-in { position: relative; max-width: 1136px; margin: 0 auto; }
+
+  .lp-win {
+    position: relative; overflow: hidden; border-radius: 16px;
+    background: var(--win); border: 1px solid var(--edge);
+    box-shadow: 0 40px 90px rgba(20, 30, 70, 0.3), 0 8px 20px rgba(20, 30, 70, 0.14), inset 0 2px 0 rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
+  }
+  /* 16:9 on wider screens; the body scrolls inside the frame. Phones keep natural height so the demo fits. */
+  @media (min-width: 720px) {
+    .lp-win { aspect-ratio: 16 / 9; display: flex; flex-direction: column; }
+    .lp-win .lp-bench-body { flex: 1; min-height: 0; }
+    .lp-win .lp-bench-main, .lp-win .lp-rail { min-height: 0; overflow: auto; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .lp-win { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+  }
+  .lp-titlebar { display: flex; align-items: center; gap: 16px; padding: 10px 14px; }
+  .lp-lights { display: flex; gap: 8px; }
+  .lp-lights i { display: block; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.12); }
+  .lp-lights i:nth-child(1) { background: #ff5f57; }
+  .lp-lights i:nth-child(2) { background: #febc2e; }
+  .lp-lights i:nth-child(3) { background: #28c840; }
+  .lp-tabs { display: flex; gap: 6px; min-width: 0; overflow: hidden; font-size: 13px; }
+  .lp-tab { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 6px; border-radius: 8px; color: var(--mu); white-space: nowrap; }
+  .lp-tab.is-on { background: var(--chip); color: var(--tx); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.1); }
+  .lp-badge { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; border-radius: 3px; background: var(--jsbg); color: var(--jstx); font-family: var(--mono); font-size: 8px; font-weight: 600; }
+
+  .lp-bench-body { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .lp-bench-main { min-width: 0; background: var(--code); }
+
+  .lp-editor { padding: 14px 0; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: var(--tx); overflow-x: auto; }
+  .lp-ln { display: grid; grid-template-columns: 44px minmax(0, 1fr); min-width: max-content; width: 100%; }
+  .lp-ln.is-on { background: var(--cur); }
+  .lp-n { padding-right: 14px; text-align: right; color: var(--numdim); user-select: none; }
+  .lp-ln.is-on .lp-n { color: var(--tx); }
+  .lp-src { white-space: pre; padding-right: 16px; }
+  .lp-kw { color: var(--kw); }
+  .lp-fnn { color: var(--fn); }
+  .lp-num { color: var(--nu); }
+  .lp-slot {
+    display: inline-block; min-width: 3ch; padding: 0 6px; border-radius: 5px; text-align: center;
+    background: var(--sel); box-shadow: inset 0 0 0 1px var(--acT); color: var(--tx);
+    transition: background-color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .lp-slot.is-typing { text-align: left; }
+  .lp-slot.is-typing::after { content: ""; display: inline-block; width: 2px; height: 1.1em; margin-left: 1px; vertical-align: text-bottom; background: var(--ac); }
+  .lp-slot.is-done { text-align: center; background: color-mix(in srgb, var(--ok) 20%, transparent); box-shadow: inset 0 0 0 1px var(--ok); }
+  .lp-slot.is-done::after { content: none; }
+
+  .lp-predict { padding: 18px 16px 16px; border-top: 1px solid var(--line); }
+  .lp-question { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; text-wrap: pretty; }
+  .lp-opts { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (min-width: 560px) { .lp-opts { grid-template-columns: repeat(4, 1fr); } }
+  .lp-opt {
+    min-height: 48px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--chip); color: var(--tx); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08);
+    font-family: var(--mono); font-size: 17px; font-weight: 500; text-align: center; cursor: pointer;
+    transition: background-color 0.2s ease-out, border-color 0.2s ease-out, color 0.2s ease-out, box-shadow 0.2s ease-out, transform 0.14s var(--out);
+  }
+  @media (hover: hover) { .lp-opt:hover:enabled { background: var(--sel); border-color: var(--acT); } }
+  .lp-opt:active:enabled { transform: scale(0.96); }
+  .lp-opt:disabled { cursor: default; }
+  .lp-opt.is-good { background: color-mix(in srgb, var(--ok) 18%, var(--chip)); border-color: var(--ok); }
+  .lp-opt.is-bad { background: color-mix(in srgb, var(--bad) 12%, var(--chip)); border-color: var(--bad); color: var(--mu); text-decoration: line-through; }
+  .lp-opt.is-out { background: var(--side); color: var(--mu); text-decoration: line-through; box-shadow: none; }
+
+  .lp-demo-foot { margin-top: 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 44px; }
+  .lp-feedback { flex: 1; min-width: 0; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; }
+  .lp-feedback p { text-wrap: pretty; }
+  .lp-feedback code { font-family: var(--mono); font-size: 0.93em; font-weight: 500; }
+  .lp-note { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--side); }
+  .lp-note-hint { background: var(--cur); border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+  .lp-note-done { background: color-mix(in srgb, var(--ok) 12%, var(--code)); border-color: color-mix(in srgb, var(--ok) 60%, var(--line)); }
+  .lp-miss { padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--bad) 50%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--bad) 9%, var(--code)); font-weight: 600; }
+  .lp-aside { color: var(--mu); }
+  .lp-demo-action { flex: none; }
+
+  /* the rail: the navigator, with vibrancy. Where you are in the loop. */
+  .lp-rail { padding: 10px; border-top: 1px solid var(--line); background: var(--vib); }
+  .lp-rail ol { display: grid; gap: 2px; }
+  .lp-rail-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-radius: 10px; transition: background-color 0.3s ease; }
+  .lp-rail-mark { display: grid; place-items: center; width: 18px; height: 18px; margin-top: 2px; border: 1.5px solid var(--mu); border-radius: 50%; color: #fff; transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease; }
+  .lp-rail-body, .lp-rail-state { transition: color 0.3s ease; }
+  .lp-rail-row.is-now .lp-rail-state, .lp-rail-row.is-done .lp-rail-state { color: var(--tx); }
+  .lp-rail-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 10px; }
+  .lp-rail-name { font-size: 14px; font-weight: 600; }
+  .lp-rail-state { font-family: var(--mono); font-size: 12px; color: var(--mu); font-variant-numeric: tabular-nums; }
+  .lp-rail-body { margin-top: 1px; font-size: 13px; line-height: 1.45; color: var(--mu); text-wrap: pretty; }
+  .lp-rail-row.is-now { background: var(--sel); }
+  .lp-rail-row.is-now .lp-rail-mark { border-color: var(--acT); background: var(--acT); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acT) 22%, transparent); }
+  .lp-rail-row.is-now .lp-rail-body { color: var(--tx); }
+  .lp-rail-row.is-done .lp-rail-mark { border-color: var(--okT); background: var(--okT); }
+  @media (prefers-color-scheme: dark) { .lp-rail-mark { color: #14141a; } }
+  /* the sprout: the logo's mark, shown large in the rail. It plays one sway or pop each time the demo changes. */
+  .lp-railmark { display: none; place-items: center; width: 64px; height: 64px; margin: 10px 8px 0 auto; border-radius: 18px; background: var(--ac); color: #fff; transform-origin: 50% 90%; pointer-events: none; }
+  .lp-railmark.is-sway { animation: lp-sway 0.9s var(--out) 1; }
+  .lp-railmark.is-pop { animation: lp-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 1; }
+  .lp-railmark.is-hop { animation: lp-hop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 1; }
+
+  .lp-statusbar {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px;
+    padding: 8px 16px; border-top: 1px solid var(--line); background: var(--side); color: var(--mu); font-size: 12.5px;
+  }
+  .lp-statusbar b { font-weight: 600; color: var(--tx); font-variant-numeric: tabular-nums; }
+  .lp-stat { display: inline-flex; align-items: center; gap: 6px; }
+  .lp-mini { display: inline-block; width: 72px; height: 6px; margin-left: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .lp-mini i { display: block; height: 100%; border-radius: 3px; background: var(--ac); transition: width 0.7s var(--out); }
+  @media (prefers-color-scheme: dark) { .lp-mini i { background: var(--acT); } }
+
+  /* ---------- sections ---------- */
+  .lp-sec { margin-top: clamp(72px, 9vw, 120px); }
+  .lp-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 36px; align-items: start; }
+
+  /* watching vs guessing: a two-column comparison, hairlines like the editor's panels */
+  .lp-compare { border: 1px solid var(--line); border-radius: 22px; background: var(--code); overflow: hidden; box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08); }
+  .lp-compare-head, .lp-compare li { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .lp-compare-head { display: none; background: var(--side); border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--mu); }
+  .lp-compare-head span, .lp-compare li p { padding: 14px 20px; }
+  .lp-compare li + li { border-top: 1px solid var(--line); }
+  .lp-compare li p { font-size: 16px; line-height: 1.4; text-wrap: pretty; }
+  .lp-old { color: var(--mu); padding-bottom: 4px !important; }
+  .lp-new { font-weight: 600; padding-top: 0 !important; }
+  .lp-new::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 10px; border-radius: 50%; background: var(--ac); vertical-align: 0.05em; }
+  @media (min-width: 640px) {
+    .lp-compare-head { display: grid; grid-template-columns: 1fr 1fr; }
+    .lp-compare li { grid-template-columns: 1fr 1fr; }
+    .lp-compare li p { padding: 18px 20px; }
+    .lp-old, .lp-new { padding-top: 18px !important; padding-bottom: 18px !important; }
+    .lp-compare li .lp-old { border-right: 1px solid var(--line); }
+  }
+
+  /* lesson parts: the editor's segmented pill, and a panel under it */
+  .lp-sec-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px 56px; align-items: end; }
+  .lp-parts { margin-top: 36px; }
+  .lp-segbar { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 24px; background: var(--chip); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08); }
+  .lp-part {
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 21px;
+    background: transparent; color: var(--mu); font-size: 15px; font-weight: 500; cursor: pointer;
+    transition: background-color 0.14s ease-out, color 0.14s ease-out;
+  }
+  .lp-part:hover { background: var(--hov); color: var(--tx); }
+  .lp-part[aria-pressed="true"] { background: var(--sel); color: var(--acT); cursor: default; }
+  .lp-part-body {
+    margin-top: 12px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: start;
+    min-height: 7.5em; padding: 22px clamp(18px, 3vw, 32px); border: 1px solid var(--line); border-radius: 22px;
+    background: var(--code); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08);
+  }
+  .lp-part-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--sel); color: var(--acT); }
+  .lp-part-name { font-size: clamp(19px, 2vw, 24px); font-weight: 600; letter-spacing: -0.02em; }
+  .lp-part-text { margin-top: 4px; max-width: 46rem; font-size: clamp(16px, 1.6vw, 19px); line-height: 1.5; color: var(--mu); text-wrap: pretty; }
+
+  /* cards: mastery and lessons */
+  .lp-card { border: 1px solid var(--line); border-radius: 22px; background: var(--code); box-shadow: 0 1px 2px rgba(20, 30, 70, 0.08); overflow: hidden; }
+  .lp-card-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--side); font-size: 13px; font-weight: 600; color: var(--mu); }
+  .lp-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 11px; background: var(--chip); color: var(--mu); font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .lp-bars { display: grid; gap: 22px; padding: 24px 20px 6px; }
+  .lp-bar { display: grid; grid-template-columns: 104px minmax(0, 1fr) 44px; gap: 14px; align-items: center; font-size: 15px; font-weight: 500; }
+  .lp-meter { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+  .lp-fill { height: 100%; border-radius: 4px; background: var(--ac); transition: width 0.7s var(--out); }
+  @media (prefers-color-scheme: dark) { .lp-fill { background: var(--acT); } }
+  .lp-pct { text-align: right; font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .lp-next { margin: 20px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--side); font-size: 14px; }
+  .lp-next strong { font-weight: 600; }
+
+  .lp-lessons { padding: 6px; }
+  .lp-lessons li { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 10px; border-radius: 10px; }
+  .lp-lessons li:hover { background: var(--hov); }
+  .lp-lessons svg { flex: none; color: var(--folder); }
+  .lp-lesson-name { flex: 1; min-width: 0; font-family: var(--mono); font-size: 15px; overflow-wrap: anywhere; }
+  .lp-lesson-later .lp-lesson-name { color: var(--mu); }
+
+  /* rules */
+  .lp-rules li { display: flex; align-items: center; gap: 16px; padding: clamp(16px, 2vw, 22px) 0; border-top: 1px solid var(--line); font-size: clamp(19px, 2.4vw, 26px); font-weight: 550; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
+  .lp-rules li:last-child { border-bottom: 1px solid var(--line); }
+  .lp-tick { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--okT); }
+
+  /* closing */
+  .lp-finale {
+    display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 24px;
+    margin-bottom: clamp(56px, 8vw, 96px); padding: clamp(28px, 5vw, 56px);
+    border: 1px solid var(--line); border-radius: 28px; background: var(--side);
+  }
+  .lp-finale-mark { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 28px; background: var(--ac); color: #fff; box-shadow: 0 1px 2px rgba(20, 30, 70, 0.2); }
+  .lp-finale-mark svg { width: 56%; height: 56%; }
+  .lp-finale-title { max-width: 18ch; font-size: clamp(30px, 4.6vw, 54px); font-weight: 600; line-height: 1.05; letter-spacing: -0.04em; text-wrap: balance; }
+
+  /* footer */
+  .lp-footer { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; padding: 24px 0 max(40px, env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); color: var(--mu); font-size: 14px; }
+  .lp-footer .lp-logo { color: var(--tx); }
+  .lp-footer-r { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; }
+  .lp-footlink { display: inline-flex; align-items: center; min-height: 44px; font-weight: 500; color: var(--tx); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 4px; border-radius: 6px; transition: color 0.14s ease-out; }
+  .lp-footlink:hover { color: var(--acT); }
+
+  /* ---------- breakpoints ---------- */
+  @media (min-width: 900px) {
+    .lp-split { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 72px; align-items: center; }
+    .lp-split-wide { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
+    .lp-split-top { align-items: start; }
+    .lp-sec-head { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+    .lp-sec-head .lp-body { margin-top: 0; }
+    .lp-bench-body { grid-template-columns: minmax(0, 1fr) 320px; }
+    .lp-editor { font-size: 15px; padding: 18px 0; }
+    .lp-predict { padding: 22px 24px; }
+    .lp-rail { display: flex; flex-direction: column; border-top: 0; border-left: 1px solid var(--line); padding: 12px 10px; }
+    .lp-railmark { display: grid; margin-top: auto; }
+  }
+  @media (min-width: 760px) {
+    .lp-finale { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 48px; }
+    .lp-finale-mark { grid-column: 2; grid-row: 1 / span 2; width: clamp(120px, 14vw, 168px); height: clamp(120px, 14vw, 168px); border-radius: 36px; }
+    .lp-finale > :not(.lp-finale-mark) { grid-column: 1; }
+  }
+  @media (max-width: 420px) {
+    .lp-bar { grid-template-columns: 88px minmax(0, 1fr) 40px; gap: 10px; }
+    .lp-part-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  }
+
+  /* reduced motion: no entrance, no scroll-linked lift, no caret blink, no transitions */
+  @media (prefers-reduced-motion: reduce) {
+    &, & *, & *::before, & *::after { animation: none !important; transition: none !important; }
+  }
+}
+
+@keyframes lp-in { from { opacity: 0; transform: translateY(16px); } }
+@keyframes lp-rise { from { opacity: 0; transform: translateY(0.4em); } }
+@keyframes lp-fade { from { opacity: 0; } }
+@keyframes lp-lift { from { transform: translateY(36px) scale(0.985); } }
+@keyframes lp-sway { 20% { transform: rotate(-9deg); } 45% { transform: rotate(7deg); } 70% { transform: rotate(-3deg); } }
+@keyframes lp-pop { 0% { transform: scale(0.85); } 100% { transform: scale(1); } }
+@keyframes lp-hop { 0% { transform: translateY(0); } 40% { transform: translateY(-9px) rotate(-4deg); } 100% { transform: translateY(0); } }
+@keyframes lp-caret { 50% { opacity: 0; } }

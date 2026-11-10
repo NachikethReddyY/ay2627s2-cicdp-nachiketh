@@ -1,0 +1,78 @@
+/* /changelog only. The Magic UI changelog template's timeline, restyled with the landing page's tokens.
+   Adapted from https://github.com/magicuidesign/changelog-template (MIT, per its README).
+   Everything is scoped under .cl. */
+
+html:has(.cl), body:has(.cl) { background: #f6f6f8; }
+@media (prefers-color-scheme: dark) { html:has(.cl), body:has(.cl) { background: #1e1e1e; } }
+
+.cl {
+  --tx: #1c1c1e; --mu: #555a66; --line: #d7d6d6; --chip: #ffffff; --ac: #2f5fd6; --acT: #2f5fd6; --page: #f6f6f8;
+  --glass: rgba(255, 255, 255, 0.82); --glass-line: rgba(20, 30, 70, 0.1);
+  --sans: "Geist", system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --gutter: 16px;
+
+  position: relative; min-height: 100dvh; overflow-x: clip;
+  color: var(--tx); font-family: var(--sans); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+
+  @media (min-width: 640px) { --gutter: 32px; }
+  @media (prefers-color-scheme: dark) {
+    --tx: #ececec; --mu: #a3a3a8; --line: #3a3a3a; --chip: #303030; --acT: #8fb0ff; --page: #1e1e1e;
+    --glass: rgba(38, 38, 38, 0.78); --glass-line: rgba(255, 255, 255, 0.1);
+  }
+
+  h1, h2, h3, p, ul, ol { margin: 0; padding: 0; }
+  ul, ol { list-style: none; }
+  a { color: inherit; text-decoration: none; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--acT); outline-offset: 2px; }
+
+  .cl-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  .cl-head { border-bottom: 1px solid var(--line); }
+  .cl-head-in { max-width: 1000px; margin: 0 auto; padding: 10px var(--gutter); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .cl-logo { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 650; letter-spacing: -0.01em; }
+  .cl-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--ac); color: #fff; }
+  .cl-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 22px; font-size: 14px; font-weight: 500; color: var(--mu); transition: background-color 0.14s ease-out, color 0.14s ease-out; }
+  .cl-back:hover { background: rgba(28, 36, 64, 0.07); color: var(--tx); }
+  .cl-back svg { transition: transform 0.18s var(--out); }
+  .cl-back:hover svg { transform: translateX(-2px); }
+
+  .cl-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(40px, 7vw, 80px) var(--gutter) 96px; }
+  .cl-h1 { font-size: clamp(36px, 5vw, 56px); font-weight: 600; letter-spacing: -0.045em; line-height: 1.05; }
+  .cl-lead { margin-top: 12px; max-width: 34rem; font-size: 17px; color: var(--mu); text-wrap: pretty; }
+  .cl-list { margin-top: clamp(32px, 5vw, 56px); }
+
+  .cl-item { display: flex; flex-direction: column; gap: 16px; }
+  .cl-meta { display: flex; align-items: center; gap: 12px; padding-bottom: 4px; }
+  .cl-date { font-size: 14px; font-weight: 500; color: var(--mu); }
+  .cl-id { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--chip); font-family: var(--mono); font-size: 12.5px; }
+  .cl-main { position: relative; display: grid; gap: 12px; justify-items: start; padding-bottom: 40px; }
+  .cl-title { font-size: clamp(20px, 2.4vw, 26px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.2; text-wrap: balance; }
+  .cl-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cl-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--chip); color: var(--mu); font-size: 12px; font-weight: 500; }
+  .cl-sum { max-width: 40rem; color: var(--mu); line-height: 1.55; text-wrap: pretty; }
+  .cl-more { width: 100%; max-width: 40rem; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .cl-more summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 15px; font-weight: 500; cursor: pointer; list-style: none; border-radius: 8px; }
+  .cl-more summary::-webkit-details-marker { display: none; }
+  .cl-more summary svg { color: var(--mu); transition: transform 0.2s var(--out); }
+  .cl-more[open] summary svg { transform: rotate(180deg); }
+  .cl-more ul { display: grid; gap: 8px; padding: 4px 0 16px 18px; list-style: disc; font-size: 15px; line-height: 1.5; color: var(--mu); }
+  .cl-more ul li::marker { color: var(--acT); }
+  .cl-more[open] ul { animation: cl-fade 0.25s ease-out; }
+
+  @media (min-width: 720px) {
+    .cl-item { flex-direction: row; gap: 0; }
+    .cl-meta { flex: none; width: 176px; flex-direction: column; align-items: flex-start; gap: 12px; align-self: flex-start; position: sticky; top: 24px; padding-bottom: 40px; }
+    .cl-main { flex: 1; min-width: 0; padding-left: 32px; }
+    /* the vertical line and the dot sit on the entry's left edge, as in the template */
+    .cl-main::before { content: ""; position: absolute; top: 8px; bottom: 0; left: 0; width: 1px; background: var(--line); }
+    .cl-dot { position: absolute; top: 8px; left: 0; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--ac); box-shadow: 0 0 0 4px var(--page); }
+    .cl-item:last-child .cl-main::before { bottom: auto; height: 24px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &, & *, & *::before, & *::after { animation: none !important; transition: none !important; }
+  }
+}
+
+@keyframes cl-fade { from { opacity: 0; } }
