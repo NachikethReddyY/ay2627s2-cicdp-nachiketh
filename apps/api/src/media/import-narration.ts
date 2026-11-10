@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { db, pool } from "../db/client.ts";
 import { lessonMedia, lessons, steps } from "../db/schema.ts";
-import { saveMedia } from "./service.ts";
+import { mediaRow, saveMedia, storeMedia, type MediaInput } from "./service.ts";
 import { storage } from "./storage.ts";
 
 type NarrationFile = { idx: number; body: Uint8Array };
@@ -39,20 +39,14 @@ export async function importNarration(slug: string, files: NarrationFile[], { re
   const skipped: number[] = [];
   for (const f of files) {
     const stepId = byIdx.get(f.idx)!;
-    if (have.has(stepId)) {
-      if (!replace) {
-        skipped.push(f.idx);
-        continue;
-      }
-      // Retire the old row before saving the new one, so the one-ready-per-step index lets the new row in.
-      // lesson_media has no "superseded" status, so the old row is marked failed; its object is left in place.
-      await db
-        .update(lessonMedia)
-        .set({ status: "failed" })
-        .where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.stepId, stepId), eq(lessonMedia.kind, "narration"), eq(lessonMedia.status, "ready")));
+    if (have.has(stepId) && !replace) {
+      skipped.push(f.idx);
+      continue;
     }
     try {
-      await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: f.body, contentType: "audio/mpeg" });
+      const input = { lessonVersionId: versionId, stepId, kind: "narration" as const, body: f.body, contentType: "audio/mpeg" };
+      if (have.has(stepId)) await replaceNarration(input);
+      else await saveMedia(input);
     } catch (e) {
       // Another import stored this step first (lesson_media_one_narration). Its object is kept; ours is a harmless orphan.
       if (isUniqueViolation(e)) {
@@ -64,6 +58,23 @@ export async function importNarration(slug: string, files: NarrationFile[], { re
     saved.push(f.idx);
   }
   return { saved, skipped };
+}
+
+/**
+ * Replaces a step's ready narration. The new object is validated and written first, so a rejected file
+ * leaves the old row ready. Then the old row is marked failed and the new row inserted in one transaction,
+ * so the step never has zero ready rows or two. lesson_media has no "superseded" status, so the old
+ * object is left in storage.
+ */
+async function replaceNarration(input: MediaInput) {
+  const key = await storeMedia(input);
+  await db.transaction(async (tx) => {
+    await tx
+      .update(lessonMedia)
+      .set({ status: "failed" })
+      .where(and(eq(lessonMedia.lessonVersionId, input.lessonVersionId), eq(lessonMedia.stepId, input.stepId!), eq(lessonMedia.kind, "narration"), eq(lessonMedia.status, "ready")));
+    await tx.insert(lessonMedia).values(mediaRow(input, key));
+  });
 }
 
 // drizzle wraps the pg error, so the code can be on the error or its cause.

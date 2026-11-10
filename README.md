@@ -37,18 +37,18 @@ export TTS_BASE_URL=http://localhost:8880
 export TTS_VOICE=...                 # required
 export TTS_MODEL=...                 # optional, default tts-1
 
-node scripts/narrate.ts --lesson <slug> --out "$PWD/.narration/<slug>" [--provider elevenlabs|openai] [--lesson-file <path>]
+node scripts/narrate.ts --lesson <slug> [--out <dir>] [--provider elevenlabs|openai] [--lesson-file <path>]
 ```
 
-The script reads `worlds/codequest/lessons/<slug>.json` (or `--lesson-file`) and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) into `--out`. A rerun renders only steps whose text changed. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration. `.narration/` is gitignored.
+`--out` is optional and defaults to `.narration/<slug>` under the repo root, which is gitignored. The script reads `worlds/codequest/lessons/<slug>.json` (or `--lesson-file`) and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) into the output folder. A rerun renders only steps whose text changed. A step's old audio is removed before it is rendered, and the manifest is updated after each step, so an interrupted run never leaves audio that a rerun would skip. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration.
 
-Then store the files with the importer, using an absolute `--dir`:
+Then store the files with the importer, using an absolute `--dir` (the default folder is `$PWD/.narration/<slug>` when you run from the repo root):
 
 ```bash
 pnpm --filter @learnquest/api media:narration --lesson <slug> --dir "$PWD/.narration/<slug>"
 ```
 
-The importer skips steps that already have narration. Add `--replace` to swap the stored narration for those steps with the new files. The old row is marked `failed`, and its object stays in storage.
+The importer skips steps that already have narration. Add `--replace` to swap the stored narration for those steps with the new files. The new file is validated and stored first. Only then is the old row marked `failed` and the new row inserted, in one transaction, so a rejected file leaves the old narration in place. The old object stays in storage.
 
 The script's tests run with `pnpm run test:scripts`.
 

@@ -1,9 +1,10 @@
 // Renders one MP3 per lesson step from the step's narration text, so `media:narration` can store them.
-// Run locally with your own keys: node scripts/narrate.ts --lesson <slug> --out <dir> [--provider elevenlabs|openai]
+// Run locally with your own keys: node scripts/narrate.ts --lesson <slug> [--out <dir>] [--provider elevenlabs|openai]
+// --out defaults to .narration/<slug> under the repo root (gitignored).
 // Keys come only from environment variables. They are never printed, logged or written to disk.
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -109,6 +110,18 @@ async function readManifest(path: string): Promise<Record<string, string>> {
   }
 }
 
+/** Writes the manifest to a temp file, then renames it over the old one, so a reader never sees a half-written file. */
+async function writeManifest(path: string, manifest: Record<string, string>) {
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
+  await rename(tmp, path);
+}
+
+/** Default --out for a lesson: .narration/<slug> under the repo root (gitignored). */
+export function defaultOutDir(slug: string): string {
+  return join(repoRoot, ".narration", slug);
+}
+
 /** Runs the script. Returns the exit code. */
 export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io): Promise<number> {
   try {
@@ -122,37 +135,44 @@ export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io): P
     } catch (e) {
       throw new UsageError(e instanceof Error ? e.message : String(e));
     }
-    if (!values.out) throw new UsageError("--out <dir> is required");
     if (!values.lesson && !values["lesson-file"]) throw new UsageError("--lesson <slug> or --lesson-file <path> is required");
 
     const provider = chooseProvider(values.provider, env);
     const cfg = providerConfig(provider, env);
-    const lessonFile = values["lesson-file"] ?? join(repoRoot, "worlds/codequest/lessons", `${values.lesson}.json`);
+    const slug = values.lesson ?? basename(values["lesson-file"]!, ".json");
+    const lessonFile = values["lesson-file"] ?? join(repoRoot, "worlds/codequest/lessons", `${slug}.json`);
     const steps = await readSteps(lessonFile);
 
-    const outDir = resolve(values.out);
+    const outDir = values.out ? resolve(values.out) : defaultOutDir(slug);
     await mkdir(outDir, { recursive: true });
     const manifestPath = join(outDir, "narration.json");
-    const previous = await readManifest(manifestPath);
-    const manifest: Record<string, string> = {};
+    // `state` is the manifest on disk, updated and written at every step, so it never claims audio that is not there.
+    const state = await readManifest(manifestPath);
 
     let rendered = 0;
     let skipped = 0;
     let failed = 0;
     let missing = 0;
     for (const step of steps) {
-      const mp3 = join(outDir, `${step.idx}.mp3`);
+      const key = String(step.idx);
+      const mp3 = join(outDir, `${key}.mp3`);
       if (step.text === undefined) {
         missing++;
+        delete state[key];
         await rm(mp3, { force: true }); // An old file would be stored for text the lesson no longer has.
+        await writeManifest(manifestPath, state);
         continue;
       }
       const hash = hashText(step.text);
-      if (previous[String(step.idx)] === hash && (await exists(mp3))) {
-        manifest[String(step.idx)] = hash;
+      if (state[key] === hash && (await exists(mp3))) {
         skipped++;
         continue;
       }
+      // Drop the old audio and its hash before rendering. If the run is killed mid-render, the step has
+      // no entry to match, so the next run renders it instead of keeping stale audio.
+      delete state[key];
+      await rm(mp3, { force: true });
+      await writeManifest(manifestPath, state);
       try {
         const req = ttsRequest(cfg, step.text);
         const res = await fetchImpl(req.url, req.init);
@@ -160,7 +180,8 @@ export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io): P
         const bytes = new Uint8Array(await res.arrayBuffer());
         if (bytes.byteLength === 0) throw new Error("provider returned an empty body");
         await writeFile(mp3, bytes);
-        manifest[String(step.idx)] = hash;
+        state[key] = hash;
+        await writeManifest(manifestPath, state);
         rendered++;
       } catch (e) {
         failed++;
@@ -169,12 +190,15 @@ export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io): P
       }
     }
 
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    // Entries for steps that no longer exist in the lesson go too.
+    const current = new Set(steps.map((s) => String(s.idx)));
+    for (const key of Object.keys(state)) if (!current.has(key)) delete state[key];
+    await writeManifest(manifestPath, state);
     io.log(`${provider}: rendered ${rendered}, skipped ${skipped} unchanged, failed ${failed}, no narration ${missing} -> ${outDir}`);
     return failed > 0 ? 1 : 0;
   } catch (e) {
     if (e instanceof UsageError) {
-      io.error(`${e.message}\nusage: node scripts/narrate.ts --lesson <slug> --out <dir> [--lesson-file <path>] [--provider elevenlabs|openai]`);
+      io.error(`${e.message}\nusage: node scripts/narrate.ts --lesson <slug> [--out <dir>] [--lesson-file <path>] [--provider elevenlabs|openai]`);
       return 2;
     }
     io.error(e instanceof Error ? e.message : String(e));

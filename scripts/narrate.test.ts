@@ -1,10 +1,18 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { chooseProvider, providerConfig, run, ttsRequest, type Env, type Fetch } from "./narrate.ts";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chooseProvider, defaultOutDir, providerConfig, run, ttsRequest, type Env, type Fetch } from "./narrate.ts";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const CLI = join(repoRoot, "scripts", "narrate.ts");
 
 const root = await mkdtemp(join(tmpdir(), "narrate-test-"));
 after(() => rm(root, { recursive: true, force: true }));
@@ -98,15 +106,97 @@ test("missing config fails with a message that names variables, never values, an
   assert.equal(calls.length, 0);
 });
 
-test("usage: --out is required and --lesson or --lesson-file is required", async () => {
+test("usage: --lesson or --lesson-file is required; --out defaults to .narration/<slug>, gitignored", async () => {
   const cap = io();
-  assert.equal(await run(["--lesson", "x"], ELEVEN, fakeFetch([]), cap.io), 2);
-  assert.match(cap.err.join("\n"), /--out <dir> is required/);
+  assert.equal(await run(["--out", "/tmp/unused"], ELEVEN, fakeFetch([]), cap.io), 2);
+  assert.match(cap.err.join("\n"), /--lesson <slug> or --lesson-file <path> is required/);
   const cap2 = io();
-  assert.equal(await run(["--out", "/tmp/unused"], ELEVEN, fakeFetch([]), cap2.io), 2);
-  assert.match(cap2.err.join("\n"), /--lesson <slug> or --lesson-file/);
-  const cap3 = io();
-  assert.equal(await run(["--out", "/tmp/unused", "--lesson", "x", "--bogus"], ELEVEN, fakeFetch([]), cap3.io), 2);
+  assert.equal(await run(["--lesson", "x", "--bogus"], ELEVEN, fakeFetch([]), cap2.io), 2);
+  assert.equal(defaultOutDir("lesson-1"), join(repoRoot, ".narration", "lesson-1"));
+  const ignored = spawnSync("git", ["check-ignore", "-q", join(".narration", "lesson-1", "0.mp3")], { cwd: repoRoot });
+  assert.equal(ignored.status, 0, ".narration/ must be gitignored");
+});
+
+test("the manifest on disk is current at every render, and no temp file is left behind", async () => {
+  const { dir, file } = await lessonFile(STEPS);
+  const out = join(dir, "out");
+  const manifestPath = join(out, "narration.json");
+  await mkdir(out, { recursive: true });
+  await writeFile(manifestPath, JSON.stringify({ "0": hash("Variables hold values."), "2": hash("old text") }));
+  await writeFile(join(out, "2.mp3"), "stale");
+  const seen: { idx: string; manifest: Record<string, string>; hadMp3: boolean }[] = [];
+  const fetchImpl: Fetch = async (url, init) => {
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    const idx = body.text === "Variables hold values." ? "0" : "2";
+    seen.push({ idx, manifest: JSON.parse(await readFile(manifestPath, "utf8")), hadMp3: await access(join(out, `${idx}.mp3`)).then(() => true, () => false) });
+    return new Response(MP3, { status: 200 });
+  };
+  // Step 0 is unchanged in the manifest but has no mp3 here, so it renders. Step 2 changed text.
+  await rm(join(out, "0.mp3"), { force: true });
+  await run(["--lesson-file", file, "--out", out], ELEVEN, fetchImpl, io().io);
+
+  // Before each render, the step's old audio is gone and its hash is no longer in the manifest.
+  for (const s of seen) {
+    assert.equal(s.hadMp3, false, `step ${s.idx}: old audio is removed before the render`);
+    assert.equal(s.manifest[s.idx], undefined, `step ${s.idx}: old hash is removed before the render`);
+  }
+  // After step 0 finished, step 2's render sees step 0 in the manifest on disk.
+  const step2 = seen.find((s) => s.idx === "2")!;
+  assert.equal(step2.manifest["0"], hash("Variables hold values."));
+  assert.deepEqual((await readdir(out)).sort(), ["0.mp3", "2.mp3", "narration.json"]);
+});
+
+// The HTTP server stands in for the TTS provider so the test can kill a real child process mid-render.
+test("a run killed mid-render cannot leave stale audio that a rerun skips", { timeout: 30_000 }, async () => {
+  const A = "Variables hold values.";
+  const B = "Variables hold values, changed.";
+  const C = "Loops repeat work.";
+  const HANG = "Functions name a block of work.";
+  let hangOn: string | undefined;
+  const seen: string[] = [];
+  let onHang: () => void = () => {};
+  const hanging = new Promise<void>((resolve) => (onHang = resolve));
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c: Buffer) => (raw += c));
+    req.on("end", () => {
+      const { input } = JSON.parse(raw) as { input: string };
+      seen.push(input);
+      if (input === hangOn) return onHang(); // never answered: the child is killed here
+      res.writeHead(200, { "content-type": "audio/mpeg" });
+      res.end(Buffer.concat([Buffer.from("ID3"), Buffer.from(input)]));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  const env = { PATH: process.env.PATH ?? "", TTS_BASE_URL: `http://127.0.0.1:${port}`, TTS_VOICE: "v" };
+  const cli = (file: string, out: string) => spawn(process.execPath, [CLI, "--lesson-file", file, "--out", out], { env, stdio: "ignore" });
+
+  try {
+    const run1 = await lessonFile([{ idx: 0, secret: { narration: A } }, { idx: 2, secret: { narration: C } }]);
+    const out = join(run1.dir, "out");
+    assert.equal((await once(cli(run1.file, out), "exit"))[0], 0);
+
+    // Run 2 changes step 0 and hangs on step 2. Step 0's new audio is written before the kill.
+    hangOn = HANG;
+    const run2 = await lessonFile([{ idx: 0, secret: { narration: B } }, { idx: 2, secret: { narration: HANG } }]);
+    const child = cli(run2.file, out);
+    await hanging;
+    child.kill("SIGKILL");
+    await once(child, "exit");
+    assert.ok((await readFile(join(out, "0.mp3"), "utf8")).includes(B), "the interrupted run has written the new step 0 audio");
+
+    // Run 3 restores step 0's old text. It must render it, not skip the file left by run 2.
+    hangOn = undefined;
+    const before = seen.length;
+    const run3 = await lessonFile([{ idx: 0, secret: { narration: A } }, { idx: 2, secret: { narration: HANG } }]);
+    assert.equal((await once(cli(run3.file, out), "exit"))[0], 0);
+    assert.ok(seen.slice(before).includes(A), "step 0 is rendered again");
+    assert.ok((await readFile(join(out, "0.mp3"), "utf8")).includes(A), "the final step 0 audio matches its text");
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
 });
 
 test("renders <idx>.mp3 per step with narration, reports steps without it, writes narration.json", async () => {

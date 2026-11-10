@@ -1,7 +1,7 @@
 import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
@@ -153,6 +153,28 @@ test("importNarration with replace retires the old ready narration and stores th
   const rows = await db.select().from(lessonMedia).where(eq(lessonMedia.stepId, a!.id)).orderBy(asc(lessonMedia.createdAt));
   assert.deepEqual(rows.map((r) => [r.status, r.bytes]), [["failed", MP3.byteLength], ["ready", NEW_MP3.byteLength]]);
   assert.equal(mem.objects.size, 2, "the superseded object is kept, not deleted");
+});
+
+test("a rejected or failed replacement leaves the old narration ready", async () => {
+  await signUp(app);
+  const { versionId } = await lessonVersion();
+  const mem = memoryStorage();
+  setStorage(mem);
+  const [a] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
+  await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }]);
+  const readyRows = () => db.select().from(lessonMedia).where(and(eq(lessonMedia.stepId, a!.id), eq(lessonMedia.status, "ready")));
+  const [before] = await readyRows();
+
+  // Bad bytes: the check runs before anything is written or retired.
+  await rejects(importNarration("lesson-1", [{ idx: a!.idx, body: PNG }], { replace: true }), "Media bytes do not match type");
+  // Storage failure on the new object: the old row is still the one ready row.
+  setStorage({ put: async () => { throw new Error("bucket down"); }, signGet: async (key) => key });
+  await assert.rejects(importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }], { replace: true }), /bucket down/);
+  setStorage(mem);
+
+  const after = await readyRows();
+  assert.deepEqual(after.map((r) => r.key), [before!.key], "the old row stays ready and is the only one");
+  assert.equal(mem.objects.size, 1, "no object is stored for a rejected replacement");
 });
 
 test("lessons.get leaks no media URL for a lesson the caller cannot see", async () => {
