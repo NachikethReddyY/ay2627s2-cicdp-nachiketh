@@ -5,7 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,6 +117,40 @@ test("usage: --lesson or --lesson-file is required; --out defaults to .narration
   assert.equal(ignored.status, 0, ".narration/ must be gitignored");
 });
 
+test("a lesson slug with path parts is rejected before any path is built", async () => {
+  for (const slug of ["../escape", "a/../b", "x/y", "Upper", "x y"]) {
+    const cap = io();
+    assert.equal(await run(["--lesson", slug, "--out", join(root, "unused")], ELEVEN, fakeFetch([]), cap.io), 2, slug);
+    assert.match(cap.err.join("\n"), /must be lowercase letters, digits and hyphens/, slug);
+  }
+});
+
+test("--out and --lesson-file outside the repo and the temp dir are rejected", async () => {
+  const { file } = await lessonFile(STEPS);
+  const calls: Call[] = [];
+  const cases = [
+    ["--lesson-file", file, "--out", "/etc/narrate-test-out"],
+    ["--lesson", "x", "--out", "../../../../../../../../etc/narrate-test-out"],
+    ["--lesson-file", "/etc/hosts", "--out", join(root, "ok")],
+  ];
+  for (const argv of cases) {
+    const cap = io();
+    assert.equal(await run(argv, ELEVEN, fakeFetch(calls), cap.io), 2, argv.join(" "));
+    assert.match(cap.err.join("\n"), /must be inside the repo or the OS temp dir/, argv.join(" "));
+  }
+  assert.equal(calls.length, 0, "nothing is requested for a rejected path");
+  await assert.rejects(access("/etc/narrate-test-out"), "nothing is created outside the roots");
+});
+
+test("a symlink inside the temp dir that points outside it is rejected", async () => {
+  const { dir, file } = await lessonFile(STEPS);
+  await symlink("/etc", join(dir, "escape"));
+  const cap = io();
+  assert.equal(await run(["--lesson-file", file, "--out", join(dir, "escape", "narrate-test-out")], ELEVEN, fakeFetch([]), cap.io), 2);
+  assert.match(cap.err.join("\n"), /must be inside the repo or the OS temp dir/);
+  await assert.rejects(access("/etc/narrate-test-out"));
+});
+
 test("the manifest on disk is current at every render, and no temp file is left behind", async () => {
   const { dir, file } = await lessonFile(STEPS);
   const out = join(dir, "out");
@@ -169,7 +203,8 @@ test("a run killed mid-render cannot leave stale audio that a rerun skips", { ti
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
-  const env = { PATH: process.env.PATH ?? "", TTS_BASE_URL: `http://127.0.0.1:${port}`, TTS_VOICE: "v" };
+  // TMPDIR is passed so the child's os.tmpdir() is the same temp dir the test writes to.
+  const env = { PATH: process.env.PATH ?? "", TMPDIR: tmpdir(), TTS_BASE_URL: `http://127.0.0.1:${port}`, TTS_VOICE: "v" };
   const cli = (file: string, out: string) => spawn(process.execPath, [CLI, "--lesson-file", file, "--out", out], { env, stdio: "ignore" });
 
   try {

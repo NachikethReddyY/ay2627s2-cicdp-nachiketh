@@ -40,7 +40,7 @@ export TTS_MODEL=...                 # optional, default tts-1
 node scripts/narrate.ts --lesson <slug> [--out <dir>] [--provider elevenlabs|openai] [--lesson-file <path>]
 ```
 
-`--out` is optional and defaults to `.narration/<slug>` under the repo root, which is gitignored. The script reads `worlds/codequest/lessons/<slug>.json` (or `--lesson-file`) and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) into the output folder. A rerun renders only steps whose text changed. A step's old audio is removed before it is rendered, and the manifest is updated after each step, so an interrupted run never leaves audio that a rerun would skip. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration.
+`--out` is optional and defaults to `.narration/<slug>` under the repo root, which is gitignored. Lesson files and output folders must live inside the repo or the OS temp dir, and `--lesson` must be lowercase letters, digits and hyphens. The script reads `worlds/codequest/lessons/<slug>.json` (or `--lesson-file`) and writes `<idx>.mp3` plus `narration.json` (a hash of each step's text) into the output folder. A rerun renders only steps whose text changed. A step's old audio is removed before it is rendered, and the manifest is updated after each step, so an interrupted run never leaves audio that a rerun would skip. Steps without narration are reported and get no file. The summary line shows how many steps were rendered, skipped, failed and left without narration.
 
 Then store the files with the importer, using an absolute `--dir` (the default folder is `$PWD/.narration/<slug>` when you run from the repo root):
 

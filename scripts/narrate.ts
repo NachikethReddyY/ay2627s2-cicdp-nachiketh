@@ -3,8 +3,9 @@
 // --out defaults to .narration/<slug> under the repo root (gitignored).
 // Keys come only from environment variables. They are never printed, logged or written to disk.
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { access, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -117,6 +118,38 @@ async function writeManifest(path: string, manifest: Record<string, string>) {
   await rename(tmp, path);
 }
 
+/** A lesson slug: lowercase letters, digits and hyphens. Anything else could steer a path. */
+export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/** realpath of the nearest existing ancestor, with the missing tail re-attached. Resolves symlinks such as /var -> /private/var. */
+async function realpathOfNearest(path: string): Promise<string> {
+  const tail: string[] = [];
+  let cur = path;
+  for (;;) {
+    try {
+      return join(await realpath(cur), ...tail);
+    } catch {
+      const parent = dirname(cur);
+      if (parent === cur) return path;
+      tail.unshift(basename(cur));
+      cur = parent;
+    }
+  }
+}
+
+/**
+ * Resolves a path and confines it to the allowed roots. Returns the real path to use for reads and writes.
+ * Throws a UsageError for anything outside every root, including via a symlink.
+ */
+export async function assertInsideRoots(path: string, roots: string[]): Promise<string> {
+  const target = await realpathOfNearest(resolve(path));
+  const allowed = await Promise.all(roots.map((r) => realpathOfNearest(resolve(r))));
+  if (!allowed.some((root) => target === root || target.startsWith(root.endsWith(sep) ? root : root + sep))) {
+    throw new UsageError(`${path} must be inside the repo or the OS temp dir (${allowed.join(", ")})`);
+  }
+  return target;
+}
+
 /** Default --out for a lesson: .narration/<slug> under the repo root (gitignored). */
 export function defaultOutDir(slug: string): string {
   return join(repoRoot, ".narration", slug);
@@ -136,14 +169,17 @@ export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io): P
       throw new UsageError(e instanceof Error ? e.message : String(e));
     }
     if (!values.lesson && !values["lesson-file"]) throw new UsageError("--lesson <slug> or --lesson-file <path> is required");
+    const slug = values.lesson ?? basename(values["lesson-file"]!, ".json");
+    if (!SLUG_PATTERN.test(slug)) {
+      throw new UsageError(`lesson slug "${slug}" must be lowercase letters, digits and hyphens (pass --lesson, or rename the lesson file)`);
+    }
 
     const provider = chooseProvider(values.provider, env);
     const cfg = providerConfig(provider, env);
-    const slug = values.lesson ?? basename(values["lesson-file"]!, ".json");
-    const lessonFile = values["lesson-file"] ?? join(repoRoot, "worlds/codequest/lessons", `${slug}.json`);
+    const roots = [repoRoot, tmpdir()];
+    const lessonFile = await assertInsideRoots(values["lesson-file"] ?? join(repoRoot, "worlds/codequest/lessons", `${slug}.json`), roots);
+    const outDir = await assertInsideRoots(values.out ?? defaultOutDir(slug), roots);
     const steps = await readSteps(lessonFile);
-
-    const outDir = values.out ? resolve(values.out) : defaultOutDir(slug);
     await mkdir(outDir, { recursive: true });
     const manifestPath = join(outDir, "narration.json");
     // `state` is the manifest on disk, updated and written at every step, so it never claims audio that is not there.
