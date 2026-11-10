@@ -1,8 +1,7 @@
 name: Deploy staging
 
+# Manual only: staging is not in use yet, so pushes to main no longer deploy it. Run it from the Actions tab.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
