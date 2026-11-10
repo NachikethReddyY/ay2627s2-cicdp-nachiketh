@@ -241,7 +241,7 @@ void main() {
 /** The light field renders at this fraction of the CSS size, then blooms. */
 const FIELD_SCALE = 0.6
 const POINTER_EASE = 6
-const VIDEO_FILE = /^data:video\/|\.(mp4|webm|ogv|mov|m4v)(\?|#|$)/i
+const VIDEO_FILE = /(?:^data:video\/|\.(?:mp4|webm|ogv|mov|m4v)(?:\?|#|$))/i
 
 function compile(gl: WebGL2RenderingContext, fragment: string) {
   const program = gl.createProgram()
