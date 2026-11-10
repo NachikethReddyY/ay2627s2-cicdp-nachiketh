@@ -42,7 +42,7 @@ const kinds: GameProps["kind"][] = [
   { kind: "match", pairs: [{ left: "l1", right: "r1" }, { left: "l2", right: "r2" }] },
   { kind: "sort", buckets: ["A", "B"], cards: [{ text: "c1", bucket: 0 }, { text: "c2", bucket: 1 }] },
   { kind: "physics", target: { x: 20, width: 4 }, maxSpeed: 20 },
-  { kind: "grid", size: { w: 4, h: 3 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 3, y: 2 }, walls: [], gems: [], commands: ["forward", "right"], mode: "solve", maxSteps: 12, solution: ["forward", "right"] },
+  { kind: "grid", size: { w: 4, h: 3 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 3, y: 2 }, walls: [], gems: [], commands: ["forward", "right"], mode: "solve", maxSteps: 12, solution: ["forward", "right"], starter: ["right", "forward"] },
 ];
 
 test("the public payload carries only allowlisted keys and no answer-like key", () => {
