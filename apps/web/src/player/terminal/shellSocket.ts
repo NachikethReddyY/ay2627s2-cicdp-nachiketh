@@ -14,6 +14,11 @@ export type ShellState =
 
 export const BACKOFF_MS: readonly number[] = [1000, 2000, 4000, 8000, 15000];
 
+// Proxies drop idle sockets, so an open shell sends a small control frame on this interval. The server ignores unknown frames.
+export const HEARTBEAT_MS = 25_000;
+const PING = JSON.stringify({ type: "ping" });
+const OPEN_STATE = 1; // WebSocket.OPEN
+
 export function backoffMs(attempt: number): number {
   return BACKOFF_MS[Math.min(Math.max(attempt, 0), BACKOFF_MS.length - 1)];
 }
@@ -169,6 +174,18 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     retryTimer = undefined;
   };
 
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  const stopHeartbeat = () => {
+    if (heartbeat !== undefined) clearInterval(heartbeat);
+    heartbeat = undefined;
+  };
+  const startHeartbeat = (socket: WebSocket) => {
+    stopHeartbeat();
+    heartbeat = setInterval(() => {
+      if (socket.readyState === OPEN_STATE) socket.send(PING);
+    }, HEARTBEAT_MS);
+  };
+
   const closed = (reason: CloseReason, message: string) => {
     setState({ kind: "closed", reason, message });
     settle(reason);
@@ -188,6 +205,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   const onDrop = (gen: number, code: number) => {
     if (gen !== generation || disposed) return;
     ws = null;
+    stopHeartbeat();
     if (state.kind === "exited" || state.kind === "closed") return;
     const fixed = CLOSE_REASONS[code];
     if (fixed) return closed(fixed.reason, lastError || fixed.message);
@@ -249,6 +267,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
       if (gen !== generation) return;
       opened = true;
       setState({ kind: "open", ready: false });
+      startHeartbeat(socket);
       if (size.cols !== urlSize.cols || size.rows !== urlSize.rows) {
         socket.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
       }
@@ -281,6 +300,15 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     };
     socket.onclose = (ev) => onDrop(gen, ev.code);
   };
+
+  // The network came back: retry now instead of waiting out the backoff.
+  const onOnline = () => {
+    if (state.kind !== "reconnecting") return;
+    clearRetry();
+    attempt = 0;
+    open();
+  };
+  globalThis.addEventListener?.("online", onOnline);
 
   return {
     connect(cols, rows) {
@@ -359,6 +387,8 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
       disposed = true;
       generation++;
       clearRetry();
+      stopHeartbeat();
+      globalThis.removeEventListener?.("online", onOnline);
       ws?.close(1000);
       ws = null;
       const list = pending;

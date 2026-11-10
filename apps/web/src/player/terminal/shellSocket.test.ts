@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BACKOFF_MS, ShellNotReadyError, backoffMs, createShellSocket, normalizeWsOrigin, shellUrl } from "./shellSocket.ts";
+import { BACKOFF_MS, HEARTBEAT_MS, ShellNotReadyError, backoffMs, createShellSocket, normalizeWsOrigin, shellUrl } from "./shellSocket.ts";
 
 const location = { protocol: "http:", host: "localhost:5173" };
 const bytes = (s: string) => new TextEncoder().encode(s).buffer;
@@ -41,7 +41,9 @@ class FakeWS {
   close(code?: number) {
     this.closedWith = code;
   }
+  readyState = 0;
   open() {
+    this.readyState = 1;
     this.onopen?.();
   }
   msg(data: unknown) {
@@ -50,6 +52,7 @@ class FakeWS {
   // The server side ends the connection. The brief names this helper close(code); the socket under test also
   // calls close(), so the test helper is named `drop`.
   drop(code: number) {
+    this.readyState = 3;
     this.onclose?.({ code });
   }
 }
@@ -60,6 +63,47 @@ const make = (probe: () => Promise<number> = async () => 404) =>
 const reset = () => {
   FakeWS.all = [];
 };
+
+test("an open shell sends a heartbeat, and stops it once the socket drops", (t) => {
+  reset();
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const s = make();
+  s.connect(80, 24);
+  FakeWS.last.open();
+  t.mock.timers.tick(HEARTBEAT_MS * 2);
+  const ping = JSON.stringify({ type: "ping" });
+  assert.equal(FakeWS.last.sent.filter((d) => d === ping).length, 2);
+  FakeWS.last.drop(1006);
+  const sent = FakeWS.last.sent.length;
+  t.mock.timers.tick(HEARTBEAT_MS * 2);
+  assert.equal(FakeWS.last.sent.length, sent, "no heartbeat on a dropped socket");
+  s.dispose();
+});
+
+test("the browser's online event retries a shell that is waiting out its backoff", (t) => {
+  reset();
+  const handlers = new Map<string, () => void>();
+  Object.assign(globalThis, {
+    addEventListener: (type: string, fn: () => void) => handlers.set(type, fn),
+    removeEventListener: (type: string) => handlers.delete(type),
+  });
+  t.after(() => {
+    delete (globalThis as Record<string, unknown>).addEventListener;
+    delete (globalThis as Record<string, unknown>).removeEventListener;
+  });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const s = make();
+  s.connect(80, 24);
+  FakeWS.last.open();
+  FakeWS.last.drop(1006);
+  assert.equal(s.state().kind, "reconnecting");
+  const before = FakeWS.count;
+  handlers.get("online")?.();
+  assert.equal(FakeWS.count, before + 1, "retries now, without waiting out the backoff");
+  assert.equal(s.state().kind, "connecting");
+  s.dispose();
+  assert.equal(handlers.has("online"), false, "dispose removes the listener");
+});
 
 test("URL, binary keystrokes and resize frames", () => {
   reset();

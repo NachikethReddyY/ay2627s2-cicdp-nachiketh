@@ -24,6 +24,13 @@ export type TreeRowData = {
 
 const join = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
 
+/** Folders first, then files; each group alphabetical, case-insensitive. Applied to every level. */
+export function sortTree(nodes: TreeNode[]): TreeNode[] {
+  return nodes
+    .map((node) => (node.children ? { ...node, children: sortTree(node.children) } : node))
+    .sort((a, b) => Number(!!b.children) - Number(!!a.children) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
 /** Paths of the folders that start open. */
 export function initialOpen(nodes: TreeNode[], parent = ""): Set<string> {
   const out = new Set<string>();

@@ -122,6 +122,10 @@ export function daytonaBackend(opts: {
     }
   }
 
+  // The learner's running shell, reused for a few seconds: a file read otherwise lists sandboxes first, every time.
+  const SHELL_CACHE_MS = 10_000;
+  const shells = new Map<string, { sbx: DaytonaSandbox; at: number }>();
+
   // Home directory per sandbox id: it does not change for a sandbox's life.
   const homes = new Map<string, string>();
   async function homeOf(sbx: DaytonaSandbox): Promise<string> {
@@ -145,29 +149,38 @@ export function daytonaBackend(opts: {
 
   return {
     async readWorkspaceFile(learnerId, relPath) {
-      const sbx = await findShell(learnerId);
-      const parts = relPath.split("/");
-      let path = await homeOf(sbx);
-      let size: number | undefined;
-      for (const [index, part] of parts.entries()) {
-        path += `/${part}`;
-        let info: { isDir: boolean; mode?: string; size?: number } | undefined;
-        try {
-          info = await sbx.fs.getFileDetails(path);
-        } catch (err) {
-          if ((err as { statusCode?: number } | null)?.statusCode === 404) return null;
-          throw err;
+      const cached = shells.get(learnerId);
+      const sbx = cached && Date.now() - cached.at < SHELL_CACHE_MS ? cached.sbx : await findShell(learnerId);
+      if (sbx !== cached?.sbx) shells.set(learnerId, { sbx, at: Date.now() });
+      try {
+        const parts = relPath.split("/");
+        const home = await homeOf(sbx);
+        const paths = parts.map((_, index) => [home, ...parts.slice(0, index + 1)].join("/"));
+        // Every segment is checked in one round trip, not one per folder.
+        type Stat = { info: { isDir: boolean; mode?: string; size?: number } } | { err: unknown };
+        const stats: Stat[] = await Promise.all(paths.map((p) => sbx.fs.getFileDetails(p).then((info): Stat => ({ info }), (err: unknown): Stat => ({ err }))));
+        let size: number | undefined;
+        for (const [index, stat] of stats.entries()) {
+          if ("err" in stat) {
+            if ((stat.err as { statusCode?: number } | null)?.statusCode === 404) return null;
+            throw stat.err;
+          }
+          const { info } = stat;
+          if (info.mode?.startsWith("L") || (index < parts.length - 1 ? !info.isDir : info.isDir)) return null;
+          size = info.size;
         }
-        if (info.mode?.startsWith("L") || (index < parts.length - 1 ? !info.isDir : info.isDir)) return null;
-        size = info.size;
+        // Refuse from the reported size first, so a large learner file is never buffered in full. The SDK types size as
+        // required; if it is missing, refuse rather than download unbounded (downloadFile has no range option).
+        if (size === undefined || size > 64 * 1024) throw new SandboxFileTooLargeError();
+        if (!sbx.fs.downloadFile) throw new Error("Workspace file reading is not supported by this Daytona SDK");
+        const content = await sbx.fs.downloadFile(paths[paths.length - 1]);
+        if (content.byteLength > 64 * 1024) throw new SandboxFileTooLargeError();
+        return content.toString("utf8");
+      } catch (err) {
+        // A failed read may mean the shell was stopped: look it up again next time.
+        shells.delete(learnerId);
+        throw err;
       }
-      // Refuse from the reported size first, so a large learner file is never buffered in full. The SDK types size as
-      // required; if it is missing, refuse rather than download unbounded (downloadFile has no range option).
-      if (size === undefined || size > 64 * 1024) throw new SandboxFileTooLargeError();
-      if (!sbx.fs.downloadFile) throw new Error("Workspace file reading is not supported by this Daytona SDK");
-      const content = await sbx.fs.downloadFile(path);
-      if (content.byteLength > 64 * 1024) throw new SandboxFileTooLargeError();
-      return content.toString("utf8");
     },
 
     async writeWorkspaceFile(learnerId, relPath, content) {
