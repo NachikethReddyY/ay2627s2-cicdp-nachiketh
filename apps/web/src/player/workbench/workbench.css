@@ -68,6 +68,20 @@
     box-shadow: 0 24px 60px rgba(20, 30, 70, 0.28), 0 6px 16px rgba(20, 30, 70, 0.12), inset 0 2px 0 rgba(255, 255, 255, 0.35);
     backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
   }
+  /* Set on <html> while a floating window is dragged or resized (see lockSelectionUntilRelease in TestEditor). */
+  .lq-no-select, .lq-no-select * { user-select: none !important; -webkit-user-select: none !important; }
+  /* Floating editor window: the title bar drags it, so it must not select text or start a native drag (same as .wb-preview-float). */
+  .wb-win-floating { user-select: none; -webkit-user-select: none; }
+  /* Inactive window: grey traffic lights, as on macOS. */
+  .wb-win[data-inactive] .wb-lights > span { background: color-mix(in srgb, var(--mu) 35%, transparent); border-color: transparent; }
+  .wb-preview-float[data-inactive] .wb-preview-dot { background: color-mix(in srgb, var(--mu) 35%, transparent) !important; }
+  /* Inactive windows also lose their title colour, header tint, status dot and lift shadow. */
+  .wb-win[data-inactive] header { color: var(--mu); }
+  .wb-preview-float[data-inactive] { box-shadow: 0 8px 22px rgba(20, 30, 70, 0.12); }
+  .wb-preview-float[data-inactive] .wb-preview-float-head { color: var(--mu); }
+  .wb-preview-float[data-inactive] .wb-preview-float-title { color: var(--mu); }
+  .wb-preview-float[data-inactive] .wb-preview-secure-dot { background: color-mix(in srgb, var(--mu) 45%, transparent) !important; }
+  .wb-win-floating header { cursor: grab; touch-action: none; -webkit-app-region: no-drag; }
   .wb-desk[data-resolved="dark"] .wb-win { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
   /* Navigator: translucent over the window's frosted wallpaper (vibrancy); the editor stays solid. */
   .wb-side { background: var(--vib); }
@@ -492,6 +506,11 @@
 /* Board: line numbers are one pixel smaller than the code (calc(var(--fs) - 1px)). Outside the layer so it beats Monaco. */
 .wb .monaco-editor .margin-view-overlays .line-numbers { font-size: 12px; }
 
+/* Leave room for the test editor's dock, so the editor and status bar stay above it on wide screens. */
+@media (min-width: 768px) {
+  .wb-desk:has(~ .editor-dock) { padding-bottom: 72px; }
+}
+
 /* The dev workbench's browser preview is a movable, resizable desktop window. */
 .wb-preview-float {
   position: fixed; z-index: 60; right: 24px; bottom: 24px; display: flex; width: min(680px, calc(100vw - 24px));
@@ -500,7 +519,8 @@
   box-shadow: 0 24px 60px rgba(20, 30, 70, 0.28), 0 6px 16px rgba(20, 30, 70, 0.14);
 }
 .wb-preview-float[hidden] { display: none; }
-.wb-preview-float.wb-preview-maximized { inset: 12px; width: auto; height: auto; min-width: 0; min-height: 0; resize: none; }
+/* The bottom inset keeps the window's edge above the editor dock, which sits near the bottom of the screen. */
+.wb-preview-float.wb-preview-maximized { inset: 12px 12px 84px; width: auto; height: auto; min-width: 0; min-height: 0; resize: none; }
 .wb-preview-float.wb-preview-minimized { height: 39px; min-height: 39px; resize: none; }
 .wb-preview-float.wb-preview-minimized > :not(.wb-preview-float-head) { display: none; }
 .wb-preview-float-head {
@@ -508,6 +528,30 @@
   border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--tbar) 92%, var(--mu)); cursor: grab; touch-action: none; user-select: none;
 }
 .wb-preview-float-head:active { cursor: grabbing; }
+/* Rendered Markdown in the notepad's preview pane. */
+.wb-notepad-preview { overflow: auto; padding: 12px 14px; color: var(--tx); font-size: 13px; line-height: 1.6; }
+.wb-notepad-preview > :first-child { margin-top: 0; }
+.wb-notepad-preview h1, .wb-notepad-preview h2, .wb-notepad-preview h3 { margin: 0.9em 0 0.4em; font-weight: 600; line-height: 1.3; }
+.wb-notepad-preview h1 { font-size: 1.35em; }
+.wb-notepad-preview h2 { font-size: 1.15em; }
+.wb-notepad-preview h3 { font-size: 1.04em; }
+.wb-notepad-preview p, .wb-notepad-preview ul, .wb-notepad-preview ol, .wb-notepad-preview blockquote, .wb-notepad-preview pre, .wb-notepad-preview table { margin: 0.5em 0; }
+.wb-notepad-preview ul { list-style: disc; padding-left: 1.4em; }
+.wb-notepad-preview ol { list-style: decimal; padding-left: 1.4em; }
+.wb-notepad-preview a { color: var(--ac); text-decoration: underline; }
+.wb-notepad-preview code { padding: 1px 4px; border-radius: 4px; background: var(--side); font-family: ui-monospace, monospace; font-size: 0.92em; }
+.wb-notepad-preview pre { overflow: auto; padding: 10px; border-radius: 8px; background: var(--side); }
+.wb-notepad-preview pre code { padding: 0; background: none; }
+.wb-notepad-preview blockquote { padding-left: 10px; border-left: 3px solid var(--line); color: var(--mu); }
+.wb-notepad-preview hr { margin: 1em 0; border: 0; border-top: 1px solid var(--line); }
+.wb-notepad-preview table { border-collapse: collapse; }
+.wb-notepad-preview th, .wb-notepad-preview td { padding: 4px 8px; border: 1px solid var(--line); }
+/* Custom right-click menu for the browser window (replaces the frame's native menu). */
+.wb-preview-menu { position: absolute; z-index: 6; display: grid; min-width: 190px; padding: 5px; gap: 1px; border: 1px solid var(--line); border-radius: 10px; background: var(--tbar); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); }
+.wb-preview-menu button { padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--tx); font-size: 12.5px; text-align: left; cursor: pointer; }
+.wb-preview-menu button:hover:not(:disabled) { background: var(--hov); }
+.wb-preview-menu button:disabled { opacity: 0.45; cursor: default; }
+.wb-preview-menu-rule { height: 1px; margin: 4px 6px; background: var(--line); }
 .wb-preview-mac-dots { display: flex; flex: none; align-items: center; gap: 6px; margin-right: 3px; }
 .wb-preview-dot { display: grid; width: 11px; height: 11px; padding: 0; place-items: center; border: 1px solid rgba(0,0,0,.12); border-radius: 50%; color: rgba(0,0,0,.65); cursor: pointer; }
 .wb-preview-dot-close { background: #ff5f57; }
@@ -541,6 +585,81 @@
 .wb-preview-elements { min-height: 0; flex: 1; overflow: auto; }
 .wb-preview-elements code { display: block; color: var(--acT); white-space: pre-wrap; overflow-wrap: anywhere; }
 .wb-preview-elements p { margin: 8px 0 0; color: var(--tx); white-space: pre-wrap; }
+/* Developer tools panel (PreviewDevtools.tsx) */
+.wb-preview-devtools { height: 260px; min-height: 160px; container: wbdt / inline-size; color: var(--tx); }
+.wb-dt-bar { display: flex; height: 30px; min-height: 30px; align-items: center; justify-content: space-between; gap: 4px; padding: 0 4px 0 6px; border-bottom: 1px solid var(--line); }
+.wb-dt-tabs { display: flex; min-width: 0; align-items: center; gap: 1px; overflow-x: auto; scrollbar-width: none; }
+.wb-dt-tabs button, .wb-dt-subtabs button { height: 24px; flex: none; padding: 0 7px; border: 0; border-radius: 5px; background: transparent; color: var(--mu); font: inherit; cursor: pointer; }
+.wb-dt-tabs button:hover, .wb-dt-btn:hover, .wb-dt-subtabs button:hover { background: var(--hov); }
+.wb-dt-tabs button[aria-selected="true"], .wb-dt-subtabs button[aria-selected="true"], .wb-dt-inspect[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+.wb-dt-actions { display: flex; flex: none; align-items: center; gap: 1px; }
+.wb-dt-btn { display: inline-flex; height: 24px; align-items: center; gap: 4px; padding: 0 6px; border: 0; border-radius: 5px; background: transparent; color: var(--mu); font: inherit; cursor: pointer; }
+.wb-dt-close { padding: 0 7px; font-size: 15px; line-height: 1; }
+.wb-dt-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.wb-dt-panel[hidden] { display: none; }
+.wb-dt-empty { margin: 0; padding: 9px; color: var(--mu); }
+.wb-dt-error { color: #c43f4b; }
+.wb-dt-note { margin: 0; padding: 4px 9px; color: var(--mu); border-top: 1px solid var(--line); }
+.wb-dt-console { min-height: 0; flex: 1; overflow: auto; font: 10px/1.45 "Geist Mono", ui-monospace, monospace; }
+.wb-dt-log { display: flex; gap: 8px; padding: 3px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.wb-dt-log-error { color: #c43f4b; background: rgba(220,50,60,.06); }
+.wb-dt-log-warn { color: #986312; background: rgba(230,170,30,.06); }
+.wb-dt-log time { flex: none; opacity: .65; }
+.wb-dt-log code { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wb-dt-split { display: flex; min-height: 0; flex: 1; }
+.wb-dt-pane { min-width: 0; min-height: 0; flex: 1 1 50%; overflow: auto; }
+.wb-dt-pane + .wb-dt-pane { border-left: 1px solid var(--line); }
+.wb-dt-tree-pane { display: flex; flex-direction: column; }
+.wb-dt-tree { min-height: 0; flex: 1; overflow: auto; padding: 2px 0; font: 10px/1.6 "Geist Mono", ui-monospace, monospace; }
+.wb-dt-node { display: flex; width: max-content; min-width: 100%; align-items: baseline; gap: 2px; padding-right: 8px; white-space: nowrap; cursor: default; outline: 0; }
+.wb-dt-node:hover { background: var(--hov); }
+.wb-dt-node.is-selected { background: var(--sel); }
+.wb-dt-node:focus-visible { box-shadow: inset 0 0 0 1px var(--acT); }
+.wb-dt-caret { display: inline-block; width: 12px; flex: none; padding: 0; border: 0; background: transparent; color: var(--mu); font: inherit; font-size: 9px; text-align: center; cursor: pointer; }
+.wb-dt-tag, .wb-dt-tagname { color: var(--acT); }
+.wb-dt-attr { color: var(--mu); }
+.wb-dt-attrval { color: var(--tx); }
+.wb-dt-text-node { color: var(--mu); }
+.wb-dt-styles { display: flex; flex-direction: column; font: 10px/1.6 "Geist Mono", ui-monospace, monospace; }
+.wb-dt-subtabs { position: sticky; top: 0; z-index: 1; display: flex; gap: 1px; padding: 2px 4px; border-bottom: 1px solid var(--line); background: var(--tbar); font-family: inherit; }
+.wb-dt-subtabs button { height: 20px; font: 11px/1 system-ui, sans-serif; }
+.wb-dt-rule { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.wb-dt-rule h4 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin: 0 0 2px; color: var(--tx); font: inherit; font-weight: 600; }
+.wb-dt-source { color: var(--mu); font-weight: 400; }
+.wb-dt-decl { padding-left: 12px; overflow-wrap: anywhere; }
+.wb-dt-prop { color: var(--acT); }
+.wb-dt-val { color: var(--tx); }
+.wb-dt-editable { padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: text; }
+.wb-dt-editable:hover { text-decoration: underline dotted; }
+.wb-dt-edit { min-width: 4ch; max-width: 100%; padding: 0 2px; border: 1px solid var(--acT); border-radius: 3px; outline: 0; background: var(--code); color: var(--tx); font: inherit; }
+input.wb-dt-edit:not(.wb-dt-prop):not(.wb-dt-val) { width: calc(100% - 12px); margin-left: 12px; }
+.wb-dt-add { margin-left: 10px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--mu); font: inherit; cursor: pointer; }
+.wb-dt-add:hover { background: var(--hov); color: var(--tx); }
+.wb-dt-filter { width: calc(100% - 16px); margin: 4px 8px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; outline: 0; background: var(--code); color: var(--tx); font: 11px/1.5 system-ui, sans-serif; }
+.wb-dt-filter:focus { border-color: var(--acT); }
+.wb-dt-src-list { flex: 0 1 38%; margin: 0; padding: 0; list-style: none; background: var(--side); }
+.wb-dt-src-item { display: flex; width: 100%; align-items: baseline; gap: 5px; padding: 3px 8px; border: 0; background: transparent; color: var(--tx); font: 10px/1.5 "Geist Mono", ui-monospace, monospace; text-align: left; white-space: nowrap; cursor: pointer; }
+.wb-dt-src-item:hover { background: var(--hov); }
+.wb-dt-src-item.is-on { background: var(--sel); color: var(--acT); }
+.wb-dt-kind { flex: none; color: var(--mu); font-size: 9px; text-transform: uppercase; }
+.wb-dt-src-view { flex: 1 1 62%; }
+.wb-dt-code { display: flex; min-width: max-content; font: 10px/1.5 "Geist Mono", ui-monospace, monospace; }
+.wb-dt-code pre { margin: 0; padding: 4px 0; font: inherit; }
+.wb-dt-gutter { position: sticky; left: 0; padding: 4px 6px !important; background: var(--side); color: var(--mu); text-align: right; user-select: none; }
+.wb-dt-text { padding-left: 8px !important; padding-right: 12px !important; }
+.wb-dt-scroll { min-height: 0; flex: 1; overflow: auto; }
+.wb-dt-table { width: 100%; border-collapse: collapse; font: 10px/1.5 "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
+.wb-dt-table th { position: sticky; top: 0; padding: 3px 8px; border-bottom: 1px solid var(--line); background: var(--tbar); color: var(--mu); font-weight: 600; text-align: left; }
+.wb-dt-table td { padding: 2px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.wb-dt-table .wb-dt-name { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+.wb-dt-table tr.is-failed { color: #c43f4b; }
+@container wbdt (max-width: 480px) {
+  .wb-dt-label { display: none; }
+  .wb-dt-elements { flex-direction: column; }
+  .wb-dt-elements .wb-dt-pane { flex: 1 1 50%; }
+  .wb-dt-elements .wb-dt-pane + .wb-dt-pane { border-top: 1px solid var(--line); border-left: 0; }
+  .wb-dt-src-list { flex-basis: 34%; }
+}
 @media (max-width: 640px) {
   .wb-preview-float { right: 12px; bottom: 12px; width: calc(100vw - 24px); height: min(500px, calc(100dvh - 24px)); min-width: 280px; }
   .wb-preview-float-head { gap: 4px; padding-right: 3px; padding-left: 8px; }

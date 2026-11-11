@@ -1,5 +1,5 @@
 import { Columns2, List, Maximize2, Minimize2, Plus, Sparkles, X } from "lucide-react";
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue, type WorkbenchProblem } from "./context";
 import { EDITOR_MIN, LEFT_MAX_FRACTION, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resizeContainerForPanel, resolveTheme, useLayout, type Layout } from "./layout";
@@ -71,6 +71,14 @@ type Props = {
    * view must not show dead controls. The /test/editor page turns it on.
    */
   showPlanned?: boolean;
+  /** Wide layout only: place the window on the desk. Drag it by the title bar, resize it from its edges. */
+  floatingWindow?: {
+    style: CSSProperties;
+    resizeHandles: ReactNode;
+    onDragStart(event: ReactPointerEvent<HTMLElement>): void;
+    onDragMove(event: ReactPointerEvent<HTMLElement>): void;
+    onDragEnd(): void;
+  };
   /** Current editor context for the structured guide on the test workbench. */
   aiContext?: { fileName: string; filePath: string; projectRoot: string; code: string; language: string };
 };
@@ -127,6 +135,20 @@ export default function Workbench(p: Props) {
   const [panelMaximized, setPanelMaximized] = useState(false);
   // Maximize is a desktop-only overlay; in the narrow layout the panel stays in flow, so nothing covers the page.
   const maximized = panelMaximized && wide;
+  const floating = wide ? p.floatingWindow : undefined;
+  // A window is active while the last click landed inside it; inactive windows grey their traffic lights.
+  const windowRef = useRef<HTMLDivElement>(null);
+  const [windowActive, setWindowActive] = useState(true);
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => setWindowActive(windowRef.current?.contains(event.target as Node) ?? false);
+    const onBlur = () => setWindowActive(false); // another app or the desktop took focus
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
   const view: NavView = planned ? navView : "files";
   const bottomView = planned ? bottomTab : "main";
   const { state: panel, dispatch: panelDispatch } = p.panel;
@@ -349,13 +371,30 @@ export default function Workbench(p: Props) {
         style={{ colorScheme: resolved }}
       >
         {/* While a drawer is open, everything behind it is inert: out of the Tab order and the accessibility tree. */}
-        <div inert={openOverlay != null} data-palette-open={palette.open || undefined} className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""}`}>
+        <div
+          inert={openOverlay != null}
+          ref={windowRef}
+          data-palette-open={palette.open || undefined}
+          data-inactive={floating && !windowActive ? "" : undefined}
+          className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""} ${floating ? "wb-win-floating" : ""}`}
+          style={floating?.style}
+          onDragStart={floating && ((event) => event.preventDefault())}
+          onPointerDown={floating && ((event) => {
+            // Only the title bar drags the window; its buttons and tabs keep their own clicks.
+            const target = event.target as HTMLElement;
+            if (target.closest("header, [data-window-drag]") && !target.closest("button, select, input, a, [role='tab']")) floating.onDragStart(event);
+          })}
+          onPointerMove={floating?.onDragMove}
+          onPointerUp={floating?.onDragEnd}
+          onPointerCancel={floating?.onDragEnd}
+        >
+          {floating?.resizeHandles}
           {wide ? (
             <div ref={rowRef} className="flex min-h-0 flex-1">
               {shown.showLeft && (
                 <>
                   <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-appear wb-side flex min-h-0 flex-none flex-col">
-                    <div className="flex flex-none items-center gap-2 px-3 pt-3">
+                    <div data-window-drag className="flex flex-none items-center gap-2 px-3 pt-3">
                       <span className="flex h-[34px] items-center">
                         <TrafficLights />
                       </span>
