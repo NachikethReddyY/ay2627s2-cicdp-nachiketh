@@ -119,6 +119,10 @@ test("resolveDocImages rewrites generate blocks for the client and never leaks t
   ] };
   const lessonVersionId = await versionId();
   const learnerId = await learnerId_();
+  const first = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
+  assert.deepEqual(first.blocks.map((b) => b.id), ["t", "a", "g"]);
+  assert.equal((first.blocks[2]!.props as any).source, "generated-pending", "a read does not wait on the provider");
+  await new Promise((r) => setTimeout(r, 200)); // generation runs after the read returns
   const out = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
   assert.deepEqual(out.blocks.map((b) => b.id), ["t", "a", "g"]);
   const g = out.blocks[2]!.props as any;

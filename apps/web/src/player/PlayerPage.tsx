@@ -8,7 +8,8 @@ const FixturePlayer = import.meta.env.DEV ? lazy(() => import("./FixturePlayer")
 export default function PlayerPage() {
   const q = new URLSearchParams(location.search);
   const slug = q.get("lesson");
-  if (slug) return <LiveLesson slug={slug} course={q.get("course") ?? undefined} />;
+  // key: moving to the next lesson starts a fresh lesson, with no state carried over from the last one.
+  if (slug) return <LiveLesson key={slug} slug={slug} course={q.get("course") ?? undefined} />;
   if (FixturePlayer) return <FixturePlayer />;
   return (
     <Notice>
