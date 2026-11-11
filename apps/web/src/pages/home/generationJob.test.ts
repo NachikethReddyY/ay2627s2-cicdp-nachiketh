@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getJob, startGeneration } from "./generationJob.ts";
+import { dismissJob, getJob, startGeneration } from "./generationJob.ts";
 
 test("a finished job keeps its course slug", async () => {
   await startGeneration("rust", async () => ({ firstCourseSlug: "rust-basics" }));
@@ -30,5 +30,19 @@ test("a second start while one is running does not send another request", async 
   assert.deepEqual(getJob(), { status: "running", prompt: "rust" });
   await Promise.all([first, second]);
   assert.equal(calls, 1);
+  assert.equal(getJob().status, "done");
+});
+
+test("dismissJob clears a settled job but never a running one", async () => {
+  await startGeneration("rust", async () => ({ firstCourseSlug: "rust-basics" }));
+  dismissJob();
+  assert.deepEqual(getJob(), { status: "idle" });
+
+  let finish!: (r: { firstCourseSlug: string }) => void;
+  const running = startGeneration("python", () => new Promise((resolve) => { finish = resolve; }));
+  dismissJob();
+  assert.deepEqual(getJob(), { status: "running", prompt: "python" });
+  finish({ firstCourseSlug: "python-basics" });
+  await running;
   assert.equal(getJob().status, "done");
 });

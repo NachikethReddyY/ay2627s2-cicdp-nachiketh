@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { trpc } from "../../lib/trpc";
 import { Pip } from "./art";
-import { getJob, startGeneration, subscribeJob } from "./generationJob";
+import { dismissJob, getJob, startGeneration, subscribeJob } from "./generationJob";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
 
@@ -27,6 +27,7 @@ export default function Generator() {
   useEffect(() => {
     if (job.status === "done" && waiting.current) {
       waiting.current = false;
+      dismissJob();
       void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } });
     }
   }, [job, navigate]);
@@ -62,6 +63,7 @@ export default function Generator() {
             onChange={(e) => {
               setQ(e.target.value);
               setEmpty(false);
+              dismissJob(); // the learner is writing a new prompt, so the last outcome is no longer news
             }}
           />
           <button className="lq-btn lq-btn-sun" type="submit" disabled={busy} aria-busy={busy}>
@@ -90,7 +92,7 @@ export default function Generator() {
         {job.status === "done" && !waiting.current && (
           <div className="lq-msg load">
             <span style={{ flex: "1 1 260px" }}>Your path is ready.</span>
-            <button className="lq-btn lq-btn-ink" type="button" onClick={() => void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } })} style={{ minHeight: 44, fontSize: 17, padding: "0 16px", boxShadow: "3px 3px 0 #15121f" }}>
+            <button className="lq-btn lq-btn-ink" type="button" onClick={() => { dismissJob(); void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } }); }} style={{ minHeight: 44, fontSize: 17, padding: "0 16px", boxShadow: "3px 3px 0 #15121f" }}>
               Open it
             </button>
           </div>
