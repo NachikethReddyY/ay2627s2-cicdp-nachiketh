@@ -6,7 +6,7 @@ import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
 import { seed } from "../src/db/seed.ts";
 import { learners, lessons, spendLedger, user } from "../src/db/schema.ts";
-import { generateImage, resolveDocImages } from "../src/media/imagegen.ts";
+import { generateImage, idleImages, resolveDocImages } from "../src/media/imagegen.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
 
@@ -52,12 +52,15 @@ test("resolveDocImages resolves blocks in parallel with a cap of four, keeping o
     return new Response(JSON.stringify({ data: [{ b64_json: PNG }] }), { status: 200 });
   };
   const blocks = Array.from({ length: 8 }, (_, i) => ({ type: "image", id: `b${i}`, props: { source: "generate", prompt: `prompt ${i}`, alt: `alt ${i}` } }));
-  const out = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId, tier: "max" }, http)) as { blocks: { id: string; props: { source: string } }[] };
-  assert.deepEqual(out.blocks.map((b) => b.id), blocks.map((b) => b.id));
-  assert.ok(out.blocks.every((b) => b.props.source === "generated"));
+  // The first read does not wait on the provider: every image is a description card until generation has run.
+  const first = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId, tier: "max" }, http)) as { blocks: { id: string; props: { source: string } }[] };
+  assert.deepEqual(first.blocks.map((b) => b.id), blocks.map((b) => b.id));
+  assert.ok(first.blocks.every((b) => b.props.source === "generated-pending"));
+  await idleImages(); // background generation, four at a time, runs after the read returns
   assert.ok(peak > 1 && peak <= 4, `peak concurrency ${peak}`);
 
-  // A second read is served from the batched cache lookup: no provider call at all.
-  const again = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId, tier: "max" }, async () => { throw new Error("network must not be called"); })) as typeof out;
+  // A later read is served from the batched cache lookup: no provider call at all.
+  const again = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId, tier: "max" }, async () => { throw new Error("network must not be called"); })) as typeof first;
+  assert.deepEqual(again.blocks.map((b) => b.id), blocks.map((b) => b.id));
   assert.ok(again.blocks.every((b) => b.props.source === "generated"));
 });

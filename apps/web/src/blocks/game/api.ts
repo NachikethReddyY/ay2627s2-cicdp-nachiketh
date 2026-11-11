@@ -25,7 +25,11 @@ export function gameApi(ctx: GameCompletionContext | undefined, gameIndex: numbe
     return { check: unavailable, hint: unavailable };
   }
   return {
-    check: (submission) => trpc.games.check.mutate({ lessonId: ctx.lessonId, gameIndex, submission }),
+    check: (submission) =>
+      trpc.games.check.mutate({ lessonId: ctx.lessonId, gameIndex, submission }).then((verdict) => {
+        if (verdict.complete) ctx.onComplete?.(); // the server has just recorded the win
+        return verdict;
+      }),
     hint: async (hintIndex) => (await trpc.games.hint.query({ lessonId: ctx.lessonId, gameIndex, hintIndex })).text,
   };
 }

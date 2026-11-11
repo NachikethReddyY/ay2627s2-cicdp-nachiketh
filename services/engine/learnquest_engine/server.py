@@ -221,6 +221,12 @@ def provider_auth(_: Request, exc: AuthenticationError) -> JSONResponse:
 
 
 @app.exception_handler(Timeout)
+def upstream_timeout(_: Request, exc: Timeout) -> JSONResponse:
+    # 504, not 502: the API maps it to a learner-facing timeout and does not charge the daily path.
+    log.error("LLM upstream failure: %s", type(exc).__name__)
+    return JSONResponse(status_code=504, content={"error": "timeout"})
+
+
 @app.exception_handler(RateLimitError)
 @app.exception_handler(ServiceUnavailableError)
 @app.exception_handler(APIConnectionError)

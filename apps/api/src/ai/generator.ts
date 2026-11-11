@@ -1,3 +1,4 @@
+import { env } from "../env.ts";
 import { callEngine } from "../engine-client/client.ts";
 
 // Every LLM call goes through the Python engine (LiteLLM); the API never calls a provider itself.
@@ -11,6 +12,7 @@ export type LessonContext = {
 };
 
 export const generator = {
-  outline: (topic: string): Promise<unknown> => callEngine<{ outline?: unknown }>("/v1/pipeline/outline", { topic }).then((r) => r.outline),
+  outline: (topic: string): Promise<unknown> =>
+    callEngine<{ outline?: unknown }>("/v1/pipeline/outline", { topic }, { timeoutMs: env.OUTLINE_TIMEOUT_MS }).then((r) => r.outline),
   lesson: (ctx: LessonContext): Promise<unknown> => callEngine<{ lesson?: unknown }>("/v1/pipeline/lesson", ctx).then((r) => r.lesson),
 };

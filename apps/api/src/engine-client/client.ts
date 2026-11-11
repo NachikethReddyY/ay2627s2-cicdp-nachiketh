@@ -26,7 +26,9 @@ export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unkno
       signal: AbortSignal.timeout(opts.timeoutMs ?? env.ENGINE_TIMEOUT_MS),
     });
   } catch (cause) {
-    throw new EngineError(`Engine unreachable at ${env.ENGINE_URL}`, 502, cause);
+    // AbortSignal.timeout rejects with a TimeoutError: report it as a gateway timeout, not an unreachable engine.
+    const timedOut = cause instanceof Error && cause.name === "TimeoutError";
+    throw new EngineError(timedOut ? "Engine timed out" : `Engine unreachable at ${env.ENGINE_URL}`, timedOut ? 504 : 502, cause);
   }
   const json = (await res.json().catch(() => null)) as unknown;
   if (!res.ok) throw new EngineError(`Engine answered ${res.status}`, res.status, json);

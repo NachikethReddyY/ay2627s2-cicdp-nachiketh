@@ -169,6 +169,7 @@ export async function resolveDocImages(
       for (const r of rows) if (r.hash && r.key) known.set(r.hash, r.key);
     } catch { /* fall back to per-image lookups */ }
   }
+  const later: Array<() => Promise<unknown>> = [];
   const resolveBlock = async (b: DocBlock): Promise<unknown> => {
     if (b?.type !== "image") return b;
     const p = b.props;
@@ -176,6 +177,12 @@ export async function resolveDocImages(
     if (p?.source !== "generate" || typeof p.prompt !== "string" || typeof p.alt !== "string") return undefined;
     const base = { alt: p.alt, ...(typeof p.caption === "string" ? { caption: p.caption } : {}) };
     let props: Record<string, unknown> = { source: "generated-pending", ...base };
+    // A read never waits on the provider. An image not stored yet shows its description card, and generation runs after the read returns so a later read has it.
+    if (!known.has(promptHash(p.prompt))) {
+      const input = { ...opts, prompt: p.prompt, description: p.alt }; // narrowed here; a closure would lose the type checks above
+      later.push(() => generateImage(input, http));
+      return { type: "image", id: b.id, props };
+    }
     try {
       const r = await generateImage({ ...opts, prompt: p.prompt, description: p.alt }, http, known);
       if (r.status === "ready" && storage) props = { source: "generated", url: await storage.signGet(r.key), ...base };
@@ -191,5 +198,15 @@ export async function resolveDocImages(
     }
   }));
   const out = results.filter((r) => r !== undefined);
+  // Images generated after the read returns, with the same cap. A failure keeps the description card; the next read serves whatever was stored.
+  const queue = Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, later.length) }, async () => {
+    for (let job = later.shift(); job; job = later.shift()) await job().catch(() => undefined);
+  }));
+  backgroundImages.add(queue);
+  void queue.finally(() => backgroundImages.delete(queue));
   return { ...(doc as object), blocks: out };
 }
+
+const backgroundImages = new Set<Promise<unknown>>();
+/** Resolves once the images queued by reads so far have settled (tests). */
+export const idleImages = () => Promise.allSettled([...backgroundImages]);

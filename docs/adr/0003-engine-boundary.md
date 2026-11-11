@@ -80,7 +80,9 @@ must be checked against the same list.
   ("AI is not configured") (`apps/api/src/ai/service.ts`).
 - New config surface:
   - API: `ENGINE_URL`, `ENGINE_TOKEN` (optional, at least 32 characters), `ENGINE_TIMEOUT_MS`
-    (default 400000).
+    (default 400000), `OUTLINE_TIMEOUT_MS` (default 90000; the path outline gives up sooner).
+  - An engine timeout answers 504 and the API returns `TIMEOUT`. Upstream failures (5xx)
+    give back the learner's daily path slot; invalid output (422) still uses it.
   - Engine: `ENGINE_TOKEN` (required, at least 32 characters, checked on the first request),
     `LLM_MODEL`, `LLM_API_BASE`, `LLM_API_KEY`.
   - The two `ENGINE_TOKEN` values must match.

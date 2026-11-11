@@ -10,7 +10,7 @@ import type { Lesson } from "./types";
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
 
-export default function Steps({ lesson }: { lesson: Lesson }) {
+export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; next?: ReactNode; onFinished?: () => void }) {
   const n = lesson.steps.length;
   const start = Math.max(0, lesson.steps.findIndex((s) => s.state !== "revealed" && s.state !== "skipped"));
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: n, idx: start } });
@@ -21,6 +21,11 @@ export default function Steps({ lesson }: { lesson: Lesson }) {
   // Bumped by Retry so the load effects run again; the machine only re-syncs (CONFLICT) while answering.
   const [retries, setRetries] = useState(0);
   const state = snap.value as string;
+
+  // The server records a predict lesson's completion with its last answer; onFinished lets the course strip refetch it.
+  useEffect(() => {
+    if (state === "finished") onFinished?.();
+  }, [state, onFinished]);
 
   // Entering a step (or re-syncing after a 409) loads it; revealed or skipped steps then load their answer.
   useEffect(() => {
@@ -73,7 +78,7 @@ export default function Steps({ lesson }: { lesson: Lesson }) {
       <div role="status">
         <img src="/img/pip-cheer.png" alt="" className="float w-20" />
         <h3 className="font-display text-2xl font-black">Lesson complete</h3>
-        <a href="/" className="btn mt-4 inline-block">Back home</a>
+        {next ?? <a href="/" className="btn mt-4 inline-block">Back home</a>}
       </div>
     );
   } else if (failed) {
@@ -104,7 +109,7 @@ export default function Steps({ lesson }: { lesson: Lesson }) {
       title={lesson.title}
       stepTitles={lesson.steps.map((s) => s.title)}
       timeline={timeline}
-      live={{ idx: Math.min(idx, n - 1), panel, playKey: reveal, narration, narrationText }}
+      live={{ idx: Math.min(idx, n - 1), finished: state === "finished", panel, playKey: reveal, narration, narrationText }}
     />
   );
 }

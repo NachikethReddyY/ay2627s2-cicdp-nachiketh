@@ -8,7 +8,7 @@ import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
 import { seed } from "../src/db/seed.ts";
 import { learners, lessons, spendLedger, user } from "../src/db/schema.ts";
-import { generateImage, resolveDocImages, prewarmDocImages } from "../src/media/imagegen.ts";
+import { generateImage, idleImages, resolveDocImages, prewarmDocImages } from "../src/media/imagegen.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
 
@@ -119,6 +119,10 @@ test("resolveDocImages rewrites generate blocks for the client and never leaks t
   ] };
   const lessonVersionId = await versionId();
   const learnerId = await learnerId_();
+  const first = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
+  assert.deepEqual(first.blocks.map((b) => b.id), ["t", "a", "g"]);
+  assert.equal((first.blocks[2]!.props as any).source, "generated-pending", "a read does not wait on the provider");
+  await idleImages(); // generation runs after the read returns
   const out = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
   assert.deepEqual(out.blocks.map((b) => b.id), ["t", "a", "g"]);
   const g = out.blocks[2]!.props as any;

@@ -69,14 +69,14 @@ def test_invalid_twice_is_422(
     assert r.json()["error"] == "invalid_output"
 
 
-def test_upstream_timeout_is_502(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_upstream_timeout_is_504(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def timeout(**_: Any) -> None:
         raise litellm.exceptions.Timeout("slow", "openai/test", "openai")
 
     monkeypatch.setattr(litellm, "completion", timeout)
     r = client.post("/v1/pipeline/outline", json={"topic": "rust"}, headers=TOKEN)
-    assert r.status_code == 502
-    assert r.json() == {"error": "upstream"}
+    assert r.status_code == 504
+    assert r.json() == {"error": "timeout"}
 
 
 def test_oversize_body_is_413(client: TestClient) -> None:

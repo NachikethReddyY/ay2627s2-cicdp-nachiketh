@@ -1,4 +1,5 @@
 import { lazy } from "react";
+import { useSearch } from "@tanstack/react-router";
 import LiveLesson from "./LiveLesson";
 import { Notice } from "./live/Notice";
 
@@ -6,9 +7,10 @@ import { Notice } from "./live/Notice";
 const FixturePlayer = import.meta.env.DEV ? lazy(() => import("./FixturePlayer")) : null;
 
 export default function PlayerPage() {
-  const q = new URLSearchParams(location.search);
-  const slug = q.get("lesson");
-  if (slug) return <LiveLesson slug={slug} course={q.get("course") ?? undefined} />;
+  // The route's search, not window.location: a move to the next lesson must re-render this page.
+  const { lesson: slug, course } = useSearch({ from: "/play" });
+  // key: moving to the next lesson starts a fresh lesson, with no state carried over from the last one.
+  if (slug) return <LiveLesson key={slug} slug={slug} course={course} />;
   if (FixturePlayer) return <FixturePlayer />;
   return (
     <Notice>
