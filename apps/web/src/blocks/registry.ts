@@ -2,7 +2,7 @@ import { Suspense, lazy, createElement, type ComponentType } from "react";
 import type { Block } from "@learnquest/ui-catalog";
 
 /** What every block's View.tsx receives. The default export of `./<type>/View.tsx` is the renderer. */
-export type GameCompletionContext = { lessonId: string; partIdx: number };
+export type GameCompletionContext = { lessonId: string; partIdx: number; onComplete?: () => void };
 export type BlockViewProps<P = any> = { block: Block<P>; gameCompletion?: GameCompletionContext };
 
 // scene3d pulls in three and react-three-fiber, so it is a lazy chunk; everything else stays in the main bundle.
