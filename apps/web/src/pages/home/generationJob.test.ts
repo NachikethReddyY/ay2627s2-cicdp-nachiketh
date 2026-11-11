@@ -29,6 +29,16 @@ test("a request that never answers shows TIMEOUT, and retry waits until the aban
   assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: false });
 });
 
+test("dismissJob keeps a timed-out job the server may still answer", async () => {
+  void startGeneration("rust", () => new Promise(() => undefined), { timeoutMs: 10, abandonMs: 40 });
+  await wait(20);
+  dismissJob();
+  assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: true });
+  await wait(50);
+  dismissJob();
+  assert.deepEqual(getJob(), { status: "idle" });
+});
+
 test("a late answer after the timeout still reaches the page", async () => {
   let answer!: (r: { firstCourseSlug: string }) => void;
   const late = startGeneration("rust", () => new Promise((resolve) => { answer = resolve; }), { timeoutMs: 10, abandonMs: 1000 });

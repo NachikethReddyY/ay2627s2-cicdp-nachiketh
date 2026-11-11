@@ -69,9 +69,12 @@ export function startGeneration(prompt: string, generate: GenerateFn, { timeoutM
   );
 }
 
-/** Forgets a finished or failed job once the learner has seen it. A running job is never dropped. */
+/**
+ * Forgets a finished or failed job once the learner has seen it. A running job is never dropped, and neither is a
+ * timed-out one the server may still answer: clearing it would enable Generate while startGeneration refuses it.
+ */
 export function dismissJob() {
-  if (job.status === "done" || job.status === "failed") setJob({ status: "idle" });
+  if (job.status === "done" || (job.status === "failed" && !job.pending)) setJob({ status: "idle" });
 }
 
 // tRPC errors carry the code under `data`; our own timeout carries it on the error itself.
