@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { trpc, isNotFound } from "../lib/trpc";
+import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import { LearnView } from "./LearnView.tsx";
 import { GamePracticeView } from "./GamePracticeView.tsx";
@@ -14,8 +14,8 @@ const PracticeView = lazy(() => import("./live/PracticeView"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
   const { data, error, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
-  // One course fetch serves both the progress strip and the Next button.
-  const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpc.courses.get.query({ slug: course }) : Promise.resolve(null)));
+  // One course fetch serves both the progress strip and the Next button. It is sent unbatched, so it is not held up by the lesson request.
+  const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
   // lessons.get waits while an AI lesson is written; say so once it takes a moment. Only while still waiting, so a loaded lesson never re-renders for it.
   const [slow, setSlow] = useState(false);
   const loading = !data && !error;
