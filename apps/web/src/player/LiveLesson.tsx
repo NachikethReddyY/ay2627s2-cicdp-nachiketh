@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { trpc, isNotFound } from "../lib/trpc";
+import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import { LearnView } from "./LearnView.tsx";
 import { GamePracticeView } from "./GamePracticeView.tsx";
@@ -7,14 +7,15 @@ import { CourseNext, LessonProgress, NextLink } from "./live/CourseNav";
 import { Notice } from "./live/Notice";
 import Steps from "./live/Steps";
 import WatchView from "./live/WatchView";
+import { lessonTitle } from "./live/courseProgress";
 
 // Practice embeds the code editor (Monaco), so it loads on demand with the player.
 const PracticeView = lazy(() => import("./live/PracticeView"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
   const { data, error, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
-  // One course fetch serves both the progress strip and the Next button.
-  const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpc.courses.get.query({ slug: course }) : Promise.resolve(null)));
+  // One course fetch serves both the progress strip and the Next button. It is sent unbatched, so it is not held up by the lesson request.
+  const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
   // lessons.get waits while an AI lesson is written; say so once it takes a moment. Only while still waiting, so a loaded lesson never re-renders for it.
   const [slow, setSlow] = useState(false);
   const loading = !data && !error;
@@ -40,15 +41,19 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
         <a href="/" className="underline">Home</a>
       </Notice>
     );
-  if (!data)
+  if (!data) {
+    // The course list is usually ready before a generated lesson, so the learner can see which lesson is coming.
+    const title = courseState.data ? lessonTitle(courseState.data.lessons, slug) : undefined;
     return (
       <Notice>
         <p>{slow ? "Pip is writing your next lesson…" : "Loading lesson…"}</p>
+        {title && <p className="mt-1 text-sm font-normal">Up next: {title}</p>}
         <div className="mt-3 h-3 w-64 max-w-full overflow-hidden rounded-full border-[3px] border-ink bg-white" aria-hidden="true">
           <div className="sketch h-full w-1/3 rounded-full bg-blue" />
         </div>
       </Notice>
     );
+  }
   const next = (
     <div className="flex justify-center">{course ? <CourseNext id={data.id} slug={course} course={courseState} /> : <NextLink href="/">Back home</NextLink>}</div>
   );

@@ -1,4 +1,4 @@
-import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
+import { createTRPCClient, httpBatchLink, httpLink, TRPCClientError } from "@trpc/client";
 import { loginUrl } from "./redirect";
 import type { inferRouterOutputs } from "@trpc/server";
 // Type-only: no server code reaches the bundle.
@@ -12,18 +12,21 @@ function toLogin() {
   location.assign(loginUrl(location.pathname + location.search));
 }
 
+const sessionFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const res = await fetch(input, { ...init, credentials: "include" });
+  if (res.status === 401) toLogin();
+  return res;
+};
+
 // Same-origin; /api is proxied to the API in dev and preview.
 export const trpc = createTRPCClient<AppRouter>({
-  links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      fetch: async (input, init) => {
-        const res = await fetch(input, { ...init, credentials: "include" });
-        if (res.status === 401) toLogin();
-        return res;
-      },
-    }),
-  ],
+  links: [httpBatchLink({ url: "/api/trpc", fetch: sessionFetch })],
+});
+
+// For a query that must not wait behind another one in the same batch. A batch answers only when its slowest query has finished,
+// so a lesson that is being written would hold back a course query that is sent with it.
+export const trpcUnbatched = createTRPCClient<AppRouter>({
+  links: [httpLink({ url: "/api/trpc", fetch: sessionFetch })],
 });
 
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
