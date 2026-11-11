@@ -78,7 +78,7 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
 // Each page is scanned only once its seeded content is on screen, so axe never reads a loading or error state.
 // Signed-out pages first; the rest sit behind the session guard, so each gets its own account.
 const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
-  ["/", (page) => page.getByRole("heading", { name: "Learn code by guessing first." })],
+  ["/", (page) => page.getByRole("heading", { level: 1, name: /Guess the next line/ })],
   ["/login", (page) => page.getByRole("heading", { name: "Sign in", exact: true })],
 ];
 const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
