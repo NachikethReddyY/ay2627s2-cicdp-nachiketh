@@ -10,6 +10,7 @@ import { db } from "../src/db/client.ts";
 import { learners, lessons, steps, user } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
+import { EngineError } from "../src/engine-client/client.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
@@ -110,6 +111,32 @@ test("missing key, non-coding topic and bad input", async () => {
   assert.equal(code(await t.m("paths.generate", { prompt: "hi" })), "BAD_REQUEST");
   generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
+});
+
+test("an engine timeout returns TIMEOUT and gives the daily path back", async () => {
+  const t = trpc(app, await signUp(app, "timeout@example.com"));
+  const generated = async () => (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM ai_generations`)).rows[0]!.n;
+  const before = await generated();
+  generator.outline = async () => {
+    throw new EngineError("Engine timed out", 504, null);
+  };
+  const res = await t.m("paths.generate", { prompt: "learn rust" });
+  assert.equal(code(res), "TIMEOUT");
+  assert.equal(await generated(), before);
+});
+
+test("an engine failure gives the daily path back, but a bad outline still uses it", async () => {
+  const t = trpc(app, await signUp(app, "upstream@example.com"));
+  const generated = async () => (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM ai_generations`)).rows[0]!.n;
+  const before = await generated();
+  generator.outline = async () => {
+    throw new EngineError("Engine answered 502", 502, null);
+  };
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
+  assert.equal(await generated(), before);
+  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
+  assert.equal(await generated(), before + 1);
 });
 
 test("at most 5 generated paths per rolling day", async () => {

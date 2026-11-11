@@ -8,6 +8,7 @@ import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 import { aiGenerations, enrollments, generationCache, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type PartSecret } from "../db/schema.ts";
 import { generator, type LessonContext } from "./generator.ts";
+import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
@@ -103,8 +104,13 @@ export async function generatePath(learnerId: string, topic: string) {
   try {
     outline = Outline.parse(await measureGeneration("outline", () => generator.outline(topic)));
     if (!(await isSafeText(JSON.stringify(outline)))) throw new Error("Generated content refused by safety filter");
-  } catch {
+  } catch (e) {
     console.error("outline generation failed");
+    if (e instanceof EngineError) {
+      // The engine or its model failed, so the learner got no path: give the daily slot back.
+      await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
+      if (e.status === 504) throw new TRPCError({ code: "TIMEOUT", message: "Pip ran out of time sketching that path. Try again." });
+    }
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });
   }
   if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
