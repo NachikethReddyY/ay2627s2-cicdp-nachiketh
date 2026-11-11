@@ -1,0 +1,46 @@
+/* Loading and error overlay for the browser preview window. The parent applies .wb-preview-morph to the window section. */
+
+.wb-preview-loading {
+  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: var(--tbar); color: var(--tx); font: 12px/1.4 "Geist", system-ui, sans-serif;
+}
+.wb-preview-loading-card { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 320px; text-align: center; }
+.wb-preview-loading-mark { position: relative; display: grid; width: 64px; height: 64px; place-items: center; }
+.wb-preview-loading-ring {
+  position: absolute; inset: 0; border: 2px solid var(--line); border-top-color: var(--ac); border-radius: 50%;
+}
+.wb-preview-loading-stage { margin: 0; color: var(--mu); font-weight: 600; }
+.wb-preview-loading-message { margin: 0; color: var(--mu); }
+.wb-preview-loading-bars { display: flex; width: 180px; flex-direction: column; gap: 7px; }
+.wb-preview-loading-bars i {
+  display: block; height: 8px; border-radius: 4px; background: var(--hov);
+}
+.wb-preview-loading-bars i:nth-child(2) { width: 72%; }
+.wb-preview-loading-bars i:nth-child(3) { width: 45%; }
+.wb-preview-loading-retry {
+  height: 28px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--ac); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+}
+.wb-preview-loading-retry:hover { filter: brightness(.94); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .wb-preview-loading-ring { animation: wb-preview-spin 0.9s linear infinite; }
+  .wb-preview-loading-bars i { animation: wb-preview-shimmer 1.4s ease-in-out infinite; }
+  .wb-preview-loading-bars i:nth-child(2) { animation-delay: 0.15s; }
+  .wb-preview-loading-bars i:nth-child(3) { animation-delay: 0.3s; }
+  .wb-preview-morph { animation: wb-preview-morph 260ms ease-out both; }
+}
+
+@keyframes wb-preview-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes wb-preview-shimmer {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+@keyframes wb-preview-morph {
+  from { opacity: 0; transform: scale(0.6); border-radius: 999px; }
+  to { opacity: 1; transform: scale(1); border-radius: 13px; }
+}

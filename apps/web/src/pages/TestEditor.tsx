@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Check, ExternalLink, FilePlus2, FolderPlus, LoaderCircle, Maximize2, Minimize2, Monitor, MonitorPlay, Play, RefreshCw, Smartphone, Tablet, X } from "lucide-react";
+import { Braces, Check, ExternalLink, FilePlus2, FolderPlus, LoaderCircle, Maximize2, Minimize2, Monitor, MonitorPlay, Play, RefreshCw, Smartphone, SquareTerminal, Tablet, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { usePanel } from "../player/terminal/usePanel";
 import TerminalView from "../player/terminal/TerminalView";
@@ -17,6 +17,10 @@ import { languageOf } from "./testEditorFixture";
 import { DEMO_DIRECTORY, DEMO_ENTRY_FILE, DEMO_PROJECT_FILES } from "./testEditorDemo";
 import { Toaster, toast } from "sonner";
 import { removeWebPreviewFile, startWebPreview, syncWebPreviewFile, type PreviewFile } from "./webContainerPreview";
+import EditorDock, { type EditorDockItem } from "./EditorDock";
+import PreviewLoading from "./PreviewLoading";
+import { PreviewResizeHandles } from "./PreviewResizeHandles";
+import { resizeRect, type PreviewRect, type ResizeEdge } from "./previewResize";
 
 // Dev-only workbench for browsing and editing the authenticated container workspace.
 
@@ -50,7 +54,10 @@ const LANGUAGE_LABELS: Record<string, string> = { javascript: "JavaScript", type
 const joinPath = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
 const MAX_TERMINALS = 4;
 type TerminalSession = { id: string; label: string; socket: ShellSocket };
-type BrowserPreview = { state: "idle" | "starting" | "ready" | "error"; url?: string; message?: string };
+type BrowserPreview = { state: "idle" | "starting" | "ready" | "error"; url?: string; message?: string; stage?: string };
+// Files under the demo project are the web app, so Run builds it and opens the browser preview.
+const isWebProjectPath = (path: string) => path.startsWith(`${DEMO_DIRECTORY}/`);
+const RUNNABLE_EXTENSIONS = ["py", "js", "mjs", "cjs"];
 type PreviewLog = { level: string; args: string[]; time: string };
 type PreviewDevice = "responsive" | "mobile" | "tablet";
 
@@ -187,6 +194,7 @@ export default function TestEditor() {
   const [previewMinimized, setPreviewMinimized] = useState(false);
   const [previewMaximized, setPreviewMaximized] = useState(false);
   const [previewPosition, setPreviewPosition] = useState<{ left: number; top: number } | null>(null);
+  const [previewSize, setPreviewSize] = useState<{ width: number; height: number } | null>(null);
   const [previewHost, setPreviewHost] = useState<HTMLElement | null>(null);
   const [previewRefresh, setPreviewRefresh] = useState(0);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("responsive");
@@ -200,6 +208,7 @@ export default function TestEditor() {
   const previewStarting = useRef(false);
   const previewAutoStarted = useRef(false);
   const previewDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
+  const previewResizeStart = useRef<{ edge: ResizeEdge; pointerX: number; pointerY: number; rect: PreviewRect } | null>(null);
   const runRef = useRef<HTMLButtonElement>(null);
   // The demo entry is open from the first paint, but it stays read-only until the sandbox copy confirms it,
   // so typing cannot save over work the sandbox already holds.
@@ -622,6 +631,20 @@ export default function TestEditor() {
     });
   };
 
+  const startPreviewResize = (edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>) => {
+    const rect = previewWindowRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    previewResizeStart.current = { edge, pointerX: event.clientX, pointerY: event.clientY, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+  };
+
+  const resizePreview = (_edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>) => {
+    const start = previewResizeStart.current;
+    if (!start) return;
+    const next = resizeRect(start.rect, start.edge, event.clientX - start.pointerX, event.clientY - start.pointerY, { width: window.innerWidth, height: window.innerHeight });
+    setPreviewPosition({ left: next.left, top: next.top });
+    setPreviewSize({ width: next.width, height: next.height });
+  };
+
   const sendPreviewCommand = (type: string, payload: Record<string, unknown> = {}) => {
     previewFrameRef.current?.contentWindow?.postMessage({ __learnquestPreviewCommand: true, type, ...payload }, browserPreview.url ? new URL(browserPreview.url).origin : "*");
   };
@@ -629,7 +652,9 @@ export default function TestEditor() {
   const startPreview = useCallback(async () => {
     if (previewStarting.current) return;
     previewStarting.current = true;
-    setBrowserPreview({ state: "starting" });
+    // Open the window straight away: it morphs in and shows the build stage while the workspace starts.
+    setBrowserPreview({ state: "starting", stage: "Preparing the workspace…" });
+    setPreviewOpen(true);
     setShellNote(undefined);
     try {
       await flushSave();
@@ -649,7 +674,9 @@ export default function TestEditor() {
         const active = sources.find((file) => file.path === activePath.current);
         if (active) active.content = activeContent.current;
       }
-      const { url } = await startWebPreview(sources);
+      const { url } = await startWebPreview(sources, {
+        onStage: (stage) => setBrowserPreview((current) => (current.state === "starting" ? { ...current, stage } : current)),
+      });
       // Edits typed while the preview booted were skipped by changeContent, so push the current buffer now.
       if (activePath.current) {
         void syncWebPreviewFile(activePath.current, activeContent.current).catch((error: unknown) => {
@@ -657,8 +684,10 @@ export default function TestEditor() {
         });
       }
       setBrowserPreview({ state: "ready", url });
-      setPreviewOpen(true);
+      // Reload the frame so a rebuild shows the new files, not the previous page.
+      setPreviewRefresh((value) => value + 1);
     } catch (error) {
+      setPreviewOpen(true);
       setBrowserPreview({ state: "error", message: error instanceof Error ? error.message : "Could not start the browser preview" });
     } finally {
       previewStarting.current = false;
@@ -675,6 +704,11 @@ export default function TestEditor() {
   }, [refreshWorkspace]);
 
   const run = async () => {
+    if (open && isWebProjectPath(open)) {
+      // Run builds the web app and opens the browser window; the terminal stays as it was.
+      void startPreview();
+      return;
+    }
     panel.dispatch({ type: "open" });
     if (!shell) {
       setShellNote("Open a terminal first. Select + in the terminal panel.");
@@ -838,7 +872,7 @@ export default function TestEditor() {
 
   const actions = (
     <>
-      <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={run} title="Run" disabled={!open || !["py", "js", "mjs", "cjs"].includes(open.slice(open.lastIndexOf(".") + 1).toLowerCase())}>
+      <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={run} title="Run" disabled={!open || !(isWebProjectPath(open) || RUNNABLE_EXTENSIONS.includes(open.slice(open.lastIndexOf(".") + 1).toLowerCase()))}>
         <Play size={13} strokeWidth={2} fill="currentColor" aria-hidden="true" />
         Run
       </button>
@@ -846,14 +880,11 @@ export default function TestEditor() {
         <Check size={15} strokeWidth={1.75} aria-hidden="true" />
         Check
       </button>
-      {browserPreview.state === "idle" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
-        <MonitorPlay size={13} aria-hidden="true" />
-        Preview
-      </button>}
-      {browserPreview.state === "error" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
-        <RefreshCw size={13} aria-hidden="true" />
-        Retry preview
-      </button>}
+      {/* Always visible: it reopens the window once the preview is running, and retries after an error. */}
+      <button type="button" className="wb-tb wb-outline" disabled={browserPreview.state === "starting"} onClick={() => (browserPreview.state === "ready" ? setPreviewOpen(true) : void startPreview())}>
+        {browserPreview.state === "starting" ? <LoaderCircle size={13} aria-hidden="true" className="motion-safe:animate-spin" /> : browserPreview.state === "error" ? <RefreshCw size={13} aria-hidden="true" /> : <MonitorPlay size={13} aria-hidden="true" />}
+        {browserPreview.state === "starting" ? "Starting" : browserPreview.state === "error" ? "Retry preview" : "Preview"}
+      </button>
     </>
   );
 
@@ -930,6 +961,19 @@ export default function TestEditor() {
   };
 
   const openLang = languageOf(open, "javascript");
+  const previewLive = browserPreview.state === "ready" || browserPreview.state === "starting";
+  const dockItems: EditorDockItem[] = [
+    { id: "run", label: "Run", icon: Play, disabled: !open, onSelect: () => void run() },
+    {
+      id: "preview",
+      label: previewLive && previewOpen ? "Hide preview" : "Show preview",
+      icon: MonitorPlay,
+      pressed: previewLive && previewOpen,
+      onSelect: () => (previewLive ? setPreviewOpen((value) => !value) : void startPreview()),
+    },
+    { id: "terminal", label: "Terminal", icon: SquareTerminal, pressed: panel.state.open, onSelect: () => panel.dispatch({ type: "toggle" }) },
+    { id: "console", label: "Preview console", icon: Braces, pressed: devtoolsOpen, disabled: !previewLive, onSelect: () => setDevtoolsOpen((value) => !value) },
+  ];
 
   return (
     <>
@@ -965,14 +1009,17 @@ export default function TestEditor() {
       showPlanned
       aiContext={{ fileName: open.slice(open.lastIndexOf("/") + 1), filePath: open, projectRoot: DEMO_DIRECTORY, code: content, language: openLang }}
     />
-    {previewHost && browserPreview.url && createPortal(
+    {previewHost && browserPreview.state !== "idle" && createPortal(
       <section
         ref={previewWindowRef}
-        className={`wb-preview-float${previewMinimized ? " wb-preview-minimized" : ""}${previewMaximized ? " wb-preview-maximized" : ""}`}
+        className={`wb-preview-float wb-preview-morph${previewMinimized ? " wb-preview-minimized" : ""}${previewMaximized ? " wb-preview-maximized" : ""}`}
         aria-label="Floating browser preview window"
         inert={!previewOpen}
         hidden={!previewOpen}
-        style={previewPosition && !previewMaximized ? { left: previewPosition.left, top: previewPosition.top, right: "auto", bottom: "auto" } : undefined}
+        style={previewMaximized ? undefined : {
+          ...(previewPosition ? { left: previewPosition.left, top: previewPosition.top, right: "auto", bottom: "auto" } : {}),
+          ...(previewSize ? { width: previewSize.width, height: previewSize.height } : {}),
+        }}
       >
         <header
           className="wb-preview-float-head"
@@ -1011,9 +1058,9 @@ export default function TestEditor() {
             <button type="button" className="wb-tb wb-n34" aria-label="Open preview in new tab" title="Open in new tab" onClick={() => window.open(browserPreview.url, "_blank", "noopener,noreferrer")}><ExternalLink size={13} aria-hidden="true" /></button>
           </span>
         </header>
-        <div className="wb-preview-address"><span className="wb-preview-secure-dot" />{browserPreview.url}</div>
+        <div className="wb-preview-address"><span className="wb-preview-secure-dot" />{browserPreview.url ?? "Starting the preview…"}</div>
         <div className={`wb-preview-viewport wb-preview-viewport-${previewDevice}`}>
-          <iframe
+          {browserPreview.url && <iframe
             ref={previewFrameRef}
             key={`${browserPreview.url}-${previewRefresh}`}
             title="Tiny Task Tracker interactive website"
@@ -1021,8 +1068,15 @@ export default function TestEditor() {
             allow="cross-origin-isolated"
             className="wb-preview-float-frame"
             style={previewDevice === "mobile" ? { width: 375 } : previewDevice === "tablet" ? { width: 768 } : undefined}
-          />
+          />}
+          {browserPreview.state !== "ready" && <PreviewLoading
+            state={browserPreview.state === "error" ? "error" : "starting"}
+            stage={browserPreview.stage}
+            message={browserPreview.message}
+            onRetry={() => void startPreview()}
+          />}
         </div>
+        <PreviewResizeHandles onResizeStart={startPreviewResize} onResizeMove={resizePreview} onResizeEnd={() => { previewResizeStart.current = null; }} />
         {devtoolsOpen && <section className="wb-preview-devtools" aria-label="Preview developer tools">
           <div className="wb-preview-devtools-tabs" role="tablist" aria-label="Developer tools">
             <button role="tab" aria-selected={devtoolsTab === "console"} onClick={() => setDevtoolsTab("console")}>Console</button>
@@ -1039,12 +1093,7 @@ export default function TestEditor() {
       </section>,
       previewHost,
     )}
-    {previewHost && browserPreview.url && !previewOpen && createPortal(
-      <button type="button" className="wb-preview-reopen" onClick={() => setPreviewOpen(true)}>
-        <MonitorPlay size={14} aria-hidden="true" /> Preview
-      </button>,
-      previewHost,
-    )}
+    <EditorDock items={dockItems} />
     <Toaster position="bottom-right" richColors closeButton />
     </>
   );

@@ -218,7 +218,10 @@ function boot() {
 }
 
 /** Mount the editor workspace, install its packages once, and return the dev-server URL. */
-export async function startWebPreview(files: PreviewFile[]): Promise<{ container: WebContainer; url: string }> {
+export async function startWebPreview(
+  files: PreviewFile[],
+  options: { onStage?(stage: string): void } = {},
+): Promise<{ container: WebContainer; url: string }> {
   const container = await boot();
   if (!runtimeWindow.__learnquestPreviewMounted) {
     await container.mount(toFileTree(files));
@@ -228,18 +231,22 @@ export async function startWebPreview(files: PreviewFile[]): Promise<{ container
     runtimeWindow.__learnquestPreviewInstall = undefined;
   }
 
-  runtimeWindow.__learnquestPreviewInstall ??= (async () => {
-    const install = await container.spawn("npm", ["install"], { output: false });
-    const exitCode = await install.exit;
-    if (exitCode !== 0) {
-      // Remount on the next attempt, so a retry does not keep a demo mounted before the saved project was read.
-      runtimeWindow.__learnquestPreviewMounted = false;
-      runtimeWindow.__learnquestPreviewInstall = undefined;
-      throw new Error(`Dependency installation exited with code ${exitCode}`);
-    }
-  })();
+  if (!runtimeWindow.__learnquestPreviewInstall) {
+    options.onStage?.("Installing packages…");
+    runtimeWindow.__learnquestPreviewInstall = (async () => {
+      const install = await container.spawn("npm", ["install"], { output: false });
+      const exitCode = await install.exit;
+      if (exitCode !== 0) {
+        // Remount on the next attempt, so a retry does not keep a demo mounted before the saved project was read.
+        runtimeWindow.__learnquestPreviewMounted = false;
+        runtimeWindow.__learnquestPreviewInstall = undefined;
+        throw new Error(`Dependency installation exited with code ${exitCode}`);
+      }
+    })();
+  }
   await runtimeWindow.__learnquestPreviewInstall;
 
+  if (!runtimeWindow.__learnquestPreviewServer) options.onStage?.("Starting the dev server…");
   runtimeWindow.__learnquestPreviewServer ??= new Promise<string>((resolve, reject) => {
     let removeReady = () => {};
     removeReady = container.on("server-ready", (_port, url) => {

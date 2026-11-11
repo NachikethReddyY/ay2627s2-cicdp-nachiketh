@@ -496,7 +496,7 @@
 .wb-preview-float {
   position: fixed; z-index: 60; right: 24px; bottom: 24px; display: flex; width: min(680px, calc(100vw - 24px));
   height: min(540px, calc(100dvh - 24px)); min-width: 300px; min-height: 240px; flex-direction: column;
-  overflow: hidden; resize: both; box-sizing: border-box; border: 1px solid var(--line); border-radius: 13px; background: var(--tbar); color: var(--tx);
+  overflow: hidden; box-sizing: border-box; border: 1px solid var(--line); border-radius: 13px; background: var(--tbar); color: var(--tx);
   box-shadow: 0 24px 60px rgba(20, 30, 70, 0.28), 0 6px 16px rgba(20, 30, 70, 0.14);
 }
 .wb-preview-float[hidden] { display: none; }
@@ -514,7 +514,6 @@
 .wb-preview-dot-minimize { background: #febc2e; }
 .wb-preview-dot-maximize { background: #28c840; }
 .wb-preview-dot:hover { filter: brightness(.92); }
-.wb-preview-reopen { position: fixed; z-index: 61; right: 24px; bottom: 24px; display: flex; height: 34px; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--tbar); color: var(--tx); box-shadow: 0 8px 20px rgba(20,30,70,.2); font: 12px/1 Geist, system-ui, sans-serif; cursor: pointer; }
 .wb-preview-float-title { display: flex; min-width: 0; flex: 1; align-items: center; gap: 7px; overflow: hidden; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .wb-preview-float-actions { display: flex; flex: none; align-items: center; gap: 2px; }
 .wb-preview-device { display: flex; height: 28px; align-items: center; gap: 4px; padding: 0 4px; border: 1px solid var(--line); border-radius: 7px; color: var(--mu); }
@@ -522,7 +521,7 @@
 .wb-preview-devtools-mark { font: 700 12px/1 "Geist Mono", monospace; }
 .wb-preview-address { display: flex; height: 27px; min-height: 27px; align-items: center; gap: 7px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--glass); color: var(--mu); font: 10px/1 "Geist Mono", ui-monospace, monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .wb-preview-secure-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #28b463; }
-.wb-preview-viewport { display: flex; min-width: 0; min-height: 0; flex: 1; justify-content: center; overflow: auto; background: white; }
+.wb-preview-viewport { position: relative; display: flex; min-width: 0; min-height: 0; flex: 1; justify-content: center; overflow: auto; background: white; }
 .wb-preview-viewport-mobile, .wb-preview-viewport-tablet { justify-content: flex-start; }
 .wb-preview-float-frame { display: block; width: 100%; min-height: 100%; min-width: 0; flex: 1 0 auto; border: 0; background: white; }
 .wb-preview-viewport-mobile .wb-preview-float-frame, .wb-preview-viewport-tablet .wb-preview-float-frame { flex: 0 0 auto; }
@@ -543,7 +542,7 @@
 .wb-preview-elements code { display: block; color: var(--acT); white-space: pre-wrap; overflow-wrap: anywhere; }
 .wb-preview-elements p { margin: 8px 0 0; color: var(--tx); white-space: pre-wrap; }
 @media (max-width: 640px) {
-  .wb-preview-float { right: 12px; bottom: 12px; width: calc(100vw - 24px); height: min(500px, calc(100dvh - 24px)); min-width: 280px; resize: both; }
+  .wb-preview-float { right: 12px; bottom: 12px; width: calc(100vw - 24px); height: min(500px, calc(100dvh - 24px)); min-width: 280px; }
   .wb-preview-float-head { gap: 4px; padding-right: 3px; padding-left: 8px; }
   .wb-preview-mac-dots { gap: 4px; margin-right: 1px; }
   .wb-preview-dot { width: 9px; height: 9px; }
