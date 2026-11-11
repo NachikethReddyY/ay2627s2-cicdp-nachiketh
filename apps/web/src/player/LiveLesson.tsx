@@ -7,6 +7,7 @@ import { CourseNext, LessonProgress, NextLink } from "./live/CourseNav";
 import { Notice } from "./live/Notice";
 import Steps from "./live/Steps";
 import WatchView from "./live/WatchView";
+import { lessonTitle } from "./live/courseProgress";
 
 // Practice embeds the code editor (Monaco), so it loads on demand with the player.
 const PracticeView = lazy(() => import("./live/PracticeView"));
@@ -40,15 +41,19 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
         <a href="/" className="underline">Home</a>
       </Notice>
     );
-  if (!data)
+  if (!data) {
+    // The course list is usually ready before a generated lesson, so the learner can see which lesson is coming.
+    const title = courseState.data ? lessonTitle(courseState.data.lessons, slug) : undefined;
     return (
       <Notice>
         <p>{slow ? "Pip is writing your next lesson…" : "Loading lesson…"}</p>
+        {title && <p className="mt-1 text-sm font-normal">Up next: {title}</p>}
         <div className="mt-3 h-3 w-64 max-w-full overflow-hidden rounded-full border-[3px] border-ink bg-white" aria-hidden="true">
           <div className="sketch h-full w-1/3 rounded-full bg-blue" />
         </div>
       </Notice>
     );
+  }
   const next = (
     <div className="flex justify-center">{course ? <CourseNext id={data.id} slug={course} course={courseState} /> : <NextLink href="/">Back home</NextLink>}</div>
   );
