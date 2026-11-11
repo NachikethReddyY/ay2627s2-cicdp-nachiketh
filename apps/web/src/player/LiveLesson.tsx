@@ -65,7 +65,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   if (data.kind === "game-practice" && part?.kind === "game-practice")
     return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} title={data.title} intro={part.intro} doc={part.doc} next={next} /></div>;
   if (data.kind === "predict" && data.steps.length > 0)
-    return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} /></Suspense></>;
+    return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} onFinished={courseState.reload} /></Suspense></>;
   // A part the server could not provide (no content, or content of another kind), or a predict lesson with no steps.
   return (
     <Notice pip="pip-oops">
