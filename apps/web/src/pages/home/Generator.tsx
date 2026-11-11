@@ -22,6 +22,8 @@ export default function Generator() {
   // Only a path this visit is waiting on opens by itself. One that finished while the learner was away waits for a click.
   const waiting = useRef(job.status === "running");
   const busy = job.status === "running";
+  // A timed-out request may still finish on the server, so no new request starts until it has.
+  const locked = busy || (job.status === "failed" && job.pending);
   const err = job.status === "failed" ? (aiErrors[job.code ?? ""] ?? genericError) : null;
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function Generator() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy) return;
+    if (locked) return;
     if (!q.trim()) {
       setEmpty(true);
       return;
@@ -66,7 +68,7 @@ export default function Generator() {
               dismissJob(); // the learner is writing a new prompt, so the last outcome is no longer news
             }}
           />
-          <button className="lq-btn lq-btn-sun" type="submit" disabled={busy} aria-busy={busy}>
+          <button className="lq-btn lq-btn-sun" type="submit" disabled={locked} aria-busy={busy}>
             {busy && <svg className="lq-spin" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="#15121f" strokeWidth={3.5} strokeLinecap="round" /></svg>}
             Generate
           </button>
@@ -101,7 +103,7 @@ export default function Generator() {
           <div className="lq-msg err lq-shake" role="alert">
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#FF7AB6" stroke="#15121F" strokeWidth={2.5} /><path d="M12 7v6M12 16.5v.5" stroke="#15121F" strokeWidth={3} strokeLinecap="round" /></svg>
             <span style={{ flex: "1 1 260px" }}>{err}</span>
-            <button className="lq-btn lq-btn-ink" type="button" onClick={() => run(job.prompt)} style={{ minHeight: 44, fontSize: 17, padding: "0 16px", boxShadow: "3px 3px 0 #15121f" }}>
+            <button className="lq-btn lq-btn-ink" type="button" disabled={job.pending} onClick={() => run(job.prompt)} style={{ minHeight: 44, fontSize: 17, padding: "0 16px", boxShadow: "3px 3px 0 #15121f" }}>
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>
               Retry
             </button>

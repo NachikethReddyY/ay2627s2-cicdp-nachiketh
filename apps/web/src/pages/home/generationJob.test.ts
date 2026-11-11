@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dismissJob, getJob, startGeneration } from "./generationJob.ts";
 
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 test("a finished job keeps its course slug", async () => {
   await startGeneration("rust", async () => ({ firstCourseSlug: "rust-basics" }));
   assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-basics" });
@@ -11,12 +13,30 @@ test("a tRPC error keeps its code so the page can explain it", async () => {
   await startGeneration("baking", async () => {
     throw Object.assign(new Error("refused"), { data: { code: "BAD_REQUEST" } });
   });
-  assert.deepEqual(getJob(), { status: "failed", prompt: "baking", code: "BAD_REQUEST" });
+  assert.deepEqual(getJob(), { status: "failed", prompt: "baking", code: "BAD_REQUEST", pending: false });
 });
 
-test("a request that never answers fails with TIMEOUT instead of spinning", async () => {
-  await startGeneration("rust", () => new Promise(() => undefined), 10);
-  assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT" });
+test("a request that never answers shows TIMEOUT, and retry waits until the abandon window ends", async () => {
+  let calls = 0;
+  void startGeneration("rust", () => (calls++, new Promise(() => undefined)), { timeoutMs: 10, abandonMs: 40 });
+  await wait(20);
+  assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: true });
+
+  await startGeneration("rust", () => (calls++, new Promise(() => undefined)), { timeoutMs: 10, abandonMs: 40 });
+  assert.equal(calls, 1, "no second request while the first may still finish");
+
+  await wait(50);
+  assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: false });
+});
+
+test("a late answer after the timeout still reaches the page", async () => {
+  let answer!: (r: { firstCourseSlug: string }) => void;
+  const late = startGeneration("rust", () => new Promise((resolve) => { answer = resolve; }), { timeoutMs: 10, abandonMs: 1000 });
+  await wait(20);
+  assert.equal(getJob().status, "failed");
+  answer({ firstCourseSlug: "rust-late" });
+  await late;
+  assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-late" });
 });
 
 test("a second start while one is running does not send another request", async () => {
