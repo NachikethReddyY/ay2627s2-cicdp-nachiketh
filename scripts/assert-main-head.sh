@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Refuses to deploy any sha other than the current head of main, so a rerun of an older run cannot roll staging
+# Refuses to deploy any sha other than the current head of main, so a rerun of an older run cannot roll production
 # back. Usage: scripts/assert-main-head.sh <sha> [remote]
 set -euo pipefail
 

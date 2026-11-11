@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const OPTIONS = ["+=", "=", "-=", "*="];
 const ANSWER = 0;
-const COLORS = ["bg-sun", "bg-pink", "bg-lilac", "bg-mint", "bg-green"];
+const COLORS = ["bg-[#5cc8f0]", "bg-[#f06ca8]", "bg-[#1890e4]", "bg-[#e4c46c]", "bg-[#6cd4a4]"];
 // 14 pieces fanned out from the blank
 const PIECES = Array.from({ length: 14 }, (_, i) => {
   const a = (i / 14) * Math.PI * 2;
@@ -73,22 +73,22 @@ export default function PredictDemo() {
         className={`absolute left-4 top-0 z-10 h-28 w-28 object-contain ${moodAnim}`}
       />
 
-      <div className="chunk relative bg-white p-4 sm:p-5">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="track h-4 flex-1">
-            <div className="h-full rounded-full bg-green transition-all duration-700 ease-out" style={{ width: done ? "100%" : "40%" }} />
+      <div className="lp-glass p-5 sm:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="lp-track h-2 flex-1">
+            <div className="lp-fill transition-all duration-700 ease-out" style={{ width: done ? "100%" : "40%", "--tone-a": "#6cd4a4", "--tone-b": "#bfeed8" } as React.CSSProperties} />
           </div>
-          <span className="font-mono text-xs font-medium">cart.ts</span>
+          <span className="font-mono text-xs text-[var(--lp-muted)]">cart.ts</span>
         </div>
 
-        <p className="font-extrabold">What does this commit change on the highlighted line?</p>
+        <p className="font-medium">What does this commit change on the highlighted line?</p>
         <div className="relative">
-          <pre className="my-3 overflow-x-auto rounded-xl bg-ink p-4 font-mono text-[12px] leading-6 text-paper sm:text-[13px]">
+          <pre className="my-4 overflow-x-auto rounded-2xl border border-white/10 bg-black/35 p-4 font-mono text-[12px] leading-6 text-white/90 sm:text-[13px]">
 {`function total(items) {
   let sum = 0;
   for (const i of items) {
     sum `}
-            <span key={String(done)} className={`inline-block rounded px-2 text-ink ${done ? "pop bg-green" : "ring bg-sun"}`}>
+            <span key={String(done)} className={`inline-block rounded-md px-2 text-[#202020] ${done ? "pop bg-[#6cd4a4]" : "ring bg-[#5cc8f0]"}`}>
               {done ? OPTIONS[ANSWER] : "____"}
             </span>
 {` i.price;
@@ -120,8 +120,8 @@ export default function PredictDemo() {
                 onClick={() => pick(i)}
                 disabled={out || bad || done}
                 style={{ animationDelay: `${i * 70}ms` }}
-                className={`opt rise px-4 py-3 font-mono font-medium ${
-                  good ? "pop bg-green text-white" : bad ? "shake bg-pink/60" : out ? "bg-ink/10 text-ink/30 line-through" : "bg-white"
+                className={`lp-opt rise rounded-2xl border border-white/15 px-4 py-3 font-mono font-medium ${
+                  good ? "pop bg-[#6cd4a4] text-[#202020]" : bad ? "shake bg-[#e47860]/25" : out ? "bg-white/5 text-white/30 line-through" : "bg-white/10 hover:bg-white/20"
                 }`}
               >
                 {o}
@@ -132,14 +132,14 @@ export default function PredictDemo() {
 
         <div aria-live="polite" className="mt-4 min-h-[3.5rem] text-sm">
           {hints >= 1 && !done && (
-            <p key={hints} className="slide-in mb-1 rounded-lg bg-sun/40 px-3 py-2">
+            <p key={hints} className="slide-in mb-1 rounded-xl border border-[#e4c46c]/30 bg-[#e4c46c]/12 px-3 py-2">
               <b>Hint 1:</b> one wrong choice is crossed out.
               {hints >= 2 && <> <b>Hint 2:</b> <code className="font-mono">count += 1</code> adds to <code className="font-mono">count</code>, once per loop.</>}
             </p>
           )}
-          {wrong.length > 0 && !done && <p key={shakeKey} className="slide-in font-bold text-ink/70">Not quite. Take a hint, or try again.</p>}
+          {wrong.length > 0 && !done && <p key={shakeKey} className="slide-in font-medium text-white/70">Not quite. Take a hint, or try again.</p>}
           {done && (
-            <p className="slide-in rounded-lg bg-mint px-3 py-2">
+            <p className="slide-in rounded-xl border border-[#6cd4a4]/30 bg-[#6cd4a4]/12 px-3 py-2">
               <b>Right.</b> <code className="font-mono">+=</code> adds each price to the running total. Reveal unlocked: the replay
               types it out for you. <span className="opacity-60">(Reconstructed replay)</span>
             </p>
@@ -148,20 +148,20 @@ export default function PredictDemo() {
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           {done ? (
-            <button onClick={reset} className="text-sm font-extrabold underline decoration-2 underline-offset-4">Try again</button>
+            <button onClick={reset} className="text-sm font-medium underline decoration-2 underline-offset-4">Try again</button>
           ) : (
             <button
               onClick={() => setHints(Math.min(hints + 1, 2))}
               disabled={hints >= 2}
-              className="opt pill bg-sun px-4 py-1.5 text-sm disabled:opacity-40"
+              className="lp-btn lp-btn--ghost lp-btn--small disabled:opacity-40"
             >
               Hint ({hints}/2)
             </button>
           )}
-          <div className="flex items-center gap-2 text-xs font-extrabold">
+          <div className="flex items-center gap-2 text-xs font-medium">
             Loops mastery
-            <div className="track h-4 w-24">
-              <div className="h-full rounded-full bg-blue transition-all duration-700 ease-out" style={{ width: `${mastery}%` }} />
+            <div className="lp-track h-2 w-24">
+              <div className="lp-fill transition-all duration-700 ease-out" style={{ width: `${mastery}%`, "--tone-a": "#1890e4", "--tone-b": "#5cc8f0" } as React.CSSProperties} />
             </div>
             <span className="w-9 tabular-nums">{shownMastery}%</span>
           </div>
