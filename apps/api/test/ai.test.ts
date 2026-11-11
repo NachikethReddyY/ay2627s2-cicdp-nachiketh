@@ -125,7 +125,7 @@ test("an engine timeout returns TIMEOUT and gives the daily path back", async ()
   assert.equal(await generated(), before);
 });
 
-test("an engine failure gives the daily path back, but a bad outline still uses it", async () => {
+test("an upstream failure gives the daily path back, but bad engine output still uses it", async () => {
   const t = trpc(app, await signUp(app, "upstream@example.com"));
   const generated = async () => (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM ai_generations`)).rows[0]!.n;
   const before = await generated();
@@ -134,9 +134,14 @@ test("an engine failure gives the daily path back, but a bad outline still uses 
   };
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
   assert.equal(await generated(), before);
-  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
+  generator.outline = async () => {
+    throw new EngineError("Engine answered 422", 422, { error: "invalid_output" });
+  };
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
   assert.equal(await generated(), before + 1);
+  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
+  assert.equal(await generated(), before + 2);
 });
 
 test("at most 5 generated paths per rolling day", async () => {

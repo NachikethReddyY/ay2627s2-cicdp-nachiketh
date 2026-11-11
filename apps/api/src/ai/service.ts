@@ -107,8 +107,8 @@ export async function generatePath(learnerId: string, topic: string) {
   } catch (e) {
     console.error("outline generation failed");
     if (e instanceof EngineError) {
-      // The engine or its model failed, so the learner got no path: give the daily slot back.
-      await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
+      // An upstream failure (5xx) means the learner got no path: give the daily slot back. Bad output (422) still uses it.
+      if (e.status >= 500) await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
       if (e.status === 504) throw new TRPCError({ code: "TIMEOUT", message: "Pip ran out of time sketching that path. Try again." });
     }
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });
