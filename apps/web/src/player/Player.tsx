@@ -52,7 +52,7 @@ const useDesktop = () =>
 // `live` = a lesson from the API: one step at a time, the instructions window holds the predict/reveal panel.
 // `code` swaps the replay (editor + transport bar) for the learner's own editor: practice lessons, no video.
 // `narration` is the signed URL of this step's audio, when it has one; it drives the volume controls.
-type Live = { idx: number; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
+type Live = { idx: number; finished?: boolean; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
 // Without `live` this is the bundled sample (dev only): `sample` supplies its mode and worked examples.
 type Sample = { mode: "task" | "video"; examples: string[] };
 type Props = { title: string; stepTitles: string[]; timeline: Timeline; live?: Live; sample?: Sample };
@@ -294,7 +294,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           <div role="group" aria-label={`Step ${cur + 1} of ${N}`} className="flex items-center gap-1.5">
             <div aria-hidden="true" className="flex gap-0.5">
               {stepTitles.map((t, i) => (
-                <span key={i} className={`h-1.5 w-4 rounded-full border-2 border-ink ${i < cur ? "bg-green" : i === cur ? "bg-sun" : "bg-white"}`} />
+                <span key={i} className={`h-1.5 w-4 rounded-full border-2 border-ink ${i < cur || live?.finished ? "bg-green" : i === cur ? "bg-sun" : "bg-white"}`} />
               ))}
             </div>
             <span aria-hidden="true" className="text-xs font-extrabold">

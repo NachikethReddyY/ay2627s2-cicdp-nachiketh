@@ -26,9 +26,11 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   // Reading or watching a part counts it as finished; practice and games are completed server-side. Errors are ignored.
   const readKind = data?.kind === "learn" || data?.kind === "watch";
   const lessonId = data?.id;
+  // Once the part is marked done, refetch the course so the progress strip counts it.
+  const reloadCourse = courseState.reload;
   useEffect(() => {
-    if (lessonId && readKind) void trpc.parts.complete.mutate({ lessonId }).catch(() => {});
-  }, [lessonId, readKind]);
+    if (lessonId && readKind) void trpc.parts.complete.mutate({ lessonId }).then(reloadCourse, () => {});
+  }, [lessonId, readKind, reloadCourse]);
 
   if (error)
     return (
@@ -63,7 +65,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   if (data.kind === "game-practice" && part?.kind === "game-practice")
     return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} title={data.title} intro={part.intro} doc={part.doc} next={next} /></div>;
   if (data.kind === "predict" && data.steps.length > 0)
-    return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} /></Suspense></>;
+    return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} /></Suspense></>;
   // A part the server could not provide (no content, or content of another kind), or a predict lesson with no steps.
   return (
     <Notice pip="pip-oops">

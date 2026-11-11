@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Bar } from "../../components/Bits";
 import type { ApiState, CourseData } from "../../lib/api";
+import { courseProgress } from "./courseProgress";
 
 /** The lesson's course, fetched once by LiveLesson and shared by the progress strip and the Next button. */
 export type CourseState = ApiState<CourseData | null>;
@@ -13,11 +14,11 @@ export function LessonProgress({ id, course }: { id: string; course: CourseState
   const data = course.data;
   const i = data?.lessons.findIndex((l) => l.slug === id) ?? -1;
   if (!data || i < 0) return null;
-  const total = data.lessons.length;
+  const { done, total } = courseProgress(data.lessons);
   return (
     <div className="sticky top-0 z-30 px-4 pt-3 pb-2 backdrop-blur" style={{ background: "#fff4e0" }}>
       <div className="mx-auto max-w-3xl">
-        <Bar value={i + 1} total={total} label="Course progress" />
+        <Bar value={done} total={total} label="Course progress" />
       </div>
     </div>
   );
