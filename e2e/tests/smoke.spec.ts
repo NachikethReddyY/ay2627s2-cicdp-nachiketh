@@ -98,7 +98,12 @@ async function expectNoSeriousA11yViolations(page: Page, path: string, ready: Lo
   const { violations } = await new AxeBuilder({ page }).analyze();
   const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(
-    blocking.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help })),
+    blocking.map((v) => ({
+      id: v.id,
+      impact: v.impact,
+      help: v.help,
+      nodes: v.nodes.map((node) => ({ target: node.target, html: node.html, failureSummary: node.failureSummary })),
+    })),
     `serious or critical axe violations on ${path}`,
   ).toEqual([]);
 }

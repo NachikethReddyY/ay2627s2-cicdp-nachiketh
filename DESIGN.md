@@ -1,223 +1,170 @@
 ---
-version: alpha
+version: beta
 name: LearnSlop-design
-description: A playful, sticker-style design system for learning code. Cream canvas (`#FFF4E0`) on a dot grid, ink (`#15121F`) outlines on every shape, hard offset shadows with no blur, flat bright fills. Pip, the mint sprout mascot, appears in every illustration. Lilita One for display, DM Sans for body, system monospace for code.
+description: A dark, glassy design system modelled on a code editor. Charcoal base (`#202020`), frosted panels, a blue accent, and the editor's syntax palette (pink, coral, cyan, yellow, mint) for code and highlights. Inter-style grotesk for UI, a monospace for code. Pip, the sprout mascot, stays as the guide.
 
 colors:
-  ink: "#15121F"
-  paper: "#FFF4E0"
-  dot: "#EBDCBD"
-  white: "#FFFFFF"
-  sun: "#FFD23F"
-  pink: "#FF7AB6"
-  lilac: "#B9A6FF"
-  mint: "#5EE6B0"
-  blue: "#2257FF"
-  flame: "#FF6A1F"
-  sprout: "#3FD69B"
-  track: "#F1E6CF"
-  muted: "#4A4458"
+  base: "#202020"
+  base-deep: "#1A1A1A"
+  panel: "#303030"
+  panel-tint: "#202030"
+  line: "#404040"
+  text: "#E0E0E0"
+  text-strong: "#FFFFFF"
+  muted: "#A0A0A0"
+  faint: "#808080"
+  blue: "#1890E4"
+  cyan: "#5CC8F0"
+  pink: "#F06CA8"
+  coral: "#E47860"
+  yellow: "#E4C46C"
+  mint: "#6CD4A4"
+  wallpaper: "#5080E0"
 
 typography:
   display:
-    fontFamily: "'Lilita One', ui-rounded, system-ui, sans-serif"
+    fontFamily: "'Geist', system-ui, sans-serif"
+    fontWeight: 600
+  serif-accent:
+    fontFamily: "'Newsreader', Georgia, serif"
     fontWeight: 400
+    fontStyle: italic
   body:
-    fontFamily: "'DM Sans', system-ui, sans-serif"
-    fontWeight: 400 / 500 / 700
+    fontFamily: "'Geist', system-ui, sans-serif"
+    fontWeight: 400 / 500 / 600
   code:
-    fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
-    fontWeight: 500
+    fontFamily: "'Geist Mono', ui-monospace, Menlo, Consolas, monospace"
+    fontWeight: 400 / 500
 
 rounded:
-  card: 1.5rem
-  button: 0.875rem
-  field: 1rem
-  sticker: 0.5rem
-  pill: 9999px
+  window: 14px
+  card: 24px
+  panel: 28px
+  control: 999px
+  field: 12px
 
-borders:
-  control: 3px solid ink
-  sticker: 2.5px solid ink
-  dashed: 3px dashed ink
+glass:
+  fill: "rgba(255, 255, 255, 0.07)"
+  fill-strong: "rgba(255, 255, 255, 0.12)"
+  edge: "rgba(255, 255, 255, 0.16)"
+  blur: 24px
 
 shadows:
-  chunk: "5px 5px 0 ink"
-  lip: "4px 4px 0 ink"
-  pill: "3px 3px 0 ink"
-  sticker: "2px 2px 0 ink"
+  lift: "0 40px 80px -30px rgba(0, 0, 0, 0.6)"
+  glow-accent: "0 12px 32px -10px rgba(24, 144, 228, 0.7)"
 ---
 
 # LearnSlop Design System
 
-Visual spec for this revision: the Design artifact `d3d3f532-517a-44bb-85c9-0c2d43642bef`, screens Main, Desktop-New, Phone-Returning, Phone-New, Generator-States and Empty-States. The implementation in [apps/web/src/index.css](apps/web/src/index.css) still uses the previous palette and fonts (Fraunces, Nunito) and does not match this spec yet.
+The app is a code editor for learning. The landing page should look like the same product: a dark workspace, quiet panels, and colour used for code meaning rather than decoration. Glass comes from light frosted panels over a dark base, not from bright gradients.
+
+This spec replaces the earlier sticker system (cream canvas, ink outlines, hard shadows). The implementation in [apps/web/src/index.css](apps/web/src/index.css) still carries that older palette for Home, Course and Login. The landing page is built in [apps/web/src/pages/landing.css](apps/web/src/pages/landing.css) under the `.lp` class and follows this spec.
 
 ## Principles
 
-- **Sticker, not screen.** Every shape has a thick ink outline, rounded corners and a hard offset shadow. No blur and no soft shadows.
-- **Flat fills, from the palette only.** The only pattern fills are the page dot grid, the meter stripes, and the League rays and locked stripes.
-- **Pressable.** Buttons and cards lift on hover and sink on press.
-- **Bouncy.** Motion overshoots. No linear fades.
-- **Pip is the guide.** One mascot, same style everywhere.
+- **Editor first.** Surfaces look like an IDE: dark base, thin 1px borders, a title bar with traffic-light dots, tabs, and a status bar. Show the product before describing it.
+- **Colour means something.** The syntax palette carries meaning: pink for keywords and the predict action, coral for strings and warnings, cyan for functions and hints, yellow for numbers and attention, mint for correct answers and success. Blue is the accent for focus and primary actions. Do not use these colours as decoration.
+- **Glass is a layer, not a look.** Frosted panels sit above the base to separate floating UI (nav, cards, demos) from the workspace. Blur stays at 24px or less. Glass never sits on a bright image.
+- **Calm motion.** Motion settles. Use ease-out curves with a small overshoot on press and entrance. Nothing loops except ambient background drift and a single pulse on the live dot.
+- **Pip is the guide.** Pip sits on the edge of a panel and reacts to what the learner does. Pip never appears inside code.
 
-## Colors
+## Colours
 
 | Token | Hex | Use |
 |---|---|---|
-| ink | `#15121F` | text, every outline, every hard shadow |
-| paper | `#FFF4E0` | page background |
-| dot | `#EBDCBD` | 22px dot grid on the page (20px on phone) |
-| white | `#FFFFFF` | cards, inputs, chips, pills, course tiles, day dots |
-| sun | `#FFD23F` | generator button, AI and OFFICIAL stickers, streak card, Now tile, Continue meter, unlock card |
-| pink | `#FF7AB6` | Continue hero, HOT and NOW stickers, error icon, streak number shadow |
-| lilac | `#B9A6FF` | Community label and cards, locked league, React path badge, not-started course meter |
-| mint | `#5EE6B0` | Pip body, done course tiles, daily goal meter, 2 ACTIVE sticker |
-| blue | `#2257FF` | generator card, logo, Try the generator button, links, focus ring, done course meter |
-| flame | `#FF6A1F` | streak flame, completed days, Pip beak |
-| sprout | `#3FD69B` | Pip leaves and wing |
-| track | `#F1E6CF` | meter track |
-| muted | `#4A4458` | secondary text such as taglines and empty-state copy |
+| base | `#202020` | page background, the editor canvas |
+| base-deep | `#1A1A1A` | code blocks, inset wells |
+| panel | `#303030` | raised surfaces, borders on the editor, the status bar |
+| panel-tint | `#202030` | sidebars, the file tree |
+| line | `#404040` | dividers, 1px borders on glass |
+| text | `#E0E0E0` | body text and code |
+| text-strong | `#FFFFFF` | headings and the active tab |
+| muted | `#A0A0A0` | secondary text, labels, placeholders |
+| faint | `#808080` | line numbers, disabled text, file metadata |
+| blue | `#1890E4` | primary action, focus ring, links, the active line marker |
+| cyan | `#5CC8F0` | functions, hints, the mastery fill's light end |
+| pink | `#F06CA8` | keywords, the "predict" step, the first mastery bar |
+| coral | `#E47860` | strings, incorrect answers (soft), attention |
+| yellow | `#E4C46C` | numbers, the "Next up" callout, the streak |
+| mint | `#6CD4A4` | correct answers, success, the done state |
+| wallpaper | `#5080E0` | the desktop wallpaper behind the editor window. Used only in mock-ups, never in the page |
 
-Other tints appear once or twice in the artifact. They are not tokens: `#FFD9E9` (error message), `#D9FFEF` (success message and Pip belly), `#E9E3F7` (disabled chip), `#FFE88F` (disabled button, Generator-States), `#E4D9C4` (empty streak flame), `#9CC2FF` (Pip sparkle), `#1238B8` (link hover).
+Glass tints are white at low alpha. Use `rgba(255,255,255,0.07)` for a panel, `0.12` for a hover state, and `0.16` for the 1px edge. The mesh background uses blue, pink and coral blurred blobs at low opacity (about 0.3 to 0.5) on the base colour.
 
-### Night theme
+### Contrast
 
-The artifact has a `night` class. It swaps these values:
-
-| Token | Night value |
-|---|---|
-| paper | `#0D0A1C` |
-| dot | `#231B44` |
-| white (card surface) | `#1A1433` |
-| ink (text and outlines) | `#F6F0FF` |
-| on-blue (text on blue) | `#0D0A1C` |
-| shadow (hard shadows) | `#FF3FA4` |
-| blue | `#5B8CFF` |
-| sun | `#FFE04A` |
-| pink | `#FF6FB5` |
-| lilac | `#A58BFF` |
-| mint | `#3DF5B5` |
-| track | `#2C2452` |
-| muted | `#CFC4F2` |
-| focus | `#3DF5B5` |
+- Body text `#E0E0E0` on `#202020` is about 12:1. Muted `#A0A0A0` on `#202020` is about 6.5:1. Both pass AA for body text.
+- Primary button text is `#202020` on the light fill. Do not place white text on `#1890E4` at small sizes.
+- Focus ring: 2px `#1890E4`, offset 4px. On a `#1890E4` fill, use a white ring instead.
 
 ## Typography
 
-- **Display** (headings, buttons, stickers, big numbers): Lilita One, weight 400 only, line height 1.05. Section titles are 36px (28px on phone). The hero title is 62px (44px on phone). The generator label is 30px to 38px. The streak number is 92px (54px on phone).
-- **Body and UI**: DM Sans. 400 for paragraphs, 500 for input text and helper copy, 700 for chips, tags, labels and meta lines. Base size 16px, line height 1.45. Button labels use the display font.
-- **Code**: system monospace, 500, 15px, line height 1.7, on an ink panel. Keywords are pink, functions mint, numbers sun, comments lilac.
+- **Display** (headlines, section titles): Geist 600, tight tracking (-0.035em), line height 1.02. The hero title is 60px to 76px on desktop, 46px on phone. Section titles are 40px to 48px, 32px on phone.
+- **Serif accent**: Newsreader italic, used for one word per heading (for example "guessing", "you", "guess"). It sets the emphasis. Never use it for body text.
+- **Body**: Geist 400, 16px to 18px, line height 1.6. Lead paragraphs are 20px in `muted`.
+- **Labels and eyebrows**: Geist Mono 12px, uppercase, letter-spacing 0.14em, in `muted`.
+- **Code**: Geist Mono 13px to 14px, line height 1.7, on `base-deep`. Keywords are pink, functions cyan, strings coral, numbers yellow, comments faint, and punctuation text.
+- Use `font-variant-numeric: tabular-nums` for any figure in a column.
 
-## Shape and elevation
+## Surfaces
 
-| Class | Spec | Use |
+| Surface | Spec | Use |
 |---|---|---|
-| `.card` | white or one palette fill, 3px ink border, 24px radius (22px on phone), 5px 5px 0 ink shadow (4px on phone) | stat cards, generator, hero, path cards, community cards |
-| `.btn` | inline-flex, min-height 48px, padding 0 22px, Lilita One 19px, 3px ink border, 14px radius, 4px 4px 0 ink shadow | every button |
-| `.btn-sun` | sun fill, ink text | generator submit |
-| `.btn-ink` | ink fill, sun text | Continue, Retry, Enter league, Start |
-| `.btn-blue` | blue fill, white text | Try the generator (empty state) |
-| `.btn-surface` | white fill, ink text | Join, Start on course cards |
-| `.chip` | pill, 2.5px ink border, white fill, DM Sans 700 15px, 3px ink shadow, min-height 44px | quick picks |
-| `.pill` | pill, 3px ink border, white fill, 3px ink shadow, min-height 44px | streak and XP counters in the top bar |
-| `.sticker` | Lilita One 13px (12px on phone), 2.5px ink border, 8px radius, 2px ink shadow, tilted by the tilt variable | short labels: AI, HOT, NEW, OFFICIAL, SHARED, LOCKED |
-| `.tag` | pill, white fill, 2.5px ink border, DM Sans 700 14px | course label in the hero |
-| `.meter` | pill track, 3px ink border, `#F1E6CF` fill, 18px to 26px tall, colored fill with 8px diagonal stripes | progress, daily goal, league |
-| `.tile` | white card, 3px ink border, 18px radius (16px on phone), 4px 4px 0 ink shadow, 206px wide (176px on phone) | course tiles in Your paths |
-| `.msg` | 3px ink border, 14px radius, 3px 3px 0 ink shadow, DM Sans 700 16px | status lines under the generator |
-| `.code` | ink fill, 3px ink border, 20px radius, offset white and ink shadow | predict panel in the hero |
+| `editor window` | `base` fill, 1px `line` border, 14px radius, a title bar in `panel` with three dots (coral, yellow, mint), a status bar at the foot | the hero demo and product screenshots |
+| `glass card` | `rgba(255,255,255,0.07)` fill, backdrop blur 24px, 1px edge, 28px radius, inset top highlight, the lift shadow | nav, feature cards, the mastery panel |
+| `well` | `base-deep` fill, 1px `line` border, 16px radius | code blocks inside a window or card |
+| `tab` | a flat rectangle, `panel` when active with a 2px blue top edge, `base` when idle | editor tabs |
 
-Press behavior: a button lifts 2px left and 3px up on hover, and its shadow grows to 6px 7px. On press it moves 3px down and right, and the shadow drops to 1px. Cards with `.lift` move 3px left and 5px up on hover. On phone, cards only sink on press. Chips lift 3px and tilt on hover.
+No card has a hard offset shadow. Depth comes from the blur, the edge highlight and one soft, large shadow.
 
-## Component rules
+## Controls
 
-- **Sticker borders.** Stickers have a 2.5px ink border and an 8px radius. They tilt. Keep them to a few words, such as AI, HOT, NEW or LOCKED.
-- **Hard shadows.** Each size has one offset shadow with no blur: cards 5px (4px on phone), buttons 4px, chips, pills and messages 3px, stickers 2px. In night mode the shadow is pink.
-- **Buttons.** Use `.btn-sun` for the generator submit. Use `.btn-ink` for the main action of a state (Continue, Retry, Enter league, Start). Use `.btn-surface` for list actions (Join, Start). Use `.btn-blue` for the empty-state call to action. A disabled button shows a progress cursor.
-- **Cards.** Cards have a 3px ink border and one fill each: white or one palette color. A card may tilt up to 2.4 degrees. Empty states use a dashed 3px border on a white card.
-- **Pills and chips.** Use `.pill` for counters in the top bar. Use `.chip` for choices the learner taps, such as quick picks. Use `.tag` for a course label.
-- **Focus.** Focus shows a 3px outline with a 3px offset. The outline is blue, or sun on blue cards.
+- **Primary button**: a pill, light fill (`#E0E0E0` to `#BFE0F5`), `#202020` text, 600 weight, 15px to 16px. Hover adds a blue glow (`0 18px 40px -10px rgba(92,200,240,0.85)`). Press scales to 0.96.
+- **Ghost button**: a pill, `rgba(255,255,255,0.08)` fill, 1px edge, `#E0E0E0` text. Hover goes to `0.14`.
+- **Answer option**: a 12px-radius glass tile in the predict demo. Hover lifts 2px. Correct turns mint, wrong turns coral at 25% alpha and shakes once. Crossed-out options are faint with a line through them.
+- **Chip**: a pill, glass fill, 1px edge, 14px text in `muted`.
+- **Live dot**: a 8px mint dot with a single soft ring pulse.
+- **Focus**: 2px `blue` outline, offset 4px. Never removed.
 
-## Home screen layout
+## Layout
 
-### Desktop
-
-- **Top bar.** Logo at the left: a blue square mark and the wordmark, with a sun "Quest" tag. Streak and XP pills at the right. The page is 1360px wide with 40px side padding.
-- **Two columns.** The main column is at least 620px and grows. The sidebar is 330px. The columns have a 36px gap. Main column sections are 44px apart. Sidebar cards are 28px apart.
-- **Main column, returning learner:** generator, Continue hero, Your paths, Community. The hero is a pink card with the course tag, title, level badge, lesson meter, a large ink Continue button, and a predict code panel on the right.
-- **Main column, new learner:** generator (with a START HERE sticker), Start a path, Community. There is no hero.
-- **Start a path.** A tall sun feature card (Python Quest) on the left, with a code preview. Two cards sit at the top right. SQL Detective spans the bottom right.
-- **Sidebar:** Streak (sun), Daily goal (white), Leagues (locked).
-- **Your paths.** One card per path, with a badge, title, tagline and a horizontal track of five course tiles joined by a dashed line.
-- **Community.** Four cards in one row, each with a palette fill.
-
-### Phone (390px)
-
-- One column, 480px maximum width, 16px side padding, 28px between sections.
-- Top bar: logo 34px, streak and XP pills.
-- **Returning learner:** stats (streak full width, daily goal, leagues), generator, Continue hero with a full-width button, Your paths, Community in two columns.
-- **New learner:** stats (streak full width, daily goal, locked leagues), generator, Start a path stacked in one column, then an empty Community card.
-- Course tracks scroll sideways with snap points. The scrollbar is hidden.
-
-## States
-
-### Generator
-
-- **Idle.** Pip waves. Generate is enabled.
-- **Loading.** Generate is disabled and shows a 22px spinner. The status line is a white message with a sketched line, the text "Pip is sketching your path", and three blinking dots. Pip shows its think pose. The Generator-States file adds four dashed ghost slots that pulse in turn. The home demo resolves after 2.2 seconds.
-- **Error.** A pink message with a pink alert icon: "Oops, Pip dropped the pencil. We couldn't generate that path. Check your connection and try again." A Retry button (`.btn-ink`, 44px tall) sits inside the message. The message shakes once. Pip shows its oops pose.
-- **Empty input.** A pink message: "Type what you want to learn first, or tap a quick pick." It shakes once. Pip shows its oops pose.
-- **Done.** A mint message with a NEW sticker: "Your path is ready. Find it in Your paths below."
-
-### Empty states
-
-- **No official paths.** A dashed card with Pip (150px), the heading "No official paths here yet.", and muted copy: "Pip is still drawing them up. Tell the generator what you want to learn and get a path of your own right now." The card has an OFFICIAL sticker above it and a Try the generator button.
-- **No shared paths.** A dashed card with Pip holding a sheet of paper, the heading "No shared paths yet.", and copy: "Pip is waiting for the first one. Make a path and share it, and it shows up here for everyone." The phone copy is shorter. A lilac SHARED sticker sits above it.
-
-### League unlock
-
-- A sun card, 380px wide on the 1100px reference, tilted 1.4 degrees. It has an UNLOCKED sticker (white) and a NEW sticker (pink, tilted).
-- A 130px trophy pops in. White rays turn behind it. Four confetti pieces fall in a loop.
-- Heading "Leagues" at 40px. Copy: "You hit 500 XP. Welcome to the league."
-- A full striped meter reads "500 / 500 XP".
-- An "Enter league" button (`.btn-ink`).
-
-### League locked
-
-- A striped, lilac-tinted card with a LOCKED sticker and a grayscale trophy at 55% opacity.
-- Copy: "Unlocks at 500 XP". A lilac meter shows the current XP.
-- Desktop shows the XP left to go (for example "80 XP to go", or "500 XP to go" at zero). Phone shows "420 / 500 XP" only.
+- Page width 1152px (max-w-6xl) with 24px side padding, 20px on phone.
+- Floating nav: a glass pill 16px from the top, full width minus gutters. It gains a deeper shadow after scrolling 24px.
+- Hero: two columns, the copy on the left and the editor window on the right, 56px gap. Stack on phone with the copy first.
+- Concepts: one slow horizontal marquee, faded at both ends, paused on hover.
+- Moves: four glass cards in a row (two on tablet, one on phone). Each card has a tinted orb holding the Pip scene, a step label, a title and two lines of copy.
+- Comparison: two glass cards side by side. The positive card has a mint edge.
+- Mastery: a Pip illustration above a glass panel with three bars.
+- Finale: one large glass panel with a soft blue to coral wash and a centred CTA.
 
 ## Motion
 
-- Timing: fast 120ms, medium 240ms, slow 560ms. Entrance cards stagger by 70ms.
-- Easing: bounce `cubic-bezier(.34,1.56,.64,1)`, ease-out `cubic-bezier(.2,.8,.2,1)`.
-- Keyframes used in the artifact: `rise` (entrance), `pop` (trophy), `stamp` (completed tile badge), `shake` (errors, 420ms), `bob` (Pip float, 3.2s), `wave` (Pip wing, 2.2s), `flicker` (streak flame), `spin` (loader, 900ms), `draw` (sketched lines), `blink` (loading dots), `pulse` (ghost slots), `stripes` (meter fill), `twinkle` (done sparkle), `fall` (confetti), `turn` (League rays), `fly` and `xpop` (Continue burst and "+10 XP").
-- Reduced motion. Under `prefers-reduced-motion: reduce`, or the `calm` class, animations run once at 1ms, the tilt is 0, and bursts are hidden.
+- Timing: fast 150ms, medium 300ms, slow 800ms.
+- Easing: entrance `cubic-bezier(0.22, 1, 0.36, 1)`, press and overshoot `cubic-bezier(0.34, 1.56, 0.64, 1)`.
+- Entrances: fade with a 36px rise and 8px blur clearing, staggered by 120ms within a group.
+- Bars fill from zero over 1.1s with a 150ms delay per bar. Numbers count up over 1.2s.
+- The headline reveals word by word, each word 40px up, 10px blur, 70ms apart.
+- Scroll progress: a 3px bar at the top of the viewport, blue to pink to yellow.
+- Ambient: the background mesh drifts over 24s and moves slower than the page on scroll.
+- Reduced motion: under `prefers-reduced-motion: reduce`, all animations and transitions drop to 0.01ms, loops stop, and content stays visible.
 
-## Illustration (Pip)
+## Pip
 
-- Pip is a mint sprout drawn in flat SVG with an ink outline. It has a mint body (`#5EE6B0`), a sun sprout (`#FFD23F`), sprout-green leaves (`#3FD69B`), a pale belly (`#D9FFEF`) and a flame beak (`#FF6A1F`). The outline is 4 units on a 120-unit viewBox.
-- Poses in the artifact: wave (idle and done), think (loading), oops (error and empty input). The empty-state cards use a sketch pose with a sheet of paper.
-- Pip has no offset shadow and no text in the artifact.
-- Pip floats at every size. Its wing waves in the wave pose.
-- Pip peeks over the top edge of the hero and the feature cards. The card clips the peek.
-- Sizes: 220px to 250px in the desktop generator, 130px in the phone generator, 104px for the desktop peek, 84px for the phone peek, 150px in the empty state.
-
-Generate every illustration with this prompt prefix, then add the scene:
-
-> Flat vector sticker illustration, playful and chunky. Thick uniform near-black outline (#15121F) on every shape, rounded corners and round line caps, no gradients, no textures, no soft shadows. Flat fills from this palette only: sun yellow #FFD23F, pink #FF7AB6, lilac #B9A6FF, mint #5EE6B0, sprout #3FD69B, blue #2257FF, flame #FF6A1F, warm cream #FFF4E0. Friendly, bouncy, slightly squashed proportions, like a modern kids' learning app. Transparent background. No text or letters unless I specify. No watermark.
-
-Assets live in `apps/web/public/img/` (`pip-wave`, `pip-think`, `pip-cheer`, `pip-oops`, `pip-sheet`, plus scene art for predict, hint, reveal, adapt, mastery, finale). Transparent PNG, no baked-in text.
+- Pip is the mint sprout mascot from the existing assets. Keep the existing illustrations. Pip's body is `#6CD4A4` in the artwork, not the editor palette.
+- Pip sits on the edge of a panel, floats at about 4s, and wiggles in the wave pose.
+- Poses: wave (idle), think (hint), oops (wrong answer), cheer (correct), sheet (empty).
+- Pip is never drawn inside a code block.
 
 ## Voice
 
-Short, friendly, concrete. Predict first, then watch. Never claim hints earn mastery. Each recommendation states its reason.
+Short, direct and concrete, as a knowledgeable peer would speak. Predict first, then watch. Never claim hints earn mastery. Each recommendation states its reason. Buttons state the action ("Play a step").
 
 ## Do and don't
 
-- Do put an ink outline and a hard shadow on every new component.
-- Do reuse `.card`, `.btn`, `.pill`, `.chip`, `.sticker`, `.meter` and `.tile` before inventing styles.
-- Don't add colors outside the tables above.
-- Don't add gradients beyond the dot grid, meter stripes, League rays and locked stripes.
-- Don't use blurred shadows, or outlines under 2.5px.
-- Don't put text inside generated illustrations.
+- Do build surfaces from the tokens above, and keep a 1px border on every panel.
+- Do use the syntax colours only for code meaning.
+- Do keep the mock-ups honest: show the real product, and label example data as examples.
+- Don't add gradients beyond the blurred background blobs and the headline accent.
+- Don't put hard offset shadows on new components. That is the old system.
+- Don't use bright white cards on the dark base.
+- Don't add colours outside the table without updating this file.

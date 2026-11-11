@@ -15,7 +15,7 @@ html:has(.lp) { scroll-padding-top: 88px; }
   /* tokens: same names and values as .wb in workbench.css, plus page-level extras */
   --tx: #1c1c1e; --mu: #555a66; --line: #d7d6d6; --side: #edecec; --code: #ffffff; --tbar: #ffffff;
   --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
-  --ac: #2f5fd6; --acT: #2f5fd6; --cur: #fff6cf; --numdim: #b4b8c0;
+  --ac: #2f5fd6; --acT: #2852c0; --cur: #fff6cf; --numdim: #b4b8c0;
   --ok: #1f9d55; --okT: #177a42; --bad: #c2362f; --warn: #b7791f;
   --kw: #9b2393; --fn: #326d74; --nu: #1c00cf; --str: #c41a16;
   --win: rgba(255, 255, 255, 0.3); --edge: rgba(255, 255, 255, 0.7); --vib: rgba(237, 236, 236, 0.82);

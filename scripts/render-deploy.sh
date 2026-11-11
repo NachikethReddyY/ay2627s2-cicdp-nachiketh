@@ -7,7 +7,7 @@ hook=${1:-}
 image=${2:?image ref required}
 
 if [[ -z $hook ]]; then
-  echo "FAIL: Render deploy hook is empty; set the staging environment secret" >&2
+  echo "FAIL: Render deploy hook is empty; set the production environment secret" >&2
   exit 1
 fi
 

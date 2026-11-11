@@ -1,22 +1,22 @@
-name: Deploy staging
+name: Deploy production
 
-# Manual only: staging is not in use yet, so pushes to main no longer deploy it. Run it from the Actions tab.
 on:
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
-# One deploy at a time. A deploy in flight is never cancelled, so staging is not left half-updated.
+# One deploy at a time. A deploy in flight is never cancelled, so production is not left half-updated.
 concurrency:
-  group: deploy-staging
+  group: deploy-production
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SHA: ${{ github.sha }}
     permissions:
       contents: read
       packages: write
@@ -25,6 +25,9 @@ jobs:
       engine_image: ${{ steps.names.outputs.engine_image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Refuse to build a sha that is not the head of main
+        run: scripts/assert-main-head.sh "$SHA"
 
       - id: names
         env:
@@ -86,7 +89,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: staging
+    environment: production
     env:
       SHA: ${{ github.sha }}
     steps:
@@ -114,7 +117,7 @@ jobs:
     needs: [build, migrate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: staging
+    environment: production
     env:
       SHA: ${{ github.sha }}
       API_IMAGE: ${{ needs.build.outputs.api_image }}
@@ -134,8 +137,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The committed vercel.json keeps the production API host; CI points it at the staging API for this build only.
-      - name: Point the web rewrite at staging
+      # The committed vercel.json keeps the production API host; CI points it at the production API for this build only.
+      - name: Point the web rewrite to production
         env:
           API_ORIGIN: ${{ vars.API_ORIGIN }}
         run: |
@@ -169,7 +172,7 @@ jobs:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_ENGINE }}
         run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE"
 
-      - name: Vercel deploy (staging project)
+      - name: Vercel deploy (production project)
         working-directory: apps/web
         env:
           VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
@@ -183,8 +186,9 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: staging
+    environment: production
     env:
+      SHA: ${{ github.sha }}
       API_ORIGIN: ${{ vars.API_ORIGIN }}
       ENGINE_ORIGIN: ${{ vars.ENGINE_ORIGIN }}
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
@@ -192,4 +196,4 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The budget inside the script covers Render's free-tier cold start and the rollout.
-      - run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$GITHUB_SHA"
+      - run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$SHA"

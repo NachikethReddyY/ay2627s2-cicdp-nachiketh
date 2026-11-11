@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Staging smoke gate. Usage: scripts/smoke.sh <api-origin> <web-origin> <engine-origin> <expected-sha>
+# Production smoke gate. Usage: scripts/smoke.sh <api-origin> <web-origin> <engine-origin> <expected-sha>
 # Waits until the API and the engine each report the expected build sha (cold start and rollout share one
 # budget per service), then checks API readiness, the auth gate on a protected tRPC procedure, and the web
 # origin's /api rewrite to that same gate.
@@ -56,4 +56,4 @@ if ((failed)); then
   echo "FAIL: smoke checks failed"
   exit 1
 fi
-echo "PASS: staging smoke green for $expected_sha"
+echo "PASS: production smoke green for $expected_sha"
