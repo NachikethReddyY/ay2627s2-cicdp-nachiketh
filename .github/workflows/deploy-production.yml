@@ -18,6 +18,8 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
     permissions:
       contents: read
       packages: write
@@ -27,12 +29,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
+
+      - name: Refuse to build a sha that is not the head of main
+        run: scripts/assert-main-head.sh "$SHA"
 
       - id: names
         env:
           OWNER: ${{ github.repository_owner }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SHA: ${{ env.SHA }}
         run: |
           owner=${OWNER,,}
           echo "api_image=ghcr.io/$owner/learnquest-api:$SHA" >> "$GITHUB_OUTPUT"
@@ -95,7 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
 
       # First gate: a queued run for an older sha must not migrate the database before it is refused.
       - name: Refuse to migrate for a sha that is not the head of main
@@ -127,7 +132,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
 
       - name: Refuse to deploy a sha that is not the head of main
         run: scripts/assert-main-head.sh "$SHA"
@@ -199,7 +204,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
 
       # The budget inside the script covers Render's free-tier cold start and the rollout.
       - run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$SHA"

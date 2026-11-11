@@ -31,6 +31,11 @@ check(wf.get("permissions") == {"contents": "read"}, "top-level permissions are 
 check(wf["concurrency"] == {"group": "deploy-production", "cancel-in-progress": False},
       "one deploy at a time, in-flight deploys are never cancelled")
 check(jobs["build"].get("if") == "github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository", "build runs only after successful CI push on this repo main")
+check(any(step.get("run") == 'scripts/assert-main-head.sh "$SHA"' for step in jobs["build"]["steps"]),
+      "build refuses a workflow-run sha that is no longer the head of main")
+check(all(step.get("with", {}).get("ref") == "main"
+          for job in jobs.values() for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")),
+      "privileged jobs check out trusted main instead of the workflow-run sha")
 check(jobs["migrate"].get("needs") == "build", "migrate waits for build")
 check(sorted(jobs["deploy"].get("needs", [])) == ["build", "migrate"], "deploy waits for build and migrate")
 check(jobs["smoke"].get("needs") == "deploy", "smoke waits for deploy")
