@@ -199,8 +199,14 @@ export async function resolveDocImages(
   }));
   const out = results.filter((r) => r !== undefined);
   // Images generated after the read returns, with the same cap. A failure keeps the description card; the next read serves whatever was stored.
-  void Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, later.length) }, async () => {
+  const queue = Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, later.length) }, async () => {
     for (let job = later.shift(); job; job = later.shift()) await job().catch(() => undefined);
   }));
+  backgroundImages.add(queue);
+  void queue.finally(() => backgroundImages.delete(queue));
   return { ...(doc as object), blocks: out };
 }
+
+const backgroundImages = new Set<Promise<unknown>>();
+/** Resolves once the images queued by reads so far have settled (tests). */
+export const idleImages = () => Promise.allSettled([...backgroundImages]);
