@@ -5,7 +5,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-uv run --no-project --python 3.12 --with pyyaml python - "$root/.github/workflows/deploy-production.yml" <<'PY'
+uv run --no-project --python 3.12 --with pyyaml python - \
+  "$root/.github/workflows/deploy-production.yml" "$root/.github/workflows/ci.yml" <<'PY'
 import re
 import sys
 
@@ -13,6 +14,8 @@ import yaml
 
 with open(sys.argv[1]) as f:
     wf = yaml.safe_load(f)
+with open(sys.argv[2]) as f:
+    ci = yaml.safe_load(f)
 
 # PyYAML parses the bare key `on` as the boolean True.
 triggers = wf.get(True, wf.get("on"))
@@ -26,16 +29,20 @@ def check(ok: bool, message: str) -> None:
         failures.append(message)
 
 
-check(set(triggers) == {"workflow_run"} and triggers["workflow_run"].get("workflows") == ["CI"] and triggers["workflow_run"].get("types") == ["completed"], "runs after CI completes")
+check(set(triggers) == {"workflow_call"}, "deploy is reusable from the CI workflow")
 check(wf.get("permissions") == {"contents": "read"}, "top-level permissions are contents: read")
 check(wf["concurrency"] == {"group": "deploy-production", "cancel-in-progress": False},
       "one deploy at a time, in-flight deploys are never cancelled")
-check(jobs["build"].get("if") == "github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository", "build runs only after successful CI push on this repo main")
-check(any(step.get("run") == 'scripts/assert-main-head.sh "$SHA"' for step in jobs["build"]["steps"]),
-      "build refuses a workflow-run sha that is no longer the head of main")
-check(all(step.get("with", {}).get("ref") == "main"
-          for job in jobs.values() for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")),
-      "privileged jobs check out trusted main instead of the workflow-run sha")
+ci_jobs = ci["jobs"]
+deploy_call = ci_jobs["deploy-production"]
+check(deploy_call.get("if") == "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+      "production deploy is called only for pushes to main")
+check(sorted(deploy_call.get("needs", [])) == ["deploy-scripts", "e2e", "engine", "lint", "unit"],
+      "production deploy waits for every CI check")
+check(deploy_call.get("uses") == "./.github/workflows/deploy-production.yml" and deploy_call.get("secrets") == "inherit",
+      "CI invokes the reusable production workflow with environment access")
+check(not any("workflow_run" in str(step) for job in jobs.values() for step in job["steps"]),
+      "production workflow contains no workflow_run checkout input")
 check(jobs["migrate"].get("needs") == "build", "migrate waits for build")
 check(sorted(jobs["deploy"].get("needs", [])) == ["build", "migrate"], "deploy waits for build and migrate")
 check(jobs["smoke"].get("needs") == "deploy", "smoke waits for deploy")

@@ -193,3 +193,12 @@ jobs:
             e2e/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, unit, engine, deploy-scripts, e2e]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/deploy-production.yml
+    secrets: inherit
