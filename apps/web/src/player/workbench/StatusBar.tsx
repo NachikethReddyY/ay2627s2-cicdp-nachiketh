@@ -23,15 +23,18 @@ type Props = {
 };
 
 const DOT = { ready: "var(--ok)", busy: "var(--acT)", error: "var(--bad)" } as const;
-export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap = false, cursor, language, onProblems, onWordWrap, branch = "main", planned = false }: Props) {
+export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap = false, cursor, language, onProblems, onWordWrap, branch, planned = false }: Props) {
   return (
     <footer className="flex h-[25px] flex-none items-center gap-4 overflow-hidden whitespace-nowrap border-t border-[var(--line)] bg-[var(--side)] px-3 text-[11.5px] text-[var(--mu)]">
       {planned && (
         <>
-          <span className="wb-mono flex flex-none items-center gap-1.5">
-            <GitBranch size={14} strokeWidth={1.9} aria-hidden="true" />
-            {branch}
-          </span>
+          {/* Only a real git checkout has a branch to show. */}
+          {branch && (
+            <span className="wb-mono flex flex-none items-center gap-1.5">
+              <GitBranch size={14} strokeWidth={1.9} aria-hidden="true" />
+              {branch}
+            </span>
+          )}
           <span className="flex flex-none items-center gap-3">
             <button type="button" className="flex items-center gap-[5px] rounded-sm hover:text-[var(--tx)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--acT)]" title="Show problems" aria-label={`Show problems (${errors} errors, ${warnings} warnings)`} onClick={onProblems}>
               <CircleX size={14} strokeWidth={1.9} aria-hidden="true" className="text-[var(--bad)]" />
@@ -46,11 +49,14 @@ export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap =
           </span>
         </>
       )}
-      <span role="status" className="flex min-w-0 items-center gap-3">
-        {status.tone === "busy" && <LoaderCircle size={13} aria-hidden="true" className="flex-none motion-safe:animate-spin" />}
-        <span className="truncate">{status.text}</span>
-        {status.verdict && <span className="truncate text-[var(--tx)]">{status.verdict}</span>}
-      </span>
+      {/* The idle "Ready" text is not shown; only work in progress, errors and verdicts appear. */}
+      {status.tone !== "ready" && (
+        <span role="status" className="flex min-w-0 items-center gap-3">
+          {status.tone === "busy" && <LoaderCircle size={13} aria-hidden="true" className="flex-none motion-safe:animate-spin" />}
+          <span className="truncate">{status.text}</span>
+          {status.verdict && <span className="truncate text-[var(--tx)]">{status.verdict}</span>}
+        </span>
+      )}
       <span className="ml-auto flex-none max-sm:hidden">{cursor ? `Ln ${cursor.line}, Col ${cursor.column}` : ""}</span>
       <button type="button" aria-label="Toggle word wrap" title={`Word wrap ${wordWrap ? "on" : "off"}`} aria-pressed={wordWrap} onClick={onWordWrap} className={`flex flex-none items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--hov)] ${wordWrap ? "text-[var(--acT)]" : ""}`}>
         <WrapText size={13} strokeWidth={1.75} aria-hidden="true" /><span>Wrap</span>

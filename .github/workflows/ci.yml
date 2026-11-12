@@ -177,7 +177,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - run: pnpm --filter @learnquest/e2e --fail-if-no-match exec playwright install --with-deps chromium
+      # --with-deps pulls OS packages from the runner's Ubuntu mirror, which can fail to resolve. Only this install is
+      # retried. A failed test is never retried.
+      - name: Install Playwright Chromium
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm --filter @learnquest/e2e --fail-if-no-match exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "Playwright install failed (attempt $attempt of 3), retrying in 30s"
+            sleep 30
+          done
+          exit 1
 
       - run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
         env:

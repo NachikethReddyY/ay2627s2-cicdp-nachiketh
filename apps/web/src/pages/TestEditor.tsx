@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Check, ExternalLink, FilePlus2, FolderPlus, LoaderCircle, Maximize2, Minimize2, Monitor, MonitorPlay, Play, RefreshCw, Smartphone, Tablet, X } from "lucide-react";
+import { Check, ExternalLink, FilePlus2, FolderPlus, LoaderCircle, Maximize2, Minimize2, MonitorPlay, Play, RefreshCw, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { usePanel } from "../player/terminal/usePanel";
 import TerminalView from "../player/terminal/TerminalView";
@@ -13,10 +13,20 @@ import { DOCS } from "../player/workbench/docs";
 import Workbench from "../player/workbench/Workbench";
 import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
-import { languageOf } from "./testEditorFixture";
+import { languageOf, pickTestLesson } from "./testEditorFixture";
 import { DEMO_DIRECTORY, DEMO_ENTRY_FILE, DEMO_PROJECT_FILES } from "./testEditorDemo";
 import { Toaster, toast } from "sonner";
 import { removeWebPreviewFile, startWebPreview, syncWebPreviewFile, type PreviewFile } from "./webContainerPreview";
+import EditorDock, { type EditorDockItem } from "./EditorDock";
+import { BrowserAppIcon, EditorAppIcon, NotepadAppIcon } from "./DockAppIcons";
+import Notepad from "./Notepad";
+import PreviewDevtools, { type DevtoolsTab } from "./PreviewDevtools";
+import type { DomNode, HostToPreview, LogLevel, NetworkEntry, NodeStyles, SourceEntry, SourceText } from "./previewDevtoolsProtocol";
+import PreviewLoading from "./PreviewLoading";
+import { PreviewResizeHandles } from "./PreviewResizeHandles";
+import { resizeRect, type PreviewRect, type ResizeEdge } from "./previewResize";
+import { readStoredPreviewWindow, writeStoredPreviewWindow } from "./previewMemory";
+import { readStoredCodeWindow, writeStoredCodeWindow } from "./codeWindowMemory";
 
 // Dev-only workbench for browsing and editing the authenticated container workspace.
 
@@ -50,9 +60,21 @@ const LANGUAGE_LABELS: Record<string, string> = { javascript: "JavaScript", type
 const joinPath = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
 const MAX_TERMINALS = 4;
 type TerminalSession = { id: string; label: string; socket: ShellSocket };
-type BrowserPreview = { state: "idle" | "starting" | "ready" | "error"; url?: string; message?: string };
-type PreviewLog = { level: string; args: string[]; time: string };
-type PreviewDevice = "responsive" | "mobile" | "tablet";
+type BrowserPreview = { state: "idle" | "starting" | "ready" | "error"; url?: string; message?: string; stage?: string };
+// Files under the demo project are the web app, so Run builds it and opens the browser preview.
+const isWebProjectPath = (path: string) => path.startsWith(`${DEMO_DIRECTORY}/`);
+const RUNNABLE_EXTENSIONS = ["py", "js", "mjs", "cjs"];
+/** While a window is dragged or resized, stop text selection across the whole page until the pointer is released. */
+function lockSelectionUntilRelease() {
+  const root = document.documentElement;
+  const unlock = () => root.classList.remove("lq-no-select");
+  root.classList.add("lq-no-select");
+  window.addEventListener("pointerup", unlock, { once: true });
+  window.addEventListener("pointercancel", unlock, { once: true });
+  window.addEventListener("blur", unlock, { once: true }); // released over another app, the pointerup never arrives
+}
+
+type PreviewLog = { level: LogLevel; args: string[]; time: string };
 
 async function ensureWebPreviewFiles() {
   let packageContent = DEMO_PROJECT_FILES.find((file) => file.path.endsWith("/package.json"))!.content;
@@ -184,30 +206,43 @@ export default function TestEditor() {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [browserPreview, setBrowserPreview] = useState<BrowserPreview>({ state: "idle" });
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [notepadOpen, setNotepadOpen] = useState(false);
   const [previewMinimized, setPreviewMinimized] = useState(false);
-  const [previewMaximized, setPreviewMaximized] = useState(false);
-  const [previewPosition, setPreviewPosition] = useState<{ left: number; top: number } | null>(null);
+  // The window's box and full-screen state come back as the learner left them (per browser, see previewMemory).
+  const [remembered] = useState(readStoredPreviewWindow);
+  const [previewMaximized, setPreviewMaximized] = useState(remembered.maximized);
+  const [previewPosition, setPreviewPosition] = useState<{ left: number; top: number } | null>(() => (remembered.rect ? { left: remembered.rect.left, top: remembered.rect.top } : null));
+  const [previewSize, setPreviewSize] = useState<{ width: number; height: number } | null>(() => (remembered.rect ? { width: remembered.rect.width, height: remembered.rect.height } : null));
   const [previewHost, setPreviewHost] = useState<HTMLElement | null>(null);
   const [previewRefresh, setPreviewRefresh] = useState(0);
-  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("responsive");
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
-  const [devtoolsTab, setDevtoolsTab] = useState<"console" | "elements">("console");
   const [previewLogs, setPreviewLogs] = useState<PreviewLog[]>([]);
-  const [inspectedElement, setInspectedElement] = useState<{ tag: string; id?: string; classes?: string; text?: string; size?: string } | null>(null);
+  const [previewDom, setPreviewDom] = useState<{ root: DomNode; truncated: boolean } | null>(null);
+  const [previewStyles, setPreviewStyles] = useState<NodeStyles | null>(null);
+  const [previewNetwork, setPreviewNetwork] = useState<NetworkEntry[]>([]);
+  const [previewSources, setPreviewSources] = useState<SourceEntry[]>([]);
+  const [previewSourceText, setPreviewSourceText] = useState<SourceText | null>(null);
+  // The panel reacts to a change of `seq`, so the same pick or tab request can happen twice.
+  const devtoolsSeq = useRef(0);
+  const [pickedElement, setPickedElement] = useState<{ nodeId: number; seq: number } | null>(null);
+  const [openDevtoolsTab, setOpenDevtoolsTab] = useState<{ tab: DevtoolsTab; seq: number } | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const previewWindowRef = useRef<HTMLDivElement>(null);
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
   const previewStarting = useRef(false);
   const previewAutoStarted = useRef(false);
   const previewDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
+  const previewResizeStart = useRef<{ edge: ResizeEdge; pointerX: number; pointerY: number; rect: PreviewRect } | null>(null);
   const runRef = useRef<HTMLButtonElement>(null);
   // The demo entry is open from the first paint, but it stays read-only until the sandbox copy confirms it,
   // so typing cannot save over work the sandbox already holds.
   const activePath = useRef(DEMO_ENTRY_FILE);
   const activeContent = useRef(DEMO_ENTRY_TEXT);
   // False until the open buffer matches the sandbox copy. Read by the loaders; bufferConfirmed mirrors it for rendering.
+  // The bundled entry file is editable from the start: edits sync to the live preview, and the loader skips
+  // replacing a dirty buffer when the sandbox copy arrives (signed-out sessions never confirm it).
   const openConfirmed = useRef(false);
-  const [bufferConfirmed, setBufferConfirmed] = useState(false);
+  const [bufferConfirmed, setBufferConfirmed] = useState(true);
   const draftInput = useRef<HTMLInputElement>(null);
   const treeRef = useRef<TreeNode[]>(demoTree());
   const dirty = useRef(false);
@@ -240,19 +275,71 @@ export default function TestEditor() {
     const receivePreviewMessage = (event: MessageEvent) => {
       if (!browserPreview.url || event.source !== previewFrameRef.current?.contentWindow) return;
       if (event.origin !== new URL(browserPreview.url).origin || event.data?.__learnquestPreview !== true) return;
-      if (event.data.type === "console") {
-        setPreviewLogs((logs) => [...logs, { level: event.data.level, args: event.data.args, time: new Date().toLocaleTimeString() }].slice(-150));
-      } else if (event.data.type === "element") {
-        setInspectedElement(event.data);
-        setDevtoolsTab("elements");
+      const data = event.data;
+      const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+      if (data.type === "ready") {
+        // A fresh page: node and request ids restart, so drop everything keyed by the old ones.
+        setPreviewDom(null);
+        setPreviewStyles(null);
+        setPreviewSources([]);
+        setPreviewSourceText(null);
+        setPreviewNetwork([]);
+        setInspecting(false);
+      } else if (data.type === "console") {
+        if (typeof data.level !== "string" || !Array.isArray(data.args)) return;
+        let args: string[];
+        try {
+          args = data.args.map((arg: unknown) => String(arg));
+        } catch {
+          return;
+        }
+        setPreviewLogs((logs) => [...logs, { level: data.level, args, time: new Date().toLocaleTimeString() }].slice(-150));
+      } else if (data.type === "element") {
+        setPickedElement({ nodeId: event.data.nodeId, seq: ++devtoolsSeq.current });
+        setOpenDevtoolsTab({ tab: "elements", seq: ++devtoolsSeq.current });
         setDevtoolsOpen(true);
-      } else if (event.data.type === "inspect-state") {
+      } else if (data.type === "inspect-state") {
         setInspecting(Boolean(event.data.enabled));
+      } else if (data.type === "dom") {
+        if (!isObject(data.root)) return;
+        setPreviewDom({ root: data.root as DomNode, truncated: Boolean(data.truncated) });
+      } else if (data.type === "styles") {
+        if (!isObject(data.styles) || typeof data.styles.nodeId !== "number") return;
+        setPreviewStyles(data.styles as NodeStyles);
+      } else if (data.type === "network") {
+        if (!isObject(data.entry) || typeof data.entry.id !== "number") return;
+        const entry = data.entry as NetworkEntry;
+        setPreviewNetwork((entries) => {
+          const index = entries.findIndex((existing) => existing.id === entry.id);
+          if (index === -1) return [...entries, entry].slice(-300);
+          const next = entries.slice();
+          next[index] = entry;
+          return next;
+        });
+      } else if (data.type === "sources") {
+        if (!Array.isArray(data.entries)) return;
+        setPreviewSources(data.entries);
+      } else if (data.type === "source") {
+        setPreviewSourceText({ url: event.data.url, text: event.data.text, error: event.data.error });
+      } else if (data.type === "contextmenu") {
+        // The frame's coordinates are relative to the frame; the menu sits in the browser window.
+        const frame = previewFrameRef.current?.getBoundingClientRect();
+        const box = previewWindowRef.current?.getBoundingClientRect();
+        if (frame && box) setPreviewMenu({ x: frame.left - box.left + event.data.x, y: frame.top - box.top + event.data.y });
+      } else if (data.type === "pointerdown") {
+        setPreviewMenu(null);
       }
     };
     window.addEventListener("message", receivePreviewMessage);
     return () => window.removeEventListener("message", receivePreviewMessage);
   }, [browserPreview.url]);
+
+  useEffect(() => {
+    writeStoredPreviewWindow({
+      rect: previewPosition && previewSize ? { ...previewPosition, ...previewSize } : null,
+      maximized: previewMaximized,
+    });
+  }, [previewPosition, previewSize, previewMaximized]);
 
   useEffect(() => {
     if (!previewPosition) return;
@@ -527,7 +614,8 @@ export default function TestEditor() {
     if (cached !== undefined && !dirty.current) {
       const request = ++openRequest.current;
       // Read-only until the sandbox copy matches, so the cached text cannot be saved over a newer sandbox copy.
-      showFile(path, cached, false);
+      // With no sandbox connected there is no newer copy to protect, so the cached text is editable at once.
+      showFile(path, cached, !(shellState.kind === "open" && shellState.ready));
       try {
         const result = await getWorkspaceFile(path);
         fileCache.current.set(path, result.content);
@@ -536,7 +624,9 @@ export default function TestEditor() {
           else confirmBuffer(true);
         }
       } catch {
-        // Keep the cached text, read-only; the next open or refresh reads the sandbox again.
+        // The sandbox cannot be read (signed out or offline), so the cached text is the best copy: let it be edited.
+        // The next open or refresh still reads the sandbox, and a save error shows if the sandbox is unavailable.
+        if (request === openRequest.current && !dirty.current && activePath.current === path) confirmBuffer(true);
       }
       return;
     }
@@ -622,14 +712,107 @@ export default function TestEditor() {
     });
   };
 
-  const sendPreviewCommand = (type: string, payload: Record<string, unknown> = {}) => {
-    previewFrameRef.current?.contentWindow?.postMessage({ __learnquestPreviewCommand: true, type, ...payload }, browserPreview.url ? new URL(browserPreview.url).origin : "*");
+  // Full screen is a zoom, as on macOS: the window keeps its remembered box, and dragging an edge leaves full screen.
+  const togglePreviewMaximized = () => {
+    setPreviewMaximized((value) => !value);
+    setPreviewMinimized(false);
+  };
+
+  // The browser window is active while the last click landed inside it.
+  const [previewActive, setPreviewActive] = useState(true);
+  const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number } | null>(null);
+  const [frontWindow, setFrontWindow] = useState<"editor" | "preview">("preview");
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      setPreviewActive(previewWindowRef.current?.contains(target) ?? false);
+      // The window that was pressed comes to the front, as on macOS.
+      if (previewWindowRef.current?.contains(target)) setFrontWindow("preview");
+      else if (document.querySelector(".wb-win")?.contains(target)) setFrontWindow("editor");
+      if (!(target as Element).closest?.(".wb-preview-menu")) setPreviewMenu(null);
+    };
+    const onBlur = () => {
+      setPreviewActive(false); // another app or the desktop took focus
+      setPreviewMenu(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  // The code editor window: dragged by its title bar and resized from its edges, like the preview window.
+  // Until it is moved or resized, it keeps the default inset on the desk.
+  const [editorRect, setEditorRect] = useState<PreviewRect | null>(readStoredCodeWindow);
+  // The default keeps the window clear of the dock at the bottom (72px).
+  const editorFrame: PreviewRect = editorRect ?? { left: 32, top: 32, width: window.innerWidth - 64, height: window.innerHeight - 104 };
+  const editorDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
+  const editorResizeStart = useRef<{ edge: ResizeEdge; pointerX: number; pointerY: number; rect: PreviewRect } | null>(null);
+
+  useEffect(() => {
+    if (editorRect) writeStoredCodeWindow(editorRect);
+  }, [editorRect]);
+
+  const startEditorDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    lockSelectionUntilRelease();
+    editorDragStart.current = { pointerX: event.clientX, pointerY: event.clientY, left: editorFrame.left, top: editorFrame.top };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveEditorDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const start = editorDragStart.current;
+    if (!start) return;
+    const { width, height } = editorFrame;
+    // Keep at least 80px of the window on screen, so it can slide partly off the edge but never vanish.
+    const KEEP = 80;
+    setEditorRect({
+      left: Math.min(Math.max(start.left + event.clientX - start.pointerX, KEEP - width), window.innerWidth - KEEP),
+      top: Math.min(Math.max(start.top + event.clientY - start.pointerY, 0), window.innerHeight - KEEP),
+      width,
+      height,
+    });
+  };
+
+  const startEditorResize = (edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>) => {
+    lockSelectionUntilRelease();
+    editorResizeStart.current = { edge, pointerX: event.clientX, pointerY: event.clientY, rect: editorFrame };
+  };
+
+  const resizeEditor = (_edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>) => {
+    const start = editorResizeStart.current;
+    if (!start) return;
+    setEditorRect(resizeRect(start.rect, start.edge, event.clientX - start.pointerX, event.clientY - start.pointerY, { width: window.innerWidth, height: window.innerHeight }));
+  };
+
+  const startPreviewResize = (edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>) => {
+    lockSelectionUntilRelease();
+    const rect = previewWindowRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Read the box before leaving full screen: the first move then continues from the full-screen box without a jump.
+    previewResizeStart.current = { edge, pointerX: event.clientX, pointerY: event.clientY, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+    setPreviewMaximized(false);
+  };
+
+  const resizePreview = (_edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>) => {
+    const start = previewResizeStart.current;
+    if (!start) return;
+    const next = resizeRect(start.rect, start.edge, event.clientX - start.pointerX, event.clientY - start.pointerY, { width: window.innerWidth, height: window.innerHeight });
+    setPreviewPosition({ left: next.left, top: next.top });
+    setPreviewSize({ width: next.width, height: next.height });
+  };
+
+  const sendPreviewCommand = (command: HostToPreview) => {
+    previewFrameRef.current?.contentWindow?.postMessage({ __learnquestPreviewCommand: true, ...command }, browserPreview.url ? new URL(browserPreview.url).origin : "*");
   };
 
   const startPreview = useCallback(async () => {
     if (previewStarting.current) return;
     previewStarting.current = true;
-    setBrowserPreview({ state: "starting" });
+    // Open the window straight away: it morphs in and shows the build stage while the workspace starts.
+    setBrowserPreview({ state: "starting", stage: "Preparing the workspace…" });
+    setPreviewOpen(true);
     setShellNote(undefined);
     try {
       await flushSave();
@@ -649,7 +832,9 @@ export default function TestEditor() {
         const active = sources.find((file) => file.path === activePath.current);
         if (active) active.content = activeContent.current;
       }
-      const { url } = await startWebPreview(sources);
+      const { url } = await startWebPreview(sources, {
+        onStage: (stage) => setBrowserPreview((current) => (current.state === "starting" ? { ...current, stage } : current)),
+      });
       // Edits typed while the preview booted were skipped by changeContent, so push the current buffer now.
       if (activePath.current) {
         void syncWebPreviewFile(activePath.current, activeContent.current).catch((error: unknown) => {
@@ -657,8 +842,10 @@ export default function TestEditor() {
         });
       }
       setBrowserPreview({ state: "ready", url });
-      setPreviewOpen(true);
+      // Reload the frame so a rebuild shows the new files, not the previous page.
+      setPreviewRefresh((value) => value + 1);
     } catch (error) {
+      setPreviewOpen(true);
       setBrowserPreview({ state: "error", message: error instanceof Error ? error.message : "Could not start the browser preview" });
     } finally {
       previewStarting.current = false;
@@ -675,6 +862,11 @@ export default function TestEditor() {
   }, [refreshWorkspace]);
 
   const run = async () => {
+    if (open && isWebProjectPath(open)) {
+      // Run builds the web app and opens the browser window; the terminal stays as it was.
+      void startPreview();
+      return;
+    }
     panel.dispatch({ type: "open" });
     if (!shell) {
       setShellNote("Open a terminal first. Select + in the terminal panel.");
@@ -838,7 +1030,7 @@ export default function TestEditor() {
 
   const actions = (
     <>
-      <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={run} title="Run" disabled={!open || !["py", "js", "mjs", "cjs"].includes(open.slice(open.lastIndexOf(".") + 1).toLowerCase())}>
+      <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={run} title="Run" disabled={!open || !(isWebProjectPath(open) || RUNNABLE_EXTENSIONS.includes(open.slice(open.lastIndexOf(".") + 1).toLowerCase()))}>
         <Play size={13} strokeWidth={2} fill="currentColor" aria-hidden="true" />
         Run
       </button>
@@ -846,14 +1038,6 @@ export default function TestEditor() {
         <Check size={15} strokeWidth={1.75} aria-hidden="true" />
         Check
       </button>
-      {browserPreview.state === "idle" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
-        <MonitorPlay size={13} aria-hidden="true" />
-        Preview
-      </button>}
-      {browserPreview.state === "error" && <button type="button" className="wb-tb wb-outline" onClick={() => void startPreview()}>
-        <RefreshCw size={13} aria-hidden="true" />
-        Retry preview
-      </button>}
     </>
   );
 
@@ -930,6 +1114,19 @@ export default function TestEditor() {
   };
 
   const openLang = languageOf(open, "javascript");
+  const previewLive = browserPreview.state === "ready" || browserPreview.state === "starting";
+  const previewVisible = previewLive && previewOpen;
+  const dockItems: EditorDockItem[] = [
+    { id: "editor", label: "Code editor", art: <EditorAppIcon />, pressed: !previewVisible, onSelect: () => setPreviewOpen(false) },
+    {
+      id: "browser",
+      label: "Browser",
+      art: <BrowserAppIcon />,
+      pressed: previewVisible,
+      onSelect: () => (previewLive ? setPreviewOpen((value) => !value) : void startPreview()),
+    },
+    { id: "notepad", label: "Notepad", art: <NotepadAppIcon />, pressed: notepadOpen, onSelect: () => setNotepadOpen((value) => !value) },
+  ];
 
   return (
     <>
@@ -958,28 +1155,45 @@ export default function TestEditor() {
       onOpenFile={openFile}
       onOpenDoc={setSelectedDoc}
       status={workspaceStatus}
-      gitBranch={__LEARNQUEST_GIT_BRANCH__}
       languageLabel={LANGUAGE_LABELS[openLang]}
       noCursor={!open}
       panel={panel}
       showPlanned
+      floatingWindow={{
+        style: { position: "absolute", zIndex: frontWindow === "editor" ? 61 : 59, left: editorFrame.left, top: editorFrame.top, width: editorFrame.width, height: editorFrame.height },
+        resizeHandles: <PreviewResizeHandles onResizeStart={startEditorResize} onResizeMove={resizeEditor} onResizeEnd={() => { editorResizeStart.current = null; }} />,
+        onDragStart: startEditorDrag,
+        onDragMove: moveEditorDrag,
+        onDragEnd: () => { editorDragStart.current = null; },
+      }}
       aiContext={{ fileName: open.slice(open.lastIndexOf("/") + 1), filePath: open, projectRoot: DEMO_DIRECTORY, code: content, language: openLang }}
     />
-    {previewHost && browserPreview.url && createPortal(
+    {previewHost && browserPreview.state !== "idle" && createPortal(
       <section
         ref={previewWindowRef}
-        className={`wb-preview-float${previewMinimized ? " wb-preview-minimized" : ""}${previewMaximized ? " wb-preview-maximized" : ""}`}
+        data-inactive={previewActive ? undefined : ""}
+        className={`wb-preview-float wb-preview-morph${previewMinimized ? " wb-preview-minimized" : ""}${previewMaximized ? " wb-preview-maximized" : ""}`}
         aria-label="Floating browser preview window"
         inert={!previewOpen}
         hidden={!previewOpen}
-        style={previewPosition && !previewMaximized ? { left: previewPosition.left, top: previewPosition.top, right: "auto", bottom: "auto" } : undefined}
+        style={{
+          zIndex: frontWindow === "preview" ? 61 : 59,
+          ...(previewMaximized ? {} : {
+            ...(previewPosition ? { left: previewPosition.left, top: previewPosition.top, right: "auto", bottom: "auto" } : {}),
+            ...(previewSize ? { width: previewSize.width, height: previewSize.height } : {}),
+          }),
+        }}
       >
         <header
           className="wb-preview-float-head"
+          onDoubleClick={(event) => {
+            if (!(event.target as HTMLElement).closest("button, select, input")) togglePreviewMaximized();
+          }}
           onPointerDown={(event) => {
             if ((event.target as HTMLElement).closest("button, select, input")) return;
             const rect = previewWindowRef.current?.getBoundingClientRect();
             if (!rect) return;
+            lockSelectionUntilRelease();
             previewDragStart.current = { pointerX: event.clientX, pointerY: event.clientY, left: rect.left, top: rect.top };
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
@@ -993,58 +1207,67 @@ export default function TestEditor() {
           <span className="wb-preview-mac-dots" role="group" aria-label="Preview window controls">
             <button type="button" className="wb-preview-dot wb-preview-dot-close" aria-label="Close preview window" title="Close" onClick={() => { setPreviewOpen(false); setPreviewMinimized(false); setPreviewMaximized(false); }} />
             <button type="button" className="wb-preview-dot wb-preview-dot-minimize" aria-label={previewMinimized ? "Restore preview window" : "Minimize preview window"} title={previewMinimized ? "Restore" : "Minimize"} onClick={() => setPreviewMinimized((value) => !value)} />
-            <button type="button" className="wb-preview-dot wb-preview-dot-maximize" aria-label={previewMaximized ? "Restore preview window size" : "Maximize preview window"} title={previewMaximized ? "Restore size" : "Maximize"} onClick={() => { setPreviewMaximized((value) => !value); setPreviewMinimized(false); }}>
+            <button type="button" className="wb-preview-dot wb-preview-dot-maximize" aria-label={previewMaximized ? "Restore preview window size" : "Maximize preview window"} title={previewMaximized ? "Restore size" : "Maximize"} onClick={togglePreviewMaximized}>
               {previewMaximized ? <Minimize2 size={7} aria-hidden="true" /> : null}
             </button>
           </span>
           <span className="wb-preview-float-title"><MonitorPlay size={14} aria-hidden="true" /> Tiny Task Tracker</span>
           <span className="wb-preview-float-actions">
-            <label className="wb-preview-device" title="Preview viewport size">
-              {previewDevice === "mobile" ? <Smartphone size={13} aria-hidden="true" /> : previewDevice === "tablet" ? <Tablet size={13} aria-hidden="true" /> : <Monitor size={13} aria-hidden="true" />}
-              <select aria-label="Preview device size" value={previewDevice} onChange={(event) => setPreviewDevice(event.target.value as PreviewDevice)}>
-                <option value="responsive">Responsive</option><option value="mobile">Mobile · 375px</option><option value="tablet">Tablet · 768px</option>
-              </select>
-            </label>
             <button type="button" className="wb-tb wb-n34" aria-label="Toggle devtools" title="Toggle devtools" aria-pressed={devtoolsOpen} onClick={() => setDevtoolsOpen((value) => !value)}><span className="wb-preview-devtools-mark">›_</span></button>
             <button type="button" className="wb-tb wb-n34" aria-label="Refresh browser preview" title="Refresh preview" onClick={() => setPreviewRefresh((value) => value + 1)}><RefreshCw size={13} aria-hidden="true" /></button>
             <button type="button" className="wb-tb wb-n34" aria-label="Move preview to center" title="Move to center" onClick={centerPreview}><Maximize2 size={13} aria-hidden="true" /></button>
             <button type="button" className="wb-tb wb-n34" aria-label="Open preview in new tab" title="Open in new tab" onClick={() => window.open(browserPreview.url, "_blank", "noopener,noreferrer")}><ExternalLink size={13} aria-hidden="true" /></button>
           </span>
         </header>
-        <div className="wb-preview-address"><span className="wb-preview-secure-dot" />{browserPreview.url}</div>
-        <div className={`wb-preview-viewport wb-preview-viewport-${previewDevice}`}>
-          <iframe
+        <div className="wb-preview-address"><span className="wb-preview-secure-dot" />{browserPreview.url ?? "Starting the preview…"}</div>
+        <div className="wb-preview-viewport">
+          {browserPreview.url && <iframe
             ref={previewFrameRef}
             key={`${browserPreview.url}-${previewRefresh}`}
             title="Tiny Task Tracker interactive website"
             src={browserPreview.url}
             allow="cross-origin-isolated"
             className="wb-preview-float-frame"
-            style={previewDevice === "mobile" ? { width: 375 } : previewDevice === "tablet" ? { width: 768 } : undefined}
-          />
+          />}
+          {browserPreview.state !== "ready" && <PreviewLoading
+            state={browserPreview.state === "error" ? "error" : "starting"}
+            stage={browserPreview.stage}
+            message={browserPreview.message}
+            onRetry={() => void startPreview()}
+          />}
         </div>
-        {devtoolsOpen && <section className="wb-preview-devtools" aria-label="Preview developer tools">
-          <div className="wb-preview-devtools-tabs" role="tablist" aria-label="Developer tools">
-            <button role="tab" aria-selected={devtoolsTab === "console"} onClick={() => setDevtoolsTab("console")}>Console</button>
-            <button role="tab" aria-selected={devtoolsTab === "elements"} onClick={() => { setDevtoolsTab("elements"); sendPreviewCommand("inspect", { enabled: true }); }}>Elements</button>
-            <button className="wb-preview-inspect-toggle" aria-pressed={inspecting} onClick={() => sendPreviewCommand("inspect", { enabled: !inspecting })}>Select element</button>
-            <button className="wb-preview-clear" onClick={() => setPreviewLogs([])}>Clear</button>
+        <PreviewResizeHandles onResizeStart={startPreviewResize} onResizeMove={resizePreview} onResizeEnd={() => { previewResizeStart.current = null; }} />
+        {previewMenu && (
+          <div className="wb-preview-menu" role="menu" aria-label="Browser menu" style={{ left: previewMenu.x, top: previewMenu.y }}>
+            <button type="button" role="menuitem" onClick={() => { setPreviewRefresh((value) => value + 1); setPreviewMenu(null); }}>Reload preview</button>
+            <button type="button" role="menuitem" onClick={() => { setDevtoolsOpen(true); setOpenDevtoolsTab({ tab: "elements", seq: ++devtoolsSeq.current }); sendPreviewCommand({ type: "inspect", enabled: true }); setPreviewMenu(null); }}>Inspect element</button>
+            <button type="button" role="menuitem" onClick={() => { setDevtoolsOpen(true); setPreviewMenu(null); }}>Developer tools</button>
+            <span className="wb-preview-menu-rule" aria-hidden="true" />
+            <button type="button" role="menuitem" disabled={!browserPreview.url} onClick={() => { window.open(browserPreview.url, "_blank", "noopener,noreferrer"); setPreviewMenu(null); }}>Open in new tab</button>
+            <button type="button" role="menuitem" disabled={!browserPreview.url} onClick={() => { window.navigator.clipboard?.writeText(browserPreview.url ?? "").catch(() => {}); setPreviewMenu(null); }}>Copy address</button>
           </div>
-          {devtoolsTab === "console" ? <div className="wb-preview-console" role="log" aria-live="polite">
-            {previewLogs.length ? previewLogs.map((log, index) => <div className={`wb-preview-log wb-preview-log-${log.level}`} key={`${log.time}-${index}`}><time>{log.time}</time><code>{log.args.join(" ")}</code></div>) : <div className="wb-preview-empty">Console is ready. Browser errors and console messages will appear here.</div>}
-          </div> : <div className="wb-preview-elements">
-            {inspectedElement ? <><code>&lt;{inspectedElement.tag}{inspectedElement.id ? ` id="${inspectedElement.id}"` : ""}{inspectedElement.classes ? ` class="${inspectedElement.classes}"` : ""}&gt;</code><span>{inspectedElement.size}</span>{inspectedElement.text && <p>{inspectedElement.text}</p>}</> : <span>Choose “Select element”, then click something in the page.</span>}
-          </div>}
-        </section>}
+        )}
+        {devtoolsOpen && <PreviewDevtools
+          logs={previewLogs}
+          dom={previewDom}
+          styles={previewStyles}
+          network={previewNetwork}
+          sources={previewSources}
+          sourceText={previewSourceText}
+          picked={pickedElement}
+          openTab={openDevtoolsTab}
+          inspecting={inspecting}
+          send={sendPreviewCommand}
+          onClearLogs={() => setPreviewLogs([])}
+          onToggleInspect={() => sendPreviewCommand({ type: "inspect", enabled: !inspecting })}
+          onClose={() => setDevtoolsOpen(false)}
+        />}
       </section>,
       previewHost,
     )}
-    {previewHost && browserPreview.url && !previewOpen && createPortal(
-      <button type="button" className="wb-preview-reopen" onClick={() => setPreviewOpen(true)}>
-        <MonitorPlay size={14} aria-hidden="true" /> Preview
-      </button>,
-      previewHost,
-    )}
+    {/* The Notepad shows the lesson's instructions as its pinned Instructions tab. Keep this prop when moving the notepad. */}
+    {notepadOpen && previewHost && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={pickTestLesson(openLang).instructions} />, previewHost)}
+    <EditorDock items={dockItems} />
     <Toaster position="bottom-right" richColors closeButton />
     </>
   );
