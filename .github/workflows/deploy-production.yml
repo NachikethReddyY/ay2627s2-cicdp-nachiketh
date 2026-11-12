@@ -140,7 +140,7 @@ jobs:
       # The committed vercel.json keeps the production API host; CI points it at the production API for this build only.
       - name: Point the web rewrite to production
         env:
-          API_ORIGIN: ${{ vars.API_ORIGIN || 'https://learnquest-api.onrender.com' }}
+          API_ORIGIN: ${{ vars.API_ORIGIN || 'https://learnquest-api2.onrender.com' }}
         run: |
           tmp=$(mktemp)
           scripts/render-vercel-config.sh "$API_ORIGIN" "$tmp"
@@ -189,7 +189,7 @@ jobs:
     environment: production
     env:
       SHA: ${{ github.sha }}
-      API_ORIGIN: ${{ vars.API_ORIGIN || 'https://learnquest-api.onrender.com' }}
+      API_ORIGIN: ${{ vars.API_ORIGIN || 'https://learnquest-api2.onrender.com' }}
       ENGINE_ORIGIN: ${{ vars.ENGINE_ORIGIN }}
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
     steps:
