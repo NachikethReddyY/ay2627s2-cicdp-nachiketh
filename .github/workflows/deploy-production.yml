@@ -156,6 +156,8 @@ jobs:
         env:
           VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           "$VERCEL_BIN" pull --yes --environment=production --token "$VERCEL_TOKEN"
           "$VERCEL_BIN" build --prod --token "$VERCEL_TOKEN"
@@ -175,6 +177,8 @@ jobs:
         env:
           VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           "$VERCEL_BIN" deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
