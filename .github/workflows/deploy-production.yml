@@ -152,7 +152,6 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Vercel pull and build
-        working-directory: apps/web
         env:
           VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -173,7 +172,6 @@ jobs:
         run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE"
 
       - name: Vercel deploy (production project)
-        working-directory: apps/web
         env:
           VERCEL_BIN: ${{ github.workspace }}/infra/vercel-cli/node_modules/.bin/vercel
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
