@@ -5,7 +5,7 @@ description = "LearnSlop inference engine: LLM pipelines (outline, lesson) behin
 requires-python = ">=3.12"
 dependencies = [
     # Exact pin. See spikes/litellm-advisory/README.md before any bump.
-    "litellm==1.106.6",
+    "litellm==1.108.3",
     "pydantic>=2",
     "pydantic-settings>=2",
     "fastapi>=0.115",
