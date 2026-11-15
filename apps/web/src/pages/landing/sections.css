@@ -1,0 +1,149 @@
+/* Landing feature rows: a product card on one side, a headline, a paragraph and a checklist on the other.
+   Pure black page, Geist type, 1px shadow borders, radii 6 / 8 / 12, one blue accent. Tokens come from landing.css. */
+
+.lp-feat, .lp-close { max-width: 1080px; margin: 0 auto; padding: 112px 24px 0; }
+.lp-hero + .lp-feat { padding-top: 96px; }
+
+.lp-h2 { max-width: 20ch; font-size: clamp(30px, 4vw, 44px); line-height: 1.05; font-weight: 600; letter-spacing: -0.045em; text-wrap: balance; }
+.lp-lede { max-width: 50ch; margin-top: 20px; font-size: 18px; line-height: 1.6; color: var(--mu); text-wrap: pretty; }
+
+/* a row: product card left, words right. is-flip puts the card on the right. */
+.lp-feat { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 80px; align-items: center; }
+.lp-feat.is-flip { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+.lp-feat.is-flip .lp-mockwrap { order: 2; }
+
+.lp-ticks { display: grid; gap: 14px; margin-top: 28px; }
+.lp-ticks li { display: flex; gap: 12px; align-items: flex-start; color: var(--mu); font-size: 16px; line-height: 1.5; }
+.lp-ticks svg { flex: none; margin-top: 4px; color: var(--ok); }
+
+/* ---- product card ---- */
+.lp-mock { display: flex; flex-direction: column; align-items: center; width: 100%; user-select: none; }
+.lp-mcard { display: grid; gap: 14px; width: 100%; max-width: 520px; padding: 20px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); }
+.lp-mhead { display: flex; align-items: center; gap: 10px; }
+.lp-mhead b { font-size: 15px; font-weight: 500; }
+.lp-mic { display: grid; place-items: center; color: var(--ok); }
+.lp-mstat { margin-left: auto; font-size: 13px; color: var(--faint); }
+.lp-mstat.is-blue { color: var(--acH); } .lp-mstat.is-green { color: var(--ok); }
+.lp-msub { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.lp-mcard p, .lp-mcard ul { margin: 0; }
+.lp-mbox { border-radius: var(--r-md); background: #050505; box-shadow: var(--ring); overflow: hidden; }
+.lp-mq { font-size: 14px; color: var(--mu); }
+.lp-chips { display: flex; gap: 8px; }
+.lp-chips span { padding: 6px 16px; border-radius: 100px; box-shadow: var(--ring); font-family: var(--mono); font-size: 13px; }
+.lp-chips span.is-on { background: rgba(59, 110, 245, 0.18); box-shadow: 0 0 0 1px var(--acH); }
+
+/* code card used inside a product card (the card header already names the file) */
+.lp-mcodebox .lp-code-file { display: none; }
+.lp-code-file { padding: 8px 14px; font-family: var(--mono); font-size: 12px; color: var(--faint); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); }
+.lp-code-lines { padding: 8px 0; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--tx); }
+.lp-ln { display: flex; padding: 0 14px 0 0; white-space: pre; }
+.lp-ln.is-mark { background: rgba(59, 110, 245, 0.14); box-shadow: inset 2px 0 0 var(--ac); }
+.lp-n { flex: none; width: 36px; padding-right: 12px; text-align: right; color: #5c5c5c; user-select: none; }
+.lp-ln code { font: inherit; }
+.lp-tk-kw { color: #ff7ab2; } .lp-tk-str { color: #8fd18f; } .lp-tk-num { color: #e0b85c; } .lp-tk-cm { color: #7d7d7d; }
+
+/* ---- row 2: editor window with a diff and the six replay steps ---- */
+.lp-win { width: 100%; max-width: 540px; margin: 0 auto; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); overflow: hidden; user-select: none; }
+.lp-wbar { display: flex; align-items: center; gap: 16px; padding: 12px 16px; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); }
+.lp-dots { display: flex; gap: 6px; } .lp-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2b2b2b; }
+.lp-tabs { display: flex; gap: 4px; font-family: var(--mono); font-size: 12px; }
+.lp-tabs em { padding: 3px 10px; border-radius: var(--r-sm); font-style: normal; color: var(--faint); }
+.lp-tabs em.is-on { background: var(--g3); color: var(--tx); }
+.lp-diff { padding: 10px 0; font-family: var(--mono); font-size: 13px; line-height: 22px; }
+.lp-diff p { display: flex; margin: 0; padding-right: 16px; white-space: pre; overflow: hidden; }
+.lp-diff code { font: inherit; }
+.lp-diff .lp-n { width: 40px; padding-right: 12px; } .lp-sign { width: 18px; color: var(--faint); }
+.lp-diff .is-add { background: rgba(63, 192, 122, 0.12); } .lp-diff .is-add .lp-sign { color: var(--ok); }
+.lp-diff .is-del { background: rgba(255, 99, 105, 0.12); color: #ffb3b6; } .lp-diff .is-del .lp-sign { color: var(--bad); }
+.lp-steps { display: flex; justify-content: space-between; margin: 6px 20px 0; padding: 0; list-style: none; font-size: 12px; color: var(--faint); }
+.lp-steps li { position: relative; display: grid; justify-items: center; gap: 8px; flex: 1; padding-top: 2px; }
+.lp-steps li::before { content: ""; position: absolute; top: 7px; left: -50%; width: 100%; height: 1px; background: rgba(255, 255, 255, 0.16); }
+.lp-steps li:first-child::before { display: none; }
+.lp-steps i { position: relative; z-index: 1; width: 9px; height: 9px; border-radius: 50%; background: #2b2b2b; box-shadow: 0 0 0 3px var(--g1); }
+.lp-steps .is-done { color: var(--mu); } .lp-steps .is-done i { background: var(--ac); }
+.lp-steps .is-done::before, .lp-steps .is-now::before { background: var(--ac); }
+.lp-steps .is-now { color: var(--tx); } .lp-steps .is-now i { background: var(--tx); box-shadow: 0 0 0 3px var(--g1), 0 0 0 4px var(--acH); }
+.lp-wcap { margin: 0; padding: 16px 20px 18px; font-size: 13px; color: var(--mu); }
+
+/* ---- row 3: hint cards stacked, then the help chat ---- */
+.lp-stack { position: relative; width: 100%; max-width: 500px; margin: 0 auto; user-select: none; }
+.lp-hcards { display: grid; }
+.lp-hcard { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 14px 16px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); font-size: 14px; line-height: 1.45; }
+.lp-hcard svg { flex: none; margin-top: 3px; color: var(--ok); }
+.lp-hcard.is-1 { order: 3; position: relative; z-index: 3; }
+.lp-hcard.is-2 { order: 2; position: relative; z-index: 2; margin: 0 18px -22px; padding-bottom: 36px; color: var(--mu); }
+.lp-hcard.is-3 { order: 1; position: relative; z-index: 1; margin: 0 0 -22px 88px; padding-bottom: 36px; color: var(--faint); }
+.lp-hcard.is-3 svg { color: #ffc800; }
+.lp-hcard em { margin-left: auto; font-style: normal; font-size: 12px; color: var(--bad); }
+.lp-chat { display: grid; gap: 8px; margin-top: 20px; }
+.lp-chat p { margin: 0; max-width: 86%; padding: 10px 14px; border-radius: var(--r-lg); font-size: 14px; line-height: 1.45; }
+.lp-chat .is-you { justify-self: end; background: var(--ac); color: #fff; }
+.lp-chat .is-bot { justify-self: start; background: var(--g3); }
+.lp-gainchip { display: inline-block; margin: 18px 0 0; padding: 6px 14px; border-radius: 100px; box-shadow: var(--ring); font-size: 13px; color: var(--mu); }
+.lp-gainchip b { font-weight: 500; color: var(--tx); }
+
+/* ---- row 4: one concept as a big number and a trend ---- */
+.lp-chart { width: 100%; max-width: 520px; margin: 0 auto; padding: 24px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); user-select: none; }
+.lp-chart p { margin: 0; }
+.lp-cname { font-size: 14px; color: var(--mu); }
+.lp-cbig { display: flex; align-items: baseline; gap: 4px; margin-top: 4px; font-size: 64px; font-weight: 600; letter-spacing: -0.06em; line-height: 1; }
+.lp-cbig small { font-size: 28px; font-weight: 500; color: var(--mu); letter-spacing: -0.03em; }
+.lp-cbig em { margin-left: 14px; font-style: normal; font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--ok); }
+.lp-spark { display: block; width: 100%; height: 120px; margin-top: 20px; overflow: visible; }
+.lp-others { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
+.lp-others li { display: flex; gap: 10px; align-items: baseline; padding: 6px 14px; border-radius: 100px; box-shadow: var(--ring); font-size: 13px; color: var(--mu); }
+.lp-others b { font-family: var(--mono); font-weight: 500; color: var(--tx); }
+
+/* ---- row 5: ask for a topic, get a path ---- */
+.lp-topic { width: 100%; max-width: 520px; margin: 0 auto; padding: 22px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); user-select: none; }
+.lp-topic p { margin: 0; }
+.lp-plabel { font-size: 14px; color: var(--mu); }
+.lp-pinput { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px !important; padding: 6px 6px 6px 16px; border-radius: 100px; background: #050505; box-shadow: var(--ring); font-size: 15px; }
+.lp-pinput em { padding: 8px 16px; border-radius: 100px; background: var(--ac); color: #fff; font-style: normal; font-size: 14px; font-weight: 500; }
+.lp-pchips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 26px !important; }
+.lp-pchips span { padding: 5px 14px; border-radius: 100px; box-shadow: var(--ring); font-size: 13px; color: var(--mu); }
+.lp-topic .lp-road { max-width: none; }
+
+/* roadmap nodes, shared by the generated path */
+.lp-road { position: relative; margin: 0; padding: 0; list-style: none; }
+.lp-road li { position: relative; display: flex; align-items: center; gap: 16px; padding: 0 0 28px 40px; }
+.lp-road li:last-child { padding-bottom: 0; }
+.lp-road li::before { content: ""; position: absolute; left: 7px; top: 22px; bottom: -6px; width: 1px; background: rgba(255, 255, 255, 0.18); }
+.lp-road li:last-child::before { display: none; }
+.lp-road i { position: absolute; left: 0; top: 4px; width: 15px; height: 15px; border-radius: 50%; background: var(--bg); box-shadow: 0 0 0 1.5px #4a4a4a; }
+.lp-road .is-now i { background: var(--ac); box-shadow: 0 0 0 3px var(--bg), 0 0 0 4.5px var(--acH); }
+.lp-road p { flex: 1; margin: 0; font-size: 14px; line-height: 1.45; color: var(--faint); }
+.lp-road b { display: block; margin-bottom: 2px; font-size: 16px; font-weight: 500; color: var(--tx); }
+
+/* the connector from the card down to its action */
+.lp-conn { position: relative; width: 1px; height: 40px; background: rgba(255, 255, 255, 0.18); }
+.lp-conn::before, .lp-conn::after { content: ""; position: absolute; left: 50%; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: #3a3a3a; }
+.lp-conn::before { top: -3px; } .lp-conn::after { bottom: -3px; }
+.lp-pill { display: inline-flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 100px; background: #ededed; color: #0a0a0a; font-size: 15px; font-weight: 500; }
+.lp-pill kbd { padding: 2px 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.09); font-family: var(--mono); font-size: 12px; font-weight: 400; }
+
+/* closing: no card, no glow */
+.lp-close { display: flex; flex-direction: column; align-items: center; text-align: center; padding-bottom: 8px; }
+.lp-close .lp-h2 { max-width: 16ch; margin-left: auto; margin-right: auto; font-size: clamp(36px, 5.2vw, 60px); line-height: 1; }
+
+@media (max-width: 860px) {
+  .lp-feat, .lp-feat.is-flip { grid-template-columns: 1fr; gap: 36px; }
+  .lp-feat, .lp-close { padding: 64px 16px 0; }
+  .lp-hero + .lp-feat { padding-top: 48px; }
+  /* phone: headline and paragraph, then the picture they describe, then the checklist */
+  .lp-feat, .lp-feat.is-flip { gap: 0; }
+  .lp-feat .lp-text { display: contents; }
+  .lp-feat .lp-h2 { order: 1; }
+  .lp-feat .lp-lede { order: 2; margin-top: 16px; }
+  .lp-feat .lp-mockwrap, .lp-feat.is-flip .lp-mockwrap { order: 3; margin-top: 32px; }
+  .lp-feat .lp-ticks { order: 4; margin-top: 28px; }
+  .lp-mcard { padding: 16px; }
+  .lp-chart { padding: 18px; } .lp-cbig { font-size: 52px; } .lp-cbig em { display: none; }
+  .lp-win, .lp-stack, .lp-road { max-width: none; }
+  .lp-close { padding-top: 72px; }
+}
+@media (max-width: 520px) {
+  .lp-msub { gap: 4px 12px; }
+  .lp-ln { font-size: 12px; }
+  .lp-diff { font-size: 12px; } .lp-steps { margin: 6px 12px 0; font-size: 11px; }
+}
