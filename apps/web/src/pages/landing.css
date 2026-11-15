@@ -11,7 +11,7 @@ html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
   --tx: #ededed; --mu: #a1a1a1; --faint: #8f8f8f;
   --ring: 0 0 0 1px rgba(255, 255, 255, 0.1); --ring-hi: 0 0 0 1px rgba(255, 255, 255, 0.24);
   --lift: 0 2px 2px rgba(0, 0, 0, 0.3), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
-  --ac: #3b6ef5; --acH: #5583ff; --ok: #3fc07a; --bad: #ff6369;
+  --ac: #3262e6; --acH: #5583ff; --acD: #2552c4; --ok: #3fc07a; --bad: #ff6369;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --sans: "Geist", system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, Menlo, monospace;
   --out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -20,7 +20,7 @@ html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
   font-family: var(--sans); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased;
   :where(h1, h2, h3, p, ul, ol, fieldset) { margin: 0; padding: 0; }
   :where(ul, ol) { list-style: none; }
-  a { color: inherit; text-decoration: none; }
+  :where(a) { color: inherit; text-decoration: none; }
   button { font: inherit; color: inherit; }
   :where(a, button, input, summary):focus-visible { outline: 2px solid var(--acH); outline-offset: 3px; border-radius: var(--r-sm); }
 }
@@ -42,7 +42,7 @@ html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
   border: 0; border-radius: 100px; background: var(--ac); color: #fff; font-size: 16px; font-weight: 500; cursor: pointer;
   transition: background 0.15s, transform 0.15s;
 }
-.lp-btn:hover { background: var(--acH); }
+.lp-btn:hover { background: var(--acD); }
 .lp-btn:active { transform: scale(0.98); }
 .lp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .lp-btn-sm { height: 36px; padding: 0 18px; margin: 0; font-size: 14px; }
