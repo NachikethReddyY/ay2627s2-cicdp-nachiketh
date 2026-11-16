@@ -59,7 +59,7 @@ export default function Generator() {
         <label htmlFor="gen-q">What do you want to learn to code?</label>
         <div className="lq-gen-row">
           <input
-            id="gen-q" type="text" autoComplete="off" value={q} disabled={busy} aria-describedby="gen-status"
+            id="gen-q" type="text" autoComplete="off" placeholder="Try: Python loops, React hooks, SQL joins" value={q} disabled={busy} aria-describedby="gen-status"
             onChange={(e) => {
               setQ(e.target.value);
               setEmpty(false);
