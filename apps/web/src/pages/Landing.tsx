@@ -2,6 +2,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { GuessMock, HintMock, MasteryMock, ReplayMock, TopicMock } from "./landing/Mocks";
 import "./landing.css";
 import "./landing/sections.css";
+import { Logo } from "./landing/Logo";
 
 // Floating tiles around the headline. Position and tilt live in CSS (.lp-tile-a to -f).
 const tiles = [
@@ -51,17 +52,6 @@ const features = [
     ticks: ["Ask for a coding topic and get a path built for it", "Your path is built around what you ask for", "Learn at your own pace, in your own order"],
   },
 ] as const;
-
-const Logo = () => (
-  <>
-    <svg className="lp-mark" viewBox="0 0 45 45" aria-hidden>
-      <path d="M9.4 10.8s3.7 4.8 13.8 7.7c0 0 7.5 2.1 11 6.2 0 0 3.5 2.7 4.8 12.2 0 0-2.9-5.6-11.3-7.8 0 0-8.8-2.2-11.1-3.5s-4.9-3.6-5.9-6.8-1.5-6.9-1.3-8z" fill="#039ff4" />
-      <path d="M5.1 23s4.1 3.4 9.1 5.2c0 0 4.1 1.8 10 2.7 0 0 5.4 1.1 8.3 2.8 0 0 5 2.9 7.5 10.3 0 0-2.5-3.3-7-4.1 0 0-2.6-1-10.3-1.3 0 0-5.6.1-10.7-3.1 0 0-3.7-2.1-5.8-8.6-.3 0-1-2.1-1.1-3.9z" fill="#028df1" />
-      <path d="M19.2.9s2.6 4 7.2 6.4c0 0 4.3 2.4 6.7 5 0 0 2.2 2 3.7 6.2 0 0 .9 2.3 1.2 7.3 0 0-2-3.6-3.8-4.8 0 0-2-1.6-4.5-2.9S25 15.8 23.1 14s-3.3-3.9-3.7-6.2-.4-5.3-.2-6.9z" fill="#4fbcf7" />
-    </svg>
-    <span>LearnSlop</span>
-  </>
-);
 
 export default function Landing() {
   return (
