@@ -267,3 +267,15 @@
   .lq .lq-placeholder-row span { height: 36px; }
   .lq > main > .lq-layout .chunk { max-width: 100%; }
 }
+
+/* Home in the sign-in look: the moonlit photo behind dark glass panels with light text. Scoped to .lq-moon, so the
+   other .lq pages keep the app theme. */
+.lq.lq-moon {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.8) 100%), url("/images/signup-bg.jpg") center / cover no-repeat;
+  --tx: #ededed; --mu: #a1a1a1; --faint: #8f8f8f;
+  --code: rgba(10, 10, 10, 0.72); --chip: rgba(255, 255, 255, 0.06); --hov: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.12); --line-strong: rgba(255, 255, 255, 0.2); --pane2: rgba(255, 255, 255, 0.06); --track: rgba(255, 255, 255, 0.1);
+  --glass: rgba(14, 14, 16, 0.86); --glass-line: rgba(255, 255, 255, 0.12);
+  --ring: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  --lift: 0 2px 2px rgba(0, 0, 0, 0.3), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
+}

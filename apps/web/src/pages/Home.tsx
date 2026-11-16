@@ -4,6 +4,7 @@ import { useApi, type PathCardData } from "../lib/api";
 import { trpc } from "../lib/trpc";
 import { PipEmpty, Spinner } from "../components/Bits";
 import { Bolt, Flame } from "./home/art";
+import { Logo } from "./landing/Logo";
 import Continue from "./home/Continue";
 import Generator from "./home/Generator";
 import PathAction from "./home/PathAction";
@@ -41,14 +42,10 @@ export default function Home() {
   const stats = data?.stats;
 
   return (
-    <div className="lq">
+    <div className="lq lq-moon">
       <header className="lq-topbar">
         <Link to="/" className="lq-logo">
-          <svg width="42" height="42" viewBox="0 0 40 40" aria-hidden="true">
-            <rect x="2" y="2" width="36" height="36" rx="10" fill="#2257FF" stroke="#15121F" strokeWidth={3} />
-            <path d="M15 13l-6 7 6 7M25 13l6 7-6 7" fill="none" stroke="#FFD23F" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="lq-logo-word">Learn<span className="lq-logo-q">Slop</span></span>
+          <Logo />
         </Link>
         {stats && (
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
