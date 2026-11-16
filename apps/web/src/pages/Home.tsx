@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useApi, type PathCardData } from "../lib/api";
 import { trpc } from "../lib/trpc";
 import { PipEmpty, Spinner } from "../components/Bits";
-import { Bolt, Flame } from "./home/art";
+import { Flame, Zap } from "lucide-react";
 import { Logo } from "./landing/Logo";
 import Continue from "./home/Continue";
 import Generator from "./home/Generator";
@@ -49,8 +49,8 @@ export default function Home() {
         </Link>
         {stats && (
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <p className="lq-pill"><Flame w={22} h={28} cls="lq-flame" /><span className="lq-pill-n">{stats.streak}</span><span className="sr">day streak</span></p>
-            <p className="lq-pill"><Bolt w={20} h={24} /><span className="lq-pill-n">{stats.xp}</span><span>XP</span></p>
+            <p className="lq-pill"><Flame size={20} strokeWidth={2} className="lq-flame text-[var(--warn)]" aria-hidden="true" /><span className="lq-pill-n">{stats.streak}</span><span className="sr">day streak</span></p>
+            <p className="lq-pill"><Zap size={18} strokeWidth={2} className="text-[var(--ac)]" aria-hidden="true" /><span className="lq-pill-n">{stats.xp}</span><span>XP</span></p>
           </div>
         )}
       </header>

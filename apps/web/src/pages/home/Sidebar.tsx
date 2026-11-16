@@ -1,5 +1,6 @@
 import type { HomeData } from "../../lib/api";
-import { Bolt, Check, Flame } from "./art";
+import { Check } from "./art";
+import { Flame, Zap } from "lucide-react";
 import { pct } from "./pct";
 
 const LEAGUE_XP = 500;
@@ -13,7 +14,7 @@ export default function Sidebar({ stats }: { stats: HomeData["stats"] }) {
           <span className="lq-sticker lq-bg-surface lq-r">{stats.streak > 0 ? "ON FIRE" : "DAY 1 AWAITS"}</span>
         </div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginTop: 10 }}>
-          <Flame w={64} h={80} cls="lq-flame" />
+          <Flame size={64} strokeWidth={1.75} className="lq-flame text-[var(--warn)]" aria-hidden="true" />
           <p><span className="lq-score">{stats.streak}</span> <span style={{ font: "400 24px var(--font-display)" }}>days</span></p>
         </div>
         <ul className="lq-days" aria-label="This week">
@@ -30,13 +31,13 @@ export default function Sidebar({ stats }: { stats: HomeData["stats"] }) {
             );
           })}
         </ul>
-        <p className="lq-rule"><Flame w={16} h={20} stroke={3} />Solve 3 problems to keep your streak.</p>
+        <p className="lq-rule"><Flame size={16} className="text-[var(--warn)]" aria-hidden="true" />Solve 3 problems to keep your streak.</p>
       </section>
 
       <section className="lq-card lq-stat lq-bg-surface lq-tl lq-rise d3" aria-labelledby="goal-h">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 id="goal-h">Daily goal</h2>
-          <Bolt w={26} h={30} />
+          <Zap size={26} className="text-[var(--ac)]" aria-hidden="true" />
         </div>
         <p style={{ marginTop: 12 }}>
           <span style={{ font: "400 52px/1 var(--font-display)" }}>{stats.todayXp}</span>
