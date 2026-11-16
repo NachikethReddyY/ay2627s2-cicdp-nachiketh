@@ -146,11 +146,17 @@ export default function Login() {
       <main className="mx-auto flex min-h-[calc(100dvh-140px)] w-full max-w-[520px] flex-col justify-center gap-6 px-6 pb-16">
         <div className="rise relative w-full">
           {data && (
-            <div className="chunk space-y-4 p-6 text-center">
-              <p className="font-semibold">Signed in as {data.user.email}</p>
-              <div className="flex flex-wrap justify-center gap-3">
-                <a href="/play" className="lp-btn lp-btn-sm !mt-0">Continue to play</a>
-                <button type="button" onClick={() => void signOut()} className="lp-ghost min-h-11 px-4 text-sm">
+            <div className="chunk space-y-6 p-8 text-center">
+              <div className="mx-auto grid size-14 place-items-center rounded-full bg-[var(--ac)] text-xl font-semibold !text-white" aria-hidden="true">
+                {data.user.email.charAt(0).toUpperCase()}
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-[var(--mu)]">Signed in as</p>
+                <p className="break-all text-[15px] font-semibold text-[var(--tx)]">{data.user.email}</p>
+              </div>
+              <div className="space-y-3">
+                <a href="/play" className="lp-btn !mt-0 w-full justify-center">Continue to play</a>
+                <button type="button" onClick={() => void signOut()} className="min-h-11 w-full text-sm text-[var(--mu)] hover:text-[var(--tx)]">
                   Sign out
                 </button>
               </div>
