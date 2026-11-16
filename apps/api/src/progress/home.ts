@@ -6,6 +6,14 @@ import { streak, week } from "./streak.ts";
 import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, visibleCourse } from "./shared.ts";
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
+
+// The first fenced code block in a prompt, at most six lines. Only public prompt text is read here, so no answer can leak.
+function firstCodeBlock(prompt: string): string[] | null {
+  const match = /```[^\n]*\n([\s\S]*?)```/.exec(prompt);
+  if (!match) return null;
+  const lines = match[1]!.replace(/\n+$/, "").split("\n").slice(0, 6);
+  return lines.length > 0 ? lines : null;
+}
 const Home = z.object({
   stats: z.object({
     xp: z.number(),
@@ -21,8 +29,12 @@ const Home = z.object({
       path: z.object({ slug: z.string(), title: z.string() }),
       course: z.object({ slug: z.string(), title: z.string(), index: z.number(), count: z.number() }),
       lesson: z.object({ slug: z.string(), title: z.string(), level: z.number(), done: z.number(), total: z.number() }),
+      // The code the lesson's first prompt shows, or null when the prompt has none.
+      snippet: z.array(z.string()).nullable(),
     })
     .nullable(),
+  // The learner's strongest observed concepts, for the mastery card.
+  mastery: z.array(z.object({ name: z.string(), pKnown: z.number() })),
   paths: z.array(
     z.object({ slug: z.string(), title: z.string(), tagline: z.string(), origin: Origin, courses: z.array(Course) }),
   ),
@@ -119,7 +131,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     }
 
     // Continue = first unfinished lesson in the most recently active path that has one.
-    let next: z.infer<typeof Home>["continue"] = null;
+    let next: Omit<NonNullable<z.infer<typeof Home>["continue"]>, "snippet"> | null = null;
     for (const p of [...byPath.values()].sort((a, b) => b.active - a.active)) {
       const courses = [...p.courses.values()];
       const index = courses.findIndex((c) => c.lessons.some((l) => !complete(l)));
@@ -134,6 +146,23 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       break;
     }
 
+    // The continue card shows the code from the lesson's first prompt, so the learner sees what they are working on.
+    let snippet: string[] | null = null;
+    if (next) {
+      const { rows: [first] } = await db.execute<{ prompt: string | null }>(sql`
+        SELECT s.public->>'prompt' AS prompt
+        FROM lessons l JOIN steps s ON s.lesson_version_id = l.current_version_id
+        WHERE l.slug = ${next.lesson.slug}
+        ORDER BY s.idx LIMIT 1`);
+      snippet = first?.prompt ? firstCodeBlock(first.prompt) : null;
+    }
+
+    const { rows: mastery } = await db.execute<{ name: string; pKnown: number }>(sql`
+      SELECT c.name, m.p_known::float8 AS "pKnown"
+      FROM mastery m JOIN concepts c ON c.id = m.concept_id
+      WHERE m.learner_id = ${me} AND m.n_obs > 0
+      ORDER BY m.n_obs DESC, m.p_known DESC LIMIT 4`);
+
     return {
       stats: {
         xp: days.reduce((n, d) => n + d.xp, 0),
@@ -143,7 +172,8 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         timezone: clock!.timezone,
         week: week(solved, today),
       },
-      continue: next,
+      continue: next && { ...next, snippet },
+      mastery,
       paths: [...byPath.values()].map((p) => ({
         slug: p.slug,
         title: p.title,
