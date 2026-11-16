@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, X } from "lucide-react";
 import { authClient } from "../lib/auth";
-import { safeRedirect } from "../lib/redirect";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 import { Logo } from "./landing/Logo";
 import "./landing.css";
@@ -58,7 +57,8 @@ export default function Login() {
           ? await authClient.signIn.email({ email, password })
           : await authClient.signUp.email({ email, password, name });
       if (result.error) setError(describeAuthError(result.error, action));
-      else location.assign(safeRedirect(new URLSearchParams(location.search).get("redirect")));
+      // Every successful sign-in lands on home. The guard's ?redirect= is ignored on purpose.
+      else location.assign("/");
     } catch {
       setError("Can't reach the server. Check your connection and try again.");
     } finally {

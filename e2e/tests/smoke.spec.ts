@@ -17,17 +17,19 @@ if (!process.env.E2E_DATABASE_URL) {
   throw new Error("E2E_DATABASE_URL is required. Run the suite with `pnpm --filter @learnquest/e2e run ci`.");
 }
 
+// Sign-up always lands on home; the test then opens the page it needs.
 async function signUp(page: Page, email: string, next: string) {
-  await page.goto(`/login?redirect=${encodeURIComponent(next)}`);
+  await page.goto("/login");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   // The mode toggle sits inside the same form, so target the submit button by type.
   await page.locator('form button[type="submit"]').click();
-  await page.waitForURL((url) => url.pathname === next);
+  await page.waitForURL((url) => url.pathname === "/");
+  await page.goto(next);
 }
 
-test("signs up, lands on /play, and stays signed in after reload", async ({ page }) => {
+test("signs up, lands on home, and stays signed in on /play after reload", async ({ page }) => {
   const email = newEmail();
   await signUp(page, email, "/play");
   await expect(page.getByText("Pick a lesson to start.")).toBeVisible();
