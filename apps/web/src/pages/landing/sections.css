@@ -22,12 +22,12 @@
 .lp-mhead { display: flex; align-items: center; gap: 10px; }
 .lp-mhead b { font-size: 15px; font-weight: 500; }
 .lp-mic { display: grid; place-items: center; color: var(--ok); }
-.lp-mstat { margin-left: auto; font-size: 13px; color: var(--faint); }
+.lp-mstat { margin-left: auto; font-size: 13px; color: var(--mu); }
 .lp-mstat.is-blue { color: var(--acH); } .lp-mstat.is-green { color: var(--ok); }
-.lp-msub { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.lp-msub { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: 12px; color: var(--mu); }
 .lp-mcard p, .lp-mcard ul { margin: 0; }
 .lp-mbox { border-radius: var(--r-md); background: #050505; box-shadow: var(--ring); overflow: hidden; }
-.lp-mq { font-size: 14px; color: var(--mu); }
+.lp-mq { font-size: 14px; color: var(--tx); }
 .lp-chips { display: flex; gap: 8px; }
 .lp-chips span { padding: 6px 16px; border-radius: 100px; box-shadow: var(--ring); font-family: var(--mono); font-size: 13px; }
 .lp-chips span.is-on { background: rgba(59, 110, 245, 0.18); box-shadow: 0 0 0 1px var(--acH); }
