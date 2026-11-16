@@ -58,7 +58,9 @@
     "vite": "^8.3.7"
   },
   "scripts": {
+    "predev": "node scripts/sync-releases.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/sync-releases.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit && eslint src",

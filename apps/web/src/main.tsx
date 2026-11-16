@@ -4,7 +4,6 @@ import { Outlet, RouterProvider, createRootRoute, createRoute, createRouter, red
 import "./index.css";
 import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
-import { blip } from "./lib/sound";
 import Loader from "./components/Loader";
 import { NotFound, RouteError } from "./components/RouteStates";
 import { clearReloadGuard, reloadOnce } from "./lib/chunkReload";
@@ -18,9 +17,6 @@ const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
-
-// The player has its own audio, so button sounds stay off there.
-const isQuiet = (p: string) => p.startsWith("/play") || p.startsWith("/diff") || p.startsWith("/test");
 
 function Root() {
   return (
@@ -88,13 +84,6 @@ window.addEventListener("load", () => setTimeout(clearReloadGuard, 10_000));
 declare module "@tanstack/react-router" {
   interface Register { router: typeof router }
 }
-
-// One listener for every button, so pages need no changes.
-document.addEventListener("click", (e) => {
-  if (isQuiet(location.pathname)) return;
-  const el = (e.target as Element | null)?.closest("button, a.btn, .pill");
-  if (el) blip(el.matches("a.btn, button[type=submit]") ? 520 : 380);
-});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
