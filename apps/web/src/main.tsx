@@ -15,6 +15,7 @@ const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
+const Account = lazy(() => import("./pages/Account"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
 
@@ -69,6 +70,7 @@ const routeTree = root.addChildren([
   }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
+  createRoute({ ...r, path: "/account", component: () => <Account />, beforeLoad: guard }),
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
   ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),

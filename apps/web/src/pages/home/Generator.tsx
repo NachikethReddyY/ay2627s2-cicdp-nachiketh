@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { trpc } from "../../lib/trpc";
 import { dismissJob, getJob, startGeneration, subscribeJob } from "./generationJob";
+import { Flame } from "lucide-react";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
 
@@ -50,24 +51,24 @@ export default function Generator() {
 
 
   return (
-    <section className="lq-card lq-gen lq-bg-blue lq-rise d1" aria-labelledby="gen-h">
+    <section className="lq-card lq-gen lq-gen-photo lq-bg-blue lq-rise d1" aria-labelledby="gen-h">
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h2 id="gen-h" style={{ fontSize: 22, letterSpacing: ".06em" }}>Learn anything</h2>
-        <span className="lq-sticker lq-bg-sun">AI</span>
+        <h2 id="gen-h" style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 500, letterSpacing: ".04em", color: "var(--mu)" }}>Learn anything</h2>
+        <span className="lq-ai-tag">AI</span>
       </div>
       <form onSubmit={submit}>
         <label htmlFor="gen-q">What do you want to learn to code?</label>
         <div className="lq-gen-row">
           <input
-            id="gen-q" type="text" autoComplete="off" placeholder="Try: Python loops, React hooks, SQL joins" value={q} disabled={busy} aria-describedby="gen-status"
+            id="gen-q" type="text" autoComplete="off" placeholder="e.g. loops, hooks, joins" value={q} disabled={busy} aria-describedby="gen-status"
             onChange={(e) => {
               setQ(e.target.value);
               setEmpty(false);
               dismissJob(); // the learner is writing a new prompt, so the last outcome is no longer news
             }}
           />
-          <button className="lq-btn lq-btn-sun" type="submit" disabled={locked} aria-busy={busy}>
-            {busy && <svg className="lq-spin" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="#15121f" strokeWidth={3.5} strokeLinecap="round" /></svg>}
+          <button className="lq-btn lq-btn-blue" type="submit" disabled={locked} aria-busy={busy}>
+            {busy && <svg className="lq-spin" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" /></svg>}
             Generate
           </button>
         </div>
@@ -75,9 +76,9 @@ export default function Generator() {
       <ul className="lq-chips" aria-label="Quick picks">
         {chips.map((c, i) => (
           <li key={c}>
-            <button className="lq-chip" type="button" onClick={() => { setQ(c); setEmpty(false); }}>
+            <button className="lq-chip relative" type="button" onClick={() => { setQ(c); setEmpty(false); }}>
+              {i === 0 && <span className="lq-hot"><Flame size={12} strokeWidth={2.5} aria-hidden="true" />HOT</span>}
               {c}
-              {i === 0 && <span className="lq-sticker lq-bg-pink" style={{ fontSize: 11, padding: "4px 6px", marginLeft: 2 }}>HOT</span>}
             </button>
           </li>
         ))}
@@ -85,23 +86,23 @@ export default function Generator() {
       <div id="gen-status" className="lq-status" aria-live="polite">
         {busy && (
           <p className="lq-msg load">
-            <svg className="lq-sketch" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path d="M3 22c8-14 14-14 18-4s10 8 14-2 12-10 26 2" fill="none" stroke="#2257FF" strokeWidth={3.5} strokeLinecap="round" /></svg>
+            <svg className="lq-sketch" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path className="lq-msg-sketch" d="M3 22c8-14 14-14 18-4s10 8 14-2 12-10 26 2" fill="none" strokeWidth={3} strokeLinecap="round" /></svg>
             Pip is sketching your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
           </p>
         )}
         {job.status === "done" && !waiting.current && (
           <div className="lq-msg load">
             <span style={{ flex: "1 1 260px" }}>Your path is ready.</span>
-            <button className="lq-btn lq-btn-ink" type="button" onClick={() => { dismissJob(); void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } }); }} style={{ minHeight: 44, fontSize: 17, padding: "0 16px", boxShadow: "3px 3px 0 #15121f" }}>
+            <button className="lq-btn lq-btn-blue" type="button" onClick={() => { dismissJob(); void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } }); }}>
               Open it
             </button>
           </div>
         )}
         {err && job.status === "failed" && (
           <div className="lq-msg err lq-shake" role="alert">
-            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#FF7AB6" stroke="#15121F" strokeWidth={2.5} /><path d="M12 7v6M12 16.5v.5" stroke="#15121F" strokeWidth={3} strokeLinecap="round" /></svg>
+            <svg className="lq-msg-icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth={2} /><path d="M12 7v6M12 16.5v.5" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" /></svg>
             <span style={{ flex: "1 1 260px" }}>{err}</span>
-            <button className="lq-btn lq-btn-ink" type="button" disabled={job.pending} onClick={() => run(job.prompt)} style={{ minHeight: 44, fontSize: 17, padding: "0 16px", boxShadow: "3px 3px 0 #15121f" }}>
+            <button className="lq-btn lq-btn-blue" type="button" disabled={job.pending} onClick={() => run(job.prompt)}>
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v5h5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>
               Retry
             </button>

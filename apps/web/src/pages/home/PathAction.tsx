@@ -9,7 +9,7 @@ export default function PathAction({ p, onDone, label }: { p: PathCardData; onDo
     <>
       <button
         type="button" disabled={busy} aria-label={`${label} ${p.title}`} className="lq-btn lq-btn-surface"
-        style={{ minHeight: 44, fontSize: 17, padding: "0 18px" }}
+        style={{ minHeight: 40, fontSize: 14, padding: "0 18px" }}
         onClick={() => {
           setBusy(true);
           setErr(false);
@@ -18,7 +18,7 @@ export default function PathAction({ p, onDone, label }: { p: PathCardData; onDo
       >
         {label}
       </button>
-      {err && <p role="alert" style={{ marginTop: 4, fontWeight: 700, fontSize: 14 }}>Couldn't join. Try again.</p>}
+      {err && <p role="alert" style={{ marginTop: 4, fontWeight: 500, fontSize: 13, color: "var(--bad)" }}>Couldn't join. Try again.</p>}
     </>
   );
 }

@@ -6,10 +6,10 @@ import { pct } from "./pct";
 export default function YourPath({ p, index }: { p: HomeData["paths"][number]; index: number }) {
   const nowIndex = p.courses.findIndex((c) => !(c.lessonsTotal > 0 && c.lessonsDone >= c.lessonsTotal));
   return (
-    <article className="lq-card lq-path">
+    <article className="lq-card lq-path lq-path-photo">
       <div className="lq-path-head">
-        <span className={`lq-path-badge ${index % 2 ? "lq-bg-lilac" : "lq-bg-sun"}`} aria-hidden="true">
-          <svg width="30" height="30" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5" fill="none" stroke="#15121f" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <span className={`lq-path-badge ${index % 2 ? "lq-bg-lilac" : "lq-bg-blue"}`} aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
         </span>
         <div style={{ minWidth: 0 }}>
           <h3>{p.title}</h3>
@@ -22,7 +22,7 @@ export default function YourPath({ p, index }: { p: HomeData["paths"][number]; i
             const done = c.lessonsTotal > 0 && c.lessonsDone >= c.lessonsTotal;
             const now = i === nowIndex;
             const state = done ? "done" : now ? "now" : "";
-            const fill = done ? "f-blue" : now ? "f-pink" : "f-lilac";
+            const fill = done ? "f-mint" : "f-blue";
             const w = pct(c.lessonsDone, c.lessonsTotal);
             return (
               <li key={c.slug}>
@@ -30,15 +30,14 @@ export default function YourPath({ p, index }: { p: HomeData["paths"][number]; i
                   {done && (
                     <>
                       <span className="lq-stampbox lq-stamp" aria-hidden="true"><Check size={22} /></span>
-                      <svg className="lq-sparkle lq-spark" style={{ top: -12, left: 14 }} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1c1 6 5 10 11 11-6 1-10 5-11 11-1-6-5-10-11-11 6-1 10-5 11-11z" fill="#FFD23F" stroke="#15121F" strokeWidth={2} /></svg>
+                      <svg className="lq-sparkle lq-spark" style={{ top: -10, left: 14 }} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1c1 6 5 10 11 11-6 1-10 5-11 11-1-6-5-10-11-11 6-1 10-5 11-11z" /></svg>
                     </>
                   )}
-                  {now && <span className="lq-sticker lq-bg-pink" style={{ position: "absolute", top: -14, right: 12 }}>NOW</span>}
-                  <span className="num">COURSE {i + 1}</span>
+                  <span className="num">COURSE {i + 1}{now && <span className="lq-current"> · CURRENT</span>}</span>
                   <h4>{c.title}</h4>
                   {done && <span className="sr">Completed. </span>}
                   <div className={`lq-meter sm ${fill}`} role="progressbar" aria-label={`${c.title} progress`} aria-valuemin={0} aria-valuemax={c.lessonsTotal} aria-valuenow={c.lessonsDone}>
-                    <span className={w === 0 ? "zero" : ""} style={{ width: `${w}%` }} />
+                    <span style={{ width: `${w}%` }} />
                   </div>
                   <span className="xy">{c.lessonsDone} / {c.lessonsTotal}</span>
                 </Link>
