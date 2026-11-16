@@ -9,10 +9,9 @@ export function Bar({ value, total, label }: { value: number; total: number; lab
   );
 }
 
-export function PipEmpty({ children, img = "pip-think" }: { children: ReactNode; img?: string }) {
+export function PipEmpty({ children }: { children: ReactNode }) {
   return (
-    <div className="chunk flex items-center gap-4 bg-white p-5">
-      <img src={`/img/${img}.png`} alt="" className="w-20 shrink-0" />
+    <div className="chunk bg-white p-5">
       <div className="font-bold">{children}</div>
     </div>
   );

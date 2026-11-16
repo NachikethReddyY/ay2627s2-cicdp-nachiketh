@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { trpc } from "../../lib/trpc";
-import { Pip } from "./art";
 import { dismissJob, getJob, startGeneration, subscribeJob } from "./generationJob";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
@@ -49,7 +48,6 @@ export default function Generator() {
     run(q.trim());
   };
 
-  const pose = <Pip src={busy ? "/img/pip-think.png" : err || empty ? "/img/pip-oops.png" : "/img/pip-wave.png"} size={220} />;
 
   return (
     <section className="lq-card lq-gen lq-bg-blue lq-rise d1" aria-labelledby="gen-h">
@@ -111,7 +109,6 @@ export default function Generator() {
         )}
         {empty && <p className="lq-msg err lq-shake" role="alert">Type what you want to learn first, or tap a quick pick.</p>}
       </div>
-      <div className="lq-gen-pip" aria-hidden="true">{pose}</div>
     </section>
   );
 }

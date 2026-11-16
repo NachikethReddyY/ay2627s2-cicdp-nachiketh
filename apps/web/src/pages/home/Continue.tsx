@@ -1,12 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import type { HomeData } from "../../lib/api";
-import { Arrow, Pip } from "./art";
+import { Arrow } from "./art";
 import { pct } from "./pct";
 
 export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }) {
   return (
     <section className="lq-card lq-hero lq-bg-pink lq-rise d2" aria-labelledby="hero-h" style={{ marginTop: 8 }}>
-      <div className="lq-peek-top" style={{ right: 64 }} aria-hidden="true"><Pip src="/img/pip-cheer.png" size={104} /></div>
       <div>
         <div className="lq-eyebrow">
           <span className="lq-tag">{c.path.title}</span>

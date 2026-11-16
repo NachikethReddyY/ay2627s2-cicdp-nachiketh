@@ -63,7 +63,7 @@ export default function Home() {
 
             {error || !data ? (
               error ? (
-                <PipEmpty img="pip-oops">Couldn't load your home. <button type="button" className="lq-pill" onClick={reload}>Retry</button></PipEmpty>
+                <PipEmpty>Couldn't load your home. <button type="button" className="lq-pill" onClick={reload}>Retry</button></PipEmpty>
               ) : <Spinner />
             ) : (
               <>
@@ -110,7 +110,7 @@ export default function Home() {
                     <span className="lq-sticker lq-bg-lilac">SHARED</span>
                     <Link to="/explore" className="lq-see-all">See all →</Link>
                   </div>
-                  {data.community.length === 0 ? <PipEmpty img="pip-sheet">No community paths yet. Be the first to share one.</PipEmpty> : (
+                  {data.community.length === 0 ? <PipEmpty>No community paths yet. Be the first to share one.</PipEmpty> : (
                     <ul className="lq-comm">
                       {data.community.slice(0, 4).map((p: PathCardData, i) => (
                         <li key={p.slug}>
