@@ -29,7 +29,7 @@
 
 ## Out of scope (follow-ups, each needs its own decision)
 
-- **AI guide "Sloppy"** (sidebar and pop-up chat): needs a new server endpoint for hints and a decision on AGENTS.md's "no free-chat tutor" rule. Leave the navigator's AI toggle out.
+- **AI guide "Sloppy"** (sidebar and pop-up chat): needs a new server endpoint for hints and a decision on the AGENTS.md rule. That rule is replaced: Sloppy is the AI help chat. Leave the navigator's AI toggle out.
 - **Debugger** (floating debug bar, Variables, Call stack, Breakpoints, Debug console, live values on hover): no runtime support yet.
 - **Source control**, **Share**, **Notifications**, **phone/web preview**, **Back/Forward**: no backing feature. Leave them out instead of drawing dead buttons.
 - **Search across files** view: the sandbox has no search API. Leave it out.

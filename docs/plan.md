@@ -13,14 +13,14 @@
 
 **LearnSlop turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.**
 
-Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. **No free-chat tutor in core.**
+Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. The AI help is Sloppy, a chat in practice. It answers a learner who is stuck, and its guardrails stop it from giving the finished answer; the answer key stays server-side.
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 
 - From the earlier **Primer** idea: the learner model and adaptive next step. Dropped: the children's-tutor framing and the YC Primer link (that request is for ages 4–10).
 - From **Scrim-Forge**: editable replay from commit history, narration. Dropped: any-repo import, recorded keystrokes, O(1) scrub, "AI knows why the author wrote it" (§12).
 - **Tracks** (code and schema name: `world`): CodeQuest, the JavaScript and TypeScript track, is core. A second language track is stretch (Appendix A). A track is a plugin (§8.4).
-- **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (run code in the browser), and game parts (order, match, sort, physics, quiz, grid). Game parts exist as catalog blocks and an engine prompt (`game_practice.md`). Wiring them into lesson steps in the web player is not yet verified.
+- **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (the lesson's own file in the workbench: editor, Run, Check, Lint, Sloppy and a sandbox terminal), and game parts (order, match, sort, physics, quiz, grid). Game parts exist as catalog blocks and an engine prompt (`game_practice.md`). Wiring them into lesson steps in the web player is not yet verified.
 - **"Video injection"** (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won't.
 
 ---
@@ -550,6 +550,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in `docs/study/
 ## 17. Decisions locked in / still open
 
 **Locked (from planning Q&A):**
+- **2026-11-17: a generated course is one section.** Every lesson from "Learn anything" is stored at level 1, whatever level the model suggests, so the course page shows one level per course. The outline prompt asks for level 1 too. Repo-authored courses keep their own levels.
 - Merge both ideas as *one engine, two worlds*; code world first, kids world thin. **Superseded 2026-11-06:** one engine, programming only. The kids world is dropped; a second language track is stretch.
 - React + Vite + Monaco, XState, Fastify, PostgreSQL, Jest/SuperTest/Playwright, ESLint/Prettier, CI/CD; Python for engine and SDK; TS and Python SDKs.
 - Model-agnostic AI and TTS (OpenAI-compatible, Anthropic, local; ElevenLabs, local, others).
