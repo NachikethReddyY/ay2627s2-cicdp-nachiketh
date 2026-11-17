@@ -15,7 +15,7 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 - **Hints and answers are server-side only.** Never ship expected output or answer keys to the client.
 - **Model-agnostic AI.** Engine calls go through an OpenAI-compatible interface (LiteLLM). No provider lock-in.
 - **Generated content is reviewed.** An LLM drafts lessons, quizzes and games. A human author approves before publish.
-- **No free-chat tutor** in core. Interaction is structured (quiz, game, replay, practice).
+- **Help is a chat, but it does not hand over finished solutions.** Sloppy, the practice help chat, answers when a learner is stuck. Its guardrails keep it from writing the full answer; hints and the answer key stay server-side.
 - **Learning first, demo second.** Prefer features that improve measurable learning over decoration.
 
 ## Repo map
@@ -29,7 +29,7 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 | `packages/player-core` | Shared timeline and replay logic |
 | `packages/ui-catalog` | Shared UI blocks, including diagram and scene blocks |
 | `docs/` | Plans, ADRs, diagrams |
-| `DESIGN.md` | Visual design system (sticker style, Pip the sprout mascot) |
+| `DESIGN.md` | Visual design system (Geist, glass, light and dark, Pip the sprout mascot) |
 
 ## Commands
 
