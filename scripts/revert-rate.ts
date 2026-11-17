@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bin } from "./bin.ts";
 
 export type Commit = { sha: string; timestamp: number; subject: string };
 export type Tally = { changes: number; reverts: number; rate: number | null };
@@ -56,13 +57,13 @@ export function computeRevertRate(commits: Commit[], now: number, days: number):
 }
 
 function refExists(repoDir: string, ref: string): boolean {
-  return spawnSync("git", ["-C", repoDir, "rev-parse", "--verify", "--quiet", ref], { encoding: "utf8" }).status === 0;
+  return spawnSync(bin("git"), ["-C", repoDir, "rev-parse", "--verify", "--quiet", ref], { encoding: "utf8" }).status === 0;
 }
 
 export function readFirstParentLog(repoDir: string): string {
   const ref = refExists(repoDir, "origin/main") ? "origin/main" : "main";
   return execFileSync(
-    "git",
+    bin("git"),
     ["-C", repoDir, "log", "--first-parent", "--format=%H%x1f%ct%x1f%s", ref],
     { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
   );

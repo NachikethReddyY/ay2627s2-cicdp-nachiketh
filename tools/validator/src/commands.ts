@@ -22,6 +22,7 @@ import { API_ORIGIN, VALIDATOR_EMAIL, VALIDATOR_ENGINE_TOKEN, VALIDATOR_PASSWORD
 import type { Layout, State } from "./state.ts";
 import { SERVICE_NAMES, emptyState, ensureLayout, isAlive, readState, removeState, writeState } from "./state.ts";
 import { realClock, waitForHttp } from "./wait.ts";
+import { bin } from "./bin.ts";
 
 export class CliError extends Error {}
 
@@ -30,7 +31,7 @@ const log = (message: string): void => {
 };
 
 function pnpmApi(layout: Layout, script: string, env: Record<string, string>): void {
-  execFileSync("pnpm", ["--filter", "@learnquest/api", "run", script], {
+  execFileSync(bin("pnpm"), ["--filter", "@learnquest/api", "run", script], {
     cwd: layout.root,
     stdio: ["ignore", process.stderr, process.stderr],
     env: { ...process.env, ...env },

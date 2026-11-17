@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.ts";
 import { fileURLToPath } from "node:url";
+import { bin } from "./bin.ts";
 
 export type PullRequest = {
   state: string;
@@ -39,7 +40,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^\.github\//, "workflow or repo policy"],
   [/^infra\//, "infra"],
   [/^docker-compose.*\.yml$/, "infra"],
-  [/(^|\/)Dockerfile|\.Dockerfile$/, "infra"],
+  [/(^|\/)([^/]*\.)?Dockerfile$/, "infra"],
   [/(^|\/)vercel\.json$/, "deploy config"],
   [/^services\/sandbox\//, "sandbox boundary"],
   [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
@@ -109,11 +110,11 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
 }
 
 function gh(args: string[]): string {
-  return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return execFileSync(bin("gh"), args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
 function git(args: string[], cwd: string): string {
-  return execFileSync("git", args, { encoding: "utf8", cwd });
+  return execFileSync(bin("git"), args, { encoding: "utf8", cwd });
 }
 
 function changedFiles(number: string): { path: string }[] {

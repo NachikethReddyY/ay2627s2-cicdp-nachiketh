@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { bin } from "./bin.ts";
 
 export type PortOwner = { pid: number; command: string };
 
@@ -30,7 +31,7 @@ export function parseLsofOwners(output: string): PortOwner[] {
 
 export function listenersOnPort(port: number): PortOwner[] {
   try {
-    const out = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fpc"], {
+    const out = execFileSync(bin("lsof"), ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fpc"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -68,7 +69,7 @@ export function descendantsOf(rows: ProcessRow[], root: number): number[] {
 
 export function processTree(root: number): number[] {
   try {
-    const out = execFileSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const out = execFileSync(bin("ps"), ["-axo", "pid=,ppid="], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     return descendantsOf(parseProcessTable(out), root);
   } catch {
     return [root];

@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { bin } from "./bin.ts";
 
-export const DEFAULT_DATABASE_URL = "postgres://learnquest:learnquest@localhost:5432/learnquest_validator";
+const LOCAL_ROLE = "learnquest";
+
+export const DEFAULT_DATABASE_URL = `postgres://${LOCAL_ROLE}:${process.env.VALIDATOR_DB_PASSWORD ?? LOCAL_ROLE}@localhost:5432/learnquest_validator`;
 
 export const LEARNER_DATA_TABLES = [
   "step_progress",
@@ -93,7 +96,7 @@ export async function canConnect(root: string, url: string): Promise<boolean> {
 
 export function dockerAvailable(): boolean {
   try {
-    execFileSync("docker", ["info"], { stdio: "ignore", timeout: 10_000 });
+    execFileSync(bin("docker"), ["info"], { stdio: "ignore", timeout: 10_000 });
     return true;
   } catch {
     return false;
@@ -101,7 +104,7 @@ export function dockerAvailable(): boolean {
 }
 
 export function startDockerPostgres(root: string, engineToken: string): void {
-  execFileSync("docker", ["compose", "up", "-d", "--wait", "postgres"], {
+  execFileSync(bin("docker"), ["compose", "up", "-d", "--wait", "postgres"], {
     cwd: root,
     stdio: ["ignore", process.stderr, process.stderr],
     env: { ...process.env, ENGINE_TOKEN: engineToken },

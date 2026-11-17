@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { bin } from "./bin.ts";
 
 export const INDEX_DIR_NAME = ".repo-index";
 const MAX_FILE_BYTES = 200 * 1024;
@@ -30,12 +31,12 @@ const SKIPPED_PATTERNS = [
 export type ScannedFile = { path: string; sha256: string; text: string };
 
 export function findRepoRoot(cwd: string): string {
-  return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8" }).trim();
+  return execFileSync(bin("git"), ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8" }).trim();
 }
 
 export function currentHead(root: string): string {
   try {
-    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync(bin("git"), ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return "";
   }
@@ -49,14 +50,14 @@ export function isIndexablePath(path: string): boolean {
 }
 
 function gitList(root: string, args: string[]): string[] {
-  const output = execFileSync("git", ["ls-files", "-z", ...args], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const output = execFileSync(bin("git"), ["ls-files", "-z", ...args], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return output.split("\0").filter((entry) => entry !== "");
 }
 
 export function listCandidatePaths(root: string): string[] {
   const tracked = gitList(root, []);
   const untracked = gitList(root, ["-o", "--exclude-standard"]);
-  return [...new Set([...tracked, ...untracked])].filter(isIndexablePath).sort();
+  return [...new Set([...tracked, ...untracked])].filter(isIndexablePath).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 export function sha256Of(content: Buffer): string {

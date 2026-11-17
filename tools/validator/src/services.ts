@@ -5,6 +5,7 @@ import { PORTS, processTree } from "./ports.ts";
 import type { Layout, ServiceName, ServiceRecord } from "./state.ts";
 import { isAlive } from "./state.ts";
 import type { Clock } from "./wait.ts";
+import { bin } from "./bin.ts";
 
 export const VALIDATOR_SECRET = "validator-secret-not-for-production-0123456789";
 export const VALIDATOR_ENGINE_TOKEN = "validator-engine-token-0123456789-abcdefgh";
@@ -135,7 +136,7 @@ function signalAll(pids: number[], signal: NodeJS.Signals): void {
 
 export function commandLineOf(pid: number): string | null {
   try {
-    return execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim() || null;
+    return execFileSync(bin("ps"), ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim() || null;
   } catch {
     return null;
   }

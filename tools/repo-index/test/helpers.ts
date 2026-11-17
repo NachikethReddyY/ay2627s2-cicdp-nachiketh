@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeEmbedder, type Embedder } from "../src/embed.ts";
+import { bin } from "../src/bin.ts";
 
 export const SAMPLE_FILES: Record<string, string> = {
   "src/greeting.ts": `import { shout } from "./shout.ts";
@@ -61,7 +62,7 @@ export type TempRepo = { root: string; write(path: string, content: string): voi
 
 export function createTempRepo(files: Record<string, string> = SAMPLE_FILES): TempRepo {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "repo-index-")));
-  execFileSync("git", ["init", "-q"], { cwd: root });
+  execFileSync(bin("git"), ["init", "-q"], { cwd: root });
   const write = (path: string, content: string): void => {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), content);

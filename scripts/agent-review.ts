@@ -417,7 +417,7 @@ export type LedgerEntry = {
 };
 
 export function findingId(finding: Finding): string {
-  const key = `${finding.file}|${finding.category.toLowerCase()}|${[...tokens(finding.summary)].sort().join(" ")}`;
+  const key = `${finding.file}|${finding.category.toLowerCase()}|${[...tokens(finding.summary)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(" ")}`;
   return createHash("sha1").update(key).digest("hex").slice(0, 12);
 }
 
