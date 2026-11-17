@@ -86,7 +86,7 @@ const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
 const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
   ["/play", (page) => page.getByText("Pick a lesson to start.")],
   [`/courses/${COURSE}`, (page) => page.getByRole("heading", { name: "Shopping Cart Basics" })],
-  ["/explore", (page) => page.locator("h2.explore-col-h").first()],
+  ["/explore", (page) => page.locator("ul.explore-list h2").first()],
 ];
 
 async function expectNoSeriousA11yViolations(page: Page, path: string, ready: Locator) {
