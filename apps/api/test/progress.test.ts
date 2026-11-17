@@ -26,7 +26,9 @@ test("streak counts back from today, or yesterday while today is open", () => {
   assert.equal(streak(m, "2026-10-31"), 0);
   // Crosses a month boundary.
   assert.equal(streak(new Map([["2026-10-31", 3], ["2026-11-01", 3]]), "2026-11-01"), 2);
-  assert.deepEqual(week(m, "2026-10-29").map((d) => d.day)[0], "2026-10-23");
+  // Calendar week: Monday first, so 2026-10-29 (a Thursday) starts the week on 2026-10-26.
+  assert.deepEqual(week(m, "2026-10-29").map((d) => d.day), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
+  assert.deepEqual(week(m, "2026-10-29").map((d) => d.state), ["past", "past", "past", "today", "future", "future", "future"]);
 });
 
 test("401 without login", async () => {

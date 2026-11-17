@@ -4,16 +4,15 @@ export function Bar({ value, total, label }: { value: number; total: number; lab
   const pct = total ? Math.min(100, Math.round((value / total) * 100)) : 0;
   return (
     <div className="track h-4" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={value}>
-      <div className="h-full bg-green" style={{ width: `${pct}%` }} />
+      <div className="h-full bg-blue transition-[width] duration-300" style={{ width: `${pct}%` }} />
     </div>
   );
 }
 
-export function PipEmpty({ children, img = "pip-think" }: { children: ReactNode; img?: string }) {
+export function PipEmpty({ children }: { children: ReactNode }) {
   return (
-    <div className="chunk flex items-center gap-4 bg-white p-5">
-      <img src={`/img/${img}.png`} alt="" className="w-20 shrink-0" />
-      <div className="font-bold">{children}</div>
+    <div className="chunk px-6 py-5">
+      <div className="max-w-[52ch] text-pretty font-medium leading-relaxed">{children}</div>
     </div>
   );
 }
@@ -23,9 +22,9 @@ export function Page({ children }: { children: ReactNode }) {
 }
 
 export function Spinner() {
-  return <p role="status" className="py-10 text-center font-extrabold">Loading…</p>;
+  return <p role="status" className="py-10 text-center font-medium text-[var(--mu)]">Loading…</p>;
 }
 
 export function AiBadge() {
-  return <span className="pill bg-mint px-2 py-0.5 text-xs">AI</span>;
+  return <span className="pill bg-mint px-2 py-0.5 font-mono text-[11px] text-[var(--okT)]">AI</span>;
 }

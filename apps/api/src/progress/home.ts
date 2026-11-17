@@ -6,6 +6,14 @@ import { streak, week } from "./streak.ts";
 import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, visibleCourse } from "./shared.ts";
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
+
+// The first fenced code block in a prompt, at most six lines. Only public prompt text is read here, so no answer can leak.
+function firstCodeBlock(prompt: string): string[] | null {
+  const match = /```[^\n]*\n([\s\S]*?)```/.exec(prompt);
+  if (!match) return null;
+  const lines = match[1]!.replace(/\n+$/, "").split("\n").slice(0, 6);
+  return lines.length > 0 ? lines : null;
+}
 const Home = z.object({
   stats: z.object({
     xp: z.number(),
@@ -14,15 +22,26 @@ const Home = z.object({
     streak: z.number(),
     // The zone the stats above are counted in, so the client can tell when its own zone differs.
     timezone: z.string(),
-    week: z.array(z.object({ day: z.string(), solved: z.number() })),
+    week: z.array(z.object({ day: z.string(), solved: z.number(), state: z.enum(["past", "today", "future"]) })),
   }),
   continue: z
     .object({
       path: z.object({ slug: z.string(), title: z.string() }),
       course: z.object({ slug: z.string(), title: z.string(), index: z.number(), count: z.number() }),
       lesson: z.object({ slug: z.string(), title: z.string(), level: z.number(), done: z.number(), total: z.number() }),
+      // The code the lesson's first prompt shows, or null when the prompt has none.
+      snippet: z.array(z.string()).nullable(),
     })
     .nullable(),
+  // The learner's strongest observed concepts, for the mastery card.
+  mastery: z.array(z.object({ name: z.string(), pKnown: z.number() })),
+  // Weekly XP (last 7 days): the top five opted-in learners, and this learner's own standing.
+  leaderboard: z.object({
+    optedIn: z.boolean(),
+    xp: z.number(),
+    rank: z.number().nullable(),
+    rows: z.array(z.object({ rank: z.number(), name: z.string(), xp: z.number(), you: z.boolean() })),
+  }),
   paths: z.array(
     z.object({ slug: z.string(), title: z.string(), tagline: z.string(), origin: Origin, courses: z.array(Course) }),
   ),
@@ -119,7 +138,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     }
 
     // Continue = first unfinished lesson in the most recently active path that has one.
-    let next: z.infer<typeof Home>["continue"] = null;
+    let next: Omit<NonNullable<z.infer<typeof Home>["continue"]>, "snippet"> | null = null;
     for (const p of [...byPath.values()].sort((a, b) => b.active - a.active)) {
       const courses = [...p.courses.values()];
       const index = courses.findIndex((c) => c.lessons.some((l) => !complete(l)));
@@ -134,6 +153,46 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       break;
     }
 
+    // The continue card shows the code from the lesson's first prompt, so the learner sees what they are working on.
+    let snippet: string[] | null = null;
+    if (next) {
+      const { rows: [first] } = await db.execute<{ prompt: string | null }>(sql`
+        SELECT s.public->>'prompt' AS prompt
+        FROM lessons l JOIN steps s ON s.lesson_version_id = l.current_version_id
+        WHERE l.slug = ${next.lesson.slug}
+        ORDER BY s.idx LIMIT 1`);
+      snippet = first?.prompt ? firstCodeBlock(first.prompt) : null;
+    }
+
+    // Weekly XP per learner. Opted-in learners are ranked; this learner's own total is returned even when they are off the board.
+    const weekly = sql`
+      WITH x AS (
+        SELECT a.learner_id, ${XP} AS xp, a.created_at FROM attempts a WHERE a.observed
+        UNION ALL
+        SELECT gc.learner_id, 10 AS xp, gc.created_at FROM game_completions gc
+      ),
+      w AS (
+        SELECT l.id, l.leaderboard_opt_in AS opted, coalesce(sum(x.xp), 0)::int AS xp
+        FROM learners l
+        LEFT JOIN x ON x.learner_id = l.id AND x.created_at >= now() - interval '7 days'
+        GROUP BY l.id, l.leaderboard_opt_in
+      )`;
+    const { rows: board } = await db.execute<{ id: string; name: string; xp: number }>(sql`
+      ${weekly}
+      SELECT w.id, u.name, w.xp FROM w JOIN learners l ON l.id = w.id JOIN "user" u ON u.id = l.user_id
+      WHERE w.opted ORDER BY w.xp DESC, w.id LIMIT 5`);
+    const { rows: [self] } = await db.execute<{ optedIn: boolean; xp: number; rank: number }>(sql`
+      ${weekly}
+      SELECT w.opted AS "optedIn", w.xp,
+        (SELECT count(*) FROM w o WHERE o.opted AND o.xp > w.xp)::int + 1 AS rank
+      FROM w WHERE w.id = ${me}`);
+
+    const { rows: mastery } = await db.execute<{ name: string; pKnown: number }>(sql`
+      SELECT c.name, m.p_known::float8 AS "pKnown"
+      FROM mastery m JOIN concepts c ON c.id = m.concept_id
+      WHERE m.learner_id = ${me} AND m.n_obs > 0
+      ORDER BY m.n_obs DESC, m.p_known DESC LIMIT 4`);
+
     return {
       stats: {
         xp: days.reduce((n, d) => n + d.xp, 0),
@@ -143,7 +202,14 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         timezone: clock!.timezone,
         week: week(solved, today),
       },
-      continue: next,
+      continue: next && { ...next, snippet },
+      mastery,
+      leaderboard: {
+        optedIn: self?.optedIn ?? false,
+        xp: self?.xp ?? 0,
+        rank: self?.optedIn && self.xp > 0 ? self.rank : null,
+        rows: board.map((r, i) => ({ rank: i + 1, name: r.name, xp: r.xp, you: r.id === me })),
+      },
       paths: [...byPath.values()].map((p) => ({
         slug: p.slug,
         title: p.title,

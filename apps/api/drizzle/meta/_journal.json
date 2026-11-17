@@ -148,6 +148,20 @@
       "when": 1794235828096,
       "tag": "0020_condemned_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794837040900,
+      "tag": "0021_bitter_prodigy",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794837416240,
+      "tag": "0022_loud_silk_fever",
+      "breakpoints": true
     }
   ]
 }

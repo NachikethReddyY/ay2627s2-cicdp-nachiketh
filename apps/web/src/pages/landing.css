@@ -21,8 +21,16 @@ html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
   :where(h1, h2, h3, p, ul, ol, fieldset) { margin: 0; padding: 0; }
   :where(ul, ol) { list-style: none; }
   :where(a) { color: inherit; text-decoration: none; }
-  button { font: inherit; color: inherit; }
-  :where(a, button, input, summary):focus-visible { outline: 2px solid var(--acH); outline-offset: 3px; border-radius: var(--r-sm); }
+  :where(button) { font: inherit; color: inherit; }
+  /* no border-radius here: the outline follows each control's own shape, so pill buttons keep round rings */
+  :where(a, button, input, summary):focus-visible { outline: 2px solid var(--acH); outline-offset: 3px; }
+}
+
+/* Sign-up mode: the moonlit lake photo, darkened top to bottom so the nav and card read clearly. */
+.lp.lp-signup {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.8) 100%), url("/images/signup-bg.jpg") center / cover no-repeat;
+  /* dark glass for the .chunk panels on this page, whatever the app theme is */
+  --glass: rgba(14, 14, 16, 0.94); --glass-line: rgba(255, 255, 255, 0.12);
 }
 
 .lp-skip { position: absolute; left: -999px; top: 8px; z-index: 10; background: #fff; color: #000; padding: 8px 12px; border-radius: var(--r-md); }
@@ -30,9 +38,9 @@ html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
 
 .lp-nav { position: relative; z-index: 3; max-width: 1080px; margin: 0 auto; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; }
 .lp-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -0.01em; }
-.lp-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm); background: #fff; color: #0a0a0a; }
+.lp-mark { width: 24px; height: 24px; }
 .lp-navr { display: flex; align-items: center; gap: 20px; font-size: 14px; color: var(--mu); }
-.lp-navr .lp-ghost { min-height: 36px; padding: 0 16px; color: var(--tx); }
+.lp-navr .lp-ghost { min-height: 36px; padding: 0 16px; color: #fff; background: var(--ac); font-weight: 800; }
 .lp-navr a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px; }
 .lp-navr a:hover { color: var(--tx); }
 

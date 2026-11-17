@@ -1,7 +1,8 @@
-import { ArrowRight, Check, Sprout } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { GuessMock, HintMock, MasteryMock, ReplayMock, TopicMock } from "./landing/Mocks";
 import "./landing.css";
 import "./landing/sections.css";
+import { Logo } from "./landing/Logo";
 
 // Floating tiles around the headline. Position and tilt live in CSS (.lp-tile-a to -f).
 const tiles = [
@@ -51,13 +52,6 @@ const features = [
     ticks: ["Ask for a coding topic and get a path built for it", "Your path is built around what you ask for", "Learn at your own pace, in your own order"],
   },
 ] as const;
-
-const Logo = () => (
-  <>
-    <span className="lp-mark" aria-hidden><Sprout size={15} strokeWidth={2.25} /></span>
-    <span>LearnSlop</span>
-  </>
-);
 
 export default function Landing() {
   return (

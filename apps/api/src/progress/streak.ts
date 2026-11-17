@@ -18,9 +18,18 @@ export function streak(solvedByDay: Map<string, number>, today: string) {
   return n;
 }
 
-// The 7 days ending today, oldest first.
+const shift = (day: string, n: number) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// The calendar week (Monday to Sunday) that holds today, oldest first. Days before today are past, days after are future.
 export function week(solvedByDay: Map<string, number>, today: string) {
-  const days = [today];
-  while (days.length < 7) days.unshift(prev(days[0]!));
-  return days.map((day) => ({ day, solved: solvedByDay.get(day) ?? 0 }));
+  const offset = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = shift(today, i - offset);
+    const state: "past" | "today" | "future" = day < today ? "past" : day === today ? "today" : "future";
+    return { day, solved: solvedByDay.get(day) ?? 0, state };
+  });
 }

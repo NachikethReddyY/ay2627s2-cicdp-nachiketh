@@ -1,0 +1,1 @@
+ALTER TABLE "learners" ADD COLUMN "leaderboard_opt_in" boolean DEFAULT false NOT NULL;

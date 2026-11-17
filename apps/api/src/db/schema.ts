@@ -90,6 +90,8 @@ export const learners = pgTable("learners", {
   // IANA name; streak days are counted in this zone.
   timezone: text("timezone").notNull().default("UTC"),
   dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
+  // Shown on the weekly XP leaderboard. On by default; learners can turn it off on the account page.
+  leaderboardOptIn: boolean("leaderboard_opt_in").notNull().default(true),
   // Admins curate Explore collections. Granted only in the database (never by a request or a self-chosen field).
   isAdmin: boolean("is_admin").notNull().default(false),
 });
