@@ -57,7 +57,7 @@ function clipGuideCode(code: string, selection: { startLine: number; endLine: nu
 
 /** A useful, source-aware learning guide for the isolated /test/editor fixture. */
 // The guide sends the current editor context to the server-side AI engine.
-export function AIGuide({ fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent }: { fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void }) {
+export function AIGuide({ fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent, pendingPrompt, onPromptSent }: { fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void; pendingPrompt?: { text: string } | null; onPromptSent?: () => void }) {
   const guideCode = clipGuideCode(code, selection);
   const [messages, setMessages] = useState<GuideMessage[]>([]);
   const [question, setQuestion] = useState("");
@@ -73,7 +73,12 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
     imageUrls.current.clear();
     setImages([]);
   };
+  // Start a fresh chat when the file changes. Not on mount: a question the parent hands in at mount (a lint finding,
+  // the video's Explain) is asked by an effect below, and a reset on mount would wipe it (React's dev double-mount does).
+  const chatPath = useRef(filePath);
   useEffect(() => {
+    if (chatPath.current === filePath) return;
+    chatPath.current = filePath;
     requestId.current++;
     setMessages([]);
     setSending(false);
@@ -121,6 +126,15 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
     onFindingSent?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ask closes over the current thread; only a new finding or a free guide should fire it
   }, [pendingFinding, sending]);
+  // A question handed in by the parent (the lesson video's Explain button) is asked once, as soon as the guide is free, then cleared.
+  const handledPrompt = useRef<object | null>(null);
+  useEffect(() => {
+    if (!pendingPrompt || sending || handledPrompt.current === pendingPrompt) return;
+    handledPrompt.current = pendingPrompt;
+    void ask(pendingPrompt.text);
+    onPromptSent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ask closes over the current thread; only a new prompt or a free guide should fire it
+  }, [pendingPrompt, sending]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const value = question.trim();
@@ -400,7 +414,7 @@ function ProblemsView({ problems }: { problems: WorkbenchProblem[] }) {
               const next = new Set(current);
               if (next.has(fileName)) next.delete(fileName); else next.add(fileName);
               return next;
-            })} className="flex min-h-9 w-full items-center gap-1.5 px-2.5 text-left hover:bg-[var(--hover)]">
+            })} className="flex min-h-9 w-full items-center gap-1.5 px-2.5 text-left hover:bg-[var(--hov)]">
               {isOpen ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronRight size={13} aria-hidden="true" />}
               <span className="min-w-0 flex-1 truncate" title={fileName}>{fileName}</span>
               {errors > 0 && <span className="flex items-center gap-1 text-[var(--bad)]"><CircleX size={13} aria-hidden="true" />{errors}</span>}

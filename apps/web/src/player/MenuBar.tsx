@@ -32,7 +32,7 @@ type Props = {
 };
 
 const Hint = ({ children }: { children: ReactNode }) => (
-  <span aria-hidden="true" className="ml-auto pl-6 text-xs font-bold text-ink/60">
+  <span aria-hidden="true" className="ml-auto pl-6 font-mono text-xs text-[var(--mu)]">
     {children}
   </span>
 );
@@ -55,7 +55,7 @@ const Check = () => (
 function Menu({ name, children }: { name: string; children: ReactNode }) {
   return (
     <M.Menu>
-      <M.Trigger className={`min-h-6 rounded-md px-2 text-sm font-bold hover:bg-sun/60 data-[state=open]:bg-sun ${FOCUS}`}>{name}</M.Trigger>
+      <M.Trigger className={`min-h-6 rounded-md px-2 text-sm font-medium hover:bg-[var(--hov)] data-[state=open]:bg-[var(--sel)] ${FOCUS}`}>{name}</M.Trigger>
       <M.Portal>
         <M.Content className={MENU_PANEL} align="start" sideOffset={6} loop>
           {children}
@@ -65,7 +65,7 @@ function Menu({ name, children }: { name: string; children: ReactNode }) {
   );
 }
 
-const Sep = () => <M.Separator className="m-1 h-0.5 bg-ink/15" />;
+const Sep = () => <M.Separator className="m-1 h-px bg-[var(--line)]" />;
 
 function Account() {
   const { data } = authClient.useSession();

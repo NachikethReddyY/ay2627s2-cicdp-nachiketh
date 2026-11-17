@@ -18,6 +18,7 @@ const Explore = lazy(() => import("./pages/Explore"));
 const Account = lazy(() => import("./pages/Account"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
+const TestPlayer = import.meta.env.DEV ? lazy(() => import("./pages/TestPlayer")) : null;
 
 function Root() {
   return (
@@ -74,6 +75,17 @@ const routeTree = root.addChildren([
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
   ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),
+  ...(TestPlayer ? [createRoute({ ...r, path: "/test/player", component: () => <TestPlayer /> })] : []),
+  // The lesson's editor, opened as /editor?lesson=<slug>, the same way /play takes its lesson.
+  ...(TestEditor ? [createRoute({
+    ...r,
+    path: "/editor",
+    component: () => <TestEditor />,
+    beforeLoad: guard,
+    validateSearch: (s: Record<string, unknown>): { lesson?: string } => ({
+      lesson: s.lesson === undefined || s.lesson === "" ? undefined : String(s.lesson),
+    }),
+  })] : []),
 ]);
 
 const router = createRouter({ routeTree, defaultNotFoundComponent: NotFound, defaultErrorComponent: RouteError });

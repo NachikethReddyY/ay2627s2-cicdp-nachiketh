@@ -17,9 +17,9 @@ export default function ImageView({ block }: BlockViewProps<Props>) {
     <figure className="m-0 min-w-0 max-w-full">
       {img.kind === "load" ? (
         <img src={img.src} alt={alt} width={640} height={400} loading="lazy" onError={() => setFailedId(assetId)}
-          className="block h-auto max-w-full rounded-2xl border-2 border-ink bg-white" style={{ aspectRatio: "16 / 10" }} />
+          className="block h-auto max-w-full rounded-2xl border border-[var(--line)] bg-[var(--code)]" style={{ aspectRatio: "16 / 10" }} />
       ) : (
-        <div className="flex w-full max-w-full flex-col justify-center gap-1 break-words rounded-2xl border-2 border-ink bg-white p-4"
+        <div className="flex w-full max-w-full flex-col justify-center gap-1 break-words rounded-2xl border border-[var(--line)] bg-[var(--code)] p-4"
           style={{ aspectRatio: "16 / 10" }}>
           <p className="m-0 text-base">{alt}</p>
           {caption && <p className="m-0 text-sm">{caption}</p>}

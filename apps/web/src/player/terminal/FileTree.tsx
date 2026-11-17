@@ -53,7 +53,7 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
                 aria-expanded={open.has(en.name)}
                 onClick={() => setOpen((o) => toggleExpanded(o, en.name))}
                 style={pad}
-                className={`flex w-full items-center gap-1 py-0.5 text-left text-xs hover:bg-white/10 ${FOCUS}`}
+                className={`flex w-full items-center gap-1 py-0.5 text-left text-xs hover:bg-[var(--hov)] ${FOCUS}`}
               >
                 <span aria-hidden="true">{open.has(en.name) ? "▾" : "▸"}</span>
                 {en.name}

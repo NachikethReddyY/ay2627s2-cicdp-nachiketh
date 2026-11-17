@@ -15,7 +15,7 @@ test("without state a primitive renders as authored (rotation in radians)", () =
   const r = resolve(nuc, undefined);
   assert.deepEqual(r.position, [1, 2, 3]);
   assert.ok(Math.abs(r.rotation[0] - Math.PI / 2) < 1e-9);
-  assert.equal(r.color, "#ff8fb1");
+  assert.equal(r.color, "#9b2393");
   assert.equal(r.opacity, 1);
 });
 
@@ -24,14 +24,14 @@ test("timeline state overrides position, rotation, colour and opacity", () => {
   const r = resolve(nuc, stateAt(tl, 1));
   assert.deepEqual(r.position, [0, 5, -1]);
   assert.ok(Math.abs(r.rotation[1] - Math.PI) < 1e-9);
-  assert.equal(r.color, "#3b5bff");
+  assert.equal(r.color, "#2f5fd6");
   assert.equal(r.opacity, 0.25);
 });
 
 test("malformed state values fall back to the authored ones", () => {
   const r = resolve(nuc, { nuc: { position: "99,0,0", color: "red", opacity: 7 } });
   assert.deepEqual(r.position, [1, 2, 3]);
-  assert.equal(r.color, "#ff8fb1");
+  assert.equal(r.color, "#9b2393");
   assert.equal(r.opacity, 1);
 });
 

@@ -66,7 +66,7 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
     <div
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
-      className={`absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-32px)] max-w-[640px] -translate-x-1/2 flex-col gap-2 rounded-2xl border-[3px] border-ink bg-white px-3 py-2 shadow-[4px_4px_0_var(--color-ink)] transition-opacity duration-300 motion-reduce:transition-none has-focus-visible:pointer-events-auto has-focus-visible:opacity-100 ${faded ? "pointer-events-none opacity-0" : ""}`}
+      className={`absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-32px)] max-w-[640px] -translate-x-1/2 flex-col gap-2 chunk rounded-2xl px-3 py-2 text-ink transition-opacity duration-300 motion-reduce:transition-none has-focus-visible:pointer-events-auto has-focus-visible:opacity-100 ${faded ? "pointer-events-none opacity-0" : ""}`}
     >
       <Slider.Root
         className="relative flex h-6 w-full touch-none items-center select-none"
@@ -78,28 +78,28 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
       >
         <Slider.Track className="track relative h-3.5 grow">
           {steps.slice(1).map((_, i) => (
-            <span key={i} className="absolute top-0 h-full w-0.5 bg-ink" style={{ left: `${((i + 1) / n) * 100}%` }} />
+            <span key={i} className="absolute top-0 h-full w-px bg-ink/30" style={{ left: `${((i + 1) / n) * 100}%` }} />
           ))}
-          <Slider.Range className="absolute h-full bg-green" />
+          <Slider.Range className="absolute h-full bg-blue" />
         </Slider.Track>
         <Slider.Thumb
           aria-label="Timeline"
           aria-valuetext={`Step ${cur + 1} of ${n}, ${mmss(t)}`}
-          className="block size-6 rounded-full border-[3px] border-ink bg-sun focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-blue"
+          className="relative block size-5 rounded-full before:absolute before:-inset-0.5 before:content-[''] before:rounded-full border border-ink bg-[var(--chip)] shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
         />
       </Slider.Root>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label="Previous step" className={`${btn} bg-white`} onClick={() => onStep(-1)}>
+        <button type="button" aria-label="Previous step" className={btn} onClick={() => onStep(-1)}>
           {icon("prev")}
         </button>
-        <button ref={playRef} type="button" aria-label={playing ? "Pause" : "Play"} className={`${btn} ${playing ? "bg-mint" : "bg-sun"}`} onClick={onToggle}>
+        <button ref={playRef} type="button" aria-label={playing ? "Pause" : "Play"} className={`${btn} ${playing ? "bg-[var(--sel)]" : ""}`} onClick={onToggle}>
           {icon(playing ? "pause" : "play")}
         </button>
-        <button type="button" aria-label="Next step" className={`${btn} bg-white`} onClick={() => onStep(1)}>
+        <button type="button" aria-label="Next step" className={btn} onClick={() => onStep(1)}>
           {icon("next")}
         </button>
-        <span className="ml-1 font-mono text-sm font-bold" aria-hidden="true">
+        <span className="ml-1 font-mono text-sm font-medium text-[var(--mu)]" aria-hidden="true">
           {mmss(t)} / {mmss(timeline.duration)}
         </span>
         {audio && <div className="group/vol ml-auto flex items-center gap-1">
@@ -118,12 +118,12 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
             onValueChange={([v]) => onVolume(v)}
           >
             <Slider.Track className="track relative h-2.5 grow">
-              <Slider.Range className="absolute h-full bg-green" />
+              <Slider.Range className="absolute h-full bg-blue" />
             </Slider.Track>
             <Slider.Thumb
               aria-label="Volume"
               aria-valuetext={`${level}%`}
-              className="block size-6 rounded-full border-[3px] border-ink bg-sun focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-blue"
+              className="relative block size-5 rounded-full before:absolute before:-inset-0.5 before:content-[''] before:rounded-full border border-ink bg-[var(--chip)] shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
             />
           </Slider.Root>
         </div>}
@@ -131,7 +131,7 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
           aria-label="Playback speed"
           value={String(speed)}
           onChange={(e) => onSpeed(SPEEDS.find((s) => String(s) === e.target.value) ?? 1)}
-          className={`${audio ? "" : "ml-auto "}min-h-8 min-w-9 cursor-pointer appearance-none rounded-lg border-[3px] border-ink bg-white px-1.5 text-center text-sm font-extrabold ${FOCUS}`}
+          className={`${audio ? "" : "ml-auto "}pill min-h-8 min-w-9 cursor-pointer appearance-none bg-[var(--chip)] px-2.5 text-center text-sm font-semibold ${FOCUS}`}
         >
           {SPEEDS.map((s) => (
             <option key={s} value={String(s)}>

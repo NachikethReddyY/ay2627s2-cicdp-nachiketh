@@ -2,7 +2,7 @@ import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { keyAction } from "./model.ts";
 import type { TimelineControl } from "./hooks/useTimeline.ts";
 
-const btn = "grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-ink bg-white aria-disabled:opacity-40";
+const btn = "pill grid h-11 w-11 shrink-0 place-items-center aria-disabled:opacity-40";
 
 /** Play/pause, previous/next, scrub and caption for any block that has a timeline. */
 export default function StepControls({ tl }: { tl: TimelineControl }) {
@@ -24,12 +24,12 @@ export default function StepControls({ tl }: { tl: TimelineControl }) {
         <button type="button" className={btn} aria-label="Next step" aria-disabled={tl.step === last} onClick={() => tl.step < last && tl.dispatch("next")}><SkipForward size={18} /></button>
         <input
           type="range" min={0} max={last} value={tl.step} aria-label="Scrub steps"
-          className="h-11 min-w-0 flex-1 accent-blue"
+          className="h-11 min-w-0 flex-1 accent-[var(--ac)]"
           onChange={(e) => tl.dispatch({ goto: Number(e.target.value) })}
         />
-        <span className="shrink-0 text-sm font-extrabold tabular-nums">{tl.step + 1} of {tl.count}</span>
+        <span className="shrink-0 font-mono text-sm tabular-nums text-[var(--mu)]">{tl.step + 1} of {tl.count}</span>
       </div>
-      <p aria-live="polite" className="min-h-6 break-words text-sm font-bold">{tl.caption}</p>
+      <p aria-live="polite" className="min-h-6 break-words text-sm font-medium">{tl.caption}</p>
     </div>
   );
 }

@@ -4,10 +4,11 @@ import { MAX_PRIMITIVES, vec3Value, type Scene3dProps, type TimelineState } from
 export type Vec3 = [number, number, number];
 export type Primitive = Scene3dProps["primitives"][number];
 
-// Hex copies of the --color-* tokens in index.css (three cannot read CSS variables).
+// Light-theme hex copies of the colour tokens in index.css (three cannot read CSS variables). Lilac and mint have no
+// token of their own, so they borrow the nearest one (--fn, and the dark success green).
 const HEX: Record<string, string> = {
-  ink: "#1b1b1f", paper: "#fffdf8", green: "#22c55e", "green-deep": "#15803d", blue: "#3b5bff",
-  sun: "#ffd23f", pink: "#ff8fb1", lilac: "#b9a4ff", mint: "#b6f0cf",
+  ink: "#1c1c1e", paper: "#f6f6f8", green: "#1f9d55", "green-deep": "#177a42", blue: "#2f5fd6",
+  sun: "#b7791f", pink: "#9b2393", lilac: "#326d74", mint: "#3fc07a",
 };
 
 // "top" sits a hair off the pole so lookAt keeps a defined up vector.

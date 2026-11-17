@@ -25,13 +25,13 @@ function List({ nodes, viewed, editing, onPick }: { nodes: Node[] } & Omit<Props
         <li key={n.name + (n.path ?? "/")}>
           {n.path === undefined ? (
             <>
-              <span className="flex min-h-6 items-center gap-1.5 px-1 text-sm font-extrabold">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4 flex-none fill-green stroke-ink stroke-2 [stroke-linejoin:round]">
+              <span className="flex min-h-6 items-center gap-1.5 px-1 text-sm font-semibold">
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4 flex-none fill-[var(--sel)] stroke-[var(--mu)] stroke-2 [stroke-linejoin:round]">
                   <path d="M3 6h7l2 2h9v11H3z" />
                 </svg>
                 {n.name}
               </span>
-              <div className="ml-2 border-l-2 border-ink/30 pl-1.5">
+              <div className="ml-2 border-l border-ink pl-1.5">
                 <List nodes={n.kids} viewed={viewed} editing={editing} onPick={onPick} />
               </div>
             </>
@@ -40,12 +40,12 @@ function List({ nodes, viewed, editing, onPick }: { nodes: Node[] } & Omit<Props
               type="button"
               aria-current={n.path === viewed ? "true" : undefined}
               onClick={() => onPick(n.path!)}
-              className={`flex min-h-6 w-full items-center gap-1.5 rounded-md px-1 text-left font-mono text-sm ${FOCUS} ${n.path === viewed ? "bg-sun font-bold" : "hover:bg-mint"}`}
+              className={`flex min-h-6 w-full items-center gap-1.5 rounded-md px-1 text-left font-mono text-sm ${FOCUS} ${n.path === viewed ? "bg-[var(--sel)] font-semibold text-[var(--acT)]" : "hover:bg-[var(--hov)]"}`}
             >
               <span className="truncate">{n.name}</span>
               {n.path === editing && (
                 <>
-                  <span aria-hidden="true" className="ml-auto size-2.5 flex-none rounded-full border-2 border-ink bg-pink" />
+                  <span aria-hidden="true" className="ml-auto size-2 flex-none rounded-full bg-blue" />
                   <span className="sr-only">being edited</span>
                 </>
               )}
@@ -63,7 +63,7 @@ export default function Explorer({ id, hidden, paths, viewed, editing, onPick }:
       id={id}
       hidden={hidden}
       aria-label="Files"
-      className="max-h-48 flex-none overflow-auto border-b-[3px] border-ink bg-paper p-2 lg:max-h-none lg:w-[200px] lg:border-r-[3px] lg:border-b-0"
+      className="max-h-48 flex-none overflow-auto border-b border-ink bg-[var(--side)] p-2 lg:max-h-none lg:w-[200px] lg:border-r lg:border-b-0"
     >
       <List nodes={build(paths)} viewed={viewed} editing={editing} onPick={onPick} />
     </nav>

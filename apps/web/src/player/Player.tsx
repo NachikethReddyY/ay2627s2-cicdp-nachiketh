@@ -9,6 +9,7 @@ import MenuBar from "./MenuBar";
 import { stepIndexAt, useReplay } from "./useReplay";
 import { useWindows, type Kind, type WinId } from "./useWindows";
 import { FOCUS } from "./ui";
+import { Logo } from "../pages/landing/Logo";
 import { createSpeaker, type Synth, type Utterance } from "./speech";
 import "./player.css";
 
@@ -254,11 +255,11 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
 
   return (
     <div className={`lq player-page flex flex-col ${code ? "h-dvh overflow-hidden" : "min-h-dvh lg:h-dvh lg:overflow-hidden"}`} onKeyDown={onKeyDown}>
-      <header className="flex min-h-8 flex-none flex-wrap items-center gap-x-3 border-b-[3px] border-ink bg-white px-3 py-0.5 text-sm">
+      <header className="flex min-h-8 flex-none flex-wrap items-center gap-x-3 border-b border-ink bg-[var(--tbar)] px-3 py-0.5 text-sm text-ink">
         <a href="/" aria-label="LearnSlop home" className={`grid min-h-6 min-w-6 place-items-center rounded-md ${FOCUS}`}>
-          <img src="/img/pip-wave.png" alt="" className="size-6 object-contain" />
+          <Logo />
         </a>
-        <h1 className="flex-none font-sans text-sm font-extrabold">{title}</h1>
+        <h1 className="flex-none font-sans text-sm font-semibold">{title}</h1>
         <MenuBar
           replay={!code}
           playing={r.playing}
@@ -294,10 +295,10 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           <div role="group" aria-label={`Step ${cur + 1} of ${N}`} className="flex items-center gap-1.5">
             <div aria-hidden="true" className="flex gap-0.5">
               {stepTitles.map((t, i) => (
-                <span key={i} className={`h-1.5 w-4 rounded-full border-2 border-ink ${i < cur || live?.finished ? "bg-green" : i === cur ? "bg-sun" : "bg-white"}`} />
+                <span key={i} className={`h-1.5 w-4 rounded-full ${i < cur || live?.finished ? "bg-green" : i === cur ? "bg-blue" : "bg-[var(--track)]"}`} />
               ))}
             </div>
-            <span aria-hidden="true" className="text-xs font-extrabold">
+            <span aria-hidden="true" className="font-mono text-xs font-medium text-[var(--mu)]">
               {cur + 1}/{N}
             </span>
           </div>
@@ -306,18 +307,18 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
 
       <main
         ref={deskRef}
-        className={`relative flex flex-1 flex-col gap-4 bg-mint/40 p-3 lg:block lg:min-h-0 lg:p-0 ${code ? "min-h-0 overflow-y-auto lg:overflow-visible max-lg:[&>section]:flex-none" : ""}`}
+        className={`relative flex flex-1 flex-col gap-4 bg-[var(--page)] p-3 lg:block lg:min-h-0 lg:p-0 ${code ? "min-h-0 overflow-y-auto lg:overflow-visible max-lg:[&>section]:flex-none" : ""}`}
       >
         {task && (
-          <Window {...winProps("instructions")} label="Instructions" title="Instructions" tone="bg-mint">
+          <Window {...winProps("instructions")} label="Instructions" title="Instructions" tone="bg-[var(--tbar)]">
             <div className="min-h-0 flex-1 overflow-auto p-4">
               {live ? live.panel : (
                 <>
-                  <p className="text-sm font-extrabold text-ink/75">
+                  <p className="text-sm font-medium text-[var(--mu)]">
                     Step {cur + 1} of {N}
                   </p>
-                  <h3 className="font-display text-xl font-black">{stepTitle}</h3>
-                  <p className="mt-2 font-semibold">{sample?.examples[cur]}</p>
+                  <h3 className="text-xl font-semibold tracking-tight">{stepTitle}</h3>
+                  <p className="mt-2">{sample?.examples[cur]}</p>
                   <nav aria-label="Steps" className="mt-5">
                     <ol className="flex flex-col gap-2">
                       {stepTitles.map((t, i) => (
@@ -326,9 +327,9 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
                             type="button"
                             aria-current={i === cur ? "step" : undefined}
                             onClick={() => r.seek(timeline.steps[i].startT)}
-                            className={`w-full rounded-xl border-[3px] border-ink px-3 py-2 text-left text-sm font-bold ${FOCUS} ${i === cur ? "bg-sun" : "bg-paper hover:bg-mint"}`}
+                            className={`opt w-full px-3 py-2 text-left text-sm font-medium ${FOCUS} ${i === cur ? "border-[color:var(--ac)] bg-[var(--sel)]" : ""}`}
                           >
-                            <span className="font-extrabold">{i + 1}.</span> {t}
+                            <span className="font-mono font-semibold text-[var(--mu)]">{i + 1}.</span> {t}
                           </button>
                         </li>
                       ))}
@@ -344,7 +345,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           {...winProps("code")}
           label={codeLabel}
           title={code ? code.title : task ? viewed || "Code" : `Player — ${viewed}`}
-          tone="bg-sun"
+          tone="bg-[var(--tbar)]"
           onPointerMove={wake}
           titleExtra={code ? code.tool : (
             <button
@@ -353,7 +354,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
               aria-expanded={explorer}
               aria-controls="explorer"
               onClick={() => setExplorer((o) => !o)}
-              className={`grid size-6 place-items-center rounded-md ${explorer ? "bg-white" : ""} ${FOCUS}`}
+              className={`grid size-6 place-items-center rounded-md ${explorer ? "bg-[var(--sel)] text-[var(--acT)]" : "hover:bg-[var(--hov)]"} ${FOCUS}`}
             >
               <Icon k="sidebar" />
             </button>
@@ -404,7 +405,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
 
         <Dock
           hidden={W.fill?.kind === "full"}
-          items={[dockItem("code", codeLabel, "bg-sun"), ...(task ? [dockItem("instructions", "Instructions", "bg-mint")] : [])]}
+          items={[dockItem("code", codeLabel, "bg-[var(--chip)]"), ...(task ? [dockItem("instructions", "Instructions", "bg-[var(--chip)]")] : [])]}
         />
       </main>
 
@@ -413,29 +414,29 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
       </div>
       {narration && <audio ref={audioRef} key={narration} src={narration} preload="auto" onError={() => setFailedAudio(narration)} />}
 
-      <dialog ref={aboutRef} aria-labelledby="about-h" className="chunk m-auto max-w-sm bg-paper p-5">
-        <h2 id="about-h" className="font-display text-xl font-black">
+      <dialog ref={aboutRef} aria-labelledby="about-h" className="chunk m-auto max-w-sm p-5 text-ink">
+        <h2 id="about-h" className="text-xl font-semibold tracking-tight">
           About this replay
         </h2>
         <p className="mt-3 text-sm font-semibold">This replay is reconstructed from the commit's diff, not a screen recording.</p>
-        <button type="button" autoFocus className={`pill mt-4 min-h-11 bg-sun px-4 ${FOCUS}`} onClick={() => aboutRef.current?.close()}>
+        <button type="button" autoFocus className={`btn mt-4 min-h-11 px-4 ${FOCUS}`} onClick={() => aboutRef.current?.close()}>
           Close
         </button>
       </dialog>
 
-      <dialog ref={helpRef} aria-labelledby="keys-h" className="chunk m-auto max-w-sm bg-paper p-5">
-        <h2 id="keys-h" className="font-display text-xl font-black">
+      <dialog ref={helpRef} aria-labelledby="keys-h" className="chunk m-auto max-w-sm p-5 text-ink">
+        <h2 id="keys-h" className="text-xl font-semibold tracking-tight">
           Keyboard shortcuts
         </h2>
         <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
           {KEYS.filter(([k]) => k !== "M" || hasNarration).map(([k, d]) => (
             <div key={k} className="contents">
-              <dt className="font-mono font-bold">{k}</dt>
+              <dt className="font-mono font-medium">{k}</dt>
               <dd>{d}</dd>
             </div>
           ))}
         </dl>
-        <button type="button" autoFocus className={`pill mt-4 min-h-11 bg-sun px-4 ${FOCUS}`} onClick={() => helpRef.current?.close()}>
+        <button type="button" autoFocus className={`btn mt-4 min-h-11 px-4 ${FOCUS}`} onClick={() => helpRef.current?.close()}>
           Close
         </button>
       </dialog>

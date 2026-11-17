@@ -49,6 +49,8 @@ type Props = {
   instructions?: ReactNode;
   docs: ReactNode;
   actions: ReactNode;
+  /** Drawn in the toolbar before the layout toggles. */
+  trailing?: ReactNode;
   /** Palette entries: the open files, the lesson's own commands (Run, Check...) and the docs catalogue. */
   paletteFiles: PaletteItem[];
   paletteCommands: PaletteCommand[];
@@ -79,6 +81,8 @@ type Props = {
     onDragMove(event: ReactPointerEvent<HTMLElement>): void;
     onDragEnd(): void;
   };
+  /** Bump this number to show the Docs column (the drawer in the narrow layout), for example so a result written there is seen. */
+  revealDocs?: number;
   /** Current editor context for the structured guide on the test workbench. */
   aiContext?: { fileName: string; filePath: string; projectRoot: string; code: string; language: string };
 };
@@ -252,6 +256,29 @@ export default function Workbench(p: Props) {
   ];
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
+  const termBtn = useRef<HTMLButtonElement>(null);
+  // Closing the panel hides the control that had focus. Move focus to the toggle, but never pull it from the editor.
+  const panelWasOpen = useRef(panel.open);
+  useEffect(() => {
+    if (panelWasOpen.current && !panel.open) {
+      const a = document.activeElement;
+      if (!a || a === document.body || a.closest(`[aria-label="${p.bottomTitle ?? "Terminal"} panel"]`)) termBtn.current?.focus();
+    }
+    panelWasOpen.current = panel.open;
+  }, [panel.open, p.bottomTitle]);
+  // Show the Docs column on request. Reads the latest layout through a ref, so only a new request acts.
+  const revealRef = useRef({ wide, showUtil: layout.showUtil, dispatch });
+  revealRef.current = { wide, showUtil: layout.showUtil, dispatch };
+  const lastReveal = useRef(p.revealDocs ?? 0);
+  useEffect(() => {
+    const n = p.revealDocs ?? 0;
+    if (n === lastReveal.current) return;
+    lastReveal.current = n;
+    const r = revealRef.current;
+    if (r.wide) {
+      if (!r.showUtil) r.dispatch({ type: "toggleUtil" });
+    } else setOverlay("docs");
+  }, [p.revealDocs]);
   const returnTo = useRef<HTMLButtonElement | null>(null);
   const closeOverlay = () => {
     returnTo.current = overlay === "nav" ? navBtn.current : utilBtn.current;
@@ -340,6 +367,7 @@ export default function Workbench(p: Props) {
         label: "Toggle terminal panel (Ctrl+`)",
         pressed: panel.open,
         onClick: () => panelDispatch({ type: "toggle" }),
+        ref: termBtn,
       }}
       util={{
         label: wide ? "Toggle docs panel" : "Show docs",
@@ -348,6 +376,7 @@ export default function Workbench(p: Props) {
         ref: utilBtn,
       }}
       actions={p.actions}
+      trailing={p.trailing}
       lights={wide && !shown.showLeft}
       planned={planned}
     />

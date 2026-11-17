@@ -3,7 +3,7 @@ import { DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type PublicGameProps, typ
 import type { BlockViewProps } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import { gameApi, type GameApi } from "./api.ts";
-import Shell, { btn } from "./Shell.tsx";
+import Shell, { btn, btnPrimary } from "./Shell.tsx";
 import DragGame from "./DragGame.tsx";
 import PhysicsGame from "./PhysicsGame.tsx";
 import QuizGame from "./QuizGame.tsx";
@@ -18,7 +18,7 @@ type At = Cell & { dir: (typeof DIRS)[number]; collected: number[] };
 function Robot({ dir, stroke }: { dir: At["dir"]; stroke?: boolean }) {
   return (
     <g transform={`rotate(${DIRS.indexOf(dir) * 90} ${C / 2} ${C / 2})`}>
-      <polygon points="20,7 32,32 8,32" fill={stroke ? "none" : "var(--color-blue)"} stroke="var(--color-ink)" strokeWidth={2} strokeDasharray={stroke ? "3 3" : undefined} />
+      <polygon points="20,7 32,32 8,32" fill={stroke ? "none" : "var(--ac)"} stroke="var(--tx)" strokeWidth={2} strokeDasharray={stroke ? "3 3" : undefined} />
     </g>
   );
 }
@@ -34,10 +34,10 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
       const parts = [`Column ${x + 1}, row ${y + 1}`, wall && "wall", same(g.start, c) && `start, facing ${g.start.dir}`, same(g.goal, c) && "goal", gemOn && "gem", same(at, c) && `robot, facing ${at.dir}`].filter(Boolean);
       cells.push(
         <g key={`${x},${y}`} role="img" aria-label={parts.join(", ")} transform={`translate(${x * C} ${y * C})`}>
-          <rect width={C} height={C} fill={wall ? "var(--color-ink)" : "var(--color-paper)"} stroke="var(--color-ink)" strokeWidth={1} />
+          <rect width={C} height={C} fill={wall ? "var(--mu)" : "var(--code)"} stroke="var(--line)" strokeWidth={1} />
           {same(g.start, c) && <Robot dir={g.start.dir} stroke />}
-          {same(g.goal, c) && <path d="M13 33V8l15 6-15 6" fill="var(--color-green)" stroke="var(--color-ink)" strokeWidth={2} />}
-          {gemOn && <polygon points="20,10 29,20 20,30 11,20" fill="var(--color-sun)" stroke="var(--color-ink)" strokeWidth={2} />}
+          {same(g.goal, c) && <path d="M13 33V8l15 6-15 6" fill="var(--ok)" stroke="var(--okT)" strokeWidth={2} />}
+          {gemOn && <polygon points="20,10 29,20 20,30 11,20" fill="var(--warn)" stroke="var(--tx)" strokeWidth={2} />}
         </g>,
       );
     }
@@ -155,10 +155,10 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
               {g.commands.map((cmd) => <button key={cmd} type="button" className={btn} onClick={() => dispatch({ type: "add", cmd })}>{LABEL[cmd]}</button>)}
             </div>
             {g.allowRepeat && (
-              <fieldset className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-ink p-2">
-                <legend className="px-1 text-sm font-extrabold">Repeat block</legend>
-                <label className="text-sm font-bold">Times{" "}
-                  <select className="min-h-11 rounded-full border-2 border-ink bg-white px-2" value={draft.times} onChange={(e) => setDraft({ ...draft, times: Number(e.target.value) })}>
+              <fieldset className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] p-2">
+                <legend className="px-1 text-sm font-semibold">Repeat block</legend>
+                <label className="text-sm font-medium">Times{" "}
+                  <select className="min-h-11 rounded-full border border-[var(--line)] bg-[var(--code)] px-2 text-[var(--tx)]" value={draft.times} onChange={(e) => setDraft({ ...draft, times: Number(e.target.value) })}>
                     {Array.from({ length: g.allowRepeat.maxTimes - 1 }, (_, k) => k + 2).map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </label>
@@ -172,7 +172,7 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
               </fieldset>
             )}
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={`${btn} bg-green`} onClick={() => dispatch({ type: "run" })}>Run</button>
+              <button type="button" className={btnPrimary} onClick={() => dispatch({ type: "run" })}>Run</button>
               <button type="button" className={btn} onClick={() => dispatch({ type: "undo" })}>Undo</button>
               <button type="button" className={btn} onClick={() => dispatch({ type: "clear" })}>Clear</button>
             </div>
@@ -196,5 +196,5 @@ export default function GameView({ block, gameCompletion }: BlockViewProps<Publi
   if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} api={api} />;
   if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} api={api} />;
   if (p.kind.kind === "quiz") return <QuizGame p={p} kind={p.kind} api={api} />;
-  return <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{p.alt}</p>;
+  return <p className="break-words rounded-xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm">{p.alt}</p>;
 }

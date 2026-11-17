@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { PublicGameProps, PublicQuiz } from "@learnquest/ui-catalog";
 import type { GameApi } from "./api.ts";
-import Shell, { btn } from "./Shell.tsx";
+import Shell, { tile } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
 
 export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: PublicQuiz; api: GameApi }) {
@@ -56,11 +56,11 @@ export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: P
   return (
     <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <div role="group" aria-label={`Question ${index + 1} of ${kind.questions.length}`} className="flex min-w-0 flex-col gap-3">
-        <p className="text-sm font-extrabold">Question {index + 1} of {kind.questions.length}</p>
+        <p className="text-sm font-semibold text-[var(--mu)]">Question {index + 1} of {kind.questions.length}</p>
         <p className="break-words">{question.prompt}</p>
         <div className="flex flex-col items-start gap-2">
           {question.options.map((option, i) => (
-            <button key={i} type="button" className={btn} disabled={done || busy} onClick={() => answer(i)}>{option}</button>
+            <button key={i} type="button" className={`${tile} min-h-11 max-w-full break-words px-4 py-2 text-left text-sm font-medium disabled:opacity-40`} disabled={done || busy} onClick={() => answer(i)}>{option}</button>
           ))}
         </div>
       </div>

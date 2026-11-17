@@ -1,86 +1,72 @@
 @import "../pages/home.css";
 
+/* Replay player and diff page. Same language as the practice editor (workbench.css): Geist, 1px hairlines,
+   glass windows, one blue accent. Tokens come from index.css. */
+
 .lq.player-page { width: 100%; overflow-x: clip; }
+.lq.player-page {
+  --font-body: "Geist", system-ui, sans-serif; --font-display: "Geist", system-ui, sans-serif;
+  --font-code: "Geist Mono", ui-monospace, monospace;
+  background: var(--page); color: var(--tx); font-family: var(--font-body);
+}
 .lq.player-page > header {
   min-height: 52px;
   padding: 6px 12px;
-  border: 0;
-  border-bottom: 3px solid var(--line);
-  background: var(--surface);
-  box-shadow: 0 4px 0 var(--shadow);
-  font-family: var(--font-body);
+  border-bottom: 1px solid var(--line);
+  background: var(--tbar);
+  box-shadow: none;
   z-index: 20;
 }
-.lq.player-page > header h1 { font: 400 18px/1.05 var(--font-display); }
-.lq.player-page > header [role="group"] { padding: 4px 9px; border: 2.5px solid var(--line); border-radius: 999px; background: var(--sun); box-shadow: 2px 2px 0 var(--shadow); font-family: var(--font-body); }
+.lq.player-page > header h1 { font: 600 15px/1.2 var(--font-body); }
+.lq.player-page > header [role="group"] { padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--pane2); box-shadow: none; }
 .lq.player-page > header [role="group"] > div > span { width: 10px; height: 10px; }
-.lq.player-page > main {
-  min-width: 0;
-  background-color: var(--bg);
-  background-image: radial-gradient(var(--dot) 1.3px, transparent 1.5px);
-  background-size: 22px 22px;
-  color: var(--text);
-  font-family: var(--font-body);
-}
+.lq.player-page > main { min-width: 0; background: var(--page); color: var(--tx); }
 .lq.player-page section[id^="win-"] {
   min-width: 0;
-  background: var(--surface);
-  color: var(--text);
-  border: 3px solid var(--line);
-  border-radius: 18px;
-  box-shadow: 5px 5px 0 var(--shadow);
+  background: var(--win); color: var(--tx);
+  border: 1px solid var(--edge); border-radius: 16px; box-shadow: var(--lift);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
 }
-.lq.player-page section[id^="win-"] > div:first-child {
-  background: var(--sun);
-  color: var(--text);
-  border-bottom: 3px solid var(--line);
-}
-.lq.player-page section[id="win-instructions"] > div:first-child { background: var(--mint); }
+.lq.player-page section[id^="win-"] > div:first-child { background: var(--tbar); color: var(--tx); border-bottom: 1px solid var(--line); }
 .lq.player-page section[id^="win-"] h3,
-.lq.player-page section[id^="win-"] h4 { font-family: var(--font-display); font-weight: 400; line-height: 1.08; }
-.lq.player-page nav[aria-label="Files"] { background: var(--paper); border-color: var(--line); font-family: var(--font-body); }
-.lq.player-page [data-dock-id] { box-shadow: 2px 2px 0 var(--shadow); }
-.lq.player-page [role="group"][aria-label="Dock"] { background: var(--surface); border-color: var(--line); box-shadow: 4px 4px 0 var(--shadow); }
+.lq.player-page section[id^="win-"] h4 { font-weight: 600; line-height: 1.2; }
+.lq.player-page nav[aria-label="Files"] { background: var(--side); border-color: var(--line); }
+.lq.player-page [data-dock-id] { box-shadow: var(--lift); }
+.lq.player-page [role="group"][aria-label="Dock"] {
+  background: var(--glass); border: 1px solid var(--glass-line); box-shadow: var(--lift);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
 .lq.player-page [class*="absolute bottom-4"] {
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--line);
-  border-radius: 16px;
-  box-shadow: 4px 4px 0 var(--shadow);
-  font-family: var(--font-body);
+  background: var(--glass); color: var(--tx);
+  border: 1px solid var(--glass-line); border-radius: 16px; box-shadow: var(--lift);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
 }
-.lq.player-page [class*="absolute bottom-4"] button.pill {
-  min-height: 36px;
-  border: 2.5px solid var(--line);
-  box-shadow: 2px 2px 0 var(--shadow);
-  color: var(--text);
-}
-.lq.player-page [class*="absolute bottom-4"] button[aria-label="Play"] { background: var(--sun); }
-.lq.player-page [class*="absolute bottom-4"] button[aria-label="Pause"] { background: var(--mint); }
-.lq.player-page .track { border: 2.5px solid var(--line); border-radius: 999px; background: var(--track); }
-.lq.player-page .track [data-radix-slider-range] { background: var(--blue); }
+.lq.player-page [class*="absolute bottom-4"] button.pill { min-height: 36px; border: 1px solid var(--line); box-shadow: none; color: var(--tx); }
+.lq.player-page [class*="absolute bottom-4"] button[aria-label="Play"],
+.lq.player-page [class*="absolute bottom-4"] button[aria-label="Pause"] { background: var(--ac); border-color: transparent; color: var(--on-ac); }
+.lq.player-page .track { border: 1px solid var(--line); border-radius: 999px; background: var(--track); }
+.lq.player-page .track [data-radix-slider-range] { background: var(--ac-g); }
 .lq.player-page dialog {
-  color: var(--text);
-  border: 3px solid var(--line);
-  border-radius: 20px;
-  box-shadow: 5px 5px 0 var(--shadow);
+  color: var(--tx); background: var(--glass);
+  border: 1px solid var(--glass-line); border-radius: 20px; box-shadow: var(--lift);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
 }
-.lq.player-page dialog::backdrop { background: rgb(21 18 31 / 55%); }
+.lq.player-page dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .lq.player-page button,
 .lq.player-page select { font-family: var(--font-body); }
 .lq.player-page button.btn,
-.lq.player-page a.btn { min-height: 44px; border: 3px solid var(--line); border-radius: 12px; background: var(--sun); color: #15121f; box-shadow: 3px 3px 0 var(--shadow); font: 400 17px/1 var(--font-display); }
-.lq.player-page button.pill { border: 2.5px solid var(--line); box-shadow: 2px 2px 0 var(--shadow); font-family: var(--font-body); }
-.lq.player-page :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.lq.player-page a.btn { min-height: 44px; border: 1px solid transparent; border-radius: 999px; background: var(--ac); color: var(--on-ac); box-shadow: none; font: 600 14px/1 var(--font-body); }
+.lq.player-page button.pill { border: 1px solid var(--line); box-shadow: none; }
+.lq.player-page :focus-visible { outline: 2px solid var(--acT); outline-offset: 2px; }
 
 .lq.diff-page { min-height: 100vh; padding-top: 24px; padding-bottom: 48px; }
-.lq.diff-page > a { display: inline-flex; align-items: center; padding: 6px 12px; background: var(--surface); border: 3px solid var(--line); border-radius: 12px; box-shadow: 3px 3px 0 var(--shadow); color: var(--text); text-decoration: none; }
+.lq.diff-page > a { display: inline-flex; align-items: center; padding: 6px 12px; background: var(--glass); border: 1px solid var(--line); border-radius: 999px; box-shadow: none; color: var(--tx); text-decoration: none; }
 .lq.diff-page main { min-width: 0; }
-.lq.diff-page h1 { margin-top: 24px; font-size: 32px; }
+.lq.diff-page h1 { margin-top: 24px; font-size: 32px; font-weight: 600; letter-spacing: -0.02em; }
 .lq.diff-page .diff-step { min-width: 0; }
-.lq.diff-page .diff-step h2 { margin-bottom: 16px; font-size: 24px; }
+.lq.diff-page .diff-step h2 { margin-bottom: 16px; font-size: 24px; font-weight: 600; }
 .lq.diff-page .diff-step h3 { overflow-wrap: anywhere; font-family: var(--font-code); font-size: 14px; }
-.lq.diff-page .diff-step > div > div { border-radius: 14px; box-shadow: 4px 4px 0 var(--shadow); }
+.lq.diff-page .diff-step > div > div { border-radius: 14px; box-shadow: none; border: 1px solid var(--line); background: var(--code); }
 
 @media (max-width: 640px) {
   .lq.player-page > header { gap: 6px; }
@@ -97,13 +83,16 @@
 }
 
 /* Next in the top menu bar: sized to match the menu items. */
-.lq.player-page .menu-next .btn { min-height: 0; font-size: 14px; line-height: 1.25; padding: 2px 12px; border-width: 2px; border-radius: 8px; box-shadow: 2px 2px 0 var(--shadow); margin: 0; }
-.lq.player-page .menu-next button.check { background: var(--mint); }
+.lq.player-page .menu-next .btn { min-height: 0; font-size: 14px; line-height: 1.25; padding: 2px 12px; border-width: 1px; border-radius: 999px; box-shadow: none; margin: 0; }
+.lq.player-page .menu-next button.check { background: var(--ok); color: var(--on-ok); }
 
-/* Check verdict: a pop for Correct, a shake for Not quite. Still on reduced motion. */
+/* Check verdict: a pop for Correct, a shake for Not quite. Off under reduced motion. */
 @media (prefers-reduced-motion: no-preference) {
   .lq.player-page .verdict-ok { animation: lq-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
   .lq.player-page .verdict-no { animation: lq-shake 0.45s ease-in-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lq.player-page *, .lq.diff-page * { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 @keyframes lq-pop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
 @keyframes lq-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }

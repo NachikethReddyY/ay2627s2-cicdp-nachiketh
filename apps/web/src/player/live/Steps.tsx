@@ -76,16 +76,15 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
   if (state === "finished") {
     panel = (
       <div role="status">
-        <img src="/img/pip-cheer.png" alt="" className="float w-20" />
-        <h3 className="font-display text-2xl font-black">Lesson complete</h3>
+        <h3 className="text-2xl font-semibold tracking-tight">Lesson complete</h3>
         {next ?? <a href="/" className="btn mt-4 inline-block">Back home</a>}
       </div>
     );
   } else if (failed) {
     panel = (
-      <div role="alert" className="font-bold">
+      <div role="alert" className="font-medium">
         {failed}{" "}
-        <button type="button" className="pill ml-1 bg-white px-3 py-1 text-sm" onClick={() => { setFailed(""); setRetries((n) => n + 1); send({ type: "CONFLICT", msg: "" }); }}>Retry</button>
+        <button type="button" className="pill ml-1 px-3 py-1 text-sm" onClick={() => { setFailed(""); setRetries((n) => n + 1); send({ type: "CONFLICT", msg: "" }); }}>Retry</button>
       </div>
     );
   } else if (step && (state === "revealed" || state === "skipped")) {
@@ -101,7 +100,7 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
       />
     );
   } else {
-    panel = <p role="status" className="font-bold">Loading step…</p>;
+    panel = <p role="status" className="font-medium">Loading step…</p>;
   }
 
   return (

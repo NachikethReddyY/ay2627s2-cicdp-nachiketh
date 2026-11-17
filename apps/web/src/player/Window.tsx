@@ -36,12 +36,12 @@ const glyphs = {
 function Light({ kind, label, color, disabled, onClick }: { kind: keyof typeof glyphs; label: string; color: string; disabled?: boolean; onClick(): void }) {
   return (
     <button type="button" aria-label={label} disabled={disabled} onClick={onClick} className={`grid size-6 place-items-center rounded-full ${FOCUS}`}>
-      <span className={`grid size-4 place-items-center rounded-full border-2 border-ink ${disabled ? "bg-neutral-300" : color}`}>
+      <span className={`grid size-3.5 place-items-center rounded-full border border-black/15 ${disabled ? "bg-[var(--track)]" : color}`}>
         {!disabled && (
           <svg
             aria-hidden="true"
             viewBox="0 0 10 10"
-            className="size-3 fill-none stroke-ink stroke-[1.8] opacity-0 group-hover/lights:opacity-100 group-has-focus-visible/lights:opacity-100"
+            className="size-3 fill-none stroke-black/60 stroke-[1.8] opacity-0 group-hover/lights:opacity-100 group-has-focus-visible/lights:opacity-100"
           >
             {glyphs[kind]}
           </svg>
@@ -129,16 +129,16 @@ export default function Window(p: Props) {
             }
           : undefined
       }
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden bg-white ${full ? "" : "rounded-xl border-[3px] border-ink shadow-[6px_6px_0_var(--color-ink)]"} ${rect ? `absolute ${p.dragging ? "" : "win-morph"}` : ""}`}
+      className={`flex min-h-0 min-w-0 flex-col chunk overflow-hidden text-ink ${full ? "rounded-none border-0 shadow-none" : "rounded-2xl"} ${rect ? `absolute ${p.dragging ? "" : "win-morph"}` : ""}`}
     >
       <div
         onPointerDown={onBarDown}
         onDoubleClick={(e) => rect && !full && !(e.target as HTMLElement).closest("[data-nodrag]") && p.onZoom()}
-        className={`relative flex h-10 flex-none touch-none items-center gap-1 border-b-[3px] border-ink px-2 select-none ${p.tone}`}
+        className={`relative flex h-10 flex-none touch-none items-center gap-1 border-b border-ink px-2 select-none ${p.tone}`}
       >
         <div data-nodrag className="group/lights hidden items-center lg:flex">
-          <Light kind="close" label={`Close ${label} window`} color="bg-pink" onClick={p.onClose} />
-          <Light kind="minimize" label={`Minimize ${label} window`} color="bg-sun" disabled={full} onClick={p.onMinimize} />
+          <Light kind="close" label={`Close ${label} window`} color="bg-[var(--bad)]" onClick={p.onClose} />
+          <Light kind="minimize" label={`Minimize ${label} window`} color="bg-[var(--warn)]" disabled={full} onClick={p.onMinimize} />
           <Light kind={full ? "exit" : "enter"} label={full ? "Exit full screen" : "Enter full screen"} color="bg-green" onClick={p.onFull} />
         </div>
         <h2 id={`${id}-title`} className="sr-only">
@@ -151,12 +151,12 @@ export default function Window(p: Props) {
               data-move-handle
               aria-label={`Move ${label} window. Arrow keys move, Shift plus arrow keys resize`}
               onKeyDown={onMoveKey}
-              className={`min-h-6 max-w-full cursor-grab truncate rounded-md px-2 font-display text-base font-black ${FOCUS}`}
+              className={`min-h-6 max-w-full cursor-grab truncate rounded-md px-2 text-sm font-semibold hover:bg-[var(--hov)] ${FOCUS}`}
             >
               {p.title}
             </button>
           ) : (
-            <span aria-hidden="true" className="truncate font-display text-base font-black">
+            <span aria-hidden="true" className="truncate text-sm font-semibold">
               {p.title}
             </span>
           )}

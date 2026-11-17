@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type ReactNode, type Ref, type RefObject } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import type { IDisposable, Uri, editor as MonacoEditor } from "monaco-editor";
 import type { SeekResult } from "@learnquest/player-core";
@@ -6,9 +6,25 @@ import { setPracticeDiagnostics } from "./monaco";
 import Loader from "../components/Loader";
 import { defineWorkbenchThemes } from "./workbench/monacoThemes";
 import { explainMarker } from "./workbench/editorHelp";
-import type { WorkbenchProblem } from "./workbench/context";
+import { CODE_FONT, type WorkbenchProblem } from "./workbench/context";
 
 export type EditorHandle = { show(r: SeekResult): void; focus(): void };
+
+const DARK = "(prefers-color-scheme: dark)";
+
+// The system colour scheme; light where matchMedia is missing (jsdom, tests).
+function usePrefersDark(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      if (typeof matchMedia !== "function") return () => {};
+      const m = matchMedia(DARK);
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => typeof matchMedia === "function" && matchMedia(DARK).matches,
+    () => false,
+  );
+}
 
 const langOf = (p: string) => (/\.tsx?$/.test(p) ? "typescript" : /\.jsx?$/.test(p) ? "javascript" : "plaintext");
 
@@ -18,7 +34,7 @@ type Props = {
   viewPath?: string; // file the user picked; falls back to the replay's active file
   overlay?: ReactNode;
   edit?: { value: string; language: string; onChange(v: string): void; readOnly?: boolean }; // practice: the learner types here; readOnly holds the text until it is confirmed
-  theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default "vs"
+  theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default follows the system colour scheme
   fontFamily?: string;
   onCursor?(line: number, column: number): void; // caret moves, for a status bar
   onSelection?(selection: { startLine: number; endLine: number; text: string } | null): void;
@@ -47,6 +63,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
   problemFileRef.current = problemFileName;
   const language = edit?.language ?? langOf(viewPath ?? active);
   const helpOn = !!help;
+  const systemTheme = usePrefersDark() ? "learnslop-dark" : "learnslop-light";
   const [mounted, setMounted] = useState<{ ed: Parameters<OnMount>[0]; monaco: Parameters<OnMount>[1] } | null>(null);
 
   // Diagnostics on while a help editor is mounted; the replay defaults come back on unmount.
@@ -171,8 +188,8 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
         language={language}
         value={edit?.value}
         onChange={edit && ((v) => edit.onChange(v ?? ""))}
-        theme={theme ?? "vs"}
-        beforeMount={theme ? (m) => defineWorkbenchThemes(m) : undefined}
+        theme={theme ?? systemTheme}
+        beforeMount={(m) => defineWorkbenchThemes(m)}
         onMount={onMount}
         options={{
           readOnly: !edit || edit.readOnly === true,
@@ -183,6 +200,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
           wordWrap: wordWrap ? "on" : "off",
           suggestLineHeight: 32,
           fontSize: 14,
+          fontFamily: CODE_FONT,
           ...(fontFamily && {
             // Main.dc.html: 13 px code on 22 px rows, 8 px above the first line, scrollbars hidden, scrolling kept.
             fontFamily,

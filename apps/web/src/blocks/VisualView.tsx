@@ -5,7 +5,8 @@ import { plan } from "./model.ts";
 import { RENDERERS } from "./registry.ts";
 import type { GameCompletionContext } from "./registry.ts";
 
-const card = "rounded-2xl border-2 border-ink bg-white p-3 text-sm break-words";
+// Same glass card as BlockFrame's fallback: a hairline edge and one soft lift.
+const card = "rounded-2xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm break-words shadow-[var(--lift-sm)]";
 
 function Rejected({ alt }: { alt: string }) {
   return <div className={card} role="img" aria-label={alt || "Visual unavailable"}>{alt || "This visual can't be shown."}</div>;
