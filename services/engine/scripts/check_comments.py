@@ -18,8 +18,6 @@ ALLOWED = re.compile(
     r"|type:\s*ignore\[[^\]]+\]"
     r"|pragma:\s*no (cover|branch)"
     r"|fmt:\s*(on|off|skip)"
-    r"|ruff:\s*(noqa|disable|enable)\b.*"
-    r"|mypy:\s*\S.*"
     r"|-\*-.*-\*-"
     r")(\s|$)"
 )

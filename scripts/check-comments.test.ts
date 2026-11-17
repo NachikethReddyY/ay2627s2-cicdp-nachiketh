@@ -47,3 +47,10 @@ test("stripping keeps strings and allowed directives", () => {
 test("a shebang survives stripping", () => {
   assert.equal(stripComments("a.ts", "#!/usr/bin/env node\n// x\nconst a = 1;\n"), "#!/usr/bin/env node\nconst a = 1;\n");
 });
+
+test("file-level and rule-less disables are banned", () => {
+  assert.equal(findBannedComments("a.ts", "/* eslint-disable -- legacy */\nconst a = 1;\n").length, 1);
+  assert.equal(findBannedComments("a.ts", "// eslint-disable-next-line -- legacy\nvar a = 1;\n").length, 1);
+  assert.equal(findBannedComments("a.ts", "// oxlint-disable -- legacy\nvar a = 1;\n").length, 1);
+  assert.deepEqual(findBannedComments("a.ts", "// eslint-disable-next-line no-var, eqeqeq -- legacy global\nvar a = 1;\n"), []);
+});

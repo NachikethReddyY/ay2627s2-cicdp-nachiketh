@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { PORTS, processTree } from "./ports.ts";
@@ -36,7 +36,7 @@ export function appEnv(databaseUrl: string): Record<string, string> {
 }
 
 export function apiEnv(databaseUrl: string, engine: boolean): Record<string, string> {
-  const base = { ...appEnv(databaseUrl), PORT: String(PORTS.api) };
+  const base = { ...appEnv(databaseUrl), PORT: String(PORTS.api), HOST: "127.0.0.1" };
   if (!engine) return base;
   return { ...base, ENGINE_URL: `http://localhost:${PORTS.engine}`, ENGINE_TOKEN: VALIDATOR_ENGINE_TOKEN };
 }
@@ -59,7 +59,7 @@ export function serviceSpecs(root: string, databaseUrl: string, engine: boolean)
       cwd: root,
       command: process.execPath,
       args: [join(root, "e2e", "fake-llm", "server.ts")],
-      env: { PORT: String(PORTS.fakeLlm), FAKE_LLM_FIXTURE_DIR: join(root, "services", "engine", "tests", "fixtures") },
+      env: { PORT: String(PORTS.fakeLlm), HOST: "127.0.0.1", FAKE_LLM_FIXTURE_DIR: join(root, "services", "engine", "tests", "fixtures") },
       healthUrl: `http://localhost:${PORTS.fakeLlm}/healthz`,
       url: `http://localhost:${PORTS.fakeLlm}`,
       timeoutMs: 20_000,
@@ -95,7 +95,7 @@ export function serviceSpecs(root: string, databaseUrl: string, engine: boolean)
       port: PORTS.web,
       cwd: root,
       command: "pnpm",
-      args: ["--filter", "@learnquest/web", "exec", "vite", "--port", String(PORTS.web), "--strictPort"],
+      args: ["--filter", "@learnquest/web", "exec", "vite", "--port", String(PORTS.web), "--host", "127.0.0.1", "--strictPort"],
       env: {},
       healthUrl: `${WEB_ORIGIN}/`,
       url: WEB_ORIGIN,
@@ -133,8 +133,26 @@ function signalAll(pids: number[], signal: NodeJS.Signals): void {
   }
 }
 
-export async function stopProcess(pid: number, clock: Clock, graceMs = 5000): Promise<"already-stopped" | "terminated" | "killed"> {
+export function commandLineOf(pid: number): string | null {
+  try {
+    return execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function isValidatorCommand(command: string, root: string): boolean {
+  return command.includes(root) || /uvicorn learnquest_engine|@learnquest\/web exec vite|fake-llm\/server\.ts/.test(command);
+}
+
+export async function stopProcess(
+  pid: number,
+  clock: Clock,
+  graceMs = 5000,
+  owns: (command: string | null) => boolean = () => true,
+): Promise<"already-stopped" | "terminated" | "killed" | "not-ours"> {
   if (!isAlive(pid)) return "already-stopped";
+  if (!owns(commandLineOf(pid))) return "not-ours";
   const tree = processTree(pid);
   signalAll(tree, "SIGTERM");
   const deadline = clock.now() + graceMs;

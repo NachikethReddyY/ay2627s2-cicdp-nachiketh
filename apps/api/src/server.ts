@@ -29,6 +29,6 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 const swept = await sweepOrphanedJobs(app.log);
 if (swept) app.log.warn(`failed ${swept} orphaned import job(s)`);
 
-await app.listen({ port: env.PORT, host: "0.0.0.0" });
+await app.listen({ port: env.PORT, host: process.env.HOST ?? "0.0.0.0" });
 app.log.info(`media storage: ${env.S3_BUCKET ? `configured (bucket ${env.S3_BUCKET})` : "off"}`);
 for (const w of startupWarnings(env)) app.log.warn(`WARNING: ${w}`);

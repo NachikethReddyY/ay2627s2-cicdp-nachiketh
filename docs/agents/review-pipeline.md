@@ -4,7 +4,7 @@
 
 ## When to run it
 
-- Before `pnpm agent:merge --sensitive`. A sensitive PR needs a reviewer agent pass first.
+- Before merging a sensitive PR. Run `pnpm review --json > review.json` on the PR head commit, then `pnpm agent:merge <pr> --review-result review.json`. The gate accepts only a clean result for that exact commit.
 - On any non-trivial PR, after local CI is green and before you ask a human.
 
 ```bash
@@ -37,12 +37,14 @@ The script adds no attribution line. The agent that posts the comment adds it.
 
 ## Safety and memory
 
-- Readers and the poster are separate. The reviewer, verifier and screener only return structured candidates, and their `gh` access is wrapped so any comment or write call throws. Only `postFindings` writes, and only with `--post`.
-- Text in the diff or index context that talks to the reviewer, claims a human already approved, or fakes an untrusted delimiter is flagged. The result carries a `flagged-injection` note and the comment gets a warning line.
+- Readers and the poster are separate. The reviewer, verifier and screener only return structured candidates, and the `gh` calls the script makes for them are wrapped so a comment, review, merge, edit or `gh api` write throws. Only `postFindings` writes, and only with `--post`. This does not sandbox the `claude` or `codex` CLI processes themselves: `--allowedTools` only pre-approves tools, so run reviews in a checkout that holds nothing secret and treat the output as untrusted.
+- Text in the diff or index context that talks to the reviewer, claims a human already approved, or fakes an untrusted delimiter is flagged. A flagged run ends as `incomplete` (exit 3), never `clean`, so a human reads the change. The comment gets a warning line.
 - Style, naming and cleanup findings are dropped at the verifier stage, before any verifier call. Severity is only `important` or `nit`.
 - Findings go to `.agent-review/ledger.jsonl` (append-only, latest line per id wins) with a stable id, head SHA, PR number, status `posted|addressed|dismissed`, and the GitHub comment database id and node id. A later run marks a finding addressed when the new diff changes its line.
 - Run `--dismiss <id>` for a finding that was wrong or did not matter. Three or more dismissed entries with similar text (token Jaccard 0.6) suppress a new finding.
-- Every comment ends with a line saying bot output never counts as an approval.
+- `REVIEW.md` and the `AGENTS.md` principles are read from the base ref, never from the branch under review, so a branch cannot change what is skipped or trusted.
+- Text posted to GitHub is sanitized: `@` mentions are defused, URLs are removed and token-like values are redacted.
+- Every comment ends with a line saying bot output is advisory and does not replace CI or the merge gate.
 
 ## What "incomplete" means
 

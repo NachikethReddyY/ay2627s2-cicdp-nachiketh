@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apiEnv, appEnv, engineEnv, serviceSpecs, VALIDATOR_ENGINE_TOKEN } from "../src/services.ts";
+import { apiEnv, appEnv, engineEnv, isValidatorCommand, serviceSpecs, VALIDATOR_ENGINE_TOKEN } from "../src/services.ts";
 
 const URL = "postgres://u:p@localhost:5432/learnquest_validator";
 
@@ -38,5 +38,13 @@ test("health URLs match the real routes", () => {
   assert.equal(specs.api.healthUrl, "http://localhost:3000/api/healthz");
   assert.equal(specs.web.healthUrl, "http://localhost:5173/");
   assert.equal(specs["fake-llm"].healthUrl, "http://localhost:8080/healthz");
-  assert.deepEqual(specs.web.args.slice(-3), ["--port", "5173", "--strictPort"]);
+  assert.deepEqual(specs.web.args.slice(-5), ["--port", "5173", "--host", "127.0.0.1", "--strictPort"]);
+});
+
+test("only processes started by the validator are recognised as ours", () => {
+  const root = "/work/learnquest";
+  assert.equal(isValidatorCommand("/usr/bin/node /work/learnquest/apps/api/src/server.ts", root), true);
+  assert.equal(isValidatorCommand("node pnpm.cjs --filter @learnquest/web exec vite --port 5173", root), true);
+  assert.equal(isValidatorCommand("/usr/bin/python uvicorn learnquest_engine.server:app", root), true);
+  assert.equal(isValidatorCommand("/Applications/Safari.app/Contents/MacOS/Safari", root), false);
 });

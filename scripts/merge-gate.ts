@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.ts";
 import { fileURLToPath } from "node:url";
@@ -13,21 +14,41 @@ export type PullRequest = {
   statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
 };
 
-export type GateOptions = { sensitive: boolean; unresolvedThreads: number; revertRate?: number | null };
+export type ReviewResultFile = { status?: string; head?: string };
+
+export type GateOptions = {
+  reviewResult: ReviewResultFile | null;
+  unresolvedThreads: number;
+  revertRate?: number | null;
+  localHead?: string | null;
+  worktreeClean?: boolean;
+};
 
 export const REVERT_RATE_LIMIT = 0.05;
+export const REQUIRED_CHECKS = ["lint", "unit", "engine", "deploy-scripts", "e2e"];
 
 const SENSITIVE: [RegExp, string][] = [
   [/^apps\/api\/src\/auth\//, "auth"],
+  [/^apps\/api\/src\/trpc\//, "auth guards"],
+  [/^apps\/api\/src\/(access|env)\.ts$/, "access control or secrets config"],
+  [/^apps\/api\/src\/config\//, "config and limits"],
+  [/^apps\/api\/src\/(sandbox|parts|grading|safety)\//, "practice run or answer handling"],
+  [/^apps\/api\/src\/(attempts|lessons)\/router\.ts$/, "answer and hint exposure"],
   [/^apps\/api\/drizzle\//, "database migration"],
   [/^apps\/api\/drizzle\.config\.ts$/, "database migration"],
-  [/^\.github\/workflows\//, "workflow"],
+  [/^\.github\//, "workflow or repo policy"],
   [/^infra\//, "infra"],
   [/^docker-compose.*\.yml$/, "infra"],
   [/(^|\/)Dockerfile|\.Dockerfile$/, "infra"],
+  [/(^|\/)vercel\.json$/, "deploy config"],
   [/^services\/sandbox\//, "sandbox boundary"],
   [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
-  [/^scripts\/(merge-gate|agent-merge|agent-verify|deploy|render|assert-main)/, "merge or deploy tooling"],
+  [/^services\/engine\/(pyproject\.toml|scripts\/check_comments\.py)$/, "engine guardrail config"],
+  [/^scripts\/(merge-gate|agent-|check-|revert-rate|deploy|render|assert-main|smoke)/, "merge, check or deploy tooling"],
+  [/^tools\/(validator|repo-index)\//, "agent tooling"],
+  [/^(\.oxlintrc\.json|package\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
+  [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
+  [/^\.claude\//, "agent skills"],
 ];
 
 export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
@@ -37,23 +58,39 @@ export function sensitivePaths(paths: string[]): { path: string; why: string }[]
   });
 }
 
-const PASSING = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+type Check = PullRequest["statusCheckRollup"][number];
+
+function checkName(check: Check): string {
+  return check.name ?? check.context ?? "unnamed check";
+}
+
+function checkOutcome(check: Check): string {
+  return check.conclusion ?? check.state ?? "";
+}
 
 export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
   const reasons: string[] = [];
   if (pr.state !== "OPEN") reasons.push(`PR is ${pr.state}, not OPEN`);
   if (pr.isDraft) reasons.push("PR is a draft");
-  if (pr.mergeable === "CONFLICTING") reasons.push("PR has merge conflicts");
+  if (pr.mergeable !== "MERGEABLE") reasons.push(`GitHub reports the PR as ${pr.mergeable.toLowerCase()}, not mergeable`);
   if (pr.reviewDecision === "CHANGES_REQUESTED") reasons.push("a reviewer requested changes");
   if (options.unresolvedThreads > 0) reasons.push(`${options.unresolvedThreads} unresolved review thread(s)`);
 
-  if (pr.statusCheckRollup.length === 0) reasons.push("no checks have reported on the head commit");
-  for (const check of pr.statusCheckRollup) {
-    const name = check.name ?? check.context ?? "unnamed check";
-    const outcome = check.conclusion ?? check.state ?? "";
-    if (check.status && check.status !== "COMPLETED") reasons.push(`check "${name}" is still ${check.status.toLowerCase()}`);
-    else if (!PASSING.has(outcome)) reasons.push(`check "${name}" is ${outcome.toLowerCase() || "not passing"}`);
+  for (const required of REQUIRED_CHECKS) {
+    const matches = pr.statusCheckRollup.filter((c) => checkName(c) === required);
+    if (matches.length === 0) reasons.push(`required check "${required}" has not reported on the head commit`);
+    else if (!matches.every((c) => c.status === "COMPLETED" && checkOutcome(c) === "SUCCESS")) reasons.push(`required check "${required}" has not succeeded`);
   }
+  for (const check of pr.statusCheckRollup) {
+    const outcome = checkOutcome(check);
+    if (check.status && check.status !== "COMPLETED") reasons.push(`check "${checkName(check)}" is still ${check.status.toLowerCase()}`);
+    else if (!["SUCCESS", "NEUTRAL", "SKIPPED"].includes(outcome)) reasons.push(`check "${checkName(check)}" is ${outcome.toLowerCase() || "not passing"}`);
+  }
+
+  if (options.localHead !== undefined && options.localHead !== pr.headRefOid) {
+    reasons.push(`the checked-out commit (${(options.localHead ?? "unknown").slice(0, 8)}) is not the PR head (${pr.headRefOid.slice(0, 8)}); check out the PR head so verification covers it`);
+  }
+  if (options.worktreeClean === false) reasons.push("the working tree has uncommitted changes, so local verification would not match the PR");
 
   if (options.revertRate !== undefined && options.revertRate !== null && options.revertRate > REVERT_RATE_LIMIT) {
     const pct = (options.revertRate * 100).toFixed(1);
@@ -61,47 +98,88 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
   }
 
   const sensitive = sensitivePaths(pr.files.map((f) => f.path));
-  if (sensitive.length > 0 && !options.sensitive) {
+  if (sensitive.length > 0) {
+    const review = options.reviewResult;
     const list = sensitive.slice(0, 5).map((s) => `${s.path} (${s.why})`).join(", ");
-    reasons.push(`touches sensitive paths: ${list}. Re-run with --sensitive once a reviewer agent has approved the diff`);
+    if (!review) reasons.push(`touches sensitive paths: ${list}. Pass --review-result <file> from \`agent-review --json\` on this head commit`);
+    else if (review.status !== "clean") reasons.push(`the review result is "${review.status ?? "missing"}", not clean, and the PR touches sensitive paths: ${list}`);
+    else if (review.head !== pr.headRefOid) reasons.push("the review result is for a different commit than the PR head; re-run the review");
   }
   return reasons;
 }
 
 function gh(args: string[]): string {
-  return execFileSync("gh", args, { encoding: "utf8" });
+  return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+}
+
+function git(args: string[], cwd: string): string {
+  return execFileSync("git", args, { encoding: "utf8", cwd });
+}
+
+function changedFiles(number: string): { path: string }[] {
+  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", ".[].filename"]);
+  return out.split("\n").filter(Boolean).map((path) => ({ path }));
 }
 
 function unresolvedThreadCount(number: string): number {
-  const query = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved}}}}}`;
+  const query = `query($owner:String!,$repo:String!,$n:Int!,$after:String){repository(owner:$owner,name:$repo){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{isResolved}}}}}`;
   const repo = JSON.parse(gh(["repo", "view", "--json", "owner,name"])) as { owner: { login: string }; name: string };
-  const out = JSON.parse(
-    gh(["api", "graphql", "-f", `query=${query}`, "-F", `owner=${repo.owner.login}`, "-F", `repo=${repo.name}`, "-F", `n=${number}`]),
-  ) as { data: { repository: { pullRequest: { reviewThreads: { nodes: { isResolved: boolean }[] } } } } };
-  return out.data.repository.pullRequest.reviewThreads.nodes.filter((t) => !t.isResolved).length;
+  type Page = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: { isResolved: boolean }[] } } } } };
+  let unresolved = 0;
+  let after: string | null = null;
+  for (;;) {
+    const args = ["api", "graphql", "-f", `query=${query}`, "-F", `owner=${repo.owner.login}`, "-F", `repo=${repo.name}`, "-F", `n=${number}`];
+    if (after) args.push("-F", `after=${after}`);
+    const page = JSON.parse(gh(args)) as Page;
+    const threads = page.data.repository.pullRequest.reviewThreads;
+    unresolved += threads.nodes.filter((t) => !t.isResolved).length;
+    if (!threads.pageInfo.hasNextPage) return unresolved;
+    after = threads.pageInfo.endCursor;
+  }
+}
+
+function readReviewResult(path: string | undefined): ReviewResultFile | null {
+  if (!path) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as ReviewResultFile;
+  } catch {
+    return { status: "unreadable" };
+  }
 }
 
 function main(argv: string[]): number {
   const number = argv.find((a) => /^\d+$/.test(a));
   if (!number) {
-    console.error("usage: node scripts/merge-gate.ts <pr-number> [--sensitive] [--dry-run] [--skip-local]");
+    console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run] [--skip-local]");
     return 2;
   }
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
+  const reviewFlagAt = argv.indexOf("--review-result");
+  const reviewResult = readReviewResult(reviewFlagAt >= 0 ? argv[reviewFlagAt + 1] : undefined);
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
   const pr = JSON.parse(
-    gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,files,statusCheckRollup"]),
-  ) as PullRequest;
+    gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
+  ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
-  const reasons = evaluateGate(pr, { sensitive: flags.has("--sensitive"), unresolvedThreads: unresolvedThreadCount(number), revertRate });
+  const skipLocal = flags.has("--skip-local");
+  const reasons = evaluateGate(
+    { ...pr, files: changedFiles(number) },
+    {
+      reviewResult,
+      unresolvedThreads: unresolvedThreadCount(number),
+      revertRate,
+      localHead: skipLocal ? undefined : git(["rev-parse", "HEAD"], root).trim(),
+      worktreeClean: skipLocal ? undefined : git(["status", "--porcelain"], root).trim() === "",
+    },
+  );
   if (reasons.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of reasons) console.error(`  - ${r}`);
     return 1;
   }
 
-  if (!flags.has("--skip-local")) {
+  if (!skipLocal) {
     execFileSync(resolve(root, "scripts/agent-verify.sh"), { stdio: "inherit", cwd: root });
   }
   if (flags.has("--dry-run")) {

@@ -18,18 +18,22 @@ const restrictedSyntax = (restrictEffects, restrictTimers) => [
   "error",
   { selector: "ImportDeclaration[source.value=/^@learnquest\\/api/][importKind!='type']", message: API_IMPORT_MESSAGE },
   { selector: "ImportDeclaration[source.value=/(^|\\/)api\\/src\\//]", message: API_IMPORT_MESSAGE },
+  { selector: "ExportNamedDeclaration[source.value=/^@learnquest\\/api/][exportKind!='type']", message: API_IMPORT_MESSAGE },
+  { selector: "ExportAllDeclaration[source.value=/^@learnquest\\/api/]", message: API_IMPORT_MESSAGE },
   { selector: "ImportExpression[source.value=/(^@learnquest\\/api)|((^|\\/)api\\/src\\/)/]", message: API_IMPORT_MESSAGE },
   ...(restrictEffects
     ? [
         { selector: `CallExpression[callee.name=/^${EFFECTS}$/]`, message: EFFECT_MESSAGE },
         { selector: `CallExpression[callee.object.name='React'][callee.property.name=/^${EFFECTS}$/]`, message: EFFECT_MESSAGE },
         { selector: `ImportSpecifier[imported.name=/^${EFFECTS}$/]`, message: EFFECT_MESSAGE },
+        { selector: `MemberExpression[property.name=/^${EFFECTS}$/]`, message: EFFECT_MESSAGE },
       ]
     : []),
   ...(restrictTimers
     ? [
         { selector: `CallExpression[callee.name=/^(${TIMERS})$/]`, message: TIMER_MESSAGE },
         { selector: `CallExpression[callee.object.name=/^(window|globalThis|self)$/][callee.property.name=/^(${TIMERS})$/]`, message: TIMER_MESSAGE },
+        { selector: `CallExpression[callee.object.name=/^(window|globalThis|self)$/][callee.computed=true][callee.property.value=/^(${TIMERS})$/]`, message: TIMER_MESSAGE },
       ]
     : []),
 ];

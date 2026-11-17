@@ -16,7 +16,7 @@ export const LEARNER_DATA_TABLES = [
   "enrollments",
 ];
 
-const PROTECTED_DATABASES = new Set(["learnquest_test", "postgres", "template0", "template1"]);
+const VALIDATOR_DATABASE_NAME = /^learnquest_validator[a-z0-9_]*$/;
 
 type PgClient = {
   connect(): Promise<void>;
@@ -37,8 +37,8 @@ export function databaseName(url: string): string {
 
 export function assertSafeDatabase(url: string): string {
   const name = databaseName(url);
-  if (PROTECTED_DATABASES.has(name) || name.endsWith("_test")) {
-    throw new Error(`refusing to manage database "${name}"; use a dedicated validator database`);
+  if (!VALIDATOR_DATABASE_NAME.test(name) || name.endsWith("_test")) {
+    throw new Error(`refusing to manage database "${name}"; the validator only manages databases named learnquest_validator or learnquest_validator_<suffix>`);
   }
   return name;
 }

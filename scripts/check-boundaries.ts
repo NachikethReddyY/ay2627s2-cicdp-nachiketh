@@ -42,7 +42,7 @@ export function checkFile(file: string, text: string): Violation[] {
     if (!isTest) {
       if (/@ts-(ignore|nocheck)\b/.test(raw)) add(NO_TS_IGNORE);
       if (/eslint-disable[^\n]*no-restricted-(syntax|imports)/.test(raw)) add(NO_DISABLE_GUARDRAIL);
-      if (/eslint-disable/.test(raw) && !/eslint-disable(-next-line|-line)?\s+\S.*\s--\s+\S/.test(raw)) add(NO_BARE_DISABLE);
+      if (/eslint-disable/.test(raw) && !/eslint-disable-(next-line|line)\s+[\w@/-]+(\s*,\s*[\w@/-]+)*\s+--\s+\S/.test(raw)) add(NO_BARE_DISABLE);
     }
   });
   return out;

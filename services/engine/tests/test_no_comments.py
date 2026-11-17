@@ -40,7 +40,13 @@ def test_coded_directives_are_allowed(line: str) -> None:
     assert checker.find_violations("a.py", line + "\n") == []
 
 
-BANNED_LINES = ["x = 1  # noqa", "x = f()  # type: ignore", "x = 1  # TODO: later"]
+BANNED_LINES = [
+    "x = 1  # noqa",
+    "x = f()  # type: ignore",
+    "x = 1  # TODO: later",
+    "# mypy: ignore-errors",
+    "# ruff: noqa",
+]
 
 
 @pytest.mark.parametrize("line", BANNED_LINES)

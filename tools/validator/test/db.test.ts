@@ -38,3 +38,11 @@ test("the postgres hint says how to start it", () => {
   assert.match(hint, /VALIDATOR_DATABASE_URL/);
   assert.match(hint, /localhost:5432/);
 });
+
+test("only validator-named databases are managed", () => {
+  for (const name of ["learnquest", "neondb", "postgres", "learnquest_test", "learnquest_validator_test", "other"]) {
+    assert.throws(() => assertSafeDatabase(`postgres://u:p@h:5432/${name}`), /refusing/, name);
+  }
+  assert.equal(assertSafeDatabase("postgres://u:p@h:5432/learnquest_validator"), "learnquest_validator");
+  assert.equal(assertSafeDatabase("postgres://u:p@h:5432/learnquest_validator_2"), "learnquest_validator_2");
+});

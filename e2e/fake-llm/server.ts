@@ -50,4 +50,4 @@ const server = createServer(async (req, res) => {
   return send(res, 200, { id: `fake-${served}`, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: "fake-llm", ...reply });
 });
 
-server.listen(port, "0.0.0.0", () => console.log(`fake-llm: listening on ${port} with ${queue.length} replies`));
+server.listen(port, process.env.HOST ?? "0.0.0.0", () => console.log(`fake-llm: listening on ${port} with ${queue.length} replies`));

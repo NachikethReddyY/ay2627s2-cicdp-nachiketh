@@ -7,8 +7,8 @@ export type CommentViolation = { file: string; line: number; text: string };
 type Range = { start: number; end: number };
 
 const ALLOWED = [
-  /^\s*eslint-(disable|enable)(-next-line|-line)?\b.*\s--\s+\S/,
-  /^\s*oxlint-(disable|enable)(-next-line|-line)?\b.*\s--\s+\S/,
+  /^\s*eslint-disable-(next-line|line)\s+[\w@/-]+(\s*,\s*[\w@/-]+)*\s+--\s+\S/,
+  /^\s*oxlint-disable-(next-line|line)\s+[\w@/-]+(\s*,\s*[\w@/-]+)*\s+--\s+\S/,
   /^\s*@ts-expect-error\s+--\s+\S/,
   /^\s*@ts-check\s*$/,
   /^\/\s*<reference\s/,

@@ -531,7 +531,7 @@ test("injected diffs stay flagged, cannot close the data block, and never become
       return '{"bugs":[]}';
     };
     const result = await runReview(input(root), depsWith(reviewer, failing("none")));
-    assert.equal(result.status, "clean");
+    assert.equal(result.status, "incomplete");
     assert.equal(result.injection.length, 3);
     assert.ok(result.notes.some((n) => n.startsWith("flagged-injection")));
     assert.equal((seen[0] ?? "").split("</untrusted-diff>").length, 2);
@@ -543,9 +543,9 @@ test("injected diffs stay flagged, cannot close the data block, and never become
   }
 });
 
-test("rendered output always says bot output is not an approval", () => {
+test("rendered output always says bot output does not replace CI or the gate", () => {
   const out = renderMarkdown({ status: "clean", findings: [], reason: null, notes: [], injection: [], reviewer: "a", verifier: "b" });
-  assert.ok(out.includes("never counts as an approval"));
+  assert.ok(out.includes("does not replace CI or the merge gate"));
 });
 
 test("readers cannot write to GitHub but the poster can", () => {

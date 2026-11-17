@@ -60,7 +60,7 @@ export const DEFAULT_MAX_FINDINGS = 8;
 export const DISMISSED_MATCHES_TO_DROP = 3;
 export const SIMILARITY_THRESHOLD = 0.6;
 export const LEDGER_PATH = ".agent-review/ledger.jsonl";
-export const APPROVAL_DISCLAIMER = "Bot output is advisory and never counts as an approval. A human approval is still required.";
+export const APPROVAL_DISCLAIMER = "Bot output is advisory. It does not replace CI or the merge gate.";
 export const MAX_DIFF_CHARS = 180_000;
 export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
@@ -542,7 +542,9 @@ export function scanForInjection(files: DiffFile[], context: ContextBlock[]): st
 
 export function readOnlyExec(exec: Exec): Exec {
   return (file, args, cwd) => {
-    const writes = file === "gh" && (args.includes("comment") || args.includes("--method") || args.includes("merge") || args.includes("review"));
+    const writeVerbs = ["comment", "merge", "review", "close", "edit", "reopen", "ready", "create", "delete"];
+    const apiWrites = args.includes("api") && args.some((a) => /^(-X|--method|-f|-F|--field|--raw-field|--input)(=|$)/.test(a));
+    const writes = file === "gh" && (apiWrites || args.some((a) => writeVerbs.includes(a)));
     if (writes) throw new Error("readers cannot write to GitHub");
     return exec(file, args, cwd);
   };
@@ -597,8 +599,12 @@ export type ReviewDeps = {
 
 export type ReviewInput = { root: string; pr: string | null; base: string; useIndex: boolean; reviewerName: string; verifierName: string };
 
-function readIfPresent(path: string): string {
-  return existsSync(path) ? readFileSync(path, "utf8") : "";
+function readFromBase(exec: Exec, root: string, base: string, path: string): string {
+  try {
+    return exec("git", ["show", `${base}:${path}`], root);
+  } catch {
+    return "";
+  }
 }
 
 export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<ReviewResult> {
@@ -612,8 +618,8 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     ...base,
   });
 
-  const reviewMd = readIfPresent(join(input.root, "REVIEW.md"));
-  const principles = markdownSection(readIfPresent(join(input.root, "AGENTS.md")), "Principles");
+  const reviewMd = readFromBase(deps.exec, input.root, input.base, "REVIEW.md");
+  const principles = markdownSection(readFromBase(deps.exec, input.root, input.base, "AGENTS.md"), "Principles");
   const skipList = parseSkipList(reviewMd);
 
   let diff: CollectedDiff;
@@ -671,6 +677,9 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const capped = capFindings(limitNits(filtered.kept), deps.maxFindings ?? DEFAULT_MAX_FINDINGS);
   if (capped.dropped > 0) notes.push(`capped at ${deps.maxFindings ?? DEFAULT_MAX_FINDINGS} finding(s), dropped ${capped.dropped}`);
   const findings = capped.kept;
+  if (injection.length > 0) {
+    return { status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base };
+  }
   return { status: findings.length === 0 ? "clean" : "findings", findings, reason: null, notes, injection, ...base };
 }
 
@@ -754,6 +763,13 @@ export function commentIdsFromUrl(output: string): number | null {
 
 export type PostOutcome = { entries: LedgerEntry[]; notes: string[] };
 
+export function sanitizeForPost(text: string): string {
+  return text
+    .replace(/@(?=\w)/g, "@\u200b")
+    .replace(/https?:\/\/\S+/g, "[link removed]")
+    .replace(/\b(token|secret|password|api[_-]?key|authorization)\b\s*[=:]\s*\S+/gi, "$1=[removed]");
+}
+
 export function postFindings(
   pr: string,
   result: ReviewResult,
@@ -766,7 +782,7 @@ export function postFindings(
   let nodeId: string | null = null;
   try {
     const file = join(dir, "comment.md");
-    writeFileSync(file, body);
+    writeFileSync(file, sanitizeForPost(body));
     const out = writer.exec("gh", ["pr", "comment", pr, "--body-file", file], writer.cwd);
     dbId = commentIdsFromUrl(out);
   } finally {
@@ -837,7 +853,8 @@ async function main(argv: string[]): Promise<number> {
     },
   );
   const body = renderMarkdown(result);
-  console.log(args.json ? JSON.stringify(result, null, 2) : body);
+  const head = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
+  console.log(args.json ? JSON.stringify({ ...result, head }, null, 2) : body);
   if (args.post && args.pr !== null) {
     const headSha = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
     const outcome = postFindings(args.pr, result, body, { exec: defaultExec, cwd: root, headSha, now });

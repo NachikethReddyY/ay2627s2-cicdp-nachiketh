@@ -18,7 +18,7 @@ import {
 } from "./db.ts";
 import { foreignPortMessage, judgePort, listenersOnPort, processTree } from "./ports.ts";
 import type { ServiceSpec } from "./services.ts";
-import { API_ORIGIN, VALIDATOR_EMAIL, VALIDATOR_ENGINE_TOKEN, VALIDATOR_PASSWORD, WEB_ORIGIN, appEnv, serviceSpecs, spawnDetached, stopProcess } from "./services.ts";
+import { API_ORIGIN, VALIDATOR_EMAIL, VALIDATOR_ENGINE_TOKEN, VALIDATOR_PASSWORD, WEB_ORIGIN, appEnv, serviceSpecs, spawnDetached, stopProcess, isValidatorCommand } from "./services.ts";
 import type { Layout, State } from "./state.ts";
 import { SERVICE_NAMES, emptyState, ensureLayout, isAlive, readState, removeState, writeState } from "./state.ts";
 import { realClock, waitForHttp } from "./wait.ts";
@@ -47,11 +47,11 @@ async function ensurePostgres(layout: Layout, url: string): Promise<void> {
   throw new CliError(postgresStartHint(url));
 }
 
-async function stopRecorded(state: State, names: string[]): Promise<void> {
+async function stopRecorded(layout: Layout, state: State, names: string[]): Promise<void> {
   for (const name of names) {
     const record = state.services[name as keyof State["services"]];
     if (!record) continue;
-    const outcome = await stopProcess(record.pid, realClock);
+    const outcome = await stopProcess(record.pid, realClock, 5000, (command) => command !== null && isValidatorCommand(command, layout.root));
     log(`${name}: ${outcome}`);
     delete state.services[name as keyof State["services"]];
   }
@@ -75,8 +75,8 @@ async function waitHealthy(spec: ServiceSpec): Promise<void> {
 
 async function startServices(layout: Layout, state: State, url: string, engine: boolean): Promise<void> {
   const specs = serviceSpecs(layout.root, url, engine);
-  if (state.services.api && state.services.api.engine !== engine) await stopRecorded(state, ["api"]);
-  if (!engine) await stopRecorded(state, ["engine"]);
+  if (state.services.api && state.services.api.engine !== engine) await stopRecorded(layout, state, ["api"]);
+  if (!engine) await stopRecorded(layout, state, ["engine"]);
   for (const spec of specs) {
     if (checkPort(spec, state) === "reuse") {
       log(`${spec.name}: reusing pid ${state.services[spec.name]?.pid ?? "unknown"} on port ${spec.port}`);
@@ -131,7 +131,7 @@ export async function up(layout: Layout, args: ParsedArgs): Promise<number> {
   state.database = url;
   await ensurePostgres(layout, url);
   if (fresh) {
-    await stopRecorded(state, [...SERVICE_NAMES]);
+    await stopRecorded(layout, state, [...SERVICE_NAMES]);
     log("dropping and recreating the validator database");
     await dropDatabase(layout.root, url);
   }
@@ -150,7 +150,7 @@ export async function down(layout: Layout, args: ParsedArgs): Promise<number> {
   const state = readState(layout);
   if (state) {
     runBrowser(browserArgs(["close"]));
-    await stopRecorded(state, [...SERVICE_NAMES].reverse());
+    await stopRecorded(layout, state, [...SERVICE_NAMES].reverse());
     removeState(layout);
   } else log("nothing recorded");
   if (args.flags.has("drop")) {
