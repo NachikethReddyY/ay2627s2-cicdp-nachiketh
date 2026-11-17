@@ -1,0 +1,16 @@
+{
+  "slug": "loops",
+  "title": "Loops over lists",
+  "description": "Visit every item, then build a new list from the ones you need.",
+  "path": "worlds/loops",
+  "concepts": [
+    {
+      "slug": "loops",
+      "name": "loops"
+    },
+    {
+      "slug": "array map",
+      "name": "array map"
+    }
+  ]
+}

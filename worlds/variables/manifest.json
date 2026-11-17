@@ -1,0 +1,16 @@
+{
+  "slug": "variables",
+  "title": "Variables and constants",
+  "description": "Name a value, then decide whether it is allowed to change.",
+  "path": "worlds/variables",
+  "concepts": [
+    {
+      "slug": "variables",
+      "name": "variables"
+    },
+    {
+      "slug": "constants",
+      "name": "constants"
+    }
+  ]
+}

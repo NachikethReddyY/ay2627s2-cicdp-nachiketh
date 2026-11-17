@@ -8,6 +8,11 @@ import { collectionPaths, collections, concepts, lessons, lessonVersions, pathCo
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
 
+// Short example courses that fill the Explore page on a fresh database. Each is a full world, checked like codequest.
+const SAMPLE_WORLDS = ["variables", "loops"];
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 async function readJson(file: string) {
   return JSON.parse(await readFile(file, "utf8")) as unknown;
 }
@@ -37,15 +42,74 @@ async function loadWorld(world: string) {
   return { manifest, files };
 }
 
-export async function seed() {
-  const { manifest, files } = await loadWorld("codequest");
-  await db.transaction(async (tx) => {
-    const course = { title: manifest.title, description: manifest.description };
+type Loaded = Awaited<ReturnType<typeof loadWorld>>;
+
+// Upserts one world with its concepts, lessons and steps, and returns the world's database id.
+async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
+  const course = { title: manifest.title, description: manifest.description };
+  await tx
+    .insert(worlds)
+    .values({ slug: manifest.slug, ...course })
+    .onConflictDoUpdate({ target: worlds.slug, set: course });
+  const [world] = await tx.select().from(worlds).where(eq(worlds.slug, manifest.slug));
+  const worldId = world!.id;
+
+  for (const c of manifest.concepts) {
     await tx
-      .insert(worlds)
-      .values({ slug: manifest.slug, ...course })
-      .onConflictDoUpdate({ target: worlds.slug, set: course });
-    const [world] = await tx.select().from(worlds).where(eq(worlds.slug, manifest.slug));
+      .insert(concepts)
+      .values({ worldId, ...c })
+      .onConflictDoUpdate({ target: [concepts.worldId, concepts.slug], set: { name: c.name } });
+  }
+
+  for (const file of files) {
+    const published = file.status === "published";
+    const values = {
+      slug: file.slug,
+      worldId,
+      title: file.title,
+      position: file.position,
+      sourceKind: file.source ? ("repo" as const) : ("authored" as const),
+      source: file.source ?? null,
+      concepts: file.concepts,
+    };
+    await tx
+      .insert(lessons)
+      .values({ ...values, status: file.status })
+      .onConflictDoUpdate({
+        target: lessons.slug,
+        // Status is set on insert only: once the row exists, publish and unpublish belong to the author, not the file.
+        set: values,
+      });
+    const [lesson] = await tx.select().from(lessons).where(eq(lessons.slug, file.slug));
+
+    await tx
+      .insert(lessonVersions)
+      .values({ lessonId: lesson!.id, version: 1, publishedAt: published ? new Date() : null })
+      .onConflictDoNothing();
+    const [version] = await tx.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson!.id));
+    await tx.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
+
+    for (const [idx, s] of file.steps.entries()) {
+      // Repo-owned content: a reseed overwrites public and secret on purpose, so the JSON files stay the source of truth.
+      const row = {
+        // Lesson 1 pins s1..s3 (the web contract); other lessons default to <slug>-<idx>.
+        id: s.id ?? `${file.slug}-${idx}`,
+        lessonVersionId: version!.id,
+        idx,
+        public: s.public,
+        secret: s.secret,
+      };
+      await tx.insert(steps).values(row).onConflictDoUpdate({ target: steps.id, set: row });
+    }
+  }
+  return worldId;
+}
+
+export async function seed() {
+  const main = await loadWorld("codequest");
+  const samples = await Promise.all(SAMPLE_WORLDS.map(loadWorld));
+  await db.transaction(async (tx) => {
+    const codeQuestId = await seedWorld(tx, main);
 
     const path = { title: "JavaScript Foundations", tagline: "Read real code and predict what it does" };
     await tx
@@ -63,56 +127,19 @@ export async function seed() {
     if (created) await tx.insert(collectionPaths).values({ collectionId: created.id, pathId: jsPath!.id, position: 0 });
     await tx
       .insert(pathCourses)
-      .values({ pathId: jsPath!.id, worldId: world!.id, position: 0 })
+      .values({ pathId: jsPath!.id, worldId: codeQuestId, position: 0 })
       .onConflictDoNothing();
 
-    for (const c of manifest.concepts) {
-      await tx
-        .insert(concepts)
-        .values({ worldId: world!.id, ...c })
-        .onConflictDoUpdate({ target: [concepts.worldId, concepts.slug], set: { name: c.name } });
-    }
-
-    for (const file of files) {
-      const published = file.status === "published";
-      const values = {
-        slug: file.slug,
-        worldId: world!.id,
-        title: file.title,
-        position: file.position,
-        sourceKind: file.source ? ("repo" as const) : ("authored" as const),
-        source: file.source ?? null,
-        concepts: file.concepts,
-      };
-      await tx
-        .insert(lessons)
-        .values({ ...values, status: file.status })
-        .onConflictDoUpdate({
-          target: lessons.slug,
-          // Status is set on insert only: once the row exists, publish and unpublish belong to the author, not the file.
-          set: values,
-        });
-      const [lesson] = await tx.select().from(lessons).where(eq(lessons.slug, file.slug));
-
-      await tx
-        .insert(lessonVersions)
-        .values({ lessonId: lesson!.id, version: 1, publishedAt: published ? new Date() : null })
-        .onConflictDoNothing();
-      const [version] = await tx.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson!.id));
-      await tx.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
-
-      for (const [idx, s] of file.steps.entries()) {
-        // Repo-owned content: a reseed overwrites public and secret on purpose, so the JSON files stay the source of truth.
-        const row = {
-          // Lesson 1 pins s1..s3 (the web contract); other lessons default to <slug>-<idx>.
-          id: s.id ?? `${file.slug}-${idx}`,
-          lessonVersionId: version!.id,
-          idx,
-          public: s.public,
-          secret: s.secret,
-        };
-        await tx.insert(steps).values(row).onConflictDoUpdate({ target: steps.id, set: row });
-      }
+    // The sample courses share their own path, so Explore has a second path to browse.
+    const samplePath = { title: "Sample courses", tagline: "Short courses to try LearnSlop" };
+    await tx
+      .insert(paths)
+      .values({ slug: "sample-courses", ...samplePath })
+      .onConflictDoUpdate({ target: paths.slug, set: samplePath });
+    const [sample] = await tx.select().from(paths).where(eq(paths.slug, "sample-courses"));
+    for (const [position, world] of samples.entries()) {
+      const worldId = await seedWorld(tx, world);
+      await tx.insert(pathCourses).values({ pathId: sample!.id, worldId, position }).onConflictDoNothing();
     }
   });
 }

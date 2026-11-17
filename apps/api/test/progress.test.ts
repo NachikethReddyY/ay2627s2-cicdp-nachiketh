@@ -39,7 +39,7 @@ test("new learner sees the official path and nothing to continue", async () => {
   const body = out(await get(await signUp(app)));
   assert.equal(body.continue, null);
   assert.deepEqual(body.paths, []);
-  assert.equal(body.official[0].slug, "js-foundations");
+  assert.deepEqual(body.official.map((p: { slug: string }) => p.slug).sort(), ["js-foundations", "sample-courses"]);
   assert.equal(body.stats.xp, 0);
   assert.equal(body.stats.streak, 0);
   assert.equal(body.stats.week.length, 7);
@@ -60,7 +60,9 @@ test("enrolled learner gets continue, progress and XP", async () => {
   let body = out(await get(cookie));
   assert.deepEqual(body.continue.lesson, { slug: "lesson-1", title: body.continue.lesson.title, level: 1, done: 0, total: 3 });
   assert.equal(body.continue.course.slug, "codequest");
-  assert.deepEqual(body.official, []);
+  assert.deepEqual(body.official, [
+    { slug: "sample-courses", title: "Sample courses", tagline: "Short courses to try LearnSlop", origin: "official", courseCount: 2, learners: 0 },
+  ]);
 
   assert.equal((await answer(cookie, "s1", { kind: "mcq", choice: 1 })).statusCode, 200);
   assert.equal((await answer(cookie, "s2", { kind: "cloze", text: "discount = 0" })).statusCode, 200);
@@ -127,7 +129,7 @@ test("paths.list: scopes, enrolled flag, search and visibility", async () => {
   ]);
   const slugs = async (input?: object, c = cookie) => out(await q(c, "paths.list", input)).map((p: { slug: string }) => p.slug);
 
-  assert.deepEqual(await slugs(), ["js-foundations"]);
+  assert.deepEqual(await slugs(), ["js-foundations", "sample-courses"]);
   assert.deepEqual(
     out(await q(cookie, "paths.list"))[0],
     {
