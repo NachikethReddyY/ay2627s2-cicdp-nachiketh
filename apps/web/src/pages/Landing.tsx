@@ -4,7 +4,6 @@ import "./landing.css";
 import "./landing/sections.css";
 import { Logo } from "./landing/Logo";
 
-// Floating tiles around the headline. Position and tilt live in CSS (.lp-tile-a to -f).
 const tiles = [
   { id: "a", src: "/images/tech/html.svg" },
   { id: "b", src: "/images/tech/json.svg" },
@@ -14,7 +13,6 @@ const tiles = [
   { id: "f", src: "/images/tech/node.svg" },
 ] as const;
 
-// What the product is, one row each: a product card on one side, the explanation on the other.
 const features = [
   {
     id: "guess", Mock: GuessMock, flip: false,

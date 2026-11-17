@@ -18,7 +18,7 @@ test("a zero estimate at exactly the limit is refused; an exact fit is allowed",
   env.AI_DAILY_BUDGET_USD = 10;
   env.AI_MONTHLY_BUDGET_USD = 100;
   await db.execute(sql`INSERT INTO spend_ledger (id, amount_usd) VALUES (${randomUUID()}, 9)`);
-  await reserveAiSpend(1); // 9 + 1 == 10: fits exactly
+  await reserveAiSpend(1);
   await assert.rejects(reserveAiSpend(0), (e: any) => e.code === "TOO_MANY_REQUESTS");
   await assert.rejects(reserveAiSpend(0.01), (e: any) => e.code === "TOO_MANY_REQUESTS");
 });

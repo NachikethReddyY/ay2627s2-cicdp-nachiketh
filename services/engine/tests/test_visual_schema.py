@@ -15,7 +15,6 @@ CATALOG = Path(__file__).resolve().parents[3] / "packages" / "ui-catalog"
 SCHEMA: dict[str, Any] = json.loads((CATALOG / "visual.schema.json").read_text())
 VALIDATOR = Draft202012Validator(SCHEMA)
 FIXTURES = sorted((CATALOG / "fixtures").rglob("*.json"))
-# Fixtures whose envelope is wrong: rejected whatever blocks are registered.
 ENVELOPE_BAD = {"v2.json", "empty-blocks.json", "too-many-blocks.json", "extra-envelope-key.json"}
 
 

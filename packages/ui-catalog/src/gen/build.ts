@@ -6,14 +6,8 @@ import { RESERVED } from "../core/reserved.ts";
 
 const byType = (mods: readonly BlockModule[]) => [...mods].sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
 
-// "input" so props with defaults stay optional: the schema checks what the model sends, before parsing.
 const toJson = (schema: z.ZodType) => z.toJSONSchema(schema, { io: "input" });
 
-/**
- * The whole spec as one zod schema: the envelope with `blocks` narrowed to the registered types.
- * With no modules, `blocks` items are z.never(), so the schema accepts no spec at all.
- * Not covered here (parseSpec only): check(), budgets, duplicate ids, the byte cap, and per-block leniency.
- */
 export const specSchema = (mods: readonly BlockModule[]) => {
   const blocks = byType(mods).map((m) => blockSchema(m.type, m.schema));
   const item = blocks.length ? z.discriminatedUnion("type", blocks as [(typeof blocks)[number], ...typeof blocks]) : z.never();
@@ -25,7 +19,6 @@ export const jsonSchema = (mods: readonly BlockModule[]): string => {
   return JSON.stringify({ $schema, title: "LearnSlop visual spec", ...rest }, null, 2) + "\n";
 };
 
-/** The block catalog the model reads: envelope rules, then one section per block type, sorted. */
 export const catalog = (mods: readonly BlockModule[]): string => {
   const head = [
     "# LearnSlop visual blocks",

@@ -20,7 +20,6 @@ export default function Generator() {
   const [q, setQ] = useState(() => ("prompt" in job ? job.prompt : ""));
   const [empty, setEmpty] = useState(false);
   const navigate = useNavigate();
-  // Only a path this visit is waiting on opens by itself. One that finished while the learner was away waits for a click.
   const waiting = useRef(job.status === "running");
   const busy = job.status === "running";
   const err = job.status === "failed" ? (aiErrors[job.code ?? ""] ?? genericError) : null;
@@ -33,7 +32,6 @@ export default function Generator() {
     }
   }, [job, navigate]);
 
-  // A prompt sent while another path is being generated joins the queue and starts after the learner has seen that result.
   const run = (prompt: string) => {
     waiting.current = true;
     void startGeneration(prompt, (p) => trpc.paths.generate.mutate({ prompt: p }));
@@ -63,7 +61,7 @@ export default function Generator() {
             onChange={(e) => {
               setQ(e.target.value);
               setEmpty(false);
-              dismissJob(); // the learner is writing a new prompt, so the last outcome is no longer news
+              dismissJob();
             }}
           />
           <button className="lq-btn lq-btn-blue" type="submit" aria-busy={busy}>

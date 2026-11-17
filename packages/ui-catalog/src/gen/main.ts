@@ -1,4 +1,3 @@
-// `node src/gen/main.ts` writes the generated files; `--check` exits 1 if any committed one is stale.
 import { readFileSync, writeFileSync } from "node:fs";
 import { BLOCKS } from "../core/parse.ts";
 import { catalog, jsonSchema } from "./build.ts";

@@ -28,8 +28,6 @@ function Root() {
   );
 }
 
-// Sends signed-out visitors to /login (and back here afterwards) before the route renders.
-// A failed check is not "signed out": it throws, so the route's error screen offers a retry.
 async function requireSession(here: string) {
   let result: Awaited<ReturnType<typeof authClient.getSession>>;
   try {
@@ -76,21 +74,19 @@ const routeTree = root.addChildren([
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
   ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),
   ...(TestPlayer ? [createRoute({ ...r, path: "/test/player", component: () => <TestPlayer /> })] : []),
-  // The lesson's editor, opened as /editor?lesson=<slug>, the same way /play takes its lesson.
   ...(TestEditor ? [createRoute({
     ...r,
     path: "/editor",
     component: () => <TestEditor />,
     beforeLoad: guard,
     validateSearch: (s: Record<string, unknown>): { lesson?: string } => ({
-      lesson: s.lesson === undefined || s.lesson === "" ? undefined : String(s.lesson),
+      lesson: s.lesson === undefined || s.lesson === "" ? undefined : typeof s.lesson === "string" ? s.lesson : JSON.stringify(s.lesson),
     }),
   })] : []),
 ]);
 
 const router = createRouter({ routeTree, defaultNotFoundComponent: NotFound, defaultErrorComponent: RouteError });
 
-// Vite reports a failed chunk preload (a deploy replaced the files under a stale tab): reload once.
 window.addEventListener("vite:preloadError", (e) => {
   if (reloadOnce()) e.preventDefault();
 });

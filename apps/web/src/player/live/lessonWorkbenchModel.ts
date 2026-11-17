@@ -3,23 +3,19 @@ import { monacoLanguage, solutionFile } from "./checkModel.ts";
 
 const LANGUAGE_LABELS = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" } as const;
 
-/** The one file a practice lesson opens in the workbench, and the status-bar language for it. */
 export function lessonFile(language: string | undefined) {
   const lang = monacoLanguage(language);
   return { fileName: solutionFile(lang), languageLabel: LANGUAGE_LABELS[lang] };
 }
 
-/** The last `max` characters of a run's output, so a chatty program cannot grow the pane without bound. */
 export const outputTail = (text: string, max: number) => (text.length > max ? text.slice(text.length - max) : text);
 
-/** Which actions may start now. The toolbar buttons and the command palette both read this, so a palette entry cannot start what a disabled button would not. */
 export const actionGuards = (o: { busy: boolean; checkBusy: boolean; lintBusy: boolean; code: string }) => ({
   run: !o.busy,
   check: !o.busy && !o.checkBusy,
   lint: !o.lintBusy && o.code.trim() !== "",
 });
 
-/** The status line under the terminal heading: what the shell is doing, and whether the learner can retry. Null when there is nothing to say. */
 export function shellLine(s: ShellState): { text: string; retry?: boolean } | null {
   switch (s.kind) {
     case "connecting":

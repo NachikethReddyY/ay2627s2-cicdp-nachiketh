@@ -3,7 +3,6 @@ import type { HomeData } from "../../lib/api";
 import { Arrow } from "./art";
 import { pct } from "./pct";
 
-// The learner's place in their path. The code panel shows only when the lesson has a real snippet to predict.
 export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }) {
   return (
     <section className={`lq-card lq-hero lq-continue-photo lq-rise d2${c.snippet ? "" : " lq-hero-solo"}`} aria-labelledby="hero-h">

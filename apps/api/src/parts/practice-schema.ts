@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-// The one place a practice part's stored content is parsed (no db import, so the visuals gate can use it too).
 export const PRACTICE_LANGUAGES = ["python", "javascript", "typescript"] as const;
 export type PracticeLanguage = (typeof PRACTICE_LANGUAGES)[number];
 export const MAX_TESTS = 25;
-export const MAX_SAMPLE_TESTS = 2; // a part shows at most two tests; the rest are locked
+export const MAX_SAMPLE_TESTS = 2;
 
 export const PracticeTestSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/),
@@ -23,7 +22,7 @@ export const PracticeContent = z
     language: z.enum(PRACTICE_LANGUAGES).default("javascript"),
     starterCode: z.string().max(3000),
     tests: z.array(PracticeTestSchema).min(1).max(MAX_TESTS).optional(),
-    expectedOutput: z.string().max(1000).optional(), // legacy: read as one required hidden test
+    expectedOutput: z.string().max(1000).optional(),
   })
   .superRefine((v, ctx) => {
     if (!v.tests && v.expectedOutput === undefined) ctx.addIssue({ code: "custom", message: "tests or expectedOutput is required" });
@@ -36,7 +35,6 @@ export const PracticeContent = z
 
 export type Practice = { instructions: string; language: PracticeLanguage; starterCode: string; tests: PracticeTest[] };
 
-/** Parses stored practice content into its normalized form (legacy expectedOutput becomes one hidden required test), or null when it is invalid. */
 export function parsePractice(content: unknown): Practice | null {
   const r = PracticeContent.safeParse(content);
   if (!r.success) return null;

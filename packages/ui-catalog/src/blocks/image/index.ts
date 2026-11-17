@@ -11,15 +11,12 @@ type Props =
 
 export const imageBlock: BlockModule<Props> = {
   type: "image",
-  // "generated" and "generated-pending" are written only by the API (resolveDocImages); models must not emit them.
   schema: z.discriminatedUnion("source", [
     z.strictObject({ source: z.literal("asset"), assetId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), alt: alt(), caption: text(200).optional() }),
     z.strictObject({ source: z.literal("generate"), prompt: text(400), alt: alt(), caption: text(200).optional() }),
     z.strictObject({ source: z.literal("generated"), url: z.string().max(2048), alt: alt(), caption: text(200).optional() }),
     z.strictObject({ source: z.literal("generated-pending"), alt: alt(), caption: text(200).optional() }),
   ]),
-  // shortcut: asset ids are checked by the caller, not the store; check at save in LQ-17
-  // parseSpec passes no ids; a save-time caller passes the ids the store knows.
   check: (b, knownAssetIds?: readonly string[]) =>
     b.props.source === "asset" && knownAssetIds && !knownAssetIds.includes(b.props.assetId) ? [{ path: "props.assetId", message: `unknown asset "${b.props.assetId}"` }] : [],
   describe: (b) => `Image: ${b.props.alt}`,

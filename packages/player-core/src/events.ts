@@ -4,7 +4,6 @@ import type { Files, ReplayEvent, StepInput, StepSpan, Snapshot, Timeline, Typin
 export const K = 200;
 const DEFAULT_TYPING: TypingConfig = { msPerChar: 200, lineEndPauseMs: 300, blockThresholdLines: 20 };
 
-/** Applies one edit event to a text. */
 export function applyEdit(text: string, e: ReplayEvent): string {
   if (e.kind === "insert") return text.slice(0, e.offset) + e.text + text.slice(e.offset);
   if (e.kind === "delete") return text.slice(0, e.offset) + text.slice(e.offset + e.length);
@@ -46,7 +45,6 @@ export function buildTimeline(steps: StepInput[], config: TypingConfig = DEFAULT
       const newL: string[] = [];
       let changed = 0;
       for (const line of h.lines) {
-        // LLMs often emit a blank context line as "" instead of " ".
         const p = line === "" ? " " : line[0];
         if (p === "\\") continue;
         if (p !== " " && p !== "-" && p !== "+") throw new Error(`hunk ${h.id}: bad line prefix in "${line}"`);
@@ -64,7 +62,6 @@ export function buildTimeline(steps: StepInput[], config: TypingConfig = DEFAULT
       for (let i = 0; i < Math.min(start, lines.length); i++) offset += lines[i].length + 1;
       let oldSeg = oldL.join("\n");
       let newSeg = newL.join("\n");
-      // Empty sides carry the newline that separates them from their neighbours.
       if (n === 0 && m > 0) {
         if (start < lines.length) newSeg += "\n";
         else (offset = text.length), (newSeg = "\n" + newSeg);
@@ -101,7 +98,6 @@ export function buildTimeline(steps: StepInput[], config: TypingConfig = DEFAULT
   return { events, snapshots: addPeriodic(events, snapshots), steps: spans, duration: t };
 }
 
-// Periodic snapshots need the running state, so rebuild it by replaying once (cheap, linear).
 function addPeriodic(events: ReplayEvent[], boundary: Snapshot[]): Snapshot[] {
   const out: Snapshot[] = [];
   let bi = 0;

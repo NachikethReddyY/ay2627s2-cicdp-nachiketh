@@ -10,17 +10,13 @@ import { cameraPreset, lightPreset, orbitPosition, parts, resolve, type Primitiv
 
 type Props = Scene3dProps;
 type Orbit = { yaw: number; pitch: number; zoom: number };
-// shortcut: three has no types here (@types/three is not a dependency), so scene objects are untyped; add @types/three to tighten.
 type Object3D = any;
 type Objs = Map<string, Object3D>;
 
-// Perf budget: <=60 objects, <=100 draw calls, <=100k triangles (budget.ts), dpr <= 2, frameloop "demand".
-// shortcut: >=30 fps on a low-end phone is enforced only through those caps; it is not measured. For a dev probe, watch
-// renderer.info.render (calls, triangles) in the console or add drei <Stats/> temporarily, on a real throttled device.
 const hasWebGL2 = () => {
   try {
     const gl = document.createElement("canvas").getContext("webgl2");
-    gl?.getExtension("WEBGL_lose_context")?.loseContext(); // free the probe context straight away
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
     return !!gl;
   } catch { return false; }
 };
@@ -34,29 +30,25 @@ function Prim({ p, state, ms, paused, objs }: { p: Primitive; state?: TimelineSt
   const r = resolve(p, state);
   const invalidate = useThree((s) => s.invalidate);
   const cur = useRef<{ pos: Vec3; rot: Vec3 }>({ pos: [...r.position], rot: [...r.rotation] });
-  // Pause freezes the easing in flight; a new target in the same commit (a step reached during playback, or a Next click) clears the freeze and eases in.
   const frozen = useRef(false);
   const seen = useRef({ state, ms });
   useEffect(() => { const o = g.current; if (o) objs.set(p.id, o); return () => { objs.delete(p.id); }; }, [objs, p.id]);
-  // Frameloop is "demand": a new target needs one frame to start; the loop then keeps invalidating until it arrives.
   useEffect(() => {
     const newTarget = seen.current.state !== state || seen.current.ms !== ms;
     seen.current = { state, ms };
     frozen.current = newTarget ? false : paused;
     invalidate();
   }, [invalidate, state, ms, paused]);
-  // Ease towards the target; ms is 0 under reduced motion and without a timeline, which snaps instead.
   useFrame(({ invalidate: again }, dt) => {
     const o = g.current;
     if (!o || frozen.current) return;
-    // Clamped so the first frame after a pause or an off-screen gap does not snap to the target.
     const step = Math.min(dt, 0.1);
     const k = ms ? 1 - Math.exp((-step * 4000) / ms) : 1;
     let left = 0;
     for (let i = 0; i < 3; i++) {
-      cur.current.pos[i] = cur.current.pos[i]! + (r.position[i]! - cur.current.pos[i]!) * k;
-      cur.current.rot[i] = cur.current.rot[i]! + (r.rotation[i]! - cur.current.rot[i]!) * k;
-      left = Math.max(left, Math.abs(r.position[i]! - cur.current.pos[i]!), Math.abs(r.rotation[i]! - cur.current.rot[i]!));
+      cur.current.pos[i] = cur.current.pos[i] + (r.position[i] - cur.current.pos[i]) * k;
+      cur.current.rot[i] = cur.current.rot[i] + (r.rotation[i] - cur.current.rot[i]) * k;
+      left = Math.max(left, Math.abs(r.position[i] - cur.current.pos[i]), Math.abs(r.rotation[i] - cur.current.rot[i]));
     }
     if (left > 1e-3) again(); else { cur.current.pos = [...r.position]; cur.current.rot = [...r.rotation]; }
     o.position.set(...cur.current.pos);
@@ -93,7 +85,6 @@ function Rig({ base, orbit, poke, labels, objs, sizes }: {
     camera.lookAt(0, 0, 0);
     camera.updateMatrixWorld();
     const v = (vec.current ??= camera.position.clone());
-    // Labels are React text in an overlay; their screen position follows the (animated) object.
     labels.current.forEach((el, id) => {
       const o = objs.get(id);
       if (!o) return;
@@ -123,15 +114,13 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
   const [lost, setLost] = useState(false);
   const [gen, setGen] = useState(0);
   const orbiting = p.controls !== false;
-  // Captions sit just above their object; label primitives sit on their own position.
   const sizes = useMemo(() => new Map(p.primitives.map((x) => [x.id, x.kind === "label" ? 0 : x.size * 1.2])), [p.primitives]);
   const tagged = p.primitives.filter((x) => x.label);
 
-  // Off-screen: frameloop "never". jsdom and old browsers have no IntersectionObserver and stay visible.
   useEffect(() => {
     const el = root.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setVisible(e!.isIntersecting));
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting));
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -150,7 +139,6 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
       d.mode = "orbit";
     }
     orbit.current.yaw -= (e.clientX - d.x) * 0.01;
-    // Touch keeps vertical drags for scrolling the page (touch-action: pan-y), so only the mouse tilts.
     if (!d.touch) orbit.current.pitch += (e.clientY - d.y) * 0.01;
     d.x = e.clientX; d.y = e.clientY;
     poke.current();
@@ -159,7 +147,7 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
     if (!d) return;
     e.preventDefault();
-    turn(d[0]! * STEP, d[1]! * STEP);
+    turn(d[0] * STEP, d[1] * STEP);
   };
 
   return (
@@ -228,8 +216,7 @@ function Timed({ p, desc, timeline }: { p: Props; desc: string; timeline: NonNul
   const tl = useTimeline(timeline);
   return (
     <div ref={tl.ref} className="min-w-0 max-w-full">
-      <Scene p={p} desc={desc} state={tl.state} ms={tl.reduced ? 0 : timeline.steps[tl.step]!.durationMs} paused={!tl.playing} />
-      {/* Captions are announced by the aria-live region inside StepControls. */}
+      <Scene p={p} desc={desc} state={tl.state} ms={tl.reduced ? 0 : timeline.steps[tl.step].durationMs} paused={!tl.playing} />
       <StepControls tl={tl} />
     </div>
   );
@@ -247,8 +234,6 @@ export default function Scene3dView({ block }: BlockViewProps<Props>) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (status === "pending" && !over) setStatus(hasWebGL2() ? "live" : "nowebgl"); }, [status, over]);
-  // Only one live WebGL context per page (module-level counter); a second block falls back to its poster.
-  // shortcut: a poster tapped while another scene is live stays a poster; no hand-over between blocks, upgrade if lessons need two live scenes.
   useEffect(() => {
     if (status !== "live") return;
     if (!liveContexts.acquire()) { setBusy(true); setStatus("poster"); return; }
@@ -256,7 +241,6 @@ export default function Scene3dView({ block }: BlockViewProps<Props>) {
     return () => { liveContexts.release(); setHeld(false); };
   }, [status]);
 
-  // Over budget: text only, there is nothing to retry. Render errors fall to BlockFrame, which shows the same text.
   if (over) return <p role="img" aria-label={p.alt} className={`${box} font-semibold`}>{desc}</p>;
   if (status === "live" && held) return p.timeline ? <Timed p={p} desc={desc} timeline={p.timeline} /> : <Scene p={p} desc={desc} ms={0} />;
   const action = status === "poster" ? "Tap to load 3D" : status === "nowebgl" ? "Tap to reload 3D" : null;

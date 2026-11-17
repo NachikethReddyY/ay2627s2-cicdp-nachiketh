@@ -41,7 +41,6 @@ test("every lesson file validates, keeps hunks consistent and never leaks the an
     file.steps.forEach((s, i) => {
       const next = file.steps[i + 1];
       if (next) {
-        // Applying this step's hunks to its files must give the next step's files.
         const after = applyHunks(s.secret.beforeFiles, s.secret.hunks);
         for (const [path, text] of Object.entries(next.secret.beforeFiles)) {
           assert.equal(after[path], text, `${name} step ${i}: ${path}`);
@@ -68,7 +67,6 @@ test("seed is idempotent and gives the expected ids", async () => {
   const first = await count();
   await seed();
   assert.deepEqual(await count(), first);
-  // Lessons 1 and 2 plus the two sample worlds (variables and loops).
   assert.deepEqual(first, { lessons: 4, steps: 10, concepts: 7 });
 
   const l1 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-1")))[0]!;
@@ -90,7 +88,7 @@ test("reseed keeps an author's status change but restores repo-owned step conten
   const original = await s1();
   try {
     await db.update(lessons).set({ status: "published" }).where(eq(lessons.slug, "lesson-2"));
-    await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-1")); // unpublished by the author
+    await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-1"));
     await db.update(steps).set({ public: { title: "edited", prompt: "edited", kind: "mcq" }, secret: { ...original.secret, narration: "edited" } }).where(eq(steps.id, "s1"));
     await seed();
     const status = async (slug: string) => (await db.select().from(lessons).where(eq(lessons.slug, slug)))[0]!.status;
@@ -101,7 +99,6 @@ test("reseed keeps an author's status change but restores repo-owned step conten
     assert.deepEqual(row.public, file.steps[0]!.public);
     assert.deepEqual(row.secret, file.steps[0]!.secret);
   } finally {
-    // Leave the shared test database as the seed made it.
     await db.update(lessons).set({ status: "published" }).where(eq(lessons.slug, "lesson-1"));
     await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-2"));
     await db.update(steps).set({ public: original.public, secret: original.secret }).where(eq(steps.id, "s1"));
@@ -115,7 +112,6 @@ test("duplicate lesson slugs or step ids across files are errors", async () => {
   assert.throws(() => assertUniqueAcrossFiles([a, { ...b, slug: a.slug }]), /Duplicate lesson slug: lesson-1/);
   const clash = { ...b, steps: b.steps.map((s, i) => (i === 0 ? { ...s, id: "s1" } : s)) };
   assert.throws(() => assertUniqueAcrossFiles([a, clash]), /Duplicate step id: s1/);
-  // An explicit id can also collide with another lesson's default id.
   const explicit = { ...a, slug: "lesson-3", steps: a.steps.map((s, i) => ({ ...s, id: `lesson-2-${i}` })) };
   assert.throws(() => assertUniqueAcrossFiles([b, explicit]), /Duplicate step id: lesson-2-0/);
 });

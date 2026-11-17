@@ -15,7 +15,6 @@ const MAX_WINDOWS = 1000;
 const MAX_DEPTH = 8;
 const SEGMENT = /^[A-Za-z0-9._-]{1,64}$/;
 
-/** "" for an absent or empty dir, null for an invalid one: up to 8 safe segments, no "." or ".." and no empty ones. */
 export function parseDir(raw: unknown): string | null {
   if (raw === undefined || raw === "") return "";
   if (typeof raw !== "string") return null;
@@ -26,7 +25,6 @@ export function parseDir(raw: unknown): string | null {
 
 const fail = (code: string, message: string) => ({ error: { code, message } });
 
-/** Fixed window per learner: true while the learner is within `max` calls in the current minute. Expired windows are pruned once the map is large. */
 export function limiter(max: number, clock: () => number = Date.now) {
   const windows = new Map<string, { start: number; n: number }>();
   const check = (learner: string): boolean => {
@@ -43,7 +41,6 @@ export function limiter(max: number, clock: () => number = Date.now) {
   return Object.assign(check, { size: () => windows.size });
 }
 
-// One backend call at a time per learner. The entry is dropped once the chain is idle.
 const chains = new Map<string, Promise<unknown>>();
 function serial<T>(learner: string, fn: () => Promise<T>): Promise<T> {
   const run = (chains.get(learner) ?? Promise.resolve()).then(fn, fn);
@@ -112,15 +109,12 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
     }
   });
 
-  // One request reads up to MAX_BATCH_READ files. It counts once against listAllowed, so a project with many small files
-  // does not use up the per-minute budget. Missing and oversized files come back in `skipped`, not as an error.
   app.post("/sandbox/workspace-files/read", { bodyLimit: 32 * 1024 }, async (req, reply) => {
     const learner = await learnerFor(req, reply);
     if (!learner) return reply;
     if (!listAllowed(learner)) return tooMany(reply);
     const body = WorkspaceReadBatchBody.safeParse(req.body);
     if (!body.success) return reply.status(400).send(fail("bad_request", "Invalid file path list"));
-    // Each path is checked on its own: an invalid one is skipped, and the valid ones still read.
     const safePaths = body.data.paths.filter((p) => parseDir(p));
     const invalidPaths = body.data.paths.filter((p) => !parseDir(p));
     const backend = await getBackend();
@@ -160,7 +154,6 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
     const body = WorkspaceBody.safeParse(req.body);
     const path = body.success ? parseDir(body.data.path) : null;
     if (!body.success || path === null || !path) return reply.status(400).send(fail("bad_request", "Invalid file path or content"));
-    // Reads limit UTF-8 bytes, so save checks bytes too. A longer file would save but never reopen.
     if (Buffer.byteLength(body.data.content, "utf8") > MAX_WORKSPACE_FILE) return reply.status(413).send(fail("file_too_large", "This file is too large to save"));
     const backend = await getBackend();
     if (!backend.writeWorkspaceFile) return notImplemented(reply);
@@ -216,8 +209,6 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
     };
   });
 
-  // One request for all open workspace folders. The read-only directory calls
-  // can run in parallel while the learner-scoped serial queue excludes writes.
   app.get<{ Querystring: { dir?: unknown } }>("/sandbox/files/batch", async (req, reply) => {
     const learner = await learnerFor(req, reply);
     if (!learner) return reply;

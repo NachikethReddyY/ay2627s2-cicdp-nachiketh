@@ -4,7 +4,6 @@ import type { TimelineControl } from "./hooks/useTimeline.ts";
 
 const btn = "pill grid h-11 w-11 shrink-0 place-items-center aria-disabled:opacity-40";
 
-/** Play/pause, previous/next, scrub and caption for any block that has a timeline. */
 export default function StepControls({ tl }: { tl: TimelineControl }) {
   const last = tl.count - 1;
   return (

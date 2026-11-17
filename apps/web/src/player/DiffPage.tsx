@@ -9,7 +9,6 @@ import "./player.css";
 
 const DARK = "(prefers-color-scheme: dark)";
 
-// The system colour scheme; light where matchMedia is missing (jsdom, tests).
 function usePrefersDark(): boolean {
   return useSyncExternalStore(
     (cb) => {

@@ -7,20 +7,16 @@ export const tile = "opt";
 
 type Props = {
   title: string; goalText: string; alt: string;
-  /** How many hints the server holds; their text is fetched one at a time through `onHint`. */
   hintCount: number;
   onHint: (index: number) => Promise<string>;
   lives?: number; maxLives?: number;
   outcome: Outcome;
-  /** Announced in the aria-live region: every move, bump, pick, win and lose. No timers anywhere (WCAG 2.2.1). */
   live: string;
   onRetry: () => void;
-  /** True while a check is pending: Retry waits so an old reply cannot land on the reset game. */
   busy?: boolean;
   children: ReactNode;
 };
 
-/** What every game shares: title, goal, alt, hints, lives, win/lose banner, Retry and the live region. */
 export default function Shell({ title, goalText, alt, hintCount, onHint, lives, maxLives, outcome, live, onRetry, busy, children }: Props) {
   const [hints, setHints] = useState<string[]>([]);
   const [hintBusy, setHintBusy] = useState(false);

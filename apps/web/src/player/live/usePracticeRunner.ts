@@ -13,32 +13,29 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the
 
 type Options = { lessonId: string; language: PracticeLanguage; code: string; openTerminal: () => void };
 
-// Run, Check and Lint for one practice lesson: the same calls the old PracticeView made, without any layout.
-// Run goes through the learner's shell when the sandbox is on, and falls back to a one-shot run when it is not.
 export function usePracticeRunner({ lessonId, language, code, openTerminal }: Options) {
-  const [term, setTerm] = useState(""); // what the Output pane shows: program output plus the answers typed
-  const [result, setResult] = useState<CheckResponse | null>(null); // the last Check
+  const [term, setTerm] = useState("");
+  const [result, setResult] = useState<CheckResponse | null>(null);
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
-  const [findings, setFindings] = useState<LintFinding[] | null>(null); // the last lint
+  const [findings, setFindings] = useState<LintFinding[] | null>(null);
   const [lintBusy, setLintBusy] = useState(false);
   const [lintError, setLintError] = useState("");
-  const [sid, setSid] = useState<string | null>(null); // the live run, if any
-  const [starting, setStarting] = useState(false); // a run request is in flight; sid is not set yet
+  const [sid, setSid] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const [typed, setTyped] = useState("");
-  const [shellRun, setShellRun] = useState(false); // a Run is copying the code into the shell
+  const [shellRun, setShellRun] = useState(false);
   const [runNote, setRunNote] = useState<string | undefined>();
   const [sandboxEnabled, setSandboxEnabled] = useState(true);
   const [shellState, setShellState] = useState<ShellState>({ kind: "idle" });
-  const sidRef = useRef<string | null>(null); // mirrors sid so the unmount cleanup can stop the run
-  const live = useRef(true); // false once the page is gone, so a late startPython result is stopped
-  const stdout = useRef(""); // program output only, without the echoed answers
-  const shellUnreachable = useRef(false); // a Run fell back because the socket is failing; cleared once the shell is ready again
-  const readyTimeouts = useRef(0); // consecutive Run waits that hit the readiness timeout; reset once the shell is ready
-  const lintSeq = useRef(0); // the newest lint request; an older response must not overwrite it
+  const sidRef = useRef<string | null>(null);
+  const live = useRef(true);
+  const stdout = useRef("");
+  const shellUnreachable = useRef(false);
+  const readyTimeouts = useRef(0);
+  const lintSeq = useRef(0);
   const append = (text: string) => setTerm((t) => outputTail(t + text, MAX_OUTPUT));
 
-  // One socket per mount, created in the effect so StrictMode's simulated unmount (which disposes it) gets a fresh one.
   const [shell, setShell] = useState<ShellSocket | null>(null);
   useEffect(() => {
     const s = createShellSocket();
@@ -74,12 +71,11 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   }, []);
   useEffect(() => { sidRef.current = sid; }, [sid]);
 
-  // Follows a live one-shot run: new output is appended as it arrives, until the program ends.
   useEffect(() => {
     if (!sid) return;
     let from = 0;
     let alive = true;
-    let failures = 0; // consecutive failed polls; a transient network blip should not end the run
+    let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       let p: PyPoll;
@@ -89,8 +85,6 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
         if (!alive) return;
         if (++failures < MAX_POLL_FAILURES) { timer = setTimeout(poll, 300 * failures); return; }
         append(`\n${msg(e)}\n`);
-        // Giving up hides Stop, and a cleared sid can't be stopped on unmount, so stop the run now:
-        // otherwise it holds one of the learner's two run slots until the server times it out.
         void stopPython(sid).catch(() => {});
         setSid(null);
         return;
@@ -121,13 +115,12 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
       setTerm(msg(e));
       return;
     }
-    if (!live.current) { void stopPython(id).catch(() => {}); return; } // the page closed while the request was pending
+    if (!live.current) { void stopPython(id).catch(() => {}); return; }
     setStarting(false);
     setSid(id);
   };
   const actionsFor = (enabled: boolean) => practiceActions({ language, code, lessonId, sandboxEnabled: enabled });
 
-  // Findings describe the code they were run on. An edit makes them stale, so drop them and any lint still in flight.
   useEffect(() => {
     lintSeq.current++;
     setFindings(null);

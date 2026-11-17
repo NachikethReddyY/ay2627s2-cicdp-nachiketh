@@ -8,7 +8,6 @@ test("order lays the shuffled items out in position order and submits the arrang
   assert.deepEqual(s.start, { i0: "z0", i1: "z1", i2: "z2" });
   assert.equal(s.capacity, 1);
   assert.deepEqual(s.submit(s.start), { kind: "order", order: ["c", "a", "b"] });
-  // Swapping two items changes what is submitted, so the server sees the learner's order.
   assert.deepEqual(s.submit({ i0: "z1", i1: "z0", i2: "z2" }), { kind: "order", order: ["a", "c", "b"] });
 });
 

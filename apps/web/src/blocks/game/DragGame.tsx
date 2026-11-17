@@ -33,7 +33,6 @@ function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected:
 
 function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: string; over: boolean; onTap: () => void; children: ReactNode }) {
   const { setNodeRef } = useDroppable({ id: zone.id });
-  // Item buttons bubble their clicks and keys here; those select the item and must not also place the selection.
   const fromItem = (e: { target: EventTarget }) => e.target instanceof Element && e.target.closest("button") !== null;
   return (
     <div
@@ -73,7 +72,6 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
   const zoneName = (z: string | null) => setup.zones.find((x) => x.id === z)?.label ?? "the pool";
   const labelOf = (id: string) => setup.items.find((x) => x.id === id)!.label;
 
-  // Dropping an item on a full box swaps the occupant back to where the dragged item came from.
   const place = (item: string, zone: string) => {
     if (over) return;
     const from = placed[item] ?? null;

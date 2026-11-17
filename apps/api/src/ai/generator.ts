@@ -1,14 +1,12 @@
 import { env } from "../env.ts";
 import { callEngine } from "../engine-client/client.ts";
 
-// Every LLM call goes through the Python engine (LiteLLM); the API never calls a provider itself.
-// Both methods return the engine's raw, unvalidated output; service.ts validates it with zod. Tests replace the two methods on `generator`.
 export type LessonContext = {
   path: { title: string; tagline: string };
   course: { title: string; description: string };
   lesson: { title: string; level: number; concepts: string[]; kind: "predict" | "learn" | "watch" | "practice" | "game-practice" };
   missedConcepts: string[];
-  stretchTests?: number; // practice lessons only; part of the cache key, so changing it makes new parts
+  stretchTests?: number;
 };
 
 export const generator = {

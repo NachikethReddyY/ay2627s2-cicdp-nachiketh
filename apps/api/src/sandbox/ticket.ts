@@ -15,7 +15,6 @@ export class TicketCapacityError extends Error {
   }
 }
 
-// Per-process, like the `open` map in route.ts: a multi-instance deploy would need a shared store.
 const pending = new Map<string, { learnerId: string; exp: number }>();
 const windows = new Map<string, { start: number; n: number }>();
 const MAX_WINDOWS = 1000;
@@ -25,7 +24,6 @@ export function _resetForTests() {
   windows.clear();
 }
 
-/** URL for logs: the shell path loses its whole query, any other URL only its `ticket` values (even percent-encoded keys). */
 export function redactUrl(url: string | undefined): string | undefined {
   if (!url) return url;
   const i = url.indexOf("?");
@@ -41,7 +39,6 @@ export function redactUrl(url: string | undefined): string | undefined {
       try {
         key = decodeURIComponent(k.replace(/\+/g, " "));
       } catch {
-        // Undecodable keys are left as they are.
       }
       return key === "ticket" ? `${k}=[redacted]` : kv;
     })
@@ -49,9 +46,7 @@ export function redactUrl(url: string | undefined): string | undefined {
   return `${path}?${query}`;
 }
 
-/** Single-use, short-lived credential for the shell WebSocket, which cannot carry the session cookie cross-host. */
 export function mintTicket(learnerId: string, now = Date.now()): string {
-  // A learner keeps at most TICKET_MAX_PER_LEARNER live tickets: the oldest are revoked (Map order is insertion order).
   const mine = [...pending].filter(([, v]) => v.learnerId === learnerId).map(([t]) => t);
   for (const t of mine.slice(0, Math.max(0, mine.length - (TICKET_MAX_PER_LEARNER - 1)))) pending.delete(t);
   if (pending.size >= TICKET_MAX_PENDING) {
@@ -63,7 +58,6 @@ export function mintTicket(learnerId: string, now = Date.now()): string {
   return ticket;
 }
 
-/** Returns the learner id and consumes the ticket; the entry is removed even when it has expired. */
 export function redeemTicket(ticket: string, now = Date.now()): string | null {
   const v = pending.get(ticket);
   if (!v) return null;

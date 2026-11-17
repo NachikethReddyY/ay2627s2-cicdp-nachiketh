@@ -2,12 +2,11 @@ import { z } from "zod";
 import { alt, id } from "../../core/caps.ts";
 import type { BlockModule } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
-import { MAX_STEPS, timelineSchema, type Timeline } from "../../core/timeline.ts";
+import { timelineSchema, type Timeline } from "../../core/timeline.ts";
 
 const MAX_NODES = 30;
 const MAX_EDGES = 50;
 const KINDS = ["flow", "tree", "cycle", "timeline", "graph", "labelled"] as const;
-/** Props a timeline may set on a node. */
 const ANIMATABLE = ["active"] as const;
 const SHAPES = ["rect", "round", "diamond", "circle"] as const;
 

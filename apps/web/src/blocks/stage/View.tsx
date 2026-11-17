@@ -9,36 +9,33 @@ import { bodyState, holdTween, resolve, segment } from "./model.ts";
 
 type Props = StageProps;
 
-/** Tweens the numeric props of a timeline state with GSAP; text and colour props switch at the start of the step. */
 const REST: Record<string, number> = { rotation: 0, scale: 1, opacity: 1, draw: 1 };
 
 function useTweened(target: TimelineState, duration: number, ease: string, reduced: boolean, shapes: Props["shapes"], paused: boolean): TimelineState {
   const [shown, setShown] = useState(target);
   const last = useRef<Map<string, number>>(new Map());
   const tweenRef = useRef<gsap.core.Tween | null>(null);
-  // Set when this commit created a tween for a new target, so the pause effect below leaves it running.
   const fresh = useRef(false);
   useEffect(() => {
     const entries: [string, string, number][] = [];
-    for (const id of Object.keys(target)) for (const prop of Object.keys(target[id]!)) {
-      const v = target[id]![prop];
+    for (const id of Object.keys(target)) for (const prop of Object.keys(target[id])) {
+      const v = target[id][prop];
       if (typeof v === "number") entries.push([id, prop, v]);
     }
     const key = (id: string, prop: string) => `${id}\u0000${prop}`;
     const obj: Record<string, number> = {};
     const goal: Record<string, number> = {};
     entries.forEach(([id, prop, v], i) => {
-      // A prop with no earlier value starts from the shape's own value, or its rest value, not the goal, so the first move animates.
       const own = shapes.find((sh) => sh.id === id) as Record<string, unknown> | undefined;
-      const base = typeof own?.[prop] === "number" ? own[prop] as number : REST[prop];
+      const base = typeof own?.[prop] === "number" ? own[prop] : REST[prop];
       obj[i] = last.current.get(key(id, prop)) ?? base ?? v;
       goal[i] = v;
     });
     const render = () => {
       const next: TimelineState = Object.create(null);
       for (const id of Object.keys(target)) next[id] = { ...target[id] };
-      entries.forEach(([id, prop], i) => { next[id]![prop] = obj[i]!; });
-      last.current = new Map(entries.map(([id, prop], i) => [key(id, prop), obj[i]!]));
+      entries.forEach(([id, prop], i) => { next[id][prop] = obj[i]!; });
+      last.current = new Map(entries.map(([id, prop], i) => [key(id, prop), obj[i]]));
       setShown(next);
     };
     if (reduced || duration <= 0 || entries.length === 0) { Object.assign(obj, goal); render(); return; }
@@ -47,8 +44,6 @@ function useTweened(target: TimelineState, duration: number, ease: string, reduc
     fresh.current = true;
     return () => { tween.kill(); tweenRef.current = null; };
   }, [target, duration, ease, reduced, shapes]);
-  // Pause freezes the tween in flight, on a change only so a fresh mount is not frozen. A new target in the same commit
-  // (the last step reached during playback, or a Next click) is not frozen: it runs to its target.
   const pausedSeen = useRef(paused);
   useEffect(() => {
     const created = fresh.current;
@@ -61,7 +56,6 @@ function useTweened(target: TimelineState, duration: number, ease: string, reduc
 }
 
 function Scene({ p, state }: { p: Props; state?: TimelineState }) {
-  // Several stages can share a page, and SVG ids are document-wide.
   const uid = useId().replace(/:/g, "");
   const dots = `stage-dots-${uid}`;
   const arrow = `stage-arrowhead-${uid}`;
@@ -81,7 +75,6 @@ function Scene({ p, state }: { p: Props; state?: TimelineState }) {
           : s.kind === "line" ? <line x1={s.x} y1={s.y} x2={s.x2} y2={s.y2} stroke={a.stroke} strokeWidth={0.6} strokeLinecap="round" markerEnd={s.arrow ? `url(#${arrow})` : undefined} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - a.draw} />
           : s.kind === "path" ? <path d={s.d} fill={a.fill} stroke={a.stroke} strokeWidth={0.6} strokeLinecap="round" strokeLinejoin="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - a.draw} />
           : null;
-        // Rotation and scale turn about the shape's own x,y; the offset from the state moves it first.
         const transform = `translate(${a.dx} ${a.dy}) translate(${s.x} ${s.y}) rotate(${a.rot}) scale(${a.sc}) translate(${-s.x} ${-s.y})`;
         return (
           <g key={s.id} transform={transform} opacity={a.opacity}>
@@ -111,7 +104,7 @@ function StageControls({ tl }: { tl: ReturnType<typeof useTimeline> }) {
 
 function Timed({ p, timeline }: { p: Props; timeline: NonNullable<Props["timeline"]> }) {
   const tl = useTimeline(timeline);
-  const step = timeline.steps[tl.step]!;
+  const step = timeline.steps[tl.step];
   const shown = useTweened(tl.state, step.durationMs, step.ease ?? "none", tl.reduced, p.shapes, !tl.playing);
   return (
     <div ref={tl.ref} className="min-w-0 max-w-full">
@@ -132,31 +125,30 @@ function Bouncing({ p }: { p: Props }) {
   const [time, setTime] = useState(0);
   const timeRef = useRef(0);
   const lastStep = useRef(tl.step);
-  // The frame loop only runs while on screen; its cleanup cancels the pending frame when the block scrolls away.
   const [visible, setVisible] = useState(true);
   useEffect(() => {
     const el = tl.ref.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setVisible(e!.isIntersecting));
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting));
     io.observe(el);
     return () => io.disconnect();
   }, [tl.ref]);
   useEffect(() => {
-    if (!visible) return; // Off screen: hold the last frame and resume from it, so a step change is not lost.
+    if (!visible) return;
     const stepChanged = lastStep.current !== tl.step;
     lastStep.current = tl.step;
     if (!tl.playing && !tl.reduced && !stepChanged) return;
     const range = segment(tl.step, tl.playing && !tl.reduced, simulation.poses);
     if (!range) {
-      const pose = simulation.poses[tl.step]!;
+      const pose = simulation.poses[tl.step];
       timeRef.current = pose;
       setTime(pose);
       return;
     }
     const [start, to] = range;
     const from = stepChanged ? start : Math.max(start, Math.min(to, timeRef.current));
-    const duration = simulation.timeline.steps[tl.step]!.durationMs;
-    const remaining = to > start ? duration * ((to - from) / (to - start)) : 0; // a zero-length segment has nothing to animate
+    const duration = simulation.timeline.steps[tl.step].durationMs;
+    const remaining = to > start ? duration * ((to - from) / (to - start)) : 0;
     let frame = 0;
     let started: number | null = null;
     const animate = (now: number) => {

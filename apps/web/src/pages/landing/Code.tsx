@@ -13,11 +13,9 @@ function highlight(line: string): ReactNode[] {
 type Props = {
   file: string;
   lines: string[];
-  /** 1-based line to mark as the line that just arrived or the one being asked about */
   mark?: number;
 };
 
-/** A read-only code card: filename header, numbered lines, light highlighting. */
 export function Code({ file, lines, mark }: Props) {
   return (
     <div className="lp-code">

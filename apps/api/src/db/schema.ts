@@ -22,7 +22,6 @@ const id = () =>
     .$defaultFn(() => randomUUID());
 const createdAt = () => timestamp("created_at").notNull().defaultNow();
 
-// Better Auth tables (shape per its Drizzle adapter docs).
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -73,7 +72,6 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// App tables.
 export const learners = pgTable("learners", {
   id: id(),
   kind: text("kind", { enum: ["user"] })
@@ -83,16 +81,12 @@ export const learners = pgTable("learners", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
-  // Plan tier selects the configured daily AI path limit.
   tier: text("tier", { enum: ["free", "pro", "max"] })
     .notNull()
     .default("free"),
-  // IANA name; streak days are counted in this zone.
   timezone: text("timezone").notNull().default("UTC"),
   dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
-  // Shown on the weekly XP leaderboard. On by default; learners can turn it off on the account page.
   leaderboardOptIn: boolean("leaderboard_opt_in").notNull().default(true),
-  // Admins curate Explore collections. Granted only in the database (never by a request or a self-chosen field).
   isAdmin: boolean("is_admin").notNull().default(false),
 });
 
@@ -106,7 +100,6 @@ const origin = () =>
     .default("official");
 const ownerId = () => text("owner_id").references(() => user.id, { onDelete: "cascade" });
 
-// A world is a course in the UI.
 export const worlds = pgTable(
   "worlds",
   {
@@ -122,7 +115,6 @@ export const worlds = pgTable(
   (t) => [index("worlds_owner").on(t.ownerId)],
 );
 
-// One row per paths.generate call that reached the AI, rejected topics included; the daily limit counts these.
 export const aiGenerations = pgTable(
   "ai_generations",
   {
@@ -137,7 +129,6 @@ export const aiGenerations = pgTable(
 
 export const spendLedger = pgTable("spend_ledger", {
   id: id(),
-  // Fixed-point dollars: a per-image estimate such as 0.04 cannot be stored in an integer column.
   amountUsd: numeric("amount_usd", { precision: 12, scale: 4 }).notNull(),
   createdAt: createdAt(),
 });
@@ -171,14 +162,12 @@ export const pathCourses = pgTable(
   (t) => [primaryKey({ columns: [t.pathId, t.worldId] }), index("path_courses_world").on(t.worldId)],
 );
 
-// Hand-picked groups of paths shown on Explore. Only `featured` ones are visible to learners.
 export const collections = pgTable("collections", {
   id: id(),
   slug: text("slug").notNull().unique(),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
   featured: boolean("featured").notNull().default(false),
-  // Lower first among featured collections.
   position: integer("position").notNull().default(0),
   createdAt: createdAt(),
 });
@@ -224,7 +213,6 @@ export const concepts = pgTable(
   (t) => [uniqueIndex("concepts_world_slug").on(t.worldId, t.slug)],
 );
 
-// Per learner and concept; p_known is the BKT p_next after the latest observation.
 export const mastery = pgTable(
   "mastery",
   {
@@ -241,7 +229,6 @@ export const mastery = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.conceptId] })],
 );
 
-// One row per next-step recommendation, kept as history; the newest per (learner, world) is current.
 export const recommendations = pgTable(
   "recommendations",
   {
@@ -257,7 +244,6 @@ export const recommendations = pgTable(
     action: text("action", { enum: ["start", "learn", "practice", "advance", "done"] }).notNull(),
     reasonCode: text("reason_code").notNull(),
     reason: text("reason").notNull(),
-    // sha256 of the inputs sent to the engine; an unchanged hash means the stored row is still current.
     inputHash: text("input_hash"),
     createdAt: createdAt(),
   },
@@ -270,7 +256,6 @@ export const recommendations = pgTable(
 export type LessonSource = { repo: string; sha: string; path: string };
 
 export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
-// Visual docs are validated by visuals/gate.ts before they are stored, so the type here is the validated shape.
 export type PartSecret =
   | { kind: "learn"; body: string; doc?: Spec }
   | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
@@ -280,7 +265,7 @@ export type PartSecret =
       language?: "python" | "javascript" | "typescript";
       starterCode: string;
       tests?: Array<{ id: string; name: string; stdin?: string; expectedStdout: string; visibility: "sample" | "hidden"; stretch?: boolean }>;
-      expectedOutput?: string; // legacy: read as one required hidden test with id "legacy"
+      expectedOutput?: string;
     }
   | { kind: "game-practice"; intro: string; doc: Spec };
 
@@ -296,17 +281,14 @@ export const lessons = pgTable(
   level: integer("level").notNull().default(1),
   position: integer("position").notNull().default(0),
   sourceKind: text("source_kind", { enum: ["repo", "authored", "ai"] }).notNull(),
-  // predict = mcq/cloze steps; learn/watch/practice = one part with content in lesson_versions.content.
   kind: text("kind", { enum: ["predict", "learn", "watch", "practice", "game-practice"] })
     .notNull()
     .default("predict"),
   source: jsonb("source").$type<LessonSource>(),
-  // Concepts the lesson should teach; the AI outline stores them here for the lazy lesson call.
   concepts: text("concepts").array().notNull().default(sql`'{}'::text[]`),
   status: text("status", { enum: ["draft", "published", "archived"] })
     .notNull()
     .default("draft"),
-  // No FK to lesson_versions: it would be circular; the app keeps it consistent.
   currentVersionId: text("current_version_id"),
   createdAt: createdAt(),
   },
@@ -323,7 +305,6 @@ export const lessonVersions = pgTable(
     version: integer("version").notNull(),
     createdAt: createdAt(),
     publishedAt: timestamp("published_at"),
-    // Content of a learn/watch/practice part; null for predict lessons, whose content is in steps.
     content: jsonb("content").$type<PartSecret>(),
   },
   (t) => [uniqueIndex("lesson_versions_lesson_version").on(t.lessonId, t.version)],
@@ -337,9 +318,7 @@ export type StepSecret = {
   accepted?: string[];
   hints: { text: string; eliminate?: number }[];
   explanations: { workedExample: string; practice: string };
-  // Text spoken or captioned on reveal when the step has no narration audio; falls back to workedExample.
   narration?: string;
-  // Recorded as attempts.missed_concepts on a wrong answer (AI lessons only).
   concepts?: string[];
 };
 
@@ -397,7 +376,6 @@ export const attempts = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    // Set once the observation has been applied to mastery; null means it still has to be.
     masteryAppliedAt: timestamp("mastery_applied_at"),
     createdAt: createdAt(),
   },
@@ -425,7 +403,6 @@ export const hintEvents = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.stepId, t.rung] })],
 );
 
-// Generated parts keyed by what produced them (kind, path, course, lesson), so the same lesson is never generated twice.
 export const generationCache = pgTable("generation_cache", {
   key: text("key").primaryKey(),
   kind: text("kind", { enum: ["learn", "watch", "practice", "game-practice"] }).notNull(),
@@ -445,7 +422,6 @@ export const gameCompletions = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId, t.partIdx, t.blockId] })],
 );
 
-// A learn/watch/practice/game-practice lesson is done once its single part is completed (predict lessons count steps).
 export const partCompletions = pgTable(
   "part_completions",
   {
@@ -460,7 +436,6 @@ export const partCompletions = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId] })],
 );
 
-// A learner's best multi-test Check result per practice lesson (POST /api/sandbox/check).
 export const checkResults = pgTable(
   "check_results",
   {
@@ -478,7 +453,6 @@ export const checkResults = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId] })],
 );
 
-// Per-version lesson media, object bytes live in the bucket under `key` (docs/media-storage-plan.md §3.3).
 export const lessonMedia = pgTable(
   "lesson_media",
   {
@@ -486,7 +460,6 @@ export const lessonMedia = pgTable(
     lessonVersionId: text("lesson_version_id")
       .notNull()
       .references(() => lessonVersions.id),
-    // Null = lesson-level (cover image).
     stepId: text("step_id").references(() => steps.id),
     kind: text("kind", { enum: ["narration", "image"] }).notNull(),
     status: text("status", { enum: ["pending", "ready", "failed"] }).notNull().default("ready"),
@@ -498,12 +471,10 @@ export const lessonMedia = pgTable(
   },
   (t) => [
     index("lesson_media_version").on(t.lessonVersionId),
-    // One ready narration per step per version (a null step_id counts as one value; drizzle 0.45 has no NULLS NOT DISTINCT for indexes), so two overlapping imports cannot both store one.
     uniqueIndex("lesson_media_one_narration").on(t.lessonVersionId, sql`coalesce(${t.stepId}, '')`).where(sql`${t.kind} = 'narration' AND ${t.status} = 'ready'`),
   ],
 );
 
-// One row per image slot taken (reserved before the provider call, flipped to failed on error). The daily cap counts "ready" rows.
 export const imageGenerations = pgTable(
   "image_generations",
   {
@@ -518,7 +489,6 @@ export const imageGenerations = pgTable(
   (t) => [index("image_generations_learner_time").on(t.learnerId, t.createdAt)],
 );
 
-// A commit import started by an author. The creator owns the job and the lesson it produced (no owner column on lessons).
 export const importJobs = pgTable(
   "import_jobs",
   {
@@ -537,7 +507,6 @@ export const importJobs = pgTable(
   (t) => [index("import_jobs_creator").on(t.createdBy), index("import_jobs_lesson").on(t.lessonId)],
 );
 
-// Progress events of an import job, replayed to the SSE stream by seq.
 export const importJobEvents = pgTable(
   "import_job_events",
   {

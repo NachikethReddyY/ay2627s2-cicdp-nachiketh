@@ -6,7 +6,6 @@ export const MAX_HOPS = 30;
 export const MAX_SIM_S = 15;
 export const CAPTIONED_HOPS = 4;
 
-/** y is the body's reference height (a circle's centre, a rect's top); below is the distance from y to its lowest edge. */
 export const bodyBelow = (s: { kind: string; r?: number; h?: number }) => (s.kind === "circle" ? (s.r ?? 0) : (s.h ?? 0));
 
 export type BounceBody = { y: number; below: number };
@@ -46,7 +45,7 @@ export function bounceY(bounce: Bounce, time: number): number {
 }
 
 export function bounceTimeline(bounce: Bounce, physics: BouncePhysics): { timeline: Timeline; poses: number[] } {
-  const visible = bounce.hops.filter((hop) => hop.height >= bounce.hops[0]!.height * 0.05).slice(0, CAPTIONED_HOPS);
+  const visible = bounce.hops.filter((hop) => hop.height >= bounce.hops[0].height * 0.05).slice(0, CAPTIONED_HOPS);
   const poses = [0, ...visible.map((hop) => hop.at + hop.speed / G_UNITS), bounce.restAt];
   const steps = poses.map((pose, i) => {
     const durationMs = Math.max(1, Math.round(((poses[i + 1] ?? pose + 0.3) - pose) * 1000));
@@ -55,7 +54,7 @@ export function bounceTimeline(bounce: Bounce, physics: BouncePhysics): { timeli
       const caption = visible.length ? "Smaller and smaller bounces, until it rests on the ground." : "It lands and stops, with no bounce.";
       return { caption, durationMs, set: [] };
     }
-    const hop = visible[i - 1]!;
+    const hop = visible[i - 1];
     const percent = (100 * hop.height) / (bounce.rest - bounce.y0);
     const caption = i === 1
       ? `It falls and speeds up as height turns into speed (kinetic energy), hits the ground, and rises to ${percent.toFixed(1)}% of the drop.`

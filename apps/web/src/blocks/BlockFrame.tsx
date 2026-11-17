@@ -2,7 +2,6 @@ import { Component, type ReactNode } from "react";
 
 type Props = { describe: string; raw: unknown; children: ReactNode };
 
-/** One per block: a crash shows the block's text summary instead of blanking the lesson. */
 export default class BlockFrame extends Component<Props, { failed: boolean; asText: boolean }> {
   state = { failed: false, asText: false };
   static getDerivedStateFromError() { return { failed: true }; }

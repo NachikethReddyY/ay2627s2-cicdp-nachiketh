@@ -21,7 +21,6 @@ test("valid physics stage parses without changing the v1 envelope", () => {
   assert.match(mod.describe(r.spec.blocks[1]!), /keeping about 56% of its energy/);
 });
 
-// Each negative fixture is [text block, bad stage]; the stage is dropped and the text kept.
 for (const [name, path, msg] of [
   ["too-many-shapes", "blocks.1.props.shapes", /60|at most|too big/i],
   ["coord-101", "blocks.1.props.shapes.0.x", /100|too big|at most/i],
@@ -85,7 +84,6 @@ test("prompt example is itself a valid block", () => {
   assert.ok(parseSpec({ v: 1, blocks: [JSON.parse(ex)] }).ok);
 });
 
-// Inline specs, not fixtures: the generator can draw any shape, so these pin the vocabulary it may use.
 const spec = (props: object) => JSON.stringify({ v: 1, blocks: [{ type: "text", id: "t1", props: { md: "x" } }, { type: "stage", id: "s1", props: { alt: "a", ...props } }] });
 const ground = { id: "g", kind: "rect", x: 0, y: 80, w: 100, h: 20 };
 

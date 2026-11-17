@@ -2,12 +2,10 @@ import { useRef, useState, type ComponentProps, Children, isValidElement, type R
 import { Check, Copy, WrapText } from "lucide-react";
 import { FOCUS } from "./ui";
 
-// A code block from the lesson text, with the language, a copy button and a wrap toggle above it.
 export function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
   const ref = useRef<HTMLPreElement>(null);
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
-  // rehype-highlight puts the language on the <code> child as "language-python".
   const code = Children.toArray(children).find(isValidElement) as ReactElement<{ className?: string }> | undefined;
   const lang = /language-([\w+#-]+)/.exec(code?.props.className ?? "")?.[1];
   const label = lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : "Code";
@@ -18,7 +16,6 @@ export function CodeBlock({ children, ...props }: ComponentProps<"pre">) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // The browser refused the clipboard; the code stays selectable by hand.
     }
   };
 

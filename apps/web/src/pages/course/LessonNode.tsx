@@ -34,8 +34,6 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
     return () => document.removeEventListener("pointerdown", off);
   }, [open, setOpen]);
 
-  // Mouse clicks open the popover; keyboard Enter (detail 0) still follows the lesson link straight to /play.
-  // A locked node is a button, so Enter opens its info popover instead.
   const click = (e: MouseEvent) => {
     if (e.detail === 0 && state !== "locked") return;
     e.preventDefault();

@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 
-// Seeded by apps/api/src/db/seed.ts: course "codequest", lesson "lesson-1", whose first step is an MCQ.
 const COURSE = "codequest";
 const LESSON = "lesson-1";
 const FIRST_STEP_ID = "s1";
@@ -17,13 +16,11 @@ if (!process.env.E2E_DATABASE_URL) {
   throw new Error("E2E_DATABASE_URL is required. Run the suite with `pnpm --filter @learnquest/e2e run ci`.");
 }
 
-// Sign-up always lands on home; the test then opens the page it needs.
 async function signUp(page: Page, email: string, next: string) {
   await page.goto("/login");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
-  // The mode toggle sits inside the same form, so target the submit button by type.
   await page.locator('form button[type="submit"]').click();
   await page.waitForURL((url) => url.pathname === "/");
   await page.goto(next);
@@ -48,13 +45,11 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
   await signUp(page, email, `/courses/${COURSE}`);
   await expect(page.getByRole("heading", { name: "Shopping Cart Basics" })).toBeVisible();
 
-  // A mouse click on a lesson node opens its popover; the popover's button goes to the lesson.
   await page.locator(`a.lesson-hit[href*="lesson=${LESSON}"]`).click();
   await page.locator(`a.lesson-pop-btn[href*="lesson=${LESSON}"]`).click();
   await expect(page).toHaveURL(new RegExp(`lesson=${LESSON}`));
   const check = page.getByRole("button", { name: "Check" });
   await expect(check).toBeDisabled();
-  // Predict before reveal: no answer is shown until the learner has submitted one.
   await expect(page.getByRole("heading", { name: "Correct!" })).toHaveCount(0);
 
   await page.getByLabel(CORRECT_OPTION).check();
@@ -77,8 +72,6 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
   }
 });
 
-// Each page is scanned only once its seeded content is on screen, so axe never reads a loading or error state.
-// Signed-out pages first; the rest sit behind the session guard, so each gets its own account.
 const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
   ["/", (page) => page.getByRole("heading", { level: 1, name: /Guess the next line/ })],
   ["/login", (page) => page.getByRole("heading", { name: "Sign in", exact: true })],
@@ -91,10 +84,8 @@ const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
 
 async function expectNoSeriousA11yViolations(page: Page, path: string, ready: Locator) {
   await page.goto(path);
-  // A lost session redirects to /login; scanning that page would pass the wrong check.
   expect(new URL(page.url()).pathname, `landed on ${page.url()}`).toBe(path);
   await expect(ready, `seeded content on ${path}`).toBeVisible();
-  // A failed query keeps the URL and the heading, so the error text is checked on its own.
   await expect(page.getByText("Couldn't load", { exact: false })).toHaveCount(0);
   await page.waitForLoadState("networkidle");
   const { violations } = await new AxeBuilder({ page }).analyze();
@@ -124,7 +115,6 @@ for (const [path, ready] of SIGNED_IN_PAGES) {
 }
 
 test("a step with no narration audio is spoken with browser speech on reveal", async ({ page }) => {
-  // Record what the player hands to speechSynthesis; real voices are not needed.
   await page.addInitScript(() => {
     const spoken: string[] = [];
     const calls: string[] = [];
@@ -153,23 +143,20 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
   await signUp(page, newEmail(), `/courses/${COURSE}`);
   await page.locator(`a.lesson-hit[href*="lesson=${LESSON}"]`).click();
   await page.locator(`a.lesson-pop-btn[href*="lesson=${LESSON}"]`).click();
-  await expect(page.getByRole("button", { name: "Mute" })).toHaveCount(0); // nothing to hear before the reveal
+  await expect(page.getByRole("button", { name: "Mute" })).toHaveCount(0);
   await page.getByLabel(CORRECT_OPTION).check();
   await page.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
   const spoken = () => page.evaluate(() => (globalThis as unknown as { __spoken: string[] }).__spoken.join(" "));
-  // Lesson 1 has narration text but no audio, so that text is what gets spoken. Compare against the seed file, not the caption.
   const file = JSON.parse(readFileSync(new URL("../../worlds/codequest/lessons/lesson-1.json", import.meta.url), "utf8")) as {
     steps: { id: string; secret: { narration: string } }[];
   };
   const narration = file.steps.find((st) => st.id === FIRST_STEP_ID)!.secret.narration;
-  // The fake utterance never ends, so only the first sentence is spoken.
   const firstSentence = narration.match(/.+?[.!?](?=\s|$)/s)![0].trim();
   await expect.poll(spoken).toBe(firstSentence);
 
-  // The replay auto-starts on reveal; the pause effect fires first, so speech must be resumed after it.
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
   const lastToggle = () =>
     page.evaluate(() => (globalThis as unknown as { __calls: string[] }).__calls.at(-1));

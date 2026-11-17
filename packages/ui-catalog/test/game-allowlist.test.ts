@@ -3,19 +3,12 @@ import assert from "node:assert/strict";
 import { z } from "zod";
 import { gameSchema, publicDoc, type GameProps } from "../src/index.ts";
 
-/**
- * LQ-91 guard. Every key in the authored game schema must be classified here. A new key fails this test until
- * someone decides whether it is sent to the learner (SENT, and then it must be built in publicKind) or kept on the
- * server (WITHHELD). Unclassified keys therefore cannot reach the client by default.
- */
 const SENT = new Set([
   "title", "goalText", "alt", "shell", "lives", "kind", "questions", "prompt", "options", "items", "buckets",
   "size", "w", "h", "start", "x", "y", "dir", "goal", "walls", "gems", "commands", "allowRepeat", "maxTimes", "maxBody",
   "maxBlocks", "mode", "maxSteps", "target", "width", "maxSpeed",
 ]);
-// solution is sent for grid watch mode only and starter for debug mode only (see publicKind); the rest is never sent.
 const WITHHELD = new Set(["hints", "answer", "pairs", "left", "right", "cards", "text", "bucket", "solution", "starter", "repeat", "body"]);
-// Keys the public shape adds or renames (match and sort are reshaped into flat string lists).
 const PUBLIC_ONLY = ["hintCount", "gameIndex", "lefts", "rights", "cards"];
 
 function keysOf(node: unknown, out = new Set<string>()): Set<string> {

@@ -5,7 +5,6 @@ export type Outcome = { type: "attempt"; correct: boolean } | { type: "hint"; ru
 
 export const fresh = (): Progress => ({ state: "predicting", rungsTaken: 0, attemptAllowed: true, retryAllowed: false });
 
-// Pure: grading happens before this, persistence after. Table in docs/api-plan.md T6.
 export function next(
   p: Progress,
   a: Action,
@@ -27,7 +26,6 @@ export function next(
   if (p.state === "hinting" && !p.attemptAllowed) return { conflict: "Take the next hint first" };
   const outcome: Outcome = { type: "attempt", correct: a.correct };
   if (a.correct) return { progress: { ...p, state: "revealed" }, outcome };
-  // With no hints to take, a wrong first answer goes straight to the retry (otherwise only skip would be left).
   if (p.state === "predicting" && step.hintCount === 0) {
     return { progress: { ...p, state: "hinting", attemptAllowed: true, retryAllowed: true }, outcome };
   }

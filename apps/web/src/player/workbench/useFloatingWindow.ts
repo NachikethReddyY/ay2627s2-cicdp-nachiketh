@@ -2,18 +2,15 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { resizeRect, type PreviewRect, type ResizeEdge } from "../../pages/previewResize";
 import { readStoredCodeWindow, writeStoredCodeWindow } from "../../pages/codeWindowMemory";
 
-/** While a window is dragged or resized, stop text selection across the whole page until the pointer is released. */
 function lockSelectionUntilRelease() {
   const root = document.documentElement;
   const unlock = () => root.classList.remove("lq-no-select");
   root.classList.add("lq-no-select");
   window.addEventListener("pointerup", unlock, { once: true });
   window.addEventListener("pointercancel", unlock, { once: true });
-  window.addEventListener("blur", unlock, { once: true }); // released over another app, the pointerup never arrives
+  window.addEventListener("blur", unlock, { once: true });
 }
 
-// The code window as /test/editor draws it: dragged by its title bar, resized from its edges, and remembered per browser.
-// Until it is moved or resized it keeps the default inset on the desk, clear of the dock at the bottom (72px).
 export function useFloatingWindow() {
   const [rect, setRect] = useState<PreviewRect | null>(readStoredCodeWindow);
   const frame: PreviewRect = rect ?? { left: 32, top: 32, width: window.innerWidth - 64, height: window.innerHeight - 104 };
@@ -33,7 +30,6 @@ export function useFloatingWindow() {
     const start = dragStart.current;
     if (!start) return;
     const { width, height } = frame;
-    // Keep at least 80px of the window on screen, so it can slide partly off the edge but never vanish.
     const KEEP = 80;
     setRect({
       left: Math.min(Math.max(start.left + event.clientX - start.pointerX, KEEP - width), window.innerWidth - KEEP),

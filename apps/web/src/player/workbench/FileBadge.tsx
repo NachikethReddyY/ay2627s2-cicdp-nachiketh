@@ -1,4 +1,3 @@
-// Language badges, coloured from the workbench tokens (--tsbg etc.).
 type Kind = "ts" | "js" | "py" | "md" | "json";
 const BADGES: Record<string, { label: string; kind: Kind }> = {
   ts: { label: "TS", kind: "ts" },
@@ -11,10 +10,8 @@ const BADGES: Record<string, { label: string; kind: Kind }> = {
 };
 
 const pick = (path: string) => BADGES[path.split(".").pop()?.toLowerCase() ?? ""] ?? BADGES.md;
-// JSON reuses the JS colours, as in the design.
 const tok = (k: Kind) => (k === "json" ? "js" : k);
 
-/** The palette's badge: a coloured box that CSS sizes (.wb-badge). */
 export default function FileBadge({ path }: { path: string }) {
   const b = pick(path);
   return (
@@ -24,7 +21,6 @@ export default function FileBadge({ path }: { path: string }) {
   );
 }
 
-/** The tree and breadcrumb badge from Main.dc.html: a 14 px rounded square in a 16 px box, label 7.2 px (MD 6.6, {} 8). */
 export function FileIcon({ path, size = 18 }: { path: string; size?: number }) {
   const b = pick(path);
   const t = tok(b.kind);

@@ -17,7 +17,6 @@ const MODULE_URL = pathToFileURL(join(repoRoot, "scripts", "narrate.ts")).href;
 const root = await mkdtemp(join(tmpdir(), "narrate-test-"));
 after(() => rm(root, { recursive: true, force: true }));
 
-// ID3 tag, so the bytes pass the MP3 check.
 const MP3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]);
 const KEY = "sk-test-secret-value-123";
 const hash = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
@@ -25,7 +24,6 @@ const exists = (p: string) => access(p).then(() => true, () => false);
 
 type Call = { url: string; method: string; headers: Record<string, string>; body: Record<string, unknown> };
 
-// Fake fetch: records each call and answers with MP3 bytes, or 500 for the text in failOn.
 function fakeFetch(calls: Call[], failOn?: string): Fetch {
   return async (url, init) => {
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
@@ -46,13 +44,12 @@ const OPENAI: Env = { TTS_BASE_URL: "http://localhost:8880/", TTS_VOICE: "af_hea
 
 const STEPS = [
   { idx: 0, secret: { narration: "Variables hold values." } },
-  { idx: 1, secret: {} }, // no narration
+  { idx: 1, secret: {} },
   { idx: 2, secret: { narration: "Loops repeat work." } },
 ];
 
 type Case = { lessonsDir: string; narrationRoot: string; outDir: string; setSteps: (steps: unknown[]) => Promise<void> };
 
-// A lesson folder and an output root under a fresh temp dir. The lesson slug is always lesson-1.
 let counter = 0;
 async function makeCase(steps: unknown[]): Promise<Case> {
   const dir = join(root, `case-${counter++}`);
@@ -135,7 +132,6 @@ test("usage: --lesson is required and must be a slug; the CLI takes no path flag
     assert.match(capSlug.err.join("\n"), /must be lowercase letters, digits and hyphens/, slug);
   }
 
-  // --out and --lesson-file are gone: strict parsing refuses them.
   for (const flag of [["--out", "/tmp/x"], ["--lesson-file", "/etc/hosts"]]) {
     const capFlag = io();
     assert.equal(await run(["--lesson", "lesson-1", ...flag], ELEVEN, fakeFetch([]), capFlag.io, layout(c)), 2, flag[0]);
@@ -215,7 +211,6 @@ test("a step removed from the lesson loses its mp3 on rerun, file first then has
   assert.equal(await exists(join(c.outDir, "0.mp3")), false, "stale audio for removed text is deleted");
   assert.equal(JSON.parse(await readFile(join(c.outDir, "narration.json"), "utf8"))["0"], undefined);
 
-  // A step deleted from the lesson entirely is cleaned up too.
   await c.setSteps([STEPS[2]]);
   await go(c, ELEVEN, fakeFetch([]), io());
   assert.equal(await exists(join(c.outDir, "2.mp3")), true);
@@ -245,16 +240,13 @@ test("the manifest on disk is current at every render, and no temp file is left 
     seen.push({ idx, manifest: JSON.parse(await readFile(manifestPath, "utf8")), hadMp3: await exists(join(c.outDir, `${idx}.mp3`)) });
     return new Response(MP3, { status: 200 });
   };
-  // Step 0 is in the manifest but has no mp3, so it renders. Step 2 changed text.
   await rm(join(c.outDir, "0.mp3"), { force: true });
   await go(c, ELEVEN, fetchImpl, io());
 
-  // Before each render, the step's old audio is gone and its hash is no longer in the manifest.
   for (const s of seen) {
     assert.equal(s.hadMp3, false, `step ${s.idx}: old audio is removed before the render`);
     assert.equal(s.manifest[s.idx], undefined, `step ${s.idx}: old hash is removed before the render`);
   }
-  // After step 0 finished, step 2's render sees step 0 in the manifest on disk.
   const step2 = seen.find((s) => s.idx === "2")!;
   assert.equal(step2.manifest["0"], hash("Variables hold values."));
   assert.deepEqual((await readdir(c.outDir)).sort(), ["0.mp3", "2.mp3", "narration.json"]);
@@ -263,7 +255,6 @@ test("the manifest on disk is current at every render, and no temp file is left 
 test("a lock held by a live run makes a second run exit with a message; a finished run releases its own lock", async () => {
   const c = await makeCase(STEPS);
   await mkdir(c.outDir, { recursive: true });
-  // This test process is alive, so it stands in for a run that is still writing.
   await writeFile(join(c.outDir, ".narration.lock"), String(process.pid));
   const calls: Call[] = [];
   const cap = io();
@@ -280,7 +271,6 @@ test("a lock held by a live run makes a second run exit with a message; a finish
 test("a lock left by a dead run is stale and is taken over", async () => {
   const c = await makeCase(STEPS);
   await mkdir(c.outDir, { recursive: true });
-  // A pid that has exited: spawn a process, wait for it, and keep its pid.
   const gone = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
   await once(gone, "exit");
   await writeFile(join(c.outDir, ".narration.lock"), String(gone.pid));
@@ -308,7 +298,6 @@ test("a bad signature or an oversize response fails the step and is not cached",
   assert.equal(await exists(join(c.outDir, "0.mp3")), false);
   assert.deepEqual(JSON.parse(await readFile(join(c.outDir, "narration.json"), "utf8")), {}, "the hash is not cached");
 
-  // The next run with a good response renders it, so the bad response was not cached as done.
   const calls: Call[] = [];
   assert.equal(await go(c, ELEVEN, fakeFetch(calls), io()), 0);
   assert.equal(calls.length, 1);
@@ -317,14 +306,11 @@ test("a bad signature or an oversize response fails the step and is not cached",
 test("a hung provider fails that step after the timeout, and the next step still renders", { timeout: 20_000 }, async () => {
   const c = await makeCase(STEPS);
   const HANG = "Variables hold values.";
-  // Honours the signal like fetch does: the request never answers, and aborting rejects it.
   const hung: Fetch = async (url, init) => {
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
     if (body.text === HANG) {
       const signal = init.signal!;
       return new Promise<Response>((_, reject) => {
-        // The timeout signal's timer is unref'd, so on Node 22 an otherwise idle loop would exit with this promise pending.
-        // A ref'd timer keeps the loop alive until the abort, and is cleared then.
         const keepAlive = setTimeout(() => {}, 10_000);
         signal.addEventListener("abort", () => {
           clearTimeout(keepAlive);
@@ -343,7 +329,6 @@ test("a hung provider fails that step after the timeout, and the next step still
 
 test("a hung response body also fails the step after the timeout", { timeout: 20_000 }, async () => {
   const c = await makeCase([{ idx: 0, secret: { narration: "Variables hold values." } }]);
-  // Headers arrive, then the body never does until the signal aborts.
   const stalledBody: Fetch = async (_url, init) => {
     const signal = init.signal!;
     const res = {
@@ -351,7 +336,7 @@ test("a hung response body also fails the step after the timeout", { timeout: 20
       status: 200,
       arrayBuffer: () =>
         new Promise<ArrayBuffer>((_, reject) => {
-          const keepAlive = setTimeout(() => {}, 10_000); // ref'd, as above: keeps Node 22 from exiting while the body hangs
+          const keepAlive = setTimeout(() => {}, 10_000);
           signal.addEventListener("abort", () => {
             clearTimeout(keepAlive);
             reject(signal.reason);
@@ -366,7 +351,6 @@ test("a hung response body also fails the step after the timeout", { timeout: 20
   assert.equal(await exists(join(c.outDir, "0.mp3")), false);
 });
 
-// A real child process, killed mid-render. The child calls run() with the same injected layout.
 test("a run killed mid-render cannot leave stale audio that a rerun skips", { timeout: 30_000 }, async () => {
   const A = "Variables hold values.";
   const B = "Variables hold values, changed.";
@@ -382,7 +366,7 @@ test("a run killed mid-render cannot leave stale audio that a rerun skips", { ti
     req.on("end", () => {
       const { input } = JSON.parse(raw) as { input: string };
       seen.push(input);
-      if (input === hangOn) return onHang(); // never answered: the child is killed here
+      if (input === hangOn) return onHang();
       res.writeHead(200, { "content-type": "audio/mpeg" });
       res.end(Buffer.concat([Buffer.from("ID3"), Buffer.from(input)]));
     });
@@ -392,7 +376,6 @@ test("a run killed mid-render cannot leave stale audio that a rerun skips", { ti
   const env = { PATH: process.env.PATH ?? "", TTS_BASE_URL: `http://127.0.0.1:${port}`, TTS_VOICE: "v" };
   const c = await makeCase([]);
   let stderr = "";
-  // Runs the real run() in a child with the default fetch. Only the layout is injected.
   const child = (): ReturnType<typeof spawn> => {
     const p = spawn(
       process.execPath,
@@ -414,7 +397,6 @@ test("a run killed mid-render cannot leave stale audio that a rerun skips", { ti
     await c.setSteps([{ idx: 0, secret: { narration: A } }, { idx: 2, secret: { narration: C } }]);
     assert.equal((await once(child(), "exit"))[0], 0, stderr);
 
-    // Run 2 changes step 0 and hangs on step 2. Step 0's new audio is written before the kill.
     hangOn = HANG;
     await c.setSteps([{ idx: 0, secret: { narration: B } }, { idx: 2, secret: { narration: HANG } }]);
     const killed = child();
@@ -423,7 +405,6 @@ test("a run killed mid-render cannot leave stale audio that a rerun skips", { ti
     await once(killed, "exit");
     assert.ok((await readFile(join(c.outDir, "0.mp3"), "utf8")).includes(B), "the interrupted run has written the new step 0 audio");
 
-    // Run 3 restores step 0's old text. It must render it, not skip the file left by run 2.
     hangOn = undefined;
     const before = seen.length;
     await c.setSteps([{ idx: 0, secret: { narration: A } }, { idx: 2, secret: { narration: HANG } }]);

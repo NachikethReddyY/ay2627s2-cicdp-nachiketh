@@ -1,4 +1,3 @@
-// No database: this file does not import helpers.ts, so it only needs the env.ts variables below.
 process.env.NODE_ENV = "production";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
@@ -54,9 +53,7 @@ test("guide context includes project text files and skips secrets and generated 
 });
 
 test("guide body over the engine limit is measured in UTF-8 bytes, so CJK text is rejected", () => {
-  // 30,000 CJK characters are 90,000 bytes in UTF-8, over the 64 KiB engine limit, though only 30,000 characters.
   const cjk = { prompt: "文".repeat(30_000) };
   assert.equal(guideBodyTooLarge(cjk), true);
-  // The same character count in ASCII is 30,000 bytes and fits.
   assert.equal(guideBodyTooLarge({ prompt: "a".repeat(30_000) }), false);
 });

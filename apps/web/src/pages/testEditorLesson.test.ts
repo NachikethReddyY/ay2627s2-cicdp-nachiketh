@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { testEditorLesson } from "./testEditorLesson.ts";
 
-// The fixtures are partial lesson payloads; the cast is only for the test, the helper's type is the router's.
 const lessonOf = (value: unknown) => value as Parameters<typeof testEditorLesson>[0];
 
 test("a practice lesson gives its instructions and language", () => {

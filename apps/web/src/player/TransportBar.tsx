@@ -8,13 +8,13 @@ type Props = {
   t: number;
   playing: boolean;
   speed: Speed;
-  volume: number; // 0-100
+  volume: number;
   muted: boolean;
-  audio: boolean; // false: nothing to hear, so no volume controls
+  audio: boolean;
   onVolume(v: number): void;
   onMute(): void;
   onHover(over: boolean): void;
-  faded: boolean; // auto-hidden while playing and idle; never while focus is inside
+  faded: boolean;
   playRef: React.RefObject<HTMLButtonElement | null>;
   onToggle(): void;
   onSeek(t: number): void;
@@ -22,7 +22,7 @@ type Props = {
   onSpeed(s: Speed): void;
 };
 
-const SEG = 1000; // slider units per step: equal-width segments
+const SEG = 1000;
 const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
 const icons = {

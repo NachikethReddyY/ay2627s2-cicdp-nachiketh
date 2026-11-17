@@ -16,3 +16,5 @@ __pycache__/
 
 # macOS Finder metadata
 .DS_Store
+.repo-index/
+.agent-review/

@@ -13,7 +13,6 @@ import "./explore.css";
 
 const tabs = [["official", "Official"], ["community", "Community"], ["mine", "Mine"]] as const;
 
-// Each path's cover shows its own subject. A path without an entry gets no photo, so it never shows another course's image.
 const covers: Record<string, string> = {
   "js-foundations": "/images/covers/js-foundations.jpg",
   "sample-courses": "/images/covers/sample-courses.jpg",
@@ -49,7 +48,6 @@ function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: 
   const [joinFailed, setJoinFailed] = useState(false);
   const navigate = useNavigate();
   const first = p.courses[0];
-  // The cover and title open the path's first course; a path with no courses has nothing to open.
   const body = (
     <>
       <div className="explore-cover" aria-hidden="true"
@@ -84,8 +82,7 @@ function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: 
             <button type="button" disabled={busy} className="pill explore-action"
               onClick={() => { setBusy(true); setJoinFailed(false); trpc.paths.enroll.mutate({ slug: p.slug }).then(() => {
                 onDone();
-                // Joining opens the path at its first course, so the learner starts straight away.
-                if (first) navigate({ to: "/courses/$slug", params: { slug: first.slug } });
+                if (first) void navigate({ to: "/courses/$slug", params: { slug: first.slug } });
               }, () => setJoinFailed(true)).finally(() => setBusy(false)); }}>
               Join
             </button>
@@ -111,7 +108,6 @@ export default function Explore() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const refreshAll = useCallback(() => reload(), [reload]);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  // Arrow keys wrap between the tabs, and Home and End jump to the ends; each one selects the tab it lands on.
   const onTabKey = (e: React.KeyboardEvent, i: number) => {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     let next = (i + step + tabs.length) % tabs.length;

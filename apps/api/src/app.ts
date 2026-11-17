@@ -29,7 +29,6 @@ const CODES: Record<number, string> = {
   429: "rate_limited",
 };
 
-// A client-sent request id lands in every log line, so only a short plain token is kept (no log forging or huge values).
 const REQ_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function buildApp(opts: { trustProxy?: string | false } = {}) {
@@ -37,7 +36,6 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
     logger: env.NODE_ENV === "test" ? false : {
           level: "info",
           serializers: {
-            // Same fields as Fastify's default, but the shell ticket in the query string must never reach the logs.
             req: (req: FastifyRequest) => ({
               method: req.method,
               url: redactUrl(req.url),
@@ -58,16 +56,13 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   app.setSerializerCompiler(serializerCompiler);
   app.register(helmet);
 
-  // Empty JSON bodies become undefined so clients that always send the JSON header can POST without a body.
-  // The default parser is kept for everything else: it rejects __proto__/constructor keys.
   const parseJson = app.getDefaultJsonParser("error", "error");
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     if (body === "") return done(null, undefined);
-    parseJson(req, body as string, done);
+    void parseJson(req, body as string, done);
   });
 
-  // Origin check instead of a CSRF token: SameSite=Lax cookies plus this hook (docs/api-plan.md §1).
   app.addHook("onRequest", async (req, reply) => {
     if (req.method === "GET" || req.method === "HEAD") return;
     const origin = req.headers.origin;
@@ -76,7 +71,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       try {
         const parsed = new URL(origin);
         devLoopback = parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
-      } catch { /* Invalid origins fail the exact origin check below. */ }
+      } catch { }
     }
     if (origin !== undefined && origin !== env.PUBLIC_ORIGIN && !devLoopback) {
       return reply.status(403).send({ error: { code: "forbidden", message: "Bad origin" } });
@@ -86,7 +81,6 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   app.setErrorHandler((err: FastifyError, req, reply) => {
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     if (status >= 500) req.log.error(err);
-    // Reads process.env directly so an unset NODE_ENV counts as production here.
     const devLike = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
     const internal = status >= 500 && !devLike;
     reply.status(status).send({
@@ -102,11 +96,8 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   );
 
   app.addHook("onClose", async () => {
-    // onClose runs after in-flight requests finish, so no read can start a new prefetch now.
-    // Let background prefetches save what they generated before the pool goes away.
     await idle();
     await importsIdle();
-    // A test helper may already have ended the pool; pg rejects a second end().
     await pool.end().catch(() => undefined);
   });
 

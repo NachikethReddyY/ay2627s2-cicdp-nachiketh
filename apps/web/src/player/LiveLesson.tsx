@@ -9,14 +9,11 @@ import Steps from "./live/Steps";
 import WatchView from "./live/WatchView";
 import { lessonTitle } from "./live/courseProgress";
 
-// Practice is the workbench with the lesson's own file. It embeds the code editor (Monaco), so it loads on demand.
 const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
   const { data, error, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
-  // One course fetch serves both the progress strip and the Next button. It is sent unbatched, so it is not held up by the lesson request.
   const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
-  // lessons.get waits while an AI lesson is written; say so once it takes a moment. Only while still waiting, so a loaded lesson never re-renders for it.
   const [slow, setSlow] = useState(false);
   const loading = !data && !error;
   useEffect(() => {
@@ -24,10 +21,8 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     const t = setTimeout(() => setSlow(true), 1500);
     return () => clearTimeout(t);
   }, [loading]);
-  // Reading or watching a part counts it as finished; practice and games are completed server-side. Errors are ignored.
   const readKind = data?.kind === "learn" || data?.kind === "watch";
   const lessonId = data?.id;
-  // Once the part is marked done, refetch the course so the progress strip counts it.
   const reloadCourse = courseState.reload;
   useEffect(() => {
     if (lessonId && readKind) void trpc.parts.complete.mutate({ lessonId }).then(reloadCourse, () => {});
@@ -42,7 +37,6 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
       </Notice>
     );
   if (!data) {
-    // The course list is usually ready before a generated lesson, so the learner can see which lesson is coming.
     const title = courseState.data ? lessonTitle(courseState.data.lessons, slug) : undefined;
     return (
       <Notice>
@@ -59,20 +53,17 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   );
   const { part } = data;
   const progress = course ? <LessonProgress id={data.id} course={courseState} /> : null;
-  // The player (and Monaco with it) loads only for the lessons that have a code window.
   const fallback = <Notice><p>Loading lesson…</p></Notice>;
   if (data.kind === "learn" && part?.kind === "learn")
-    // The learn view has no course progress strip; the moon canvas matches the rest of the app.
     return <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={next} /></div>;
   if (data.kind === "watch" && part?.kind === "watch")
-    return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={next} /></Suspense>; // codecasts: no course progress strip
+    return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={next} /></Suspense>;
   if (data.kind === "practice" && part?.kind === "practice")
     return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
     return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} title={data.title} intro={part.intro} doc={part.doc} next={next} onComplete={courseState.reload} /></div>;
   if (data.kind === "predict" && data.steps.length > 0)
     return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} onFinished={courseState.reload} /></Suspense></>;
-  // A part the server could not provide (no content, or content of another kind), or a predict lesson with no steps.
   return (
     <Notice>
       This lesson isn't ready yet.{" "}

@@ -1,5 +1,4 @@
-// Startup and request-id hardening, plus the shell container's docker flags. Needs the test database only for buildApp.
-import "./helpers.ts"; // points DATABASE_URL at the test database before env.ts loads
+import "./helpers.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -65,7 +64,6 @@ test("a closed terminal's idle container still counts against the server-wide sh
   const cmds: string[] = [];
   let stopped!: () => void;
   const stop = new Promise<void>((r) => (stopped = r));
-  // No container exists yet (inspect fails), the network exists, and every other docker call succeeds.
   const exec = async (_cmd: string, args: string[]) => {
     cmds.push(args.join(" "));
     if (args[0] === "inspect") throw new Error("no such container");
@@ -76,7 +74,6 @@ test("a closed terminal's idle container still counts against the server-wide sh
     const exits: ((e: { exitCode: number }) => void)[] = [];
     return { write() {}, resize() {}, kill: () => exits.forEach((cb) => cb({ exitCode: 0 })), onData() {}, onExit: (cb: (e: { exitCode: number }) => void) => exits.push(cb) };
   }) as never;
-  // openShell prepares the learner's shell files through spawnChild. This stub exits 0 so the shell opens without a real container.
   const spawnChild = (() => {
     const child = Object.assign(new EventEmitter(), {
       stdout: new EventEmitter(),
@@ -90,12 +87,11 @@ test("a closed terminal's idle container still counts against the server-wide sh
   const backend = dockerBackend({ image: "img", idleMs: 30, network: "lq-sbx", exec, spawn, spawnChild, maxContainers: () => 1 });
 
   const a = await backend.openShell("learner-a", { cols: 80, rows: 24 });
-  a.kill(); // the terminal closes, but its container stays up until the idle stop
+  a.kill();
   await assert.rejects(backend.openShell("learner-b", { cols: 80, rows: 24 }), SandboxBusyError);
-  // learner-a reconnecting reuses its own container, so it is never refused.
   (await backend.openShell("learner-a", { cols: 80, rows: 24 })).kill();
 
-  await stop; // the idle stop frees the slot
+  await stop;
   await new Promise((r) => setTimeout(r, 10));
   (await backend.openShell("learner-b", { cols: 80, rows: 24 })).kill();
   assert.ok(cmds.some((c) => c.startsWith("stop")));
@@ -122,7 +118,6 @@ test("the server exits cleanly on SIGTERM", { timeout: 20_000 }, async () => {
   assert.match(out, /SIGTERM: shutting down/);
 });
 
-// Last: closing the app ends the shared pool.
 test("a client x-request-id is kept only when it is a short plain token", async () => {
   const app = buildApp();
   app.get("/rid", async (req) => ({ id: req.id }));

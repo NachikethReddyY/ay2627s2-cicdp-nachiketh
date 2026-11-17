@@ -3,13 +3,11 @@ import type { Issue } from "../../core/parse.ts";
 import type { GameKind } from "./shell.ts";
 
 export const GRID_COMMANDS = ["forward", "left", "right", "pick"] as const;
-/** Clockwise, so a right turn is +1 and a left turn is +3 (mod 4). */
 export const DIRS = ["up", "right", "down", "left"] as const;
 export const GRID_MODES = ["watch", "solve", "debug"] as const;
 export const MAX_GRID = 10;
 export const MAX_WALLS = 60;
 export const MAX_GEMS = 10;
-/** Most commands a program may run once its repeats are expanded. */
 export const MAX_PROGRAM_STEPS = 60;
 export const MIN_REPEAT = 2;
 export const MAX_REPEAT = 9;
@@ -18,12 +16,10 @@ export const MAX_REPEAT_BODY = 6;
 export type GridCommand = (typeof GRID_COMMANDS)[number];
 export type Dir = (typeof DIRS)[number];
 export type Cell = { x: number; y: number };
-/** Runs `body` `repeat` times. One level only: a body holds commands, never another repeat. */
 export type RepeatStep = { repeat: number; body: GridCommand[] };
 export type GridStep = GridCommand | RepeatStep;
 export type GridProgram = GridStep[];
 
-/** x runs left to right and y top to bottom, both from 0; "up" is y - 1. */
 export type GridProps = {
   kind: "grid";
   size: { w: number; h: number };
@@ -31,35 +27,24 @@ export type GridProps = {
   goal: Cell;
   walls: Cell[];
   gems: Cell[];
-  /** The palette: which commands the learner may use. */
   commands: GridCommand[];
-  /** Present means repeat blocks are allowed, up to these limits. */
   allowRepeat?: { maxTimes: number; maxBody: number };
-  /** Most blocks a program may use; a repeat counts as 1 plus its body. Makes a loop necessary. */
   maxBlocks?: number;
-  /** watch plays `solution`; solve has the learner build a program; debug has them fix `starter`. */
   mode: (typeof GRID_MODES)[number];
   maxSteps: number;
   solution?: GridProgram;
-  /** debug mode only: a program with a bug, which must not already solve the puzzle. */
   starter?: GridProgram;
 };
 
-/** Robot state. `collected` holds indexes into `gems`, in pick order. */
 export type GridState = Cell & { dir: Dir; collected: number[] };
-/** One simulated step. `at` locates the command in the program: [i], or [i, j] for body command j of repeat i. */
 export type GridTraceStep = GridState & { command: GridCommand; at: number[] };
 export type GridRun = {
-  /** True when the robot reached the goal holding every gem. */
   ok: boolean;
   reachedGoal: boolean;
-  /** Gems collected. */
   gems: number;
   steps: number;
-  /** The move log: one plain-language line per step, aligned with `trace`. */
   moves: string[];
   trace: GridTraceStep[];
-  /** Why the run did not succeed, in words the learner can read. Set whenever ok is false. */
   error?: string;
 };
 
@@ -91,8 +76,6 @@ const gridSchema = z.strictObject({
   starter: programSchema.optional(),
 }) satisfies z.ZodType<GridProps>;
 
-// --- semantics: one transition function, shared by simulate() and solvable() so they cannot disagree ---
-
 const key = (c: Cell) => c.y * MAX_GRID + c.x;
 const DELTA: Record<Dir, [number, number]> = { up: [0, -1], right: [1, 0], down: [0, 1], left: [-1, 0] };
 type Core = { x: number; y: number; d: number; mask: number };
@@ -118,15 +101,9 @@ const atGoal = (p: GridProps, s: Cell) => s.x === p.goal.x && s.y === p.goal.y;
 const where = (c: Cell) => `column ${c.x + 1}, row ${c.y + 1}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Blocks a program uses: a command is 1, a repeat is 1 plus its body. */
 export const blockCount = (program: readonly GridStep[]) =>
   program.reduce((n, s) => n + (typeof s === "string" ? 1 : 1 + s.body.length), 0);
 
-/**
- * Problems that stop a program from running in this puzzle: commands off the palette, repeats that are not
- * allowed or break the limits, nesting, and size. Paths are relative to the program, e.g. "2.body.0".
- * Defensive about shape, so a malformed program gets issues rather than a throw.
- */
 export function programIssues(program: unknown, p: GridProps): Issue[] {
   if (!Array.isArray(program)) return [{ path: "", message: "a program is a list of commands" }];
   if (!program.length) return [{ path: "", message: "the program is empty" }];
@@ -157,7 +134,6 @@ export function programIssues(program: unknown, p: GridProps): Issue[] {
   return issues;
 }
 
-/** Runs `program` in the puzzle `p`. Pure and total: a bad program comes back as ok false with `error`, never a throw. */
 export function simulate(program: readonly GridStep[], p: GridProps): GridRun {
   const bad = programIssues(program, p)[0];
   if (bad) return { ok: false, reachedGoal: false, gems: 0, steps: 0, moves: [], trace: [], error: bad.message };
@@ -206,10 +182,6 @@ export function simulate(program: readonly GridStep[], p: GridProps): GridRun {
   return { ok, reachedGoal, gems: collected.length, steps: trace.length, moves, trace, ...(error && { error }) };
 }
 
-/**
- * True when some program of the allowed commands reaches the goal holding every gem within maxSteps.
- * Breadth-first over (x, y, dir, gems collected): at most 10 x 10 x 4 x 2^10 states. Reaching the goal ends a run.
- */
 export function solvable(p: GridProps): boolean {
   const w = world(p);
   const full = (1 << p.gems.length) - 1;
@@ -259,7 +231,7 @@ export const gridKind: GameKind<GridProps> = {
     cells(p.walls, "walls", [[[p.start], "start"], [[p.goal], "goal"]]);
     cells(p.gems, "gems", [[[p.start], "start"], [[p.goal], "goal"], [p.walls, "wall"]]);
     p.commands.forEach((c, i) => p.commands.indexOf(c) !== i && bad(`commands.${i}`, `duplicate command "${c}"`));
-    if (issues.length) return issues; // the board must be sound before anything is simulated
+    if (issues.length) return issues;
 
     for (const name of ["solution", "starter"] as const)
       if (p[name]) programIssues(p[name], p).forEach((i) => bad(i.path ? `${name}.${i.path}` : name, i.message));

@@ -1,5 +1,3 @@
-// The LearnSlop mark and wordmark, shared by the landing page and the sign-in page.
-// Styles live in landing.css under .lp-mark and .lp-logo.
 export const Logo = () => (
   <>
     <svg className="lp-mark" viewBox="0 0 45 45" aria-hidden>

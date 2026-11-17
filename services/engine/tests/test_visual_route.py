@@ -31,7 +31,6 @@ def test_valid_doc_passes(client: TestClient, fake_llm: FakeLLM) -> None:
 
 
 def test_invalid_doc_is_rejected(client: TestClient, fake_llm: FakeLLM) -> None:
-    # The first reply is invalid, so the route makes one repair call; the repair is also invalid.
     calls = fake_llm("visual_bad_repair")
     r = client.post("/v1/pipeline/visual", json={"prompt": "pets chart"}, headers=TOKEN)
     assert r.status_code == 422
@@ -81,7 +80,7 @@ def _fake_generate(
         return Result(doc, {"prompt_tokens": 0, "completion_tokens": 0, "model": "t"}, 1)
 
     monkeypatch.setattr(visual, "generate_visual", fake)
-    monkeypatch.setattr(visual, "ts_issues", lambda _doc: [])  # schema-only; no node needed
+    monkeypatch.setattr(visual, "ts_issues", lambda _doc: [])
     return repairs
 
 
@@ -108,7 +107,6 @@ def test_repair_pass_still_invalid_is_422(
 
 
 def test_repair_call_sends_previous_document(fake_llm: FakeLLM) -> None:
-    # The repair must correct the first document, so its JSON has to reach the model.
     calls = fake_llm("visual_bad_repair")
     doc = {"v": 1, "blocks": [{"type": "chart", "id": "x", "props": {"kind": "bar"}}]}
     visual.generate_visual("pets chart", ["/blocks/0: missing data"], doc)

@@ -8,7 +8,7 @@ import { env } from "../src/env.ts";
 import { practiceCheck } from "../src/parts/practice.ts";
 import { runStatus, startRun } from "../src/sandbox/run.ts";
 import { db } from "../src/db/client.ts";
-import { lessons, lessonVersions, partCompletions, paths, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { lessons, lessonVersions, partCompletions, user, worlds, type PartSecret } from "../src/db/schema.ts";
 
 const app = buildApp();
 after(() => app.close());
@@ -18,7 +18,6 @@ const enroll = (cookie: string, slug: string) => trpc(app, cookie).m("paths.enro
 const m = (cookie: string, path: string, input?: unknown) => trpc(app, cookie).m(path, input);
 const userId = async (email: string) => (await db.select({ id: user.id }).from(user).where(eq(user.email, email)))[0]!.id;
 
-// Adds a lesson with one current version holding `content`; the world defaults to codequest (seeded by signUp).
 async function addLesson(slug: string, kind: "learn" | "game-practice" | "practice", content: PartSecret, worldId?: string, status: "published" | "draft" = "published") {
   const world = worldId ?? (await db.select().from(worlds).where(eq(worlds.slug, "codequest")))[0]!.id;
   const [lesson] = await db.insert(lessons).values({ slug, title: slug, worldId: world, sourceKind: "authored", kind, status }).returning();
@@ -111,11 +110,9 @@ test("parts.complete rejects practice and game-practice without evidence", async
 });
 
 const pracPart: PartSecret = { kind: "practice", instructions: "Print 17.", language: "python", starterCode: "", expectedOutput: "17\n" };
-// The learner row is created on the first signed-in request, so make one before looking it up.
 const learnerOf = async (cookie: string, email: string) =>
   (await get(cookie), await db.execute<{ id: string }>(sql`SELECT l.id FROM learners l JOIN "user" u ON u.id = l.user_id WHERE u.email = ${email}`)).rows[0]!.id;
 
-// A fake `docker run` that prints `output` and exits 0, so a checked run can end without a container.
 const printing = (output: string) => (() => {
   const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), stdin: new EventEmitter(), kill() {} });
   setImmediate(() => { child.stdout.emit("data", Buffer.from(output)); child.emit("close", 0); });

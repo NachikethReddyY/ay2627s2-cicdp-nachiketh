@@ -1,6 +1,3 @@
-// Fetches the public GitHub releases and writes them to a typed module that the /changelog page imports.
-// It runs before `dev` and `build` (see the pre-scripts in package.json). If GitHub cannot be reached, the
-// last generated file is kept, so offline builds still work. It always exits 0.
 import { existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +7,6 @@ const OUT = fileURLToPath(new URL("../src/pages/changelog-releases.generated.ts"
 const headers = { Accept: "application/vnd.github+json", "User-Agent": "learnslop-changelog" };
 if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 
-/** Turns one GitHub release into the shape the page shows: a summary line and the bullet points. */
 const toEntry = (release) => {
   const lines = (release.body ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
   return {

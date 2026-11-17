@@ -7,7 +7,7 @@ const prim = (kind: "sphere" | "box" | "arrow" | "label") => ({ kind, size: 1 })
 test("a normal scene is inside the budget", () => {
   const b = checkBudget([prim("sphere"), prim("box"), prim("arrow"), prim("label")]);
   assert.equal(b.ok, true);
-  assert.equal(b.drawCalls, 4); // sphere 1 + box 1 + arrow 2 + label 0
+  assert.equal(b.drawCalls, 4);
   assert.equal(b.triangles, 24 * 16 * 2 + 12 + 12 * 4 + 12 * 2);
 });
 
@@ -15,7 +15,6 @@ test("object, draw-call and triangle caps are enforced", () => {
   assert.equal(checkBudget(Array.from({ length: MAX_OBJECTS + 1 }, () => prim("label"))).ok, false);
   const arrows = Array.from({ length: MAX_DRAW_CALLS / 2 + 1 }, () => prim("arrow"));
   assert.match(checkBudget(arrows).reason!, /draw calls/);
-  // The triangle cap cannot trip yet: 60 objects of the heaviest part is ~46k triangles.
   assert.ok(checkBudget(Array.from({ length: 60 }, () => prim("sphere"))).triangles < 100_000);
 });
 

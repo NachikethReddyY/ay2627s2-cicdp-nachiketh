@@ -28,12 +28,10 @@ type Props = {
   color?: Series["color"];
 };
 
-/** Slider ids may not shadow `x` or a function name, or the expression would be ambiguous. */
 const RESERVED_NAMES = ["x", ...Object.keys(FUNCTIONS)];
 
 export const sliderValue = (s: Slider) => s.value ?? s.min;
 
-/** Rows of the data table: bar/line/scatter list each series' points; function samples 5 evenly spaced x values. */
 export function table(p: Props): { header: string[]; rows: (string | number)[][] } {
   const xName = p.xLabel ?? "x";
   const yName = p.yLabel ?? "y";

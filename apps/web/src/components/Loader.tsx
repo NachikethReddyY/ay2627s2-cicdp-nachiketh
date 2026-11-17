@@ -1,13 +1,11 @@
 type Props = { label?: string };
 
-// Glyph colours carry meaning, as in the editor: number, keyword, success.
 const blocks = [
   { glyph: "{ }", tone: "text-[var(--nu)]", delay: "0s" },
   { glyph: "=>", tone: "text-[var(--kw)]", delay: "0.7s" },
   { glyph: "✓", tone: "text-[var(--ok)]", delay: "1.4s" },
 ];
 
-// Three code blocks press in turn, like keys being typed. Motion stops under prefers-reduced-motion (index.css).
 export default function Loader({ label = "Loading" }: Props) {
   return (
     <div role="status" className="flex flex-col items-center gap-5">

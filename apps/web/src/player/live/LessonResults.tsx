@@ -45,8 +45,6 @@ type Props = {
   onAsk(finding: LintFinding): void;
 };
 
-// Check results and style findings in the workbench's own look: the same rows the old practice view showed,
-// drawn with the workbench tokens. Hidden tests show a lock, a name and a status only.
 export default function LessonResults({ result, tests, checkError, findings, lintError, onAsk }: Props) {
   const rows = result ? toRows(result.results) : previewRows(tests ?? []);
   const required = requiredRows(rows);

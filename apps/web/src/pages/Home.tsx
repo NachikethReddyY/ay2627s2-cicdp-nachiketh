@@ -12,8 +12,6 @@ import Sidebar from "./home/Sidebar";
 import YourPath from "./home/YourPath";
 import "./home.css";
 
-
-// Tones and labels repeat across the four community cards.
 const commCards = [
   { bg: "lq-bg-lilac", sticker: "HOT" },
   { bg: "lq-bg-pink", sticker: "NEW" },
@@ -27,8 +25,6 @@ export default function Home() {
   const initial = session?.user.email?.charAt(0).toUpperCase() ?? "?";
   const stored = data?.stats.timezone;
   useEffect(() => {
-    // Stats are counted in the stored timezone, which home.get returns. Send this browser's zone only when it
-    // differs (another device may have changed it), then refetch once it is saved, unless the page is already gone.
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (!stored || stored === tz) return;
     let mounted = true;

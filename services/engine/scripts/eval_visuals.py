@@ -29,11 +29,8 @@ from learnquest_engine.schemas import LearnPart, LessonContext
 
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 
-# PLACEHOLDER: the owner confirms the bar. The plan's provisional target is 85% first-try
-# before two-step generation is considered.
 PASS_THRESHOLD = 0.85
 
-# PLACEHOLDER: owner replaces with real provider prices and the LQ-63 tier numbers.
 TIER_VISUALS_PER_DAY = {"free": 1, "pro": 4, "max": 10}
 
 
@@ -51,7 +48,6 @@ class Prices:
         ) / 1_000_000
 
 
-# PLACEHOLDER prices, read once so the eval default is a stable singleton.
 DEFAULT_PRICES = Prices()
 
 
@@ -152,7 +148,6 @@ class Client(Protocol):
 
 
 def _gate(part: LearnPart) -> LearnPart:
-    # Same check pipeline.lesson applies: an invalid doc is dropped, the body is kept.
     return part.model_copy(update={"doc": visual.validated(part.doc)})
 
 

@@ -2,21 +2,16 @@ import { createContext, useContext, type ReactNode, type Ref } from "react";
 import { ChevronRight, Folder, FolderOpen } from "lucide-react";
 import { FileIcon } from "./FileBadge";
 
-/** Provided by a modal drawer: a file row calls it after its own click handler, which closes the drawer. */
 export const DrawerCloseContext = createContext<(() => void) | null>(null);
 
 type Props = {
   depth: number;
   kind: "folder" | "file";
   name: string;
-  /** Folders: expanded. */
   open?: boolean;
   selected?: boolean;
-  /** Source-control letter at the end of the row. */
   status?: "M" | "A";
-  /** Replaces the folder icon (the project root uses the LearnSlop mark). */
   icon?: ReactNode;
-  /** Bold, like the project root. */
   strong?: boolean;
   onClick(): void;
   ref?: Ref<HTMLButtonElement>;
@@ -28,9 +23,8 @@ type Props = {
   path: string;
 };
 
-const INDENT = 12; // px per depth level (Main.dc.html: 8, 20, 32, 44, 56)
+const INDENT = 12;
 
-/** One row of the file tree: Main.dc.html's 22 px row (10 px chevron, 18 px icon, 13 px name). A real button with tree semantics. */
 export default function TreeRow({ depth, kind, name, open = false, selected = false, status, icon, strong = false, onClick, ref, tabIndex, setSize, posInSet, actions, onMoveFile, path }: Props) {
   const folder = kind === "folder";
   const closeDrawer = useContext(DrawerCloseContext);

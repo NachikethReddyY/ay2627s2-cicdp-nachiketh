@@ -15,9 +15,7 @@ type HttpClient = (url: string, init: RequestInit) => Promise<Response>;
 const fetchHttp: HttpClient = (url, init) => fetch(url, init);
 const ready = () => !!(env.IMAGE_BASE_URL && env.IMAGE_API_KEY && env.IMAGE_MODEL);
 
-/** Accept only server-generated content. Callers pass outline/visual spec descriptions, never request text. */
 type ChatMessage = { content?: string | Array<{ type?: string; text?: string; image_url?: { url?: string }; url?: string }> | null; images?: Array<{ image_url?: { url?: string } }> };
-/** Finds the picture in a chat reply: message.images, a content part, a Markdown image, or a bare data URL. */
 function chatImage(message: ChatMessage): string | undefined {
   const fromImages = message.images?.[0]?.image_url?.url;
   if (fromImages) return fromImages;
@@ -39,14 +37,10 @@ type ImageInput = {
   tier: keyof typeof tiers;
 };
 
-// Concurrent reads of the same prompt (any learner, prewarm racing a lesson read) share one provider call instead of paying twice.
-// shortcut: per process only; another API instance can still start its own call, the promptHash unique index stops a duplicate save.
-// shortcut: a learner who shares a call inherits the first caller's cap-refusal fallback, and is not charged a slot.
 const inFlight = new Map<string, Promise<ImageResult>>();
 
 const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
 
-/** `known` maps prompt hashes to stored image keys already looked up in one batch, so no per-image cache query is made. */
 export function generateImage(input: ImageInput, http: HttpClient = fetchHttp, known?: ReadonlyMap<string, string>): Promise<ImageResult> {
   const key = promptHash(input.prompt);
   const hit = known?.get(key);
@@ -64,28 +58,24 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
   const hash = promptHash(input.prompt);
   const [cached] = await db.select({ key: lessonMedia.key, status: lessonMedia.status }).from(lessonMedia).where(eq(lessonMedia.promptHash, hash)).limit(1);
   if (cached?.status === "ready" && cached.key) return { status: "ready", key: cached.key };
-  // A prompt that failed in the last 24 hours (for anyone) is not paid for again.
   const [failed] = await db.select({ id: imageGenerations.id }).from(imageGenerations)
     .where(and(eq(imageGenerations.promptHash, hash), eq(imageGenerations.status, "failed"), gt(imageGenerations.createdAt, sql`now() - interval '24 hours'`))).limit(1);
   if (failed) return fallback;
-  // Moderation runs only for prompts we would send to the provider; a stored image already passed it when saved.
   if (!(await isSafe(input.prompt))) return fallback;
-  // Take the learner's daily slot under a per-learner lock so parallel reads cannot both pass the cap.
-  // The row is "ready" from the start (so it counts) and flips to "failed" if generation does not finish.
   const slot = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.learnerId}))`);
     const { rows: [{ n }] } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM image_generations WHERE learner_id = ${input.learnerId} AND status = 'ready' AND created_at > now() - interval '24 hours'`);
     if (n >= tiers[input.tier].imagesPerDay) return null;
     const [row] = await tx.insert(imageGenerations).values({ learnerId: input.learnerId, promptHash: hash, status: "ready" }).returning({ id: imageGenerations.id });
-    return row!.id;
+    return row.id;
   });
   if (!slot) return fallback;
   try {
     await reserveAiSpend(env.IMAGE_ESTIMATE_USD);
   } catch {
-    await db.delete(imageGenerations).where(eq(imageGenerations.id, slot)); // nothing was called, so nothing is recorded
-    return fallback; // over budget or kill switch: show the description card, never a network call
+    await db.delete(imageGenerations).where(eq(imageGenerations.id, slot));
+    return fallback;
   }
   try {
     const base = env.IMAGE_BASE_URL!.replace(/\/$/, "");
@@ -103,7 +93,6 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
     const bytes = Buffer.from(encoded, "base64");
     const contentType = sniff(bytes);
     if (!contentType) throw new Error("not a supported image");
-    // The prompt was moderated once above, before the provider call; the bytes are checked by type only.
     const key = await saveMedia({ lessonVersionId: input.lessonVersionId, stepId: input.stepId, kind: "image", body: bytes, contentType, promptHash: hash });
     return { status: "ready", key };
   } catch {
@@ -132,16 +121,6 @@ const sniff = (b: Buffer) =>
 
 type DocBlock = { type?: unknown; id?: unknown; props?: Record<string, unknown> };
 
-/**
- * Client-safe copy of a visual doc. This is the only place the server-only image `prompt` is stripped:
- * every "generate" image is fulfilled (or falls back) and rewritten to "generated" / "generated-pending".
- * Image blocks that are broken, or that already claim a client-only source, are dropped; nothing throws.
- * Call it on the stored doc right before it leaves the API.
- */
-/**
- * Generates every `generate` image in a stored document once, while the lesson is being written, so the
- * learner's first read is served from the image cache. A failed image is left as its description card.
- */
 export async function prewarmDocImages(doc: unknown, opts: { lessonVersionId: string; learnerId: string; tier: keyof typeof tiers }): Promise<void> {
   const blocks = (doc as { blocks?: unknown } | null)?.blocks;
   if (!Array.isArray(blocks)) return;
@@ -160,14 +139,13 @@ export async function resolveDocImages(
 ): Promise<unknown> {
   const blocks = (doc as { blocks?: unknown } | null)?.blocks;
   if (!Array.isArray(blocks)) return doc;
-  // One query finds every already-stored image; the rest are resolved with bounded parallelism.
   const prompts = [...new Set((blocks as DocBlock[]).flatMap((b) => (b?.type === "image" && b.props?.source === "generate" && typeof b.props.prompt === "string" ? [promptHash(b.props.prompt)] : [])))];
   const known = new Map<string, string>();
   if (prompts.length && ready()) {
     try {
       const rows = await db.select({ hash: lessonMedia.promptHash, key: lessonMedia.key }).from(lessonMedia).where(and(inArray(lessonMedia.promptHash, prompts), eq(lessonMedia.status, "ready")));
       for (const r of rows) if (r.hash && r.key) known.set(r.hash, r.key);
-    } catch { /* fall back to per-image lookups */ }
+    } catch { }
   }
   const later: Array<() => Promise<unknown>> = [];
   const resolveBlock = async (b: DocBlock): Promise<unknown> => {
@@ -177,16 +155,15 @@ export async function resolveDocImages(
     if (p?.source !== "generate" || typeof p.prompt !== "string" || typeof p.alt !== "string") return undefined;
     const base = { alt: p.alt, ...(typeof p.caption === "string" ? { caption: p.caption } : {}) };
     let props: Record<string, unknown> = { source: "generated-pending", ...base };
-    // A read never waits on the provider. An image not stored yet shows its description card, and generation runs after the read returns so a later read has it.
     if (!known.has(promptHash(p.prompt))) {
-      const input = { ...opts, prompt: p.prompt, description: p.alt }; // narrowed here; a closure would lose the type checks above
+      const input = { ...opts, prompt: p.prompt, description: p.alt };
       later.push(() => generateImage(input, http));
       return { type: "image", id: b.id, props };
     }
     try {
       const r = await generateImage({ ...opts, prompt: p.prompt, description: p.alt }, http, known);
       if (r.status === "ready" && storage) props = { source: "generated", url: await storage.signGet(r.key), ...base };
-    } catch { /* provider, storage or db failure: keep the description card */ }
+    } catch { }
     return { type: "image", id: b.id, props };
   };
   const results: unknown[] = new Array(blocks.length);
@@ -198,7 +175,6 @@ export async function resolveDocImages(
     }
   }));
   const out = results.filter((r) => r !== undefined);
-  // Images generated after the read returns, with the same cap. A failure keeps the description card; the next read serves whatever was stored.
   const queue = Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, later.length) }, async () => {
     for (let job = later.shift(); job; job = later.shift()) await job().catch(() => undefined);
   }));
@@ -208,5 +184,4 @@ export async function resolveDocImages(
 }
 
 const backgroundImages = new Set<Promise<unknown>>();
-/** Resolves once the images queued by reads so far have settled (tests). */
 export const idleImages = () => Promise.allSettled([...backgroundImages]);

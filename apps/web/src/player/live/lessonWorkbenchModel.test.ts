@@ -14,7 +14,7 @@ test("a run in progress blocks Run and Check, but not Lint", () => {
 
 test("a Check in progress blocks Run and Check again", () => {
   const g = actionGuards({ ...idle, checkBusy: true });
-  assert.equal(g.run, true); // matches the old view: only a live run or shell copy blocked Run
+  assert.equal(g.run, true);
   assert.equal(g.check, false);
 });
 

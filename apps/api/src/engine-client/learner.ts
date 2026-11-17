@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { callEngine } from "./client.ts";
 
-/** World-tunable BKT parameters. pGuess is not sent: the engine picks it by question type. */
 export type BktParams = { pSlip: number; pLearn: number; pInit: number };
 
 export type UpdateRequest = {
@@ -32,12 +31,9 @@ const NextResponse = z.object({
 });
 export type NextResult = z.infer<typeof NextResponse>;
 
-// Test seam, like `engineParts` in parts.ts: tests replace `update` and `next` to avoid the engine.
 export const engineLearner = {
-  /** BKT update for the concepts of one observed attempt. */
   update: async (req: UpdateRequest, opts?: { timeoutMs?: number }) =>
     UpdateResponse.parse(await callEngine("/v1/mastery/update", req, opts)).updates,
-  /** The next-step recommendation, always with a reason. */
   next: async (req: NextRequest, opts?: { timeoutMs?: number }): Promise<NextResult> =>
     NextResponse.parse(await callEngine("/v1/next", req, opts)),
 };

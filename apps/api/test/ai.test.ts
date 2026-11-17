@@ -19,7 +19,6 @@ import photosynthesis from "../../../services/engine/tests/fixtures/outline_phot
 const app = buildApp();
 after(() => app.close());
 
-const kinds = ["learn", "watch", "practice"] as const;
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
@@ -49,7 +48,6 @@ beforeEach(() => {
   lessonCalls = 0;
   lessonOut = (kind) => parts[kind as keyof typeof parts];
   generator.outline = async () => outline;
-  // Non-predict parts come from the engine. Each call counts as one model call for these tests.
   engineParts.lesson = async (ctx) => {
     lessonCalls++;
     await new Promise((r) => setTimeout(r, 30));
@@ -109,7 +107,7 @@ test("missing key, non-coding topic and bad input", async () => {
   assert.equal(code(res), "BAD_REQUEST");
   assert.match(res.json().error.message, /that request/i);
   assert.equal(code(await t.m("paths.generate", { prompt: "hi" })), "BAD_REQUEST");
-  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
+  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] });
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
 });
 
@@ -139,7 +137,7 @@ test("an upstream failure gives the daily path back, but bad engine output still
   };
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
   assert.equal(await generated(), before + 1);
-  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] }); // fails schema
+  generator.outline = async () => ({ title: "x", tagline: "y", courses: [] });
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
   assert.equal(await generated(), before + 2);
 });
@@ -182,20 +180,19 @@ test("two concurrent plays write the part once", async () => {
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
   assert.equal(out(a).kind, "practice");
-  // The router hides the expected output, defaults the language and reads the legacy lesson as one hidden test.
   const { expectedOutput: _hidden, ...visiblePractice } = parts.practice;
   assert.deepEqual(out(a).part, { ...visiblePractice, language: "javascript", tests: [{ id: "legacy", name: "Expected output", visibility: "hidden", stretch: false }] });
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
   assert.equal(row!.status, "published");
-  assert.equal((await db.select().from(steps)).length, 10); // only the seeded lessons: 1 and 2 (3 steps each) and the sample worlds (4 steps)
+  assert.equal((await db.select().from(steps)).length, 10);
 });
 
 test("playing a part writes only that part, not the next one", async () => {
   const { t, lessons: ls } = await setup();
   assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
-  await idle(); // the background prefetch must have run (and skipped the part) before we look
+  await idle();
   assert.equal(lessonCalls, 1);
   const [next] = await db.select().from(lessons).where(eq(lessons.slug, ls[1]!.slug));
   assert.equal(next!.currentVersionId, null);
@@ -206,12 +203,12 @@ test("concurrent ensureLesson calls for one lesson make one call and reserve onc
   const { lessons: ls } = await setup("burst@example.com");
   const [lesson] = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.slug, ls[0]!.slug));
   const [learner] = await db.select({ id: learners.id }).from(learners);
-  await db.execute(sql`DELETE FROM spend_ledger`); // drop the outline's reservation
+  await db.execute(sql`DELETE FROM spend_ledger`);
   assert.deepEqual(await Promise.all([ensureLesson(lesson!.id, learner!.id), ensureLesson(lesson!.id, learner!.id)]), [true, true]);
   assert.equal(lessonCalls, 1);
   const [{ n }] = (await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM spend_ledger`)).rows;
   assert.equal(n, 1);
-  assert.equal(await ensureLesson(lesson!.id, learner!.id), false); // already written: no call, no reservation
+  assert.equal(await ensureLesson(lesson!.id, learner!.id), false);
   assert.equal(lessonCalls, 1);
 });
 
@@ -265,13 +262,13 @@ test("private AI lesson is hidden from others until the path is published", asyn
 test("a part generated for one learner is reused by another without a model call", async () => {
   const first = await setup("c@example.com");
   assert.equal((await first.t.q("lessons.get", { id: first.lessons[0]!.slug })).statusCode, 200);
-  await idle(); // background prefetch of neighbouring lessons also calls the engine
+  await idle();
   const before = lessonCalls;
 
   const second = await setup("d@example.com");
   const res = out(await second.t.q("lessons.get", { id: second.lessons[0]!.slug }));
   assert.deepEqual(res.part, parts.learn);
-  assert.equal(lessonCalls, before); // same lesson content, so the cached part is served
+  assert.equal(lessonCalls, before);
   await idle();
 });
 
@@ -289,7 +286,7 @@ test("the AI budget stops a lesson with its own message, before the model call a
   const old = { daily: env.AI_DAILY_BUDGET_USD, estimate: env.AI_CALL_ESTIMATE_USD };
   try {
     env.AI_CALL_ESTIMATE_USD = 0.01;
-    env.AI_DAILY_BUDGET_USD = 0.065; // outline 0.02 (two engine calls), first part 0.04 (four); the second part would reach 0.10
+    env.AI_DAILY_BUDGET_USD = 0.065;
     const { t, lessons: ls } = await setup();
     assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
     assert.equal(lessonCalls, 1);

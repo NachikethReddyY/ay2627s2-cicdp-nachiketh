@@ -15,7 +15,6 @@ after(() => app.close());
 const SHA = "a1b2c3d4e5f6";
 let n = 0;
 
-// What WP6 will do: a draft lesson from a repo with a version and one step.
 const fakeIngest: IngestFn = async (_input, emit) => {
   emit("progress", { step: "fetch" });
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
@@ -125,7 +124,7 @@ test("SSE streams live events to the creator and closes after the terminal one",
   const c = await signUp(app);
   const jobId = await startJob(c);
   const pending = events(c, jobId);
-  await new Promise((r) => setTimeout(r, 50)); // the stream is open and has replayed the early events
+  await new Promise((r) => setTimeout(r, 50));
   release();
   const res = await pending;
   assert.equal(res.statusCode, 200);
@@ -171,7 +170,6 @@ test("publish and unpublish: creator only, learners see it only while published"
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   assert.equal(lesson!.sourceKind, "repo");
 
-  // Hidden everywhere while draft: direct read, course list and home.
   const hidden = async () => {
     assert.equal(code(await trpc(app, other).q("lessons.get", { id: lessonId })), "NOT_FOUND");
     assert.equal(code(await trpc(app, author).q("lessons.get", { id: lessonId })), "NOT_FOUND");
@@ -187,7 +185,7 @@ test("publish and unpublish: creator only, learners see it only while published"
   await hidden();
 
   for (let i = 0; i < 2; i++) {
-    const res = await post(author, `/api/lessons/${lessonId}/publish`); // idempotent
+    const res = await post(author, `/api/lessons/${lessonId}/publish`);
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.json(), { id: lessonId, status: "published" });
   }
@@ -204,7 +202,7 @@ test("publish and unpublish: creator only, learners see it only while published"
   }
   await hidden();
   const [after] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
-  assert.equal(after!.currentVersionId, lesson!.currentVersionId); // the version is kept
+  assert.equal(after!.currentVersionId, lesson!.currentVersionId);
 });
 
 test("publish without a current version is 409; an unknown lesson is 404", async () => {
@@ -242,7 +240,7 @@ test("a cursor at the terminal seq closes the stream immediately", async () => {
 test("sweepOrphanedJobs fails jobs left queued or running", async () => {
   const c = await signUp(app, "sweep@example.com");
   setIngest(fakeIngest);
-  const first = await startJob(c); // creates the learner row
+  const first = await startJob(c);
   await importsIdle();
   const [owner] = await db.select({ createdBy: importJobs.createdBy }).from(importJobs).where(eq(importJobs.id, first));
   const [job] = await db.insert(importJobs).values({ createdBy: owner!.createdBy, repo: "acme/demo", sha: SHA, status: "running" }).returning();
@@ -298,7 +296,6 @@ test("me.next does not return a stored recommendation for an unpublished lesson"
   await importsIdle();
   const [job] = await db.select().from(importJobs).where(eq(importJobs.id, jobId));
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
-  // A stored recommendation pointing at the draft, as if it were made before the lesson was unpublished.
   await db.insert(recommendations).values({
     learnerId: job!.createdBy,
     worldId: world!.id,

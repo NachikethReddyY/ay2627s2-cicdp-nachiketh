@@ -5,11 +5,11 @@ import { FOCUS, MENU_ITEM, MENU_PANEL } from "./ui";
 import { SPEEDS, type Speed } from "./useReplay";
 
 type Props = {
-  replay: boolean; // false: no replay (practice), so no Playback menu, file sidebar or replay help
+  replay: boolean;
   playing: boolean;
   speed: Speed;
   muted: boolean;
-  audio: boolean; // false: no narration, so no Mute item
+  audio: boolean;
   explorer: boolean;
   desktop: boolean;
   full: boolean;

@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import type { BlockViewProps } from "../registry.ts";
 
-// Tiny subset: **bold** and *italic*. Anything else (links, HTML) stays literal text.
 const INLINE = /\*\*(.+?)\*\*|\*(.+?)\*/g;
 
 function inline(s: string): ReactNode[] {

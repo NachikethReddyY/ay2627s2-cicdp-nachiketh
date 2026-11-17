@@ -7,13 +7,10 @@ const W = 360, H = 260;
 const M = { l: 48, r: 12, t: 12, b: 44 };
 const PLOT_X: Range = [M.l, W - M.r];
 const PLOT_Y: Range = [H - M.b, M.t];
-// Series take the meaning tokens in order: accent, keyword, success, attention.
 const FALLBACK = ["var(--ac-g)", "var(--kw)", "var(--ok)", "var(--warn)"] as const;
-// Block colour names (THEME_COLORS) mapped onto the tokens they now stand for.
 const TOKEN: Record<NonNullable<ChartProps["color"]>, string> = {
   ink: "var(--tx)", paper: "var(--mu)", green: "var(--ok)", "green-deep": "var(--okT)", blue: "var(--ac-g)",
   sun: "var(--warn)", pink: "var(--kw)", lilac: "var(--fn)",
-  // a lighter tint of --ok, so green and mint stay two different series in light and dark
   mint: "color-mix(in srgb, var(--ok) 55%, var(--page))",
 };
 const AXIS = "var(--mu)";
@@ -25,11 +22,11 @@ type Tick = { at: number; label: string };
 type Plot = { xTicks: Tick[]; yTicks: Tick[]; marks: ReactNode; zero?: { x?: number; y?: number } };
 
 const path = (pts: [number, number][]) => "M" + pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join("L");
-const colorOf = (p: ChartProps, i: number) => { const c = p.series?.[i]?.color; return c ? TOKEN[c] : FALLBACK[i % FALLBACK.length]!; };
+const colorOf = (p: ChartProps, i: number) => { const c = p.series?.[i]?.color; return c ? TOKEN[c] : FALLBACK[i % FALLBACK.length]; };
 
 function yScale(values: number[], includeZero: boolean, fixed?: Range) {
   const ticks = niceTicks(...(fixed ?? extent(values, includeZero)));
-  const dom: Range = [ticks[0]!, ticks.at(-1)!];
+  const dom: Range = [ticks[0], ticks.at(-1)!];
   const y = linear(dom, PLOT_Y);
   return { y, yTicks: ticks.map((t) => ({ at: y(t), label: fmt(t) })), dom };
 }
@@ -56,12 +53,11 @@ function points(p: ChartProps): Plot {
   const series = p.series ?? [];
   const all = series.flatMap((s) => s.points.map((pt) => ({ x: Number(pt.x), y: pt.y })));
   const xt = niceTicks(...extent(all.map((a) => a.x)));
-  const x = linear([xt[0]!, xt.at(-1)!], PLOT_X);
+  const x = linear([xt[0], xt.at(-1)!], PLOT_X);
   const { y, yTicks } = yScale(all.map((a) => a.y), false);
   const marks = series.map((s, si) => {
     const pts = s.points.map((pt): [number, number] => [x(Number(pt.x)), y(pt.y)]);
     if (p.kind === "line") pts.sort((a, b) => a[0] - b[0]);
-    // Markers get a card-coloured ring so they stay separate from a line or from each other.
     return (
       <g key={si} fill={colorOf(p, si)} stroke="var(--code)" strokeWidth={1.5}>
         {p.kind === "line" && <path d={path(pts)} fill="none" stroke={colorOf(p, si)} strokeWidth={2.5} strokeLinejoin="round" />}

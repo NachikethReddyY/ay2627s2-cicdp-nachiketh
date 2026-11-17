@@ -4,7 +4,6 @@ import { Check } from "./art";
 import { Flame, Zap } from "lucide-react";
 import { pct } from "./pct";
 
-// The streak and today's goal in one panel.
 export default function Sidebar({ stats, leaderboard }: { stats: HomeData["stats"]; leaderboard: HomeData["leaderboard"] }) {
   return (
     <aside className="lq-side" aria-label="Your progress">

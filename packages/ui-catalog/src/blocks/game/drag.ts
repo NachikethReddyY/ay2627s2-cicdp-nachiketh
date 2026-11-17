@@ -19,7 +19,6 @@ const orderSchema = z.strictObject({
   items: z.array(text(60)).min(2).max(MAX_DRAG_ITEMS),
 });
 
-/** items is the right order, top to bottom. The learner gets them shuffled. */
 export const orderKind: GameKind<OrderProps> = {
   schema: orderSchema,
   check: (p) => dupeIssues(p.items, (i) => `items.${i}`, "item"),
@@ -31,7 +30,6 @@ const matchSchema = z.strictObject({
   pairs: z.array(z.strictObject({ left: text(60), right: text(60) })).min(2).max(MAX_DRAG_ITEMS),
 });
 
-/** Each left item has one right partner. The learner drags each right item onto its left partner. */
 export const matchKind: GameKind<MatchProps> = {
   schema: matchSchema,
   check: (p) => [
@@ -47,7 +45,6 @@ const sortSchema = z.strictObject({
   cards: z.array(z.strictObject({ text: text(60), bucket: z.int().min(0) })).min(2).max(MAX_SORT_CARDS),
 });
 
-/** Each card belongs in the bucket named by its index. Every bucket needs at least one card. */
 export const sortKind: GameKind<SortProps> = {
   schema: sortSchema,
   check: (p) => {

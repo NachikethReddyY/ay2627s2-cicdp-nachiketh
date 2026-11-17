@@ -7,11 +7,6 @@ export type VideoSource = { src: string; type: string };
 const HIDE_AFTER_MS = 2500;
 const SKIP_SECONDS = 10;
 
-// Captions and chapters are optional WebVTT files next to the video. They stay hidden from the browser's own renderer:
-// the player draws the caption itself, and the chapters become marks on the seek bar.
-// The lesson's teaching video. The controls sit on top of the picture, YouTube-style: a big play button while paused,
-// and a bar along the bottom (seek, play, skip, time, speed, mute, full screen) that fades out while it plays.
-// A source is tried in order, so a video file can fall back to an audio-only narration file.
 export default function LessonVideo({ title, sources, captionsSrc, chaptersSrc, onExplain }: { title: string; sources: VideoSource[]; captionsSrc?: string; chaptersSrc?: string; onExplain?(prompt: string): void }) {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -24,20 +19,17 @@ export default function LessonVideo({ title, sources, captionsSrc, chaptersSrc, 
   const [shown, setShown] = useState(true);
   const [full, setFull] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [caption, setCaption] = useState(""); // the caption on screen now
+  const [caption, setCaption] = useState("");
   const [hasCaptions, setHasCaptions] = useState(false);
   const [ccOn, setCcOn] = useState(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
 
-  // Keep the bar up while paused or focused; hide it a moment after the pointer stops moving during playback.
   const wake = () => {
     setShown(true);
     clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setShown(false), HIDE_AFTER_MS);
   };
   useEffect(() => () => clearTimeout(hideTimer.current), []);
-  // Hidden tracks still load their cues; "disabled" ones never do. React does not forward a <track>'s load event,
-  // so the elements are read through refs: now if a track has already loaded, and again when it does.
   const captionsEl = useRef<HTMLTrackElement>(null);
   const chaptersEl = useRef<HTMLTrackElement>(null);
   useEffect(() => {
@@ -61,7 +53,6 @@ export default function LessonVideo({ title, sources, captionsSrc, chaptersSrc, 
       stopChapters?.();
     };
   }, [captionsSrc, chaptersSrc]);
-  // The file can finish loading before React attaches its handlers, so read the length once from the element.
   useEffect(() => {
     const v = video.current;
     if (v && v.readyState >= 1) setLength(v.duration);
@@ -96,11 +87,11 @@ export default function LessonVideo({ title, sources, captionsSrc, chaptersSrc, 
   const explain = () => {
     if (!onExplain) return;
     video.current?.pause();
-    if (document.fullscreenElement) void document.exitFullscreen(); // Sloppy sits beside the editor, so leave full screen
+    if (document.fullscreenElement) void document.exitFullscreen();
     onExplain(explainPrompt(caption, video.current?.currentTime ?? time));
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("button, input")) return; // a focused control keeps its own keys
+    if ((e.target as HTMLElement).closest("button, input")) return;
     const handled = e.key === " " || e.key === "k" || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "m" || e.key === "f";
     if (!handled) return;
     e.preventDefault();
@@ -146,7 +137,6 @@ export default function LessonVideo({ title, sources, captionsSrc, chaptersSrc, 
           {captionsSrc && <track ref={captionsEl} kind="captions" srcLang="en" label="English" src={captionsSrc} />}
           {chaptersSrc && <track ref={chaptersEl} kind="chapters" srcLang="en" label="Chapters" src={chaptersSrc} />}
           {sources.map((s, i) => (
-            // The browser tries each source in turn; only the last one failing means nothing can play.
             <source key={s.src} src={s.src} type={s.type} onError={i === sources.length - 1 ? () => setFailed(true) : undefined} />
           ))}
         </video>

@@ -32,7 +32,7 @@ test("speaks sentences in sequence", () => {
   assert.deepEqual(calls, ["cancel", "speak:Hello there.@0.5"]);
   spoken[0]!.onend!();
   assert.deepEqual(calls.slice(2), ["speak:Bye.@0.5"]);
-  spoken[1]!.onend!(); // last sentence: nothing more
+  spoken[1]!.onend!();
   assert.equal(calls.length, 3);
 });
 
@@ -54,11 +54,11 @@ test("volume change cancels and re-speaks the current sentence; stale callbacks 
   sp.speak("One. Two.", { volume: 1, muted: false });
   sp.setVolume(0.2);
   assert.deepEqual(calls.slice(-2), ["cancel", "speak:One.@0.2"]);
-  spoken[0]!.onend!(); // the cancelled utterance reports back: must not advance
+  spoken[0]!.onend!();
   assert.equal(calls.length, 4);
   spoken[1]!.onend!();
   assert.equal(calls.at(-1), "speak:Two.@0.2");
-  sp.setVolume(0); // mute mid-speech
+  sp.setVolume(0);
   assert.deepEqual(calls.slice(-2), ["cancel", "speak:Two.@0"]);
 });
 
@@ -75,9 +75,9 @@ test("pause, resume and cancel", () => {
   sp.resume();
   sp.cancel();
   assert.deepEqual(calls.slice(-3), ["pause", "resume", "cancel"]);
-  spoken[0]!.onend!(); // cancelled: no further speech
+  spoken[0]!.onend!();
   assert.equal(calls.at(-1), "cancel");
-  sp.setVolume(0.5); // nothing to re-speak after cancel
+  sp.setVolume(0.5);
   assert.equal(calls.at(-1), "cancel");
 });
 
@@ -101,7 +101,7 @@ test("setVolume works after unmute", () => {
   const { calls, sp } = fake();
   sp.speak("Hi there.", { volume: 0.6, muted: true });
   assert.equal(calls.at(-1), "speak:Hi there.@0");
-  sp.setVolume(0.6); // unmute
+  sp.setVolume(0.6);
   assert.deepEqual(calls.slice(-2), ["cancel", "speak:Hi there.@0.6"]);
   sp.setVolume(0.9);
   assert.equal(calls.at(-1), "speak:Hi there.@0.9");
@@ -130,7 +130,7 @@ test("a volume change while paused stays paused until resume, then re-speaks", (
   sp.speak("One. Two.", { volume: 1, muted: false });
   sp.pause();
   sp.setVolume(0.3);
-  assert.equal(calls.at(-1), "pause"); // nothing spoken or cancelled while paused
+  assert.equal(calls.at(-1), "pause");
   sp.resume();
   assert.deepEqual(calls.slice(-3), ["cancel", "speak:One.@0.3", "resume"]);
 });

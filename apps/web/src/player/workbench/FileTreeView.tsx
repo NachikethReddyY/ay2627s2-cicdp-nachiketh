@@ -7,7 +7,6 @@ type Props = {
   label: string;
   nodes: TreeNode[];
   open: ReadonlySet<string>;
-  /** Path of the selected file. */
   selected: string;
   onToggle(path: string): void;
   onSelect(path: string): void;
@@ -15,7 +14,6 @@ type Props = {
   onMoveFile?(source: string, targetDir: string): void;
 };
 
-/** The navigator's tree: rows from flattenTree, Main.dc.html's look, WAI-ARIA tree keys (arrows, Home, End). */
 export default function FileTreeView({ label, nodes, open, selected, onToggle, onSelect, rootActions, onMoveFile }: Props) {
   const rows = useMemo(() => flattenTree(nodes, open), [nodes, open]);
   const list = useRef<HTMLUListElement>(null);
@@ -42,7 +40,6 @@ export default function FileTreeView({ label, nodes, open, selected, onToggle, o
       e.preventDefault();
       if (row.isFolder && row.open) onToggle(row.path);
       else {
-        // To the parent folder: the nearest row above with a smaller depth.
         for (let i = at - 1; i >= 0; i--) if (rows[i].depth < row.depth) return go(i);
       }
     }

@@ -19,7 +19,7 @@ test("restores from lq.terminal; first load with nothing stored is closed at 240
   assert.deepEqual(loadPanel({ getItem: (k) => (k === "lq.terminal" ? '{"open":true,"height":300}' : null) }), { open: true, height: 300, everOpened: true });
 });
 
-test("a corrupted or out-of-range stored value falls back safely", () => {   // Review Focus 5
+test("a corrupted or out-of-range stored value falls back safely", () => {
   for (const raw of ["not json", '{"open":"yes","height":300}', '{"open":true,"height":-5}', '{"open":true,"height":"big"}', "null", "[]"]) {
     const s = loadPanel({ getItem: () => raw });
     assert.equal(typeof s.open, "boolean", raw);

@@ -1,5 +1,3 @@
-// Reconnecting client for the sandbox shell WebSocket (GET /api/sandbox/shell).
-// Pure TypeScript: only the WebSocket type and TextEncoder are used, so it runs under `node --test`.
 
 export type CloseReason = "disabled" | "signed_out" | "too_many_tabs" | "busy" | "replaced";
 
@@ -14,10 +12,9 @@ export type ShellState =
 
 export const BACKOFF_MS: readonly number[] = [1000, 2000, 4000, 8000, 15000];
 
-// Proxies drop idle sockets, so an open shell sends a small control frame on this interval. The server ignores unknown frames.
 export const HEARTBEAT_MS = 25_000;
 const PING = JSON.stringify({ type: "ping" });
-const OPEN_STATE = 1; // WebSocket.OPEN
+const OPEN_STATE = 1;
 
 export function backoffMs(attempt: number): number {
   return BACKOFF_MS[Math.min(Math.max(attempt, 0), BACKOFF_MS.length - 1)];
@@ -33,27 +30,22 @@ export function shellUrl(
   if (opts?.wsOrigin && opts.ticket) {
     return `${opts.wsOrigin}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}`;
   }
-  // http: -> ws:, https: -> wss:. Derived from the page protocol so plain ws only happens on an http: page (local dev).
   const scheme = loc.protocol.replace(/^http/, "ws");
   return `${scheme}//${loc.host}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}`;
 }
 
-/** Trim, drop trailing slashes and map http(s):// to ws(s)://. Empty or missing means same-origin. */
 export function normalizeWsOrigin(raw: string | undefined): string | undefined {
   let v = (raw ?? "").trim();
-  while (v.endsWith("/")) v = v.slice(0, -1); // a loop, not /\/+$/, which backtracks super-linearly
-  // http(s) -> ws(s): replace only the "http" prefix, so https stays secure and plain ws appears only if http was given.
+  while (v.endsWith("/")) v = v.slice(0, -1);
   if (/^https?:\/\//i.test(v)) v = "ws" + v.slice(4);
   return v || undefined;
 }
 
-/** Absolute ws(s) origin of the API host (VITE_SHELL_WS_ORIGIN); undefined means same-origin (dev proxy). */
 export function defaultWsOrigin(): string | undefined {
   const v = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SHELL_WS_ORIGIN;
   return normalizeWsOrigin(v);
 }
 
-/** POST /api/sandbox/shell-ticket. Throws an error carrying `status` (and the server's `error.code` when the body has one) on a non-2xx answer. Never logs the ticket. */
 async function defaultFetchTicket(): Promise<string> {
   const res = await fetch("/api/sandbox/shell-ticket", { method: "POST", credentials: "include" });
   if (!res.ok) {
@@ -62,7 +54,6 @@ async function defaultFetchTicket(): Promise<string> {
       const b = (await res.json()) as { error?: { code?: unknown } } | null;
       if (typeof b?.error?.code === "string") code = b.error.code;
     } catch {
-      // Unparsable body: no code, treated as a transient failure.
     }
     throw Object.assign(new Error(`Shell ticket failed (${res.status})`), { status: res.status, code });
   }
@@ -82,17 +73,11 @@ export class ShellNotReadyError extends Error {
 }
 
 export interface ShellSocket {
-  /** No-op unless idle, closed or exited. Without a size it reuses the last one (set by connect or resize). */
   connect(cols?: number, rows?: number): void;
-  /** Binary frame; dropped unless open. "\r" while exited reconnects. Returns true only when the data was written to an open socket. */
   send(data: string): boolean;
-  /** Raw bytes as a binary frame, unchanged (mouse reports can carry bytes >= 128). Dropped unless open; never reconnects. */
   sendBytes(data: Uint8Array): boolean;
-  /** {type:"resize"} text frame when open. */
   resize(cols: number, rows: number): void;
-  /** Resolves when the current connection is open and has produced output. */
   whenReady(timeoutMs: number): Promise<void>;
-  /** false: a drop goes to "paused" with no retries; true resumes. */
   setActive(active: boolean): void;
   onOutput(cb: (bytes: Uint8Array) => void): () => void;
   onState(cb: (s: ShellState) => void): () => void;
@@ -100,7 +85,6 @@ export interface ShellSocket {
   dispose(): void;
 }
 
-// Server close codes (apps/api/src/sandbox/route.ts).
 const CLOSE_REASONS: Record<number, { reason: CloseReason; message: string }> = {
   4029: { reason: "too_many_tabs", message: "Too many terminals are open" },
   4503: { reason: "busy", message: "The sandbox is busy, try again soon" },
@@ -111,7 +95,6 @@ interface Deps {
   WebSocket: new (url: string) => WebSocket;
   location: { protocol: string; host: string };
   probe: () => Promise<number>;
-  /** Origin to connect to directly with a ticket; unset or empty keeps the same-origin behaviour. */
   wsOrigin?: string;
   tabId?: string;
   fetchTicket: () => Promise<string>;
@@ -136,12 +119,12 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   let size = { cols: 80, rows: 24 };
   let active = true;
   let disposed = false;
-  let opened = false; // the current connection reached onopen
-  let ready = false; // the current connection produced output
+  let opened = false;
+  let ready = false;
   let attempt = 0;
   let lastError = "";
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  let generation = 0; // invalidates late events and probe results of earlier connections
+  let generation = 0;
   let pending: Pending[] = [];
   const outputCbs = new Set<(b: Uint8Array) => void>();
   const stateCbs = new Set<(s: ShellState) => void>();
@@ -210,7 +193,6 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     const fixed = CLOSE_REASONS[code];
     if (fixed) return closed(fixed.reason, lastError || fixed.message);
     if (opened) return scheduleRetry();
-    // Closed before the upgrade finished: ask a plain HTTP endpoint why.
     setState({ kind: "connecting" });
     probe().then(
       (status) => {
@@ -233,14 +215,12 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     lastError = "";
     setState({ kind: "connecting" });
     if (!wsOrigin) return connectSocket(gen);
-    // Tickets are single-use and short-lived, so every attempt fetches its own.
     fetchTicket().then(
       (ticket) => {
         if (gen !== generation || disposed) return;
         try {
           connectSocket(gen, ticket);
         } catch {
-          // e.g. a malformed origin makes the WebSocket constructor throw.
           ws = null;
           scheduleRetry();
         }
@@ -248,7 +228,6 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
       (err: unknown) => {
         if (gen !== generation || disposed) return;
         const { status, code } = (err ?? {}) as { status?: unknown; code?: unknown };
-        // Only the explicit "sandbox disabled" answer is final; a full ticket store is "busy" and retries.
         if (status === 503 && code === "unavailable") return closed("disabled", "The sandbox is disabled");
         if (status === 401) return closed("signed_out", "Sign in to use the terminal");
         scheduleRetry();
@@ -257,7 +236,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   };
 
   const connectSocket = (gen: number, ticket?: string) => {
-    const urlSize = size; // the PTY is created at this size; a resize() before onopen cannot be sent yet
+    const urlSize = size;
     const socket = new WS(
       shellUrl(deps.location ?? globalThis.location, urlSize.cols, urlSize.rows, { wsOrigin, ticket, tabId: deps.tabId }),
     );
@@ -284,14 +263,13 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
             settle("exited");
           }
         } catch {
-          // Ignore malformed control frames.
         }
         return;
       }
       if (!(data instanceof ArrayBuffer)) return;
       if (!ready) {
         ready = true;
-        attempt = 0; // a connection that worked restarts the backoff
+        attempt = 0;
         setState({ kind: "open", ready: true });
         markReady();
       }
@@ -301,7 +279,6 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     socket.onclose = (ev) => onDrop(gen, ev.code);
   };
 
-  // The network came back: retry now instead of waiting out the backoff.
   const onOnline = () => {
     if (state.kind !== "reconnecting") return;
     clearRetry();
@@ -334,7 +311,6 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     },
     sendBytes(data) {
       if (state.kind === "open" && ws) {
-        // Copy into an ArrayBuffer-backed view: the socket types need one, and the caller may reuse its buffer.
         ws.send(new Uint8Array(data));
         return true;
       }

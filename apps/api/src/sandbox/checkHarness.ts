@@ -1,16 +1,8 @@
-// The program that runs inside the sandbox container for one Check (passed to `node -e`).
-// It reads {token, language, code, tests: [{stdin}]} as JSON on stdin, runs the code once per test, and prints ONE JSON line:
-//   {"token":string,"results":[{"exit":number|null,"timedOut":boolean,"overflow":boolean,"stdout":string,"stderr":string}]}
-// The token is a per-check random value the host sends in the stdin JSON and requires back, so a line the learner forges cannot pass.
-// The harness runs as root and starts each learner interpreter as uid/gid 1001 through setpriv, so the learner cannot open
-// /proc/<harness pid>/fd or read its memory (which holds the token and the hidden test stdin).
-// It never sees the expected output: the host classifies the results, so learner code cannot read an answer key from this process.
-// The source is a string so it can ship to the container and be unit tested with a fake spawn (see test/sandbox-check.test.ts).
 
 export const TEST_TIMEOUT_MS = 5000;
 export const MAX_STDOUT = 4000;
 export const MAX_STDERR = 500;
-export const TOTAL_MS = 24000; // tests not started by then count as timed out, so the host budget (~30 s) is never overrun
+export const TOTAL_MS = 24000;
 
 export const HARNESS_SOURCE = String.raw`
 const TEST_TIMEOUT_MS = ${TEST_TIMEOUT_MS};

@@ -35,9 +35,7 @@ export type PreviewDevtoolsProps = {
   network: NetworkEntry[];
   sources: SourceEntry[];
   sourceText: SourceText | null;
-  /** The learner clicked an element in inspect mode. Change `seq` each time so the same node can be picked twice. */
   picked: { nodeId: number; seq: number } | null;
-  /** Switch to a tab (for example "Inspect element" in the browser menu). Change `seq` each time. */
   openTab: { tab: DevtoolsTab; seq: number } | null;
   inspecting: boolean;
   send(command: HostToPreview): void;
@@ -55,7 +53,6 @@ const TABS: { id: DevtoolsTab; label: string }[] = [
   { id: "network", label: "Network" },
 ];
 
-/** Keeps the newest callback in a ref so effects can call it without re-running when its identity changes. */
 function useLatest<T>(value: T): { current: T } {
   const ref = useRef(value);
   useEffect(() => {
@@ -75,14 +72,12 @@ export default function PreviewDevtools(props: PreviewDevtoolsProps): ReactEleme
   const hadDom = useRef(dom !== null);
   const uid = useId();
 
-  // The page reloaded and the host dropped its tree: ask for the new one, once per reset.
   useEffect(() => {
     const had = hadDom.current;
     hadDom.current = dom !== null;
     if (had && dom === null && tab === "elements") sendRef.current({ type: "dom-request" });
   }, [dom, tab, sendRef]);
 
-  // After a reset the network ids start over, so an old clear boundary must not hide new requests.
   useEffect(() => {
     if (network.length === 0) setClearedUpTo(0);
   }, [network]);
@@ -195,8 +190,6 @@ function Panel(props: { id: string; labelledBy: string; active: boolean; childre
   );
 }
 
-/* ---------- Console ---------- */
-
 function ConsolePanel({ logs }: { logs: PreviewDevtoolsProps["logs"] }): ReactElement {
   const listRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
@@ -226,8 +219,6 @@ function ConsolePanel({ logs }: { logs: PreviewDevtoolsProps["logs"] }): ReactEl
     </div>
   );
 }
-
-/* ---------- Sources ---------- */
 
 function SourcesPanel(props: { sources: SourceEntry[]; sourceText: SourceText | null; send: Send }): ReactElement {
   const { sources, sourceText, send } = props;
@@ -274,8 +265,6 @@ function SourcesPanel(props: { sources: SourceEntry[]; sourceText: SourceText | 
   );
 }
 
-/* ---------- Network ---------- */
-
 function NetworkPanel({ network, clearedUpTo }: { network: NetworkEntry[]; clearedUpTo: number }): ReactElement {
   const rows = visibleNetwork(network, clearedUpTo);
   if (rows.length === 0) return <p className="wb-dt-empty">No requests yet.</p>;
@@ -311,8 +300,6 @@ function NetworkPanel({ network, clearedUpTo }: { network: NetworkEntry[]; clear
   );
 }
 
-/* ---------- Elements ---------- */
-
 type ElementsProps = {
   dom: PreviewDevtoolsProps["dom"];
   styles: NodeStyles | null;
@@ -331,14 +318,12 @@ function ElementsPanel({ dom, styles, picked, send, refreshSeq }: ElementsProps)
   const askedDomFor = useRef(0);
   const sendRef = useLatest(send);
 
-  // Open the top levels the first time a tree arrives.
   useEffect(() => {
     if (!dom || seeded.current) return;
     seeded.current = true;
     setExpanded(defaultExpanded(dom.root));
   }, [dom]);
 
-  // The tree was dropped (page reload): forget the selection and open the top levels of the next tree.
   useEffect(() => {
     if (dom) return;
     seeded.current = false;
@@ -346,12 +331,10 @@ function ElementsPanel({ dom, styles, picked, send, refreshSeq }: ElementsProps)
     setExpanded(new Set());
   }, [dom]);
 
-  // Keep the selection across a new tree only when its node is still there.
   useEffect(() => {
     if (dom && selectedId !== null && !hasNode(dom.root, selectedId)) setSelectedId(null);
   }, [dom, selectedId]);
 
-  // A click in inspect mode: select the node, open its ancestors, scroll to it.
   useEffect(() => {
     if (!picked || handledPick.current === picked.seq) return;
     if (!dom) return;
@@ -380,14 +363,11 @@ function ElementsPanel({ dom, styles, picked, send, refreshSeq }: ElementsProps)
     setReveal(null);
   }, [reveal]);
 
-  // Ask for the tree again when the Refresh button is used.
   useEffect(() => {
     if (refreshSeq > 0 && selectedId !== null) sendRef.current({ type: "styles-request", nodeId: selectedId });
-    // Only the refresh counter should trigger this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the refresh counter should trigger this
   }, [refreshSeq]);
 
-  // Clear the outline in the preview when the panel goes away.
   useEffect(() => {
     const latest = sendRef;
     return () => latest.current({ type: "highlight", nodeId: null });
@@ -410,7 +390,6 @@ function ElementsPanel({ dom, styles, picked, send, refreshSeq }: ElementsProps)
     });
 
   const rows = dom ? visibleRows(dom.root, expanded) : [];
-  // The one row in the Tab order: the selected row when it is visible, else the first visible row.
   const tabStopId = rows.some((row) => row.node.id === selectedId) ? selectedId : rows[0]?.node.id;
 
   const focusRow = (id: number): void => {
@@ -536,8 +515,6 @@ function NodeLabel({ node, open }: { node: DomNode; open: boolean }): ReactEleme
     </span>
   );
 }
-
-/* ---------- Styles ---------- */
 
 function StylesPane({ styles, send }: { styles: NodeStyles; send: Send }): ReactElement {
   const [view, setView] = useState<"styles" | "computed">("styles");

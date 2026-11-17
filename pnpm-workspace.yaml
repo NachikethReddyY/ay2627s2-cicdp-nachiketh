@@ -2,7 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
   - "e2e"
+  - "tools/*"
 allowBuilds:
   esbuild: true
   node-pty: true
+  onnxruntime-node: true
+  agent-browser: true
   protobufjs: false # postinstall only prints a version-scheme notice; pulled in by the Daytona SDK

@@ -58,7 +58,6 @@ const pOf = async (slug: string) => {
     .where(eq(concepts.slug, slug));
   return row;
 };
-// s1's right answer is index 1.
 
 test("observationOf maps the first action only", () => {
   const f = (o: Partial<AttemptFacts>): AttemptFacts => ({ observed: true, kind: "mcq", correct: true, hintsUsed: 0, ...o });
@@ -107,7 +106,7 @@ test("a skipped first action counts as incorrect", async () => {
 
 test("the second attempt on a step is not observed", async () => {
   const c = await signUp(app);
-  await attempt(c, 0); // wrong, observed
+  await attempt(c, 0);
   await trpc(app, c).m("steps.hint", { id: "s1" });
   assert.equal(out(await attempt(c, 1)).correct, true);
   const rows = await db.select().from(attempts);
@@ -208,13 +207,12 @@ test("two reads with no change make one engine next call; new information makes 
   assert.equal((await db.select().from(recommendations)).length, 1);
   assert.match((await db.select().from(recommendations))[0]!.inputHash ?? "", /^[0-9a-f]{64}$/);
 
-  await attempt(c, 1); // a new observation changes mastery
+  await attempt(c, 1);
   assert.equal(nextCalls, 2);
   await read();
   await read();
   assert.equal(nextCalls, 2);
 
-  // Another observation (s2 is a cloze step) moves mastery again.
   assert.equal((await trpc(app, c).m("steps.attempt", { id: "s2", answer: { kind: "cloze", text: "discount = 0" } })).statusCode, 200);
   assert.equal(nextCalls, 3);
   await read();
@@ -300,7 +298,6 @@ test("a row the engine rejects, or with a bad concept entry, does not block a la
   assert.ok(await pOf("loops"));
   assert.equal((await pOf("loops"))?.n, 1);
 
-  // A permanent engine rejection on s2 is skipped and marked; it does not stall the learner.
   engineLearner.update = async () => {
     throw new EngineError("Engine answered 422", 422, null);
   };
@@ -366,7 +363,6 @@ test("me.next carries a reason, even before any attempt", async () => {
 test("a course of unwritten AI drafts is still sent to the engine, as unfinished", async () => {
   const c = await signUp(app);
   const [world] = await db.select({ id: worlds.id }).from(worlds).where(eq(worlds.slug, "codequest"));
-  // Drafts have no version yet; the learner writes them on first play, so they must count as lessons to do.
   await db.update(lessons).set({ status: "draft", sourceKind: "ai", currentVersionId: null }).where(eq(lessons.worldId, world!.id));
   const next = out(await trpc(app, c).q("me.next", { world: "codequest" }));
   assert.equal(next.action, "practice");
@@ -382,7 +378,6 @@ test("the engine call made inside the mastery transaction times out before Postg
   };
   const c = await signUp(app);
   await attempt(c, 1);
-  // db/client.ts sets idle_in_transaction_session_timeout to 30 s; a call that outlives it kills the transaction.
   assert.ok(timeoutMs !== undefined && timeoutMs < 30_000, `timeout ${timeoutMs}`);
 });
 
@@ -416,7 +411,6 @@ test("deleting a learner cascades to mastery and recommendations", async () => {
   assert.equal((await db.select().from(mastery)).length, 2);
   assert.equal((await db.select().from(recommendations)).length, 1);
   const id = await learnerId();
-  // Attempt history has no cascade of its own; clear it so the learner row can go.
   await db.delete(attempts).where(eq(attempts.learnerId, id));
   await db.delete(stepProgress).where(eq(stepProgress.learnerId, id));
   await db.delete(learners).where(eq(learners.id, id));

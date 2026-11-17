@@ -14,7 +14,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 
-const realLesson = generator.lesson; // later tests replace it; this one wants the engine-backed method
+const realLesson = generator.lesson;
 const app = buildApp();
 after(() => app.close());
 
@@ -67,14 +67,12 @@ test("generation holds no transaction or pooled connection, and a concurrent wri
     return { kind: "learn", body: "Variables hold values." };
   };
   const a = ensureLesson(lesson.id, learnerId);
-  const b = ensureLesson(lesson.id, learnerId); // same process: shares the in-flight write
+  const b = ensureLesson(lesson.id, learnerId);
   await started.opened;
-  // While the slow engine call is pending: no checked-out client, nothing idle in a transaction, no row lock held.
   assert.equal(pool.totalCount - pool.idleCount, 0, "no pooled connection is held during generation");
   const { rows: [act] } = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND state LIKE 'idle in transaction%'`);
   assert.equal(act!.n, 0);
-  // The row is lockable by anyone meanwhile; simulate another instance writing the lesson first.
   const [v] = await db.insert(lessonVersions).values({ lessonId: lesson.id, version: 1, publishedAt: new Date(), content: { kind: "learn", body: "other" } }).returning();
   await db.update(lessons).set({ currentVersionId: v!.id, status: "published" }).where(eq(lessons.id, lesson.id));
   g.open();
@@ -118,17 +116,16 @@ test("a predict reply reserves two calls' worth of spend on each attempt", async
   env.AI_MONTHLY_BUDGET_USD = 0;
   await db.execute(sql`DELETE FROM spend_ledger`);
   generator.lesson = async () => {
-    throw new Error("stop"); // fails both attempts; each attempt is reserved before the call
+    throw new Error("stop");
   };
   await assert.rejects(ensureLesson(lesson.id, learnerId));
   const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
-  assert.equal(Number(r!.s), 2); // two attempts x (reply + repair) x 0.5
+  assert.equal(Number(r!.s), 2);
 });
 
 test("a predict lesson stored for everyone is generated without the learner's missed concepts", async () => {
   const { lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
-  // A real missed concept in this learner's history: the old lessonContext would have sent it to the generator.
   const { rows: [step] } = await db.execute<{ id: string }>(sql`SELECT id FROM steps LIMIT 1`);
   assert.ok(step, "the seed should provide a step to attach an attempt to");
   await db.execute(sql`INSERT INTO attempts (id, learner_id, step_id, kind, observed, correct, missed_concepts)
@@ -153,12 +150,10 @@ test("moderation down: a lesson in a public course is refused, a private one sti
     throw new Error("moderation unavailable");
   });
   try {
-    // Published: everyone can read what gets saved, so an unchecked lesson must not be written.
     await db.update(worlds).set({ visibility: "public" }).where(eq(worlds.id, lesson.worldId));
     await assert.rejects(ensureLesson(lesson.id, learnerId));
     assert.equal((await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id))).length, 0);
 
-    // Private: generation keeps failing open, as before.
     await db.update(worlds).set({ visibility: "private" }).where(eq(worlds.id, lesson.worldId));
     assert.equal(await ensureLesson(lesson.id, learnerId), true);
   } finally {

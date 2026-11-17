@@ -39,7 +39,6 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
     res = generate(system + "\n\n" + visual._system(embedded=True), ctx_data, PARTS[kind])
     if kind == "game-practice":
         return _checked_game(system, ctx_data, res)
-    # Model output is untrusted: keep the doc only if it passes the committed schema.
     doc = getattr(res.value, "doc", None)
     if doc is not None:
         res.value = res.value.model_copy(update={"doc": visual.validated(doc)})
@@ -64,10 +63,7 @@ def _game_issues(part: BaseModel) -> tuple[dict[str, Any] | None, list[str]]:
             "doc: missing; a game-practice part needs a visual document with a game block"
         ]
     doc = visual.unwrap(raw)
-    # CheckerUnavailable propagates: fail closed, as /visual does.
     found = visual.all_issues(doc)
-    # A valid text-only doc passes the catalog, but the API gate rejects
-    # a game-practice part without a game block.
     blocks = doc.get("blocks", [])
     if not any(isinstance(b, dict) and b.get("type") == "game" for b in blocks):
         found.append('blocks: a game-practice doc needs a block with type "game"')
@@ -80,7 +76,6 @@ def _checked_game(
     """Fail an unsolvable game here, not later in the API gate (that forces a full regeneration)."""
     doc, found = _game_issues(res.value)
     if found:
-        # One repair call with the exact problems, then give up with a 422.
         payload = {**ctx_data, "fix_these_issues": found, "previous_part": res.value.model_dump()}
         fixed = generate(
             system + "\n\n" + visual._system(embedded=True), payload, PARTS["game-practice"]

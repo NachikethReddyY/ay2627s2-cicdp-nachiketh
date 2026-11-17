@@ -44,7 +44,6 @@ async function waitForShell(socket: Pick<ShellSocket, "whenReady">): Promise<voi
   }
 }
 
-/** Starts an interactive workspace command in the terminal, without copying editor code to solution.js. */
 export async function runShellCommand(o: {
   command: string;
   panel: { open(): void };
@@ -58,10 +57,6 @@ export async function runShellCommand(o: {
   if (!o.socket.send(`${o.command}\r`)) throw lostShell();
 }
 
-/**
- * Copies the editor's code into the learner's sandbox, then types the run command into the shell.
- * Nothing is written or typed unless the shell is ready. Ctrl-C clears any half-typed input first.
- */
 export async function runInShell(o: {
   language: "python" | "javascript";
   code: string;
@@ -83,7 +78,6 @@ export async function runInShell(o: {
     throw new RunInShellError("copy", `Could not copy your code to the sandbox: ${message}`);
   }
 
-  // send() reports false when the socket is no longer open; the drop may have happened during the PUT or the pause.
   if (!o.socket.send(CTRL_C)) throw lostShell();
   await (o.sleep ?? defaultSleep)(SETTLE_MS);
   if (!o.socket.send(command)) throw lostShell();

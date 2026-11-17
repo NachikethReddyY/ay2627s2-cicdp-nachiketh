@@ -6,9 +6,7 @@ import VisualView from "../blocks/VisualView";
 import { keepLineBreaks } from "./markdownText.ts";
 import { CodeBlock } from "./CodeBlock";
 
-// Markdown for learn and game-practice parts: same plugins and code-block focus styling.
 export function Markdown({ body }: { body: string }) {
-  // Lessons written before the prompt fix hold HTML line breaks.
   const markdown = keepLineBreaks(body.replace(/<br\s*\/?>/gi, "\n"));
   return (
     <div className="learn-md mt-4">
@@ -16,8 +14,7 @@ export function Markdown({ body }: { body: string }) {
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          pre: ({ node, ...props }) => <CodeBlock {...props} />,
-          // Model-written image links could point at any host, so show the description instead of loading them.
+          pre: ({ node: _node, ...props }) => <CodeBlock {...props} />,
           img: ({ alt }) => <span className="italic">{alt}</span>,
         }}
       >

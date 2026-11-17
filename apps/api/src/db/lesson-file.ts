@@ -4,7 +4,6 @@ const Hunk = z.object({ id: z.string(), file: z.string(), oldStart: z.number().i
 
 const Hint = z.object({ text: z.string().min(1), eliminate: z.number().int().min(0).optional() });
 
-// Everything the learner must not see before reveal lives under `secret`, narration text included.
 const StepSecretFile = z.object({
   beforeFiles: z.record(z.string(), z.string()),
   hunks: z.array(Hunk).min(1),
@@ -40,10 +39,8 @@ const LessonStepFile = z
 export const LessonFile = z.object({
   slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
   title: z.string().min(1),
-  // Concept names; each must exist in the manifest.
   concepts: z.array(z.string()),
   position: z.number().int().min(0),
-  // Drafts are seeded but not published; a human author approves before publish.
   status: z.enum(["draft", "published"]).default("published"),
   source: z.object({ repo: z.string(), sha: z.string(), path: z.string() }).optional(),
   steps: z.array(LessonStepFile).min(1),
@@ -59,7 +56,6 @@ export const Manifest = z.object({
 });
 export type Manifest = z.infer<typeof Manifest>;
 
-// Cross-file rules a single-file schema cannot see: slugs and step ids are global keys in the database.
 export function assertUniqueAcrossFiles(files: LessonFile[]) {
   const slugs = new Set<string>();
   const ids = new Set<string>();
@@ -76,7 +72,6 @@ export function assertUniqueAcrossFiles(files: LessonFile[]) {
 
 type FileHunk = { file: string; oldStart: number; lines: string[] };
 
-/** Applies hunks to a copy of files; throws when a context or removed line does not match, naming the file. */
 export function applyHunks(files: Record<string, string>, hunks: FileHunk[]) {
   const out = { ...files };
   for (const h of hunks) {
@@ -99,7 +94,6 @@ export function applyHunks(files: Record<string, string>, hunks: FileHunk[]) {
   return out;
 }
 
-/** Rejects a lesson whose step hunks do not apply to that step's beforeFiles, so the replay cannot fail at reveal. */
 export function assertHunksApply(file: LessonFile) {
   for (const [idx, s] of file.steps.entries()) {
     try {

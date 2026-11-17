@@ -1,17 +1,13 @@
-// Pure helpers for the scene3d renderer: presets, primitive -> mesh props, budget. No React, three or DOM, so node --test can run it.
 import { MAX_PRIMITIVES, vec3Value, type Scene3dProps, type TimelineState } from "@learnquest/ui-catalog";
 
 export type Vec3 = [number, number, number];
 export type Primitive = Scene3dProps["primitives"][number];
 
-// Light-theme hex copies of the colour tokens in index.css (three cannot read CSS variables). Lilac and mint have no
-// token of their own, so they borrow the nearest one (--fn, and the dark success green).
 const HEX: Record<string, string> = {
   ink: "#1c1c1e", paper: "#f6f6f8", green: "#1f9d55", "green-deep": "#177a42", blue: "#2f5fd6",
   sun: "#b7791f", pink: "#9b2393", lilac: "#326d74", mint: "#3fc07a",
 };
 
-// "top" sits a hair off the pole so lookAt keeps a defined up vector.
 export const CAMERA_PRESETS: Record<Scene3dProps["camera"], { position: Vec3; fov: number }> = {
   front: { position: [0, 0, 14], fov: 45 },
   top: { position: [0, 14, 0.01], fov: 45 },
@@ -29,7 +25,6 @@ export const cameraPreset = (name: string) => CAMERA_PRESETS[name as keyof typeo
 export const lightPreset = (name: string) => LIGHT_PRESETS[name as keyof typeof LIGHT_PRESETS] ?? LIGHT_PRESETS.soft;
 
 const MAX_PITCH = 1.5;
-/** Preset camera position turned by yaw/pitch (radians) around the origin; pitch is clamped short of the poles. */
 export function orbitPosition(base: Vec3, yaw: number, pitch: number): Vec3 {
   const r = Math.hypot(...base);
   const theta = Math.atan2(base[0], base[2]) + yaw;
@@ -45,7 +40,6 @@ export const budget = (p: Pick<Scene3dProps, "primitives">) => {
 export type Resolved = { position: Vec3; rotation: Vec3; color: string; opacity: number };
 const RAD = Math.PI / 180;
 
-/** Authored values overlaid with the timeline state; rotation comes back in radians. */
 export function resolve(p: Primitive, state: TimelineState | undefined): Resolved {
   const t = state?.[p.id];
   const color = typeof t?.color === "string" ? HEX[t.color] : undefined;
@@ -53,14 +47,13 @@ export function resolve(p: Primitive, state: TimelineState | undefined): Resolve
   return {
     position: vec3Value(t?.position, 10) ?? p.position,
     rotation: ((vec3Value(t?.rotation, 360) ?? p.rotation ?? [0, 0, 0]).map((d) => d * RAD)) as Vec3,
-    color: color ?? HEX[p.color]!,
+    color: color ?? HEX[p.color],
     opacity: typeof op === "number" && Number.isFinite(op) ? Math.min(1, Math.max(0, op)) : 1,
   };
 }
 
 export type Part = { geo: "sphere" | "box" | "cylinder" | "cone" | "torus" | "plane"; args: number[]; offset: Vec3 };
 
-/** Geometry for a primitive. Labels have no mesh; arrows are a shaft plus a head along +y; lines run along x. */
 export function parts(kind: Primitive["kind"], s: number): Part[] {
   switch (kind) {
     case "sphere": return [{ geo: "sphere", args: [s, 24, 16], offset: [0, 0, 0] }];

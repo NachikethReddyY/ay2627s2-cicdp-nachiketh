@@ -10,7 +10,6 @@ export const KINDS = ["sphere", "box", "cylinder", "cone", "torus", "plane", "ar
 export const MATERIALS = ["matte", "glossy", "wire"] as const;
 export const CAMERAS = ["front", "top", "side", "iso"] as const;
 export const LIGHTS = ["soft", "bright", "dim"] as const;
-/** Props a timeline may set. Anything else is rejected. */
 export const ANIMATABLE = ["position", "rotation", "color", "opacity"] as const;
 
 type Vec3 = [number, number, number];
@@ -35,7 +34,6 @@ export type Scene3dProps = {
 };
 
 const vec3 = (lim: number) => z.tuple([z.number().min(-lim).max(lim), z.number().min(-lim).max(lim), z.number().min(-lim).max(lim)]);
-/** Timeline values are scalars, so a vector is the string "x,y,z". Returns null when malformed or out of range. */
 export const vec3Value = (v: unknown, lim: number): Vec3 | null => {
   const n = typeof v === "string" ? v.split(",").map((x) => (x.trim() === "" ? NaN : Number(x))) : [];
   return n.length === 3 && n.every((x) => Number.isFinite(x) && Math.abs(x) <= lim) ? (n as Vec3) : null;

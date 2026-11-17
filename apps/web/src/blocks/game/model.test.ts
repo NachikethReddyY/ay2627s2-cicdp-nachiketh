@@ -19,7 +19,7 @@ test("editor adds commands and repeats, undoes and clears", () => {
 
 test("editor refuses steps past the block limit and empty repeats", () => {
   assert.deepEqual(edit(["forward"], { type: "add", cmd: "left" }, 1), ["forward"]);
-  assert.deepEqual(edit([], { type: "repeat", times: 2, body: ["left", "right"] }, 2), []); // 1 + 2 blocks
+  assert.deepEqual(edit([], { type: "repeat", times: 2, body: ["left", "right"] }, 2), []);
   assert.deepEqual(edit([], { type: "repeat", times: 2, body: [] }), []);
 });
 
@@ -36,7 +36,7 @@ test("mode maps to controls and keys", () => {
 });
 
 test("announcements name the step, the bump and the result", () => {
-  const run = simulate(["left", "forward", "right", "forward", "forward"], grid); // left turn faces up: bump
+  const run = simulate(["left", "forward", "right", "forward", "forward"], grid);
   assert.match(announceStep(run, 1), /^Step 2 of 5: bump: the edge/);
   assert.match(announceRun(run, "win"), /1 bump\./);
   const win = simulate(["forward", "forward"], grid);

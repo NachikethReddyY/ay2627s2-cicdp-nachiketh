@@ -56,7 +56,6 @@ test("a failed PUT types nothing", async () => {
 });
 
 test("a sandbox that is not ready in 15 s, or is off, types nothing and writes nothing", async () => {
-  // Review Focus 2
   for (const [why, kind] of [
     ["timeout", "starting"],
     ["disabled", "disabled"],

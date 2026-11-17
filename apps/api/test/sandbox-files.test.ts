@@ -94,7 +94,6 @@ test("only the two allowlisted names can be written", async () => {
   const f = fakeFiles();
   for (const n of ["main.py", "solution.PY", "..%2fsolution.py", ".bashrc", "solution.py.bak"])
     assert.equal((await put(cookie, n, { content: "x" })).statusCode, 400, n);
-  // inject() normalises "/files/%2e%2e" to "/", so the request never reaches the route: 404, and nothing is written.
   assert.equal((await put(cookie, "%2e%2e", { content: "x" })).statusCode, 404);
   assert.equal((await put(cookie, "solution.js", { content: "console.log(1)" })).statusCode, 204);
   assert.deepEqual(f.writes.map((w) => w.name), ["solution.js"]);
@@ -135,7 +134,6 @@ test("content over MAX_CODE is 400; 4000 three-byte characters fit the body limi
 test("workspace save rejects content over 64 KiB of UTF-8 even when it has fewer characters", async () => {
   const cookie = await signUp(app);
   const f = fakeFiles();
-  // 43690 CJK characters: under the 65536 character limit, but 131070 UTF-8 bytes.
   const r = await putWorkspace(cookie, { path: "src", content: "界".repeat(43690) });
   assert.equal(r.statusCode, 413);
   assert.equal(r.json().error.code, "file_too_large");
@@ -223,9 +221,9 @@ test("the rate limiter prunes expired windows once the map is large, and still l
   assert.equal(allowed("active"), true);
   assert.equal(allowed("active"), true);
   assert.equal(allowed("active"), false);
-  now += 31_000; // the old windows are over a minute old, the active one is not
+  now += 31_000;
   assert.equal(allowed.size(), 1001);
-  assert.equal(allowed("new"), true); // map is over the threshold, so this call prunes the expired windows
+  assert.equal(allowed("new"), true);
   assert.equal(allowed.size(), 2, "only the active and the new window remain");
   assert.equal(allowed("active"), false, "a window still inside its minute keeps limiting after a prune");
   assert.equal(allowed("old-0"), true, "a pruned learner starts a fresh window");
@@ -248,7 +246,6 @@ test("batch read returns found files, lists missing and oversized ones as skippe
   assert.equal((await readBatch(cookie, many)).statusCode, 200);
   assert.equal((await readBatch(cookie, [...many, "src/extra.js"])).statusCode, 400, "65 paths");
   assert.equal((await readBatch(cookie, [])).statusCode, 400);
-  // An unsafe path is skipped on its own; the batch still answers 200 with the other files.
   const unsafe = await readBatch(cookie, ["../private", "src//a.js", "src/a.js"]);
   assert.equal(unsafe.statusCode, 200);
   assert.deepEqual(unsafe.json().files, [{ path: "src/a.js", content: "a" }]);
@@ -260,7 +257,6 @@ test("batch read returns found files, lists missing and oversized ones as skippe
   const oversized = await app.inject({ method: "POST", url: "/api/sandbox/workspace-files/read", headers: { cookie, origin: env.PUBLIC_ORIGIN }, payload: { paths: ["x".repeat(40_000)] } as object });
   assert.equal(oversized.statusCode, 413, "body over 32 KiB");
 
-  // Each batch is one list-budget call, whatever its size. A fresh learner gets 60 full batches before the 61st is limited.
   const fresh = await signUp(app, "files-batch@example.com");
   for (let i = 0; i < 60; i++) assert.equal((await readBatch(fresh, many)).statusCode, 200, `batch ${i}`);
   assert.equal((await readBatch(fresh, many)).statusCode, 429);

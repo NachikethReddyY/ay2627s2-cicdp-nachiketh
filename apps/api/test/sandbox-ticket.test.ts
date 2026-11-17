@@ -121,7 +121,6 @@ test("the shell socket accepts a ticket without a cookie, once, and never falls 
   assert.equal(await httpStatus("?ticket=bogus", { origin, cookie: b }), 401, "no cookie fallback");
   assert.equal(await httpStatus(`?ticket=${await mint(a)}`, { origin: "https://evil.example" }), 403, "origin still enforced");
 
-  // The ticket opens the minting learner's shell, the same one their cookie opens.
   assert.equal(await open("", { origin, cookie: a }), "open");
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(opened.length, 2);

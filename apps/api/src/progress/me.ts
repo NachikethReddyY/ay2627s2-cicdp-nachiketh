@@ -7,11 +7,8 @@ import { userOfLearner, visibleWorld } from "../access.ts";
 import { applyObservations, MASTERED_AT } from "./mastery.ts";
 import { Slug, listed } from "./shared.ts";
 
-// Names are checked against Postgres, not Intl: the zone is used in `AT TIME ZONE`, where Postgres reads
-// a POSIX offset like "+05:00" with the opposite sign to ISO. Only names in pg_timezone_names are stored.
 const TimeZone = z.string().max(64);
 
-// Empty body is a no-op. COALESCE keeps any field that was not sent.
 const meUpdate = protectedProcedure
   .input(
     z
@@ -37,7 +34,6 @@ const meUpdate = protectedProcedure
       WHERE id = ${ctx.learnerId}`);
   });
 
-// The course by slug if this learner may see it; a private course is indistinguishable from a missing one.
 async function mustWorld(learnerId: string, slug: string) {
   const { rows } = await db.execute<{ id: string }>(
     sql`SELECT w.id FROM worlds w WHERE w.slug = ${slug} AND ${visibleWorld(userOfLearner(learnerId))}`,
@@ -46,7 +42,6 @@ async function mustWorld(learnerId: string, slug: string) {
   return rows[0].id;
 }
 
-// Catches mastery up before a read. A failure (engine down) is logged; the read serves what is stored.
 async function catchUp(learnerId: string, worldId: string) {
   try {
     await applyObservations(learnerId, { worldId });

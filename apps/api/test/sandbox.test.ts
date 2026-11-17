@@ -18,7 +18,6 @@ function fakeBackend() {
   const calls = { open: [] as { learnerId: string; cols: number; rows: number }[], written: [] as string[], resized: [] as number[][], killed: 0 };
   const exits: ((code: number) => void)[] = [];
   setBackend({
-    // Every call gets its own shell, like a real `docker exec` per tab.
     openShell: async (learnerId, size) => {
       calls.open.push({ learnerId, ...size });
       let emit: (d: Uint8Array) => void = () => {};
@@ -38,7 +37,6 @@ function fakeBackend() {
   return { calls, exit: (code: number, i = 0) => exits[i]!(code) };
 }
 
-// Node's built-in WebSocket client; undici accepts a headers option, which the browser API does not.
 type Frame = { data: string | Buffer; bin: boolean };
 async function connect(cookie: string, tab?: string, origin = env.PUBLIC_ORIGIN) {
   const { port } = app.server.address() as AddressInfo;
@@ -96,7 +94,6 @@ test("relays input and output as binary, applies resize, reports exit", async ()
   sock.send(JSON.stringify({ type: "resize", cols: 120, rows: 40 }));
   sock.send(JSON.stringify({ type: "resize", cols: -1, rows: "x" }));
   sock.send("not json");
-  // Messages are handled in order, so once this echo returns the control frames have been applied.
   sock.send(Buffer.from("x"));
   await next();
   assert.deepEqual(fake.calls.resized, [[120, 40], [100, 30]]);
@@ -106,7 +103,7 @@ test("relays input and output as binary, applies resize, reports exit", async ()
   assert.equal(msg.bin, false);
   assert.deepEqual(JSON.parse(msg.data as string), { type: "exit", code: 3 });
   await closed;
-  await new Promise((r) => setTimeout(r, 50)); // server-side close handler runs after the client sees it
+  await new Promise((r) => setTimeout(r, 50));
   assert.equal(fake.calls.killed, 1, "the shell is killed once the socket closes");
 });
 
@@ -187,7 +184,6 @@ test("a learner can open only SANDBOX_MAX_TABS terminals; reconnecting a tab doe
     const a2 = await connect(cookie, "a");
     assert.equal(await a.closed, 4000, "the same tab still takes over");
     assert.equal(a2.sock.readyState, WebSocket.OPEN);
-    // Another learner has their own allowance.
     const other = await connect(await signUp(app, "tabs-other@example.com"), "a");
     assert.equal(other.sock.readyState, WebSocket.OPEN);
     assert.equal(fake.calls.open.length, 4, "the refused tab never started a shell");
@@ -200,7 +196,7 @@ test("a learner can open only SANDBOX_MAX_TABS terminals; reconnecting a tab doe
 
 test("the server refuses new shells past SANDBOX_MAX_SHELLS", async () => {
   fakeBackend();
-  await new Promise((r) => setTimeout(r, 50)); // earlier tests' server-side close handlers have run
+  await new Promise((r) => setTimeout(r, 50));
   const max = env.SANDBOX_MAX_SHELLS;
   env.SANDBOX_MAX_SHELLS = 1;
   try {

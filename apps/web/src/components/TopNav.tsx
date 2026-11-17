@@ -8,7 +8,6 @@ const on = "pill min-h-9 border-transparent bg-[var(--sel)] px-4 text-sm font-me
 export default function TopNav({ streak, xp }: { streak?: number; xp?: number }) {
   const { data } = authClient.useSession();
   const [signOutFailed, setSignOutFailed] = useState(false);
-  // Leave only once the server has ended the session; otherwise the learner would look signed out while still signed in.
   const signOut = async () => {
     setSignOutFailed(false);
     try {

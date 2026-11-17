@@ -19,31 +19,22 @@ type Exec = (cmd: string, args: string[]) => Promise<{ stdout: string; stderr?: 
 const run: Exec = promisify(execFile);
 const IDLE_MS = 3 * 60_000;
 
-// pnpm unpacks node-pty's prebuilt spawn-helper without the exec bit, which makes every spawn fail with posix_spawnp.
 try {
   const dir = createRequire(import.meta.url).resolve("node-pty/package.json").replace(/package\.json$/, "");
   for (const arch of ["darwin-arm64", "darwin-x64"]) chmodSync(`${dir}prebuilds/${arch}/spawn-helper`, 0o755);
 } catch {
-  // Not present on this platform (Linux builds compile it with the right mode).
 }
 
-/**
- * Creates the shell network if it is missing. Inter-container traffic is off, so learners cannot reach each other.
- * Egress to the internet stays open for pip/npm. Docker cannot block the cloud metadata address or private ranges
- * on its own: the host needs the DOCKER-USER rules in services/sandbox/README.md.
- */
 export async function ensureNetwork(name: string, exec: Exec = run): Promise<void> {
   if (await exec("docker", ["network", "inspect", name]).then(() => true, () => false)) return;
   try {
     await exec("docker", ["network", "create", "--driver", "bridge", "-o", "com.docker.network.bridge.enable_icc=false", name]);
   } catch (err) {
-    // Another API process created it between our inspect and create.
     const msg = `${(err as { stderr?: string }).stderr ?? ""} ${(err as Error).message ?? ""}`;
     if (!/already exists/i.test(msg)) throw err;
   }
 }
 
-/** The `docker run` call for a learner's shell container. */
 export function shellRunArgs(name: string, opts: { image: string; network: string; runtime?: string }): string[] {
   return [
     "run", "-d", "--name", name,
@@ -51,11 +42,9 @@ export function shellRunArgs(name: string, opts: { image: string; network: strin
     ...(opts.runtime ? ["--runtime", opts.runtime] : []),
     "--cpus", "1", "--memory", "1g", "--pids-limit", "256",
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-    // Read-only root plus RAM-backed home and /tmp caps disk use (tmpfs also counts against --memory); files are lost on idle stop, the editor re-syncs them.
     "--read-only",
     "--tmpfs", "/home/learner:rw,exec,size=512m,uid=1001,gid=1001,mode=0700",
     "--tmpfs", "/tmp:rw,exec,size=64m",
-    // The venv under /opt is read-only now, so pip installs into home.
     "-e", "PIP_TARGET=/home/learner/.pip", "-e", "PYTHONPATH=/home/learner/.pip",
     opts.image, "sleep", "infinity",
   ];
@@ -72,7 +61,6 @@ const SHELL_RC_DIR = `${HOME}/.learnquest-zsh`;
 const BASH_RC_PATH = `${HOME}/.learnquest-bashrc`;
 const PIPE_MAX_BYTES = 64 * 1024;
 const PIPE_TIMEOUT_MS = 10_000;
-// Exit code the listing script uses for "not a directory", distinct from the docker exec codes (125 to 127).
 const NOT_A_DIR = 3;
 const LIST_SCRIPT = `test -d "$1" && ! test -L "$1" || exit ${NOT_A_DIR}; exec find -P "$1" -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%f\\0'`;
 
@@ -82,10 +70,9 @@ export function containerName(learnerId: string): string {
 
 const FIND_TYPES: Record<string, DirEntry["type"]> = { f: "file", d: "dir", l: "link" };
 
-/** Parses `find -printf '%y\t%s\t%f\0'` output. Names may hold tabs and newlines, so records split on NUL and only the first two tabs. */
 export function parseFindOutput(out: string, max: number): DirListing {
   const records = out.split("\0");
-  records.pop(); // after the last NUL: empty, or a record cut off by the output cap
+  records.pop();
   const entries: DirEntry[] = [];
   for (const rec of records) {
     const a = rec.indexOf("\t");
@@ -113,8 +100,6 @@ export function dockerBackend(opts: {
   const spawnChild = opts.spawnChild ?? spawnProcess;
   const timeoutMs = opts.timeoutMs ?? PIPE_TIMEOUT_MS;
   const maxContainers = opts.maxContainers ?? (() => env.SANDBOX_MAX_SHELLS);
-  // Containers that are running or being started. A closed terminal leaves its container up until the idle stop,
-  // so the server-wide cap counts these, not open sockets.
   const live = new Set<string>();
   const network = opts.network ?? env.SANDBOX_NETWORK;
   const runtime = opts.runtime ?? env.SANDBOX_RUNTIME;
@@ -130,25 +115,21 @@ export function dockerBackend(opts: {
       () => null,
     );
     if (state === "true") return;
-    // A stopped container holds nothing (root is read-only, home is tmpfs), so it is recreated rather than restarted:
-    // that way one created before a flag change (network, runtime) never comes back with the old settings.
     if (state === "false") await exec("docker", ["rm", "-f", name]);
     netReady ??= ensureNetwork(network, exec).catch((err) => {
-      netReady = null; // retry on the next connect
+      netReady = null;
       throw err;
     });
     await netReady;
     await exec("docker", shellRunArgs(name, { image: opts.image, network, runtime }));
   }
 
-  // Counted from the moment a start is decided, so concurrent first connects can't overshoot the cap.
   function claim(name: string) {
     if (live.has(name)) return;
     if (live.size >= maxContainers()) throw new SandboxBusyError();
     live.add(name);
   }
 
-  // Concurrent connects for one learner share a single create/start.
   function ensure(name: string) {
     let p = starting.get(name);
     if (!p) {
@@ -158,14 +139,12 @@ export function dockerBackend(opts: {
     return p;
   }
 
-  // Never starts a container: only one this process already counts as live and docker still reports running.
   async function isRunning(name: string) {
     if (!live.has(name)) return false;
     const state = await exec("docker", ["inspect", "-f", "{{.State.Running}}", name]).then((r) => r.stdout.trim(), () => null);
     return state === "true";
   }
 
-  // Argv only, never a shell string. Stdout is capped: past the cap the child is killed and the result flagged.
   function pipe(args: string[], input?: string) {
     return new Promise<{ code: number | null; stdout: string; capped: boolean }>((resolve, reject) => {
       const child = spawnChild("docker", args, { stdio: ["pipe", "pipe", "ignore"] });
@@ -185,9 +164,7 @@ export function dockerBackend(opts: {
         timedOut = true;
         child.kill();
       }, timeoutMs);
-      // Not unref'd: a command in flight is bounded by timeoutMs, and an unref'd timer lets a runtime with
-      // nothing else alive (such as a test with a stub child that never exits) end before the timeout fires.
-      child.stdout!.on("data", (d: Buffer) => {
+      child.stdout.on("data", (d: Buffer) => {
         if (capped) return;
         const room = PIPE_MAX_BYTES - bytes;
         chunks.push(d.length > room ? d.subarray(0, room) : d);
@@ -205,13 +182,11 @@ export function dockerBackend(opts: {
         reject(err);
       });
       child.on("close", (code) => finish(code));
-      child.stdin!.on("error", () => {}); // the child may exit before reading its input
-      child.stdin!.end(input);
+      child.stdin.on("error", () => {});
+      child.stdin.end(input);
     });
   }
 
-  // A non-zero exit is an error, never "missing". If the container stopped meanwhile (docker exec then exits 1 or 125),
-  // the shell is gone rather than the command broken.
   async function failed(name: string, what: string, code: number | null): Promise<Error> {
     if (!(await isRunning(name))) return new SandboxNotRunningError();
     return new Error(`${what} failed (exit ${code})`);
@@ -221,7 +196,6 @@ export function dockerBackend(opts: {
     async readWorkspaceFile(learnerId, relPath) {
       const name = containerName(learnerId);
       if (!(await isRunning(name))) throw new SandboxNotRunningError();
-      const target = `${HOME}/${relPath}`;
       const script = 'target="$2/$1"; [ -f "$target" ] && [ ! -L "$target" ] || exit 4; [ "$(realpath -e -- "$target")" = "$target" ] || exit 4; exec cat -- "$target"';
       const r = await pipe(["exec", "-u", LEARNER_UID, name, "sh", "-c", script, "sh", relPath, HOME]);
       if (r.capped) throw new SandboxFileTooLargeError();
@@ -269,7 +243,7 @@ export function dockerBackend(opts: {
 
     async openShell(learnerId, { cols, rows }) {
       const name = containerName(learnerId);
-      claim(name); // before anything else, so a refused learner holds nothing
+      claim(name);
       clearTimeout(timers.get(name));
       attached.set(name, (attached.get(name) ?? 0) + 1);
       const release = () => {
@@ -277,9 +251,7 @@ export function dockerBackend(opts: {
         attached.set(name, n);
         if (n > 0) return;
         attached.delete(name);
-        // Only the open-shell count is watched: a process left running in the background does not keep the container up.
         const t = setTimeout(() => {
-          // A failed stop leaves the container counted: better to refuse a shell than to overshoot the cap.
           const p = exec("docker", ["stop", "-t", "2", name])
             .then(() => void live.delete(name), () => {})
             .finally(() => stopping.delete(name));
@@ -290,9 +262,8 @@ export function dockerBackend(opts: {
       };
       let started = false;
       try {
-        // A stop already in flight can't be cancelled, so let it finish before starting the container again.
         await stopping.get(name);
-        claim(name); // a stop that just finished uncounted it
+        claim(name);
         await ensure(name);
         started = true;
         const rc = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'umask 077; mkdir -p "$1"; cat > "$1/.zshrc"', "sh", SHELL_RC_DIR], SHELL_RC);
@@ -303,8 +274,6 @@ export function dockerBackend(opts: {
         if (workspace.code !== 0) throw await failed(name, "preparing the project folder", workspace.code);
       } catch (err) {
         release();
-        // Only a start that failed holds no slot. Once ensure() succeeded the container is running, so it stays
-        // counted until the idle stop; a later step failing does not free it.
         if (!started && !attached.has(name)) live.delete(name);
         throw err;
       }
@@ -320,7 +289,7 @@ export function dockerBackend(opts: {
           cols,
           rows,
           encoding: null,
-          env: process.env as Record<string, string>,
+          env: process.env,
         });
       } catch (err) {
         release();

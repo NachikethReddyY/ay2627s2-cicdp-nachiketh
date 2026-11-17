@@ -11,7 +11,6 @@ const t: Timeline = timelineSchema.parse({
     step([{ id: "dot", prop: "visible", value: true }, { id: "box", prop: "x", value: 100 }]),
   ],
 });
-// State records have a null prototype; strict deepEqual compares prototypes.
 const plain = (v: unknown) => JSON.parse(JSON.stringify(v));
 
 test("stateAt applies steps up to i, later steps overriding earlier ones", () => {

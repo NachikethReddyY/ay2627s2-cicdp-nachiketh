@@ -7,7 +7,6 @@ import { bodyBelow } from "./bounce.ts";
 
 export const MAX_SHAPES = 60;
 const KINDS = ["rect", "circle", "ellipse", "line", "text", "path"] as const;
-/** Props a timeline may set. Anything else is rejected. */
 export const ANIMATABLE = ["x", "y", "opacity", "fill", "stroke", "w", "h", "r", "rotation", "scale", "draw"] as const;
 
 type Kind = (typeof KINDS)[number];
@@ -30,7 +29,6 @@ type Shape = {
 type StagePhysics = { kind: "bounce"; body: string; floor: number; restitution: number; autoplay?: boolean };
 export type StageProps = { alt: string; shapes: Shape[]; timeline?: Timeline; physics?: StagePhysics };
 
-// Geometry each kind needs (and may use) beyond x and y. rect x,y is the top-left corner; the others are centred or anchored at x,y.
 const GEOMETRY: Record<Kind, readonly ("w" | "h" | "r" | "x2" | "y2" | "d" | "arrow" | "label")[]> = {
   rect: ["w", "h"],
   circle: ["r"],
@@ -40,12 +38,9 @@ const GEOMETRY: Record<Kind, readonly ("w" | "h" | "r" | "x2" | "y2" | "d" | "ar
   path: ["d"],
 };
 const GEOMETRY_KEYS = ["w", "h", "r", "x2", "y2", "d", "arrow"] as const;
-/** Optional props a kind may use beyond its geometry. */
 const OPTIONAL: Partial<Record<Kind, readonly string[]>> = { line: ["arrow"] };
-/** Path data uses only SVG path commands and numbers, so no markup can get into the page. */
 const PATH_D = /^[MmLlHhVvCcSsQqTtZz0-9.,\s+-]+$/;
 
-/** Returns the first field whose shape extent leaves 0..100, else undefined. Ellipse x,y is its centre (as View.tsx draws it). */
 function extent(s: Shape): "x" | "y" | undefined {
   const inside = (lo: number, hi: number) => lo >= 0 && hi <= 100;
   const { x, y } = s;
@@ -54,7 +49,6 @@ function extent(s: Shape): "x" | "y" | undefined {
   else if (s.kind === "ellipse") [dx0, dx1, dy0, dy1] = [-(s.w ?? 0) / 2, (s.w ?? 0) / 2, -(s.h ?? 0) / 2, (s.h ?? 0) / 2];
   else if (s.kind === "circle") [dx0, dx1, dy0, dy1] = [-(s.r ?? 0), s.r ?? 0, -(s.r ?? 0), s.r ?? 0];
   else if (s.kind === "line") [dx0, dx1, dy0, dy1] = [Math.min(0, (s.x2 ?? x) - x), Math.max(0, (s.x2 ?? x) - x), Math.min(0, (s.y2 ?? y) - y), Math.max(0, (s.y2 ?? y) - y)];
-  // shortcut: path data is not bounds-checked (it can leave the canvas and is clipped), upgrade if clipping shows up in practice.
   if (!inside(x + dx0, x + dx1)) return "x";
   return inside(y + dy0, y + dy1) ? undefined : "y";
 }
@@ -105,7 +99,6 @@ export const stageBlock: BlockModule<StageProps> = {
       const out = extent(s);
       if (out) bad(`shapes.${i}.${out}`, `${s.kind} shape "${s.id}" leaves the 0-100 canvas`);
     });
-    // shortcut: timeline x/y are only range-checked 0..100, not the moved extent (x-r, x+w); upgrade if animated shapes clip.
     b.props.timeline?.steps.forEach((step, i) =>
       step.set.forEach((set, j) => {
         const at = `timeline.steps.${i}.set.${j}`;

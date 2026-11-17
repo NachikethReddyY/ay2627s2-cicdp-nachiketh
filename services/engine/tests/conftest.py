@@ -5,8 +5,6 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-# litellm reads ./.env at import time in DEV mode, which would leak a developer's local key
-# and timeout into tests. Must be set before litellm is imported.
 os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
 
 import litellm  # noqa: E402
@@ -19,8 +17,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(autouse=True)
 def engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    # Settings must load in every test; no real key is ever needed or read.
-    # Run from an empty directory so a developer's services/engine/.env is never read.
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LLM_MODEL", "openai/test")
     monkeypatch.setenv("ENGINE_TOKEN", "x" * 32)
@@ -32,7 +28,6 @@ def engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A missed mock must fail loudly, not reach a paid API from CI.
     def refuse(*_: Any, **__: Any) -> None:
         raise RuntimeError("network access is blocked in tests")
 
@@ -51,7 +46,6 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], list[dict[str, 
         calls: list[dict[str, Any]] = []
 
         def completion(**kw: Any) -> Any:
-            # Snapshot each message: the live list keeps growing with repair attempts.
             calls.append({**kw, "messages": [dict(m) for m in kw["messages"]]})
             if not queue:
                 raise AssertionError(f"{name}: no recorded reply left for call {len(calls)}")

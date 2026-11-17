@@ -89,12 +89,11 @@ def test_response_format_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     generate("sys", {}, Lesson)
     assert calls[1]["response_format"] == {"type": "json_object"}
     assert "JSON schema" in calls[1]["messages"][0]["content"]
-    generate("sys", {}, Lesson)  # remembered: no second schema attempt
+    generate("sys", {}, Lesson)
     assert calls[2]["response_format"] == {"type": "json_object"}
 
 
 def test_any_schema_rejection_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    # NVIDIA NIM rejects the schema with a grammar error that does not name response_format.
     err = BadRequestError('Grammar error: Unimplemented keys: ["propertyNames"]', "m", "nvidia")
     calls = fake(monkeypatch, err, reply(GOOD), reply(GOOD))
     generate("sys", {}, Lesson)
@@ -175,7 +174,7 @@ def test_deadline_stops_the_repair_call(monkeypatch: pytest.MonkeyPatch) -> None
 
     def slow(**kw: Any) -> Any:
         calls.append(kw)
-        now[0] += 100  # the first call eats the whole budget
+        now[0] += 100
         return reply("not json")
 
     monkeypatch.setattr(litellm, "completion", slow)
@@ -194,7 +193,7 @@ def test_deadline_is_shared_by_all_calls_in_a_request(monkeypatch: pytest.Monkey
     llm.start_request_deadline()
     try:
         generate("sys", {}, Lesson)
-        now[0] = 70.0  # the first generate() used 70s of the request budget
+        now[0] = 70.0
         generate("sys", {}, Lesson)
     finally:
         llm._deadline.reset(token)

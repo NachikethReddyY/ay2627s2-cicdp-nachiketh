@@ -36,7 +36,6 @@ const PathDetail = z.object({
 });
 
 const enroll = protectedProcedure.input(Slug).output(z.void()).mutation(async ({ ctx, input }) => {
-      // Private paths are enrollable only by their owner.
       const { rows } = await db.execute(sql`
         INSERT INTO enrollments (learner_id, path_id)
         SELECT l.id, p.id FROM paths p, learners l
@@ -54,7 +53,6 @@ const enroll = protectedProcedure.input(Slug).output(z.void()).mutation(async ({
       }
   });
 
-  // Visible = public, or owned by the caller.
 const courseGet = protectedProcedure.input(Slug).output(CourseDetail).query(async ({ ctx, input }) => {
       const me = ctx.learnerId;
       const {
@@ -72,7 +70,6 @@ const courseGet = protectedProcedure.input(Slug).output(CourseDetail).query(asyn
       return { slug: course.slug, title: course.title, description: course.description, origin: course.origin, lessons: lessonRows };
   });
 
-  // scope: official = public official paths, community = public other paths, mine = paths I own.
 const pathList = protectedProcedure
   .input(
     z
@@ -91,7 +88,6 @@ const pathList = protectedProcedure
         community: sql`p.visibility = 'public' AND p.origin <> 'official'`,
         mine: sql`p.owner_id = ${myUser(me)}`,
       }[scope];
-      // Escape LIKE wildcards so q matches literally.
       const search = q ? sql`AND p.title ILIKE ${`%${q.replace(/[\\%_]/g, "\\$&")}%`}` : sql``;
       return pathCards(me, sql`${scoped} ${search}`, sql`learners DESC, p.created_at DESC`, 50);
   });
@@ -148,9 +144,6 @@ const pathGet = protectedProcedure.input(Slug).output(PathDetail).query(async ({
       };
   });
 
-// Owner only. Publishes the path and the courses it contains that the same user owns.
-// Publishing makes content visible to everyone, so unlike generation (which fails open) it fails closed:
-// the text is moderated first, and if moderation is unavailable or flags it, nothing is published.
 const PUBLISH_REFUSAL = "This path can't be published right now: it couldn't be cleared by our safety check.";
 const MODERATION_CHUNK = 8000;
 const publish = protectedProcedure
@@ -168,7 +161,6 @@ const publish = protectedProcedure
     if (pending.length === 0) throw notFound("Path not found");
     const body = pending.map((r) => r.text).join("\n");
     for (let i = 0; i < body.length; i += MODERATION_CHUNK) {
-      // failOpen is false here on purpose.
       if (!(await isSafe(body.slice(i, i + MODERATION_CHUNK)))) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: PUBLISH_REFUSAL });
       }

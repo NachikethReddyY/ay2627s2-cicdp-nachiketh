@@ -1,0 +1,22 @@
+{
+  "name": "@learnquest/repo-index",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/**/*.test.ts'",
+    "lint": "tsc --noEmit",
+    "index": "node src/cli.ts index",
+    "search": "node src/cli.ts search",
+    "mcp": "node src/mcp.ts"
+  },
+  "dependencies": {
+    "@babel/parser": "^8.1.2",
+    "@huggingface/transformers": "^4.3.2",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

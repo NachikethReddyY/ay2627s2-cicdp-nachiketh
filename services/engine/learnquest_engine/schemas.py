@@ -21,7 +21,7 @@ T500 = Annotated[str, _c(500)]
 T1000 = Annotated[str, _c(1000)]
 
 
-class OutlineLesson(BaseModel):  # outline lesson
+class OutlineLesson(BaseModel):
     title: T80
     level: int = Field(ge=1, le=5)
     concepts: list[T60] = Field(min_length=1, max_length=6)
@@ -44,7 +44,6 @@ class Outline(BaseModel):
     title: T80 | None = None
     tagline: T160 | None = None
     courses: list[Course] | None = Field(default=None, min_length=2, max_length=4)
-    # "other" = non-coding topic: watch (code replay) and practice (code task) would need code.
     subject: Literal["code", "other"] | None = None
 
     @model_validator(mode="after")
@@ -145,7 +144,6 @@ class Lesson(BaseModel):
 _Loose200 = Annotated[str, StringConstraints(max_length=200)]
 
 
-# Request-side caps: the API sends model-written text back to us, so bound it generously.
 class _Path(BaseModel):
     title: str = Field(max_length=200)
     tagline: str = Field(max_length=400)
@@ -166,11 +164,10 @@ class _LessonRef(BaseModel):
 T4000 = Annotated[str, _c(4000)]
 
 
-# One flat model per part kind: strict json_schema needs an object at the root.
 class LearnPart(BaseModel):
     kind: Literal["learn"]
     body: T4000
-    doc: dict[str, Any] | None = None  # dropped by the pipeline if invalid
+    doc: dict[str, Any] | None = None
 
 
 class WatchPart(BaseModel):
@@ -267,7 +264,6 @@ class LessonContext(BaseModel):
     course: _Course
     lesson: _LessonRef
     missedConcepts: list[_Loose200] = Field(max_length=50)
-    # Practice only: how many stretch tests the model must add (edge cases, harder inputs).
     stretchTests: int = Field(default=0, ge=0, le=PRACTICE_STRETCH_MAX)
 
 

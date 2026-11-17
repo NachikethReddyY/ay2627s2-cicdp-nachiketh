@@ -6,7 +6,6 @@ import { trpc } from "../lib/trpc";
 import { Logo } from "./landing/Logo";
 import "./home.css";
 
-// Account settings: the signed-in email, sign-out, and the weekly XP leaderboard opt-in (off by default).
 export default function Account() {
   const { data } = authClient.useSession();
   const navigate = useNavigate();

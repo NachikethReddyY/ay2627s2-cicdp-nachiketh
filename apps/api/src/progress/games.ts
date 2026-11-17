@@ -11,8 +11,6 @@ const lessonId = z.string().regex(/^[\w-]{1,64}$/);
 const gameIndex = z.number().int().min(0).max(100);
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-// The stored (full) game, with the answers and hints the client never receives. Same visibility rule as lessons.get:
-// a published lesson in a public course or one the caller owns; anything else is indistinguishable from missing.
 async function loadGame(learnerId: string, ref: string, index: number): Promise<{ lessonDbId: string; blockId: string; game: GameProps }> {
   const { rows } = await db.execute(sql`
     SELECT l.id AS lesson_id, v.content->'doc' AS doc
@@ -41,8 +39,6 @@ const hint = protectedProcedure
     return { text };
   });
 
-// The server decides a win: only a `complete` verdict records progress (10 XP per block, once, via ON CONFLICT).
-// A recorded win also completes the lesson's part, in the same statement. The single part is partIdx 0.
 const check = protectedProcedure
   .input(z.object({ lessonId, gameIndex, submission: submissionSchema }))
   .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionResults: z.array(z.boolean()).optional() }))

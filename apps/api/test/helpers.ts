@@ -1,6 +1,4 @@
-// Import this before any ../src module: env.ts reads process.env when it is first imported.
 process.env.NODE_ENV = "test";
-// Tests truncate every table, so they read TEST_DATABASE_URL (never DATABASE_URL) and refuse a non-_test database.
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? "postgres://learnquest:learnquest@localhost:5432/learnquest_test";
 if (!new URL(process.env.DATABASE_URL).pathname.endsWith("_test")) {
@@ -8,7 +6,6 @@ if (!new URL(process.env.DATABASE_URL).pathname.endsWith("_test")) {
 }
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
 process.env.PUBLIC_ORIGIN ??= "http://localhost:5173";
-// inject() connects from 127.0.0.1, so that address stands in for the proxy and its forwarded IP is honoured.
 process.env.TRUSTED_PROXY ??= "127.0.0.1";
 process.env.IMPORT_REPO_ALLOWLIST ??= "acme/demo";
 
@@ -16,7 +13,6 @@ import { randomInt } from "node:crypto";
 import { after, beforeEach } from "node:test";
 import type { FastifyInstance } from "fastify";
 
-// Dynamic imports: static ones would hoist above the env assignments.
 const { sql } = await import("drizzle-orm");
 const { db, pool } = await import("../src/db/client.ts");
 const { runMigrations } = await import("../src/db/migrate.ts");
@@ -28,23 +24,20 @@ setModerationClient(async () => ({ flagged: false, scores: { hate: 0, harassment
 await runMigrations();
 
 beforeEach(async () => {
-  await idle(); // prefetch left running by the previous test would deadlock the truncate
+  await idle();
   await db.execute(
     sql`TRUNCATE collection_paths, collections, enrollments, generation_cache, lesson_media, part_completions, path_courses, paths, hint_events, attempts, mastery, recommendations, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
   );
 });
 
-// Close the pool when the file's tests finish. Otherwise idle connections keep node alive for the pool's idle timeout.
 after(async () => {
-  try { await pool.end(); } catch { /* the app's onClose may have ended it already */ }
+  try { await pool.end(); } catch { }
 });
 
 export const PASSWORD = "correct-horse-battery";
 
-// Seeds lesson-1, signs up a user, returns the session cookie header value.
 export async function signUp(app: FastifyInstance, email = "a@example.com") {
   await seed();
-  // Own client address per call: the sign-up rate limit would otherwise trip across tests in one process.
   const res = await app.inject({
     method: "POST",
     url: "/api/auth/sign-up/email",
@@ -55,7 +48,6 @@ export async function signUp(app: FastifyInstance, email = "a@example.com") {
   return res.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 }
 
-// tRPC over HTTP: queries are GET ?input=<json>, mutations are POST with the JSON input as the body.
 export function trpc(app: FastifyInstance, cookie = "") {
   const url = (path: string) => `/api/trpc/${path}`;
   return {
@@ -74,7 +66,5 @@ export function trpc(app: FastifyInstance, cookie = "") {
       }),
   };
 }
-// Unwraps a successful tRPC response.
 export const out = (res: { json(): any }) => res.json().result.data;
-// The tRPC error code of a failed response.
 export const code = (res: { json(): any }) => res.json().error.data.code as string;

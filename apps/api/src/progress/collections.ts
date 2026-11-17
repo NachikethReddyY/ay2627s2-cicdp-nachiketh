@@ -23,13 +23,11 @@ const AdminCollection = z.object({
   pathSlugs: z.array(z.string()),
 });
 
-// Featured collections in order. Only public paths appear, and a collection with none left is skipped.
 const list = protectedProcedure.output(z.array(Collection)).query(async ({ ctx }) => {
   const { rows: cols } = await db.execute<{ id: string; slug: string; title: string; description: string }>(sql`
     SELECT id, slug, title, description FROM collections WHERE featured
     ORDER BY position, created_at, id LIMIT ${MAX_FEATURED}`);
   if (cols.length === 0) return [];
-  // Both follow-up queries are limited to the collections shown, so a 13th featured one cannot crowd out their paths.
   const shown = sql.join(cols.map((c) => sql`${c.id}`), sql`, `);
   const { rows: links } = await db.execute<{ collection_id: string; slug: string }>(sql`
     SELECT cp.collection_id, p.slug FROM collection_paths cp
@@ -78,7 +76,6 @@ const setFeatured = adminProcedure
     if (rows.length === 0) throw notFound("Collection not found");
   });
 
-// Replaces the collection's paths with this ordered list. Only public paths can be featured.
 const setPaths = adminProcedure
   .input(Slug.extend({ pathSlugs: z.array(Slug.shape.slug).max(MAX_PATHS) }))
   .output(z.void())

@@ -13,17 +13,13 @@ export type WorkbenchProblem = {
 };
 
 export type WorkbenchContextValue = {
-  /** Monaco theme name for the resolved light/dark theme. */
   monacoTheme: "learnslop-light" | "learnslop-dark";
   wordWrap: boolean;
   setWordWrap(value: boolean): void;
   fileName: string;
-  /** Report the editor caret so the status bar can show Ln/Col. */
   setCursor(c: { line: number; column: number } | null): void;
-  /** Report a non-empty code selection to the guide composer. */
   setSelection(s: { startLine: number; endLine: number; text: string } | null): void;
   setProblems(problems: WorkbenchProblem[]): void;
-  /** Open a docs entry in the utility area (the editor hover's "Open in Docs"). */
   openDoc(id: string): void;
 };
 

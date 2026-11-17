@@ -8,8 +8,6 @@ const flush = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 
-// A real Response body parse (res.json()) finishes on a later macrotask than a few microtask turns, so wait on
-// real setImmediate (never the mocked setTimeout) until `done` holds, with a bounded number of turns.
 const settleUntil = async (done: () => boolean) => {
   for (let i = 0; i < 200 && !done(); i++) await new Promise<void>((r) => setImmediate(r));
 };
@@ -37,7 +35,6 @@ class FakeWS {
   send(d: string | Uint8Array) {
     this.sent.push(d);
   }
-  // Called by the socket under test.
   close(code?: number) {
     this.closedWith = code;
   }
@@ -49,8 +46,6 @@ class FakeWS {
   msg(data: unknown) {
     this.onmessage?.({ data });
   }
-  // The server side ends the connection. The brief names this helper close(code); the socket under test also
-  // calls close(), so the test helper is named `drop`.
   drop(code: number) {
     this.readyState = 3;
     this.onclose?.({ code });
@@ -172,7 +167,6 @@ test("backoff is 1, 2, 4, 8, 15, 15 s while active", (t) => {
     t.mock.timers.tick(1);
     assert.equal(FakeWS.count, before + 1, "exactly one new socket");
     assert.equal(s.state().kind, "connecting");
-    // The server accepts the upgrade and then drops us before any output: the delay keeps growing.
     FakeWS.last.open();
     FakeWS.last.drop(1006);
   }
@@ -234,7 +228,7 @@ test("a refused handshake probes the files endpoint: 503 disabled, 401 signed ou
       return status;
     });
     s.connect(80, 24);
-    FakeWS.last.drop(1006); // closed without ever opening
+    FakeWS.last.drop(1006);
     await flush();
     assert.equal(probed, 1);
     const st = s.state() as { kind: string; reason: string };
@@ -253,7 +247,6 @@ test("a refused handshake probes the files endpoint: 503 disabled, 401 signed ou
   t.mock.timers.tick(1000);
   assert.equal(FakeWS.count, 2);
   s.dispose();
-  // A probe that cannot reach the server at all also retries.
   reset();
   const s2 = make(async () => {
     throw new Error("offline");
@@ -273,7 +266,7 @@ test("whenReady waits for the current connection's first output, including after
   FakeWS.last.open();
   FakeWS.last.msg(bytes("$ "));
   await s.whenReady(15_000);
-  FakeWS.last.drop(1006); // drop after open: reconnecting
+  FakeWS.last.drop(1006);
   let done = false;
   const p = s.whenReady(15_000).then(() => (done = true));
   t.mock.timers.tick(1000);
@@ -334,7 +327,7 @@ test("exit frame then Enter reconnects", (t) => {
   FakeWS.last.open();
   FakeWS.last.msg(JSON.stringify({ type: "exit", code: 3 }));
   assert.deepEqual(s.state(), { kind: "exited", code: 3 });
-  FakeWS.last.drop(1000); // the server closes after the exit frame; that must not schedule a retry
+  FakeWS.last.drop(1000);
   t.mock.timers.tick(60_000);
   assert.equal(FakeWS.count, 1);
   s.send("x");
@@ -394,7 +387,7 @@ test("output and state listeners, and dispose", async (t) => {
   w.msg(bytes("again"));
   assert.deepEqual(out, ["hi"]);
   assert.deepEqual(states, ["connecting", "open", "open"]);
-  const waiting = s.whenReady(15_000); // already ready
+  const waiting = s.whenReady(15_000);
   await waiting;
   s.dispose();
   assert.equal(w.closedWith, 1000);
@@ -405,8 +398,6 @@ test("output and state listeners, and dispose", async (t) => {
   s2.dispose();
   await assert.rejects(pending, ShellNotReadyError);
 });
-
-// ---- direct connection with a single-use ticket (production: browser -> API host) ----
 
 const ORIGIN = "wss://learnquest-api.onrender.com";
 const makeTicket = (fetchTicket: () => Promise<string>, wsOrigin: string | undefined = ORIGIN) =>
@@ -643,7 +634,7 @@ test("a resize between connect and open is sent on open; an unchanged size sends
   reset();
   const s = make();
   s.connect(80, 24);
-  s.resize(100, 30); // not open yet, so the frame cannot go out now
+  s.resize(100, 30);
   assert.equal(FakeWS.last.sent.length, 0);
   FakeWS.last.open();
   assert.equal(FakeWS.last.sent.length, 1);

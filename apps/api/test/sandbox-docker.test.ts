@@ -1,4 +1,3 @@
-// No database: this file only needs the env.ts variables below.
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
@@ -14,8 +13,6 @@ const { SandboxNotRunningError } = await import("../src/sandbox/backend.ts");
 type Script = { code: number | null; stdout?: string; stderr?: string; error?: Error };
 type Call = { args: string[]; stdin: string; killed: boolean };
 
-// A scripted stand-in for the child `docker exec` process: it emits the scripted stdout, then closes with the scripted code.
-// A null code never closes by itself, so only kill() ends it (the cap path).
 function fakeChildren() {
   const calls: Call[] = [];
   const scripts: Script[] = [];
@@ -61,7 +58,7 @@ let inspectState: string;
 
 beforeEach(async () => {
   cmds = [];
-  inspectState = "missing"; // no container yet, so openShell runs one
+  inspectState = "missing";
   child = fakeChildren();
   const exec = async (_cmd: string, args: string[]) => {
     cmds.push(args.join(" "));
@@ -73,7 +70,7 @@ beforeEach(async () => {
   };
   const spawn = (() => ({ write() {}, resize() {}, kill() {}, onData() {}, onExit() {} })) as never;
   b = dockerBackend({ image: "img", idleMs: 60_000, network: "lq-sbx", exec, spawn, spawnChild: child.spawnChild, timeoutMs: 20, maxContainers: () => 5 });
-  await b.openShell("learner-a", { cols: 80, rows: 24 }); // starts the container and puts it in `live`
+  await b.openShell("learner-a", { cols: 80, rows: 24 });
   inspectState = "true";
 });
 
@@ -92,7 +89,7 @@ test("listDir runs find as uid 1001 and parses names with spaces, tabs, newlines
   const args = child.calls.at(-1)!.args;
   assert.deepEqual(args.slice(0, 5), ["exec", "-u", "1001", containerName("learner-a"), "sh"]);
   assert.deepEqual(args.slice(5, 6), ["-c"]);
-  assert.deepEqual(args.slice(-2), ["sh", "/home/learner/proj"]); // the path is a positional argument, never in the script
+  assert.deepEqual(args.slice(-2), ["sh", "/home/learner/proj"]);
   assert.ok(!args[6]!.includes("proj"));
   assert.match(args[6]!, /find -P "\$1" -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%f\\0'/);
   assert.deepEqual(r!.entries, [
@@ -123,9 +120,9 @@ test("docker-level and find failures throw instead of reading as missing", async
 });
 
 test("a docker-level failure after the container stopped is SandboxNotRunningError", async () => {
-  child.next({ code: 1 }); // real docker exec on a stopped container exits 1
+  child.next({ code: 1 });
   const p = b.listDir!("learner-a", "proj");
-  inspectState = "false"; // the idle stop lands after the first check, before the exec result
+  inspectState = "false";
   await assert.rejects(p, SandboxNotRunningError);
   child.next({ code: 125 });
   await assert.rejects(b.listDir!("learner-a", "proj"), SandboxNotRunningError);
@@ -178,8 +175,8 @@ test("output past 200 records or 64 KiB is truncated and the process is killed",
 });
 
 test("both methods throw SandboxNotRunningError and never start a container", async () => {
-  await assert.rejects(b.writeFile!("learner-z", "solution.py", "x"), SandboxNotRunningError); // not in live
+  await assert.rejects(b.writeFile!("learner-z", "solution.py", "x"), SandboxNotRunningError);
   inspectState = "false";
-  await assert.rejects(b.listDir!("learner-a", ""), SandboxNotRunningError); // live but stopped
+  await assert.rejects(b.listDir!("learner-a", ""), SandboxNotRunningError);
   assert.equal(cmds.filter((c) => c.startsWith("run ") || c.startsWith("start ")).length, 1, "only the initial openShell started a container");
 });

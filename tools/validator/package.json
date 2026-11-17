@@ -1,0 +1,22 @@
+{
+  "name": "@learnquest/validator",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "validator": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/**/*.test.ts'",
+    "lint": "tsc --noEmit",
+    "up": "node src/cli.ts up",
+    "down": "node src/cli.ts down",
+    "status": "node src/cli.ts status"
+  },
+  "dependencies": {
+    "agent-browser": "^0.43.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

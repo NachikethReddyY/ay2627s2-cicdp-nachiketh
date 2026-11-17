@@ -74,29 +74,26 @@ function assertAiEnabled() {
   if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });
 }
 
-// ---- paths.generate ----
-
 export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
   if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
   if (!env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
-  // Every call that reaches the engine takes a slot, so rejected topics count too. The per-user lock makes count-then-insert atomic.
   const slot = await withTx(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me!.userId}))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me.userId}))`);
     const {
       rows: [{ n }],
     } = await tx.execute<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me!.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= tiers[me!.tier as keyof typeof tiers].aiPathsPerDay) return null;
-    const [row] = await tx.insert(aiGenerations).values({ userId: me!.userId }).returning({ id: aiGenerations.id });
-    return row!.id;
+      SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me.userId} AND created_at > now() - interval '24 hours'`);
+    if (n >= tiers[me.tier].aiPathsPerDay) return null;
+    const [row] = await tx.insert(aiGenerations).values({ userId: me.userId }).returning({ id: aiGenerations.id });
+    return row.id;
   });
-  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me!.tier as keyof typeof tiers].aiPathsPerDay} AI paths for today` });
+  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me.tier].aiPathsPerDay} AI paths for today` });
   try {
     await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_REPLY);
   } catch (e) {
-    await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)); // refused before any call: the daily path is not used
+    await db.delete(aiGenerations).where(eq(aiGenerations.id, slot));
     throw e;
   }
 
@@ -107,7 +104,6 @@ export async function generatePath(learnerId: string, topic: string) {
   } catch (e) {
     console.error("outline generation failed");
     if (e instanceof EngineError) {
-      // An upstream failure (5xx) means the learner got no path: give the daily slot back. Bad output (422) still uses it.
       if (e.status >= 500) await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
       if (e.status === 504) throw new TRPCError({ code: "TIMEOUT", message: "That path took too long to generate. Try again." });
     }
@@ -116,9 +112,8 @@ export async function generatePath(learnerId: string, topic: string) {
   if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
 
   try {
-    return await persistPath(me!.userId, learnerId, outline);
+    return await persistPath(me.userId, learnerId, outline);
   } catch (e) {
-    // Nothing was saved (e.g. a slug collision): give the daily slot back.
     await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
     throw e;
   }
@@ -137,14 +132,13 @@ async function persistPath(ownerId: string, learnerId: string, outline: Exclude<
         .insert(worlds)
         .values({ slug: slugify(c.title, 40), title: c.title, description: c.description, ...owned })
         .returning();
-      courseSlugs.push(world!.slug);
-      await tx.insert(pathCourses).values({ pathId: path!.id, worldId: world!.id, position });
+      courseSlugs.push(world.slug);
+      await tx.insert(pathCourses).values({ pathId: path.id, worldId: world.id, position });
       await tx.insert(lessons).values(
         c.lessons.map((l, i) => ({
           slug: slugify(l.title, 40),
-          worldId: world!.id,
+          worldId: world.id,
           title: l.title,
-          // A generated course is one section, so every lesson sits in level 1 whatever the model suggested.
           level: 1,
           position: i,
           concepts: l.concepts,
@@ -154,36 +148,30 @@ async function persistPath(ownerId: string, learnerId: string, outline: Exclude<
         })),
       );
     }
-    await tx.insert(enrollments).values({ learnerId, pathId: path!.id });
-    return { slug: path!.slug, firstCourseSlug: courseSlugs[0]! };
+    await tx.insert(enrollments).values({ learnerId, pathId: path.id });
+    return { slug: path.slug, firstCourseSlug: courseSlugs[0] };
   });
 }
-
-// ---- lazy lesson generation ----
 
 function validate(raw: unknown): GeneratedStep[] {
   const { steps } = Lesson.parse(raw);
   for (const s of steps) {
     const input = { beforeFiles: s.beforeFiles, hunks: s.hunks };
-    const tl = buildTimeline([input]); // throws when a hunk does not match its file
+    const tl = buildTimeline([input]);
     const after = seek(tl, tl.duration).files;
     if (JSON.stringify(after) === JSON.stringify(s.beforeFiles)) throw new Error(`step "${s.title}" changes nothing`);
     if (s.kind === "mcq" && s.hints.some((h) => h.eliminate === s.answer))
       throw new Error(`step "${s.title}": bad eliminate`);
   }
-  // shortcut: a step's beforeFiles is not checked against the previous step's result; the prompt asks for it.
   return steps;
 }
 
-// Generated text is moderated before it is saved; a flag throws so writeLesson retries. It fails open like topics,
-// except for a lesson in a public course: everyone can read that, so it fails closed, as publishing does.
 async function moderated<T>(v: T, isPublic: boolean): Promise<T> {
   const text = JSON.stringify(v);
   if (!(await (isPublic ? isSafe(text) : isSafeText(text)))) throw new Error("Generated content refused by safety filter");
   return v;
 }
 
-// Bump when a prompt or the engine's part shape changes, so stale cached parts are not reused.
 const PART_CACHE_VERSION = 1;
 
 type LessonRow = typeof lessons.$inferSelect;
@@ -198,11 +186,10 @@ async function cachedPart(key: string): Promise<PartSecret | null> {
   try {
     return validatePart(hit.content);
   } catch {
-    return null; // stale or unsafe cache row: regenerate
+    return null;
   }
 }
 
-// The result is stored once on the shared lesson (and can become public), so the learner's missed concepts are never part of it.
 async function lessonContext(l: LessonRow): Promise<LessonContext> {
   const [world] = await db.select().from(worlds).where(eq(worlds.id, l.worldId));
   const [path] = await db
@@ -212,8 +199,8 @@ async function lessonContext(l: LessonRow): Promise<LessonContext> {
     .where(eq(pathCourses.worldId, l.worldId))
     .limit(1);
   return {
-    path: path ?? { title: world!.title, tagline: "" },
-    course: { title: world!.title, description: world!.description },
+    path: path ?? { title: world.title, tagline: "" },
+    course: { title: world.title, description: world.description },
     lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
     missedConcepts: [],
     ...(l.kind === "practice" && { stretchTests: env.PRACTICE_STRETCH_TESTS }),
@@ -222,11 +209,7 @@ async function lessonContext(l: LessonRow): Promise<LessonContext> {
 
 type Generated = { part: PartSecret | null; generated: GeneratedStep[] };
 
-// Model calls: no transaction or pooled connection is held while these run.
 async function generate(ctx: LessonContext, key: string | null, cached: PartSecret | null, isPublic: boolean): Promise<Generated> {
-  // A part keeps its content on the version; a predict lesson keeps one steps row per step.
-  // Parts come from the engine and are cached by what produced them, so a repeat lesson makes no model call.
-  // A cached part may have been cleared fail-open for a private course, so a public one checks it again.
   let part = cached && isPublic ? await moderated(cached, true) : cached;
   if (key && !part) {
     const partCtx: PartContext = { ...ctx, missedConcepts: [] };
@@ -237,22 +220,20 @@ async function generate(ctx: LessonContext, key: string | null, cached: PartSecr
   return { part, generated };
 }
 
-// The only transaction: lock the lesson row, re-check it is still unwritten, insert. Short, no network calls.
 async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, generated }: Generated) {
   const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
-  if (!l || l.currentVersionId || l.sourceKind !== "ai") return null; // another caller wrote it first: this result is dropped
+  if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
 
   const [version] = await tx
     .insert(lessonVersions)
     .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content: part })
     .returning();
-  // Images are generated after commit below: their save uses its own connection and cannot see this version yet.
   const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
   const [learner] = prewarm ? await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId)) : [];
   if (!part) {
     await tx.insert(steps).values(
       generated.map((s, idx) => ({
-        lessonVersionId: version!.id,
+        lessonVersionId: version.id,
         idx,
         public: { title: s.title, prompt: s.prompt, kind: s.kind, ...(s.kind === "mcq" && { options: s.options }) },
         secret: {
@@ -267,20 +248,12 @@ async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, ge
       })),
     );
   }
-  // Visibility stays governed by the owning course and path.
-  await tx.update(lessons).set({ currentVersionId: version!.id, status: "published" }).where(eq(lessons.id, l.id));
-  return { lessonVersionId: version!.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
+  await tx.update(lessons).set({ currentVersionId: version.id, status: "published" }).where(eq(lessons.id, l.id));
+  return { lessonVersionId: version.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
 }
 
-// Concurrency design: generation (context, engine/model calls, moderation) runs outside any transaction, so a slow
-// model never pins a pooled connection or a row lock. Only the final write locks the lesson row, re-checks
-// currentVersionId and inserts, so exactly one version is ever written. Within a process `inflight` shares one
-// generation per lesson. Across instances we accept the rare duplicate generation (the loser's result is dropped and
-// its reserved budget stays counted: over-counted, never under) rather than hold a dedicated connection for an
-// advisory lock for the whole generation, which would reintroduce the pool exhaustion this avoids.
 const inflight = new Map<string, Promise<boolean>>();
 
-// Writes the lesson's steps once. Concurrent callers in this process share one in-flight write.
 export function ensureLesson(lessonId: string, learnerId: string): Promise<boolean> {
   const running = inflight.get(lessonId);
   if (running) return running;
@@ -290,7 +263,6 @@ export function ensureLesson(lessonId: string, learnerId: string): Promise<boole
 }
 
 async function writeLesson(lessonId: string, learnerId: string): Promise<boolean> {
-  // Reads outside any transaction, so a written or non-AI lesson returns before any budget is reserved.
   const [pre] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
@@ -298,17 +270,15 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
   const isPublic = world?.visibility === "public";
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
-  const cached = key ? await cachedPart(key) : null; // a cache hit makes no model call and reserves nothing
+  const cached = key ? await cachedPart(key) : null;
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Before each attempt (a retry is reserved too). A part can make several model calls; so can a predict reply, with its repair.
     if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
       const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));
       if (!written) return false;
-      // Best-effort and not awaited: the read must not wait on image generation.
       if (written.prewarm) {
         const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
           .catch((e) => console.error("prewarm of lesson images failed", e))
@@ -317,7 +287,6 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
       }
       return true;
     } catch (e) {
-      // Budget and kill-switch errors are final: retrying would not help and would hide the message.
       if (e instanceof TRPCError) throw e;
       last = e;
       console.error(`lesson generation attempt ${attempt + 1} failed`, e);
@@ -327,12 +296,8 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
 }
 
 const background = new Set<Promise<unknown>>();
-/** Resolves when background generation has settled (tests). */
 export const idle = () => Promise.allSettled([...background]);
 
-// Fire-and-forget: generate the lesson right after `lesson` in its course so it is usually ready.
-// Parts are written only when opened (the course page promises no AI is wasted), so only predict lessons prefetch.
-// Each lesson read calls this; a learner+lesson pair is checked at most once a minute per process.
 const PREFETCH_THROTTLE_MS = 60_000;
 const prefetchedAt = new Map<string, number>();
 

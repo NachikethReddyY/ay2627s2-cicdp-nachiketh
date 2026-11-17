@@ -30,7 +30,6 @@ async function addLesson(slug: string, kind: "practice" | "learn", content: Part
   return lesson!.id;
 }
 
-// A fake `docker run`: `pass` says which tests print their expected output, the rest print "wrong".
 function fakeDocker(pass: boolean[], calls: { stdin: string[] } = { stdin: [] }) {
   setCheckSpawnForTests(((_c: string, args: string[]) => {
     const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
@@ -117,7 +116,7 @@ test("POST /sandbox/check: 401 signed out, 400 bad body, 404 for a lesson that i
 test("POST /sandbox/check: scores, hides hidden tests, and records completion only when every required test passes", async () => {
   const cookie = await signUp(app);
   const lessonId = await addLesson("multi", "practice", part());
-  const calls = fakeDocker([true, false, true]); // sample ok, hidden required wrong, bonus ok
+  const calls = fakeDocker([true, false, true]);
   await withSandbox(true, async () => {
     const res = await check(cookie, body("multi"));
     assert.equal(res.statusCode, 200, res.body);
@@ -133,24 +132,20 @@ test("POST /sandbox/check: scores, hides hidden tests, and records completion on
     assert.equal((await db.select().from(partCompletions)).length, 0, "incomplete: no completion");
     assert.equal(JSON.parse(calls.stdin[0]!).tests[1].stdin, "HIDDEN-IN", "the container does get the hidden stdin");
 
-    // Best is kept: a worse run does not lower it.
     fakeDocker([false, false, false]);
     const worse = (await check(cookie, body("multi"))).json();
     assert.deepEqual([worse.points, worse.best.points], [0, 2]);
 
-    // All required pass, stretch fails: complete with 2 of 3 points.
     fakeDocker([true, true, false]);
     const done = (await check(cookie, body("multi"))).json();
     assert.deepEqual([done.complete, done.points, done.best.points], [true, 2, 2]);
     assert.equal((await db.select().from(partCompletions)).length, 1);
 
-    // Everything passes: best rises to the max; completion stays a single row.
     fakeDocker([true, true, true]);
     const full = (await check(cookie, body("multi"))).json();
     assert.deepEqual([full.points, full.best], [3, { points: 3, maxPoints: 3 }]);
     assert.equal((await db.select().from(partCompletions)).length, 1);
 
-    // A later worse run keeps the best and the completion.
     fakeDocker([false, false, false]);
     assert.deepEqual((await check(cookie, body("multi"))).json().best, { points: 3, maxPoints: 3 });
   });
@@ -235,7 +230,7 @@ test("the legacy POST /sandbox/run Check path still reads expectedOutput", async
   const cookie = await signUp(app);
   await addLesson("legacy", "practice", { kind: "practice", instructions: "Print 42.", starterCode: "", expectedOutput: "42" });
   await addLesson("multi", "practice", part());
-  await trpc(app, cookie).q("home.get"); // creates the learner row
+  await trpc(app, cookie).q("home.get");
   const me = (await db.execute<{ id: string }>(sql`SELECT id FROM learners`)).rows[0]!.id;
   assert.equal((await practiceCheck(me, "legacy"))?.expected, "42");
   assert.equal(await practiceCheck(me, "multi"), null, "a multi-test lesson has no single expected output");
@@ -245,7 +240,6 @@ test("a live check and a live run share SANDBOX_MAX_RUNS: with 2, the next check
   const cookieA = await signUp(app, "cap-a@example.com");
   const cookieB = await signUp(app, "cap-b@example.com");
   await addLesson("multi", "practice", part());
-  // The check's docker never answers until we say so.
   let finishCheck = () => {};
   setCheckSpawnForTests(((_c: string, args: string[]) => {
     const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
@@ -256,7 +250,6 @@ test("a live check and a live run share SANDBOX_MAX_RUNS: with 2, the next check
     if (args[0] !== "run") setImmediate(() => child.emit("close", 0));
     return child;
   }) as never);
-  // The run's docker never exits on its own either.
   const runSpawn = () => {
     const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
     child.stdout = new EventEmitter();
@@ -270,9 +263,9 @@ test("a live check and a live run share SANDBOX_MAX_RUNS: with 2, the next check
   let runId: string | null = null;
   try {
     await withSandbox(true, async () => {
-      const first = check(cookieA, body("multi")); // live check: 1 of 2
+      const first = check(cookieA, body("multi"));
       for (let i = 0; i < 200 && !atCapacity() && finishCheck.toString() === "() => {}"; i++) await new Promise((r) => setTimeout(r, 10));
-      runId = startRun("print(1)", "cap-run-learner", "python", runSpawn); // live run: 2 of 2
+      runId = startRun("print(1)", "cap-run-learner", "python", runSpawn);
       assert.ok(runId, "one check plus one run fits in 2");
       assert.equal(atCapacity(), true);
       const next = await check(cookieB, body("multi"));

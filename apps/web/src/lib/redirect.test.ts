@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// safeRedirect reads location.origin, which Node doesn't have.
 (globalThis as { location?: unknown }).location = { origin: "https://learnquest.example" };
 const { safeRedirect, loginUrl } = await import("./redirect.ts");
 

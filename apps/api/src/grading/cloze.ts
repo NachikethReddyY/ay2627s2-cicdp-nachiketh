@@ -1,5 +1,3 @@
-// Single-pass tokenizer: strings are kept whole so 'a' and "a" stay different.
-// shortcut: not a real TypeScript scanner (no regex/template nesting, no unicode identifiers), enough for one-token answers; upgrade if cloze answers grow to expressions.
 const IDENT_OR_NUMBER = /[A-Za-z_$][\w$]*|\d[\w.]*/y;
 
 function tokenize(src: string): string[] {

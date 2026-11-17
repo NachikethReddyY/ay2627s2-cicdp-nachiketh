@@ -1,7 +1,6 @@
 import { applyEdit } from "./events.ts";
 import type { Files, SeekResult, Timeline } from "./types.ts";
 
-/** Rule: an event is applied once its start time is strictly before t (event.t < t), so seek(step.startT) is the step's beforeFiles. */
 export function seek(timeline: Timeline, t: number): SeekResult {
   const { events, snapshots, steps } = timeline;
   const tt = Math.min(Math.max(t, 0), timeline.duration);
@@ -27,7 +26,6 @@ export function seek(timeline: Timeline, t: number): SeekResult {
     if (e.kind === "file") activePath = e.path;
     else files[e.path] = applyEdit(files[e.path] ?? "", e);
   }
-  // Last edit within the current step (null at a step start).
   let stepStart = 0;
   for (const sp of steps) if (sp.startEvent <= target) stepStart = sp.startEvent;
   let lastEdit: SeekResult["lastEdit"] = null;

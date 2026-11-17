@@ -1,4 +1,3 @@
-// No database: this file only needs the env.ts variables below.
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
@@ -12,9 +11,7 @@ const { startRun, runStatus, sendRunInput, stopRun, setRmTimeoutForTests, atCapa
 const { env } = await import("../src/env.ts");
 const tick = () => new Promise((r) => setImmediate(r));
 
-// A fake `docker` process. `onInput` decides what it prints and when it exits when a line arrives on stdin.
 function fakeDocker(onInput: (child: FakeChild, line: string) => void, initial = "", exitAtStart: number | null = null) {
-  // `args` is the `docker run` call; `rm` is the `docker rm -f` call, whose exit the test controls through `rmChild`.
   const calls = { args: [] as string[], rm: [] as string[], rmChild: null as FakeChild | null, stdin: "" };
   const spawn = (_cmd: string, args: string[]) => {
     const child = new EventEmitter() as FakeChild;
@@ -137,7 +134,7 @@ test("the server caps live runs across all learners", () => {
     env.SANDBOX_MAX_RUNS = 1000;
     assert.ok(startRun("input()", "learner-g1", "python", spawn as never));
     assert.equal(atCapacity(), false);
-    env.SANDBOX_MAX_RUNS = 1; // at least the run above is live
+    env.SANDBOX_MAX_RUNS = 1;
     assert.equal(atCapacity(), true);
     assert.equal(startRun("input()", "learner-g2", "python", spawn as never), null, "a learner with no runs is still refused");
   } finally {
@@ -145,7 +142,6 @@ test("the server caps live runs across all learners", () => {
   }
 });
 
-// A Check run: `saved` counts recorded completions; `fail` makes saving throw.
 function fakeCheck(expected: string, fail = false) {
   const check = { expected, saved: 0, record: async () => { if (fail) throw new Error("db down"); check.saved++; } };
   return check;

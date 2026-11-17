@@ -1,7 +1,6 @@
 import type { Monaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 
-// Colours come from the workbench tokens (workbench.css) and the plan's syntax palette.
 type Palette = {
   base: "vs" | "vs-dark";
   hot: string; tx: string; code: string; cur: string; numdim: string; sel: string; line: string;

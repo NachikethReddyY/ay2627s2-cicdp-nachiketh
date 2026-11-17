@@ -1,4 +1,3 @@
-// Runs a TypeScript program through POST /api/sandbox/run in the real sandbox image. Skipped when Docker or the image is not available.
 import { signUp } from "./helpers.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";

@@ -1,6 +1,5 @@
 import type { PreviewRect } from "./previewResize.ts";
 
-/** What the preview window remembers between visits: its box, and whether it was full screen. */
 export type StoredPreviewWindow = { rect: PreviewRect | null; maximized: boolean };
 
 export const PREVIEW_MEMORY_KEY = "lq.test-editor.preview-window";
@@ -9,7 +8,6 @@ const EMPTY: StoredPreviewWindow = { rect: null, maximized: false };
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-/** Parse the stored JSON. Anything malformed is ignored, so a bad value never breaks the page. */
 export function parseStoredPreviewWindow(raw: string | null): StoredPreviewWindow {
   if (!raw) return EMPTY;
   try {
@@ -26,7 +24,6 @@ export function parseStoredPreviewWindow(raw: string | null): StoredPreviewWindo
   }
 }
 
-/** Read the remembered window. Storage can be blocked (private windows), so every failure returns the default. */
 export function readStoredPreviewWindow(): StoredPreviewWindow {
   try {
     return parseStoredPreviewWindow(window.localStorage.getItem(PREVIEW_MEMORY_KEY));
@@ -39,6 +36,5 @@ export function writeStoredPreviewWindow(value: StoredPreviewWindow): void {
   try {
     window.localStorage.setItem(PREVIEW_MEMORY_KEY, JSON.stringify(value));
   } catch {
-    // Storage is blocked or full: the window still works, it just forgets its size.
   }
 }

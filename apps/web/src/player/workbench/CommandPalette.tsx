@@ -40,7 +40,6 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
   const [index, setIndex] = useState(0);
   const uid = useId();
 
-  // Open and close the native modal dialog; remember where focus was and give it back on close.
   useEffect(() => {
     const d = dialogRef.current;
     if (!d) return;
@@ -56,8 +55,6 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
     }
   }, [open]);
 
-  // Each opening (or a shortcut for another mode while open) starts from that mode's prefix. Reset during
-  // render, not in an effect, so a reopen never paints the old query for a frame.
   const [seen, setSeen] = useState({ open, initial });
   if (seen.open !== open || seen.initial !== initial) {
     setSeen({ open, initial });
@@ -99,7 +96,6 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
   };
 
   const setMode = (m: PaletteMode) => {
-    // parseQuery ignores leading spaces, so strip them before removing the prefix.
     setQuery(PREFIX[m] + (m === mode ? query.trimStart().slice(PREFIX[mode].length) : ""));
     setIndex(0);
     inputRef.current?.focus();
@@ -113,7 +109,7 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
       className="wb-pal"
       aria-label="Search and commands"
       onCancel={(e) => {
-        e.preventDefault(); // we close it ourselves so focus goes back
+        e.preventDefault();
         onClose();
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}

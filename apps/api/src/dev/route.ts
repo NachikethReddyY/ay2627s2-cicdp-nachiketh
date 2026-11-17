@@ -1,12 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { callEngine, EngineError } from "../engine-client/client.ts";
-import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { parseDir } from "../sandbox/files.ts";
 import { PRACTICE_LANGUAGES, type PracticeLanguage } from "../parts/practice-schema.ts";
 import { lintCode, sourceLineOf } from "../lint/index.ts";
-import { getBackend, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxBackend, type DirEntry } from "../sandbox/backend.ts";
+import { getBackend, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxBackend } from "../sandbox/backend.ts";
 
 const Body = z.object({ prompt: z.string().min(1).max(500) });
 const GuideBody = z.object({
@@ -14,7 +13,6 @@ const GuideBody = z.object({
   projectRoot: z.string().min(1).max(64),
   language: z.string().min(1).max(40),
   code: z.string().max(12_000),
-  // A pointer only. The server re-lints the code; any other field the client sends is dropped by zod.
   finding: z.object({ ruleId: z.string().min(1).max(120), line: z.number().int().min(1).max(100_000), column: z.number().int().min(1).max(100_000).optional() }).optional(),
   selection: z.string().max(3_000).default(""),
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(2_000) })).min(1).max(8),
@@ -38,7 +36,7 @@ export async function readGuideWorkspaceFiles(
   const directories: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }];
   const paths: string[] = [];
   for (let index = 0; index < directories.length && index < 32 && paths.length < GUIDE_MAX_FILES; index++) {
-    const current = directories[index]!;
+    const current = directories[index];
     const listing = await backend.listDir(learnerId, current.path);
     for (const entry of listing?.entries ?? []) {
       const path = `${current.path}/${entry.name}`;
@@ -69,15 +67,12 @@ export async function readGuideWorkspaceFiles(
   return files;
 }
 
-// Must match MAX_BODY_BYTES in services/engine/learnquest_engine/server.py.
 export const GUIDE_ENGINE_BODY_LIMIT_BYTES = 64 * 1024;
 
-/** True when the JSON the engine would receive is over its body limit. Counts UTF-8 bytes, so CJK text costs 3 bytes per character. */
 export function guideBodyTooLarge(engineBody: unknown): boolean {
   return Buffer.byteLength(JSON.stringify(engineBody), "utf8") > GUIDE_ENGINE_BODY_LIMIT_BYTES;
 }
 
-// Dev playground only: /dev/visual registers in development and test. Any other env (including unset NODE_ENV, as in app.ts) answers the normal 404.
 export async function devRoutes(app: FastifyInstance) {
   if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test") return;
 
@@ -101,7 +96,6 @@ export async function devRoutes(app: FastifyInstance) {
 
 }
 
-// Sloppy guide. The chat is always registered in every environment; it needs a signed-in learner before any engine call.
 export type GuideDeps = {
   resolveLearnerId?: typeof resolveLearnerId;
   callEngine?: typeof callEngine;
@@ -110,7 +104,7 @@ export type GuideDeps = {
 };
 
 const GUIDE_SOURCE_LINE_CHARS = 200;
-const GUIDE_MESSAGE_CHARS = 300; // the engine's lintFinding.message limit; a rule can echo a long identifier
+const GUIDE_MESSAGE_CHARS = 300;
 const GUIDE_LINT_TIMEOUT_MS = 2_000;
 
 export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
@@ -145,7 +139,6 @@ export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
       const lintLanguage = (PRACTICE_LANGUAGES as readonly string[]).includes(rest.language) ? (rest.language as PracticeLanguage) : undefined;
       if (finding && lintLanguage) {
         try {
-          // Re-lint the submitted code: the message comes from the server, never from the client.
           const match = (await lint(rest.code, lintLanguage, { timeoutMs: GUIDE_LINT_TIMEOUT_MS })).find(
             (f) => f.ruleId === finding.ruleId && f.line === finding.line && (finding.column === undefined || f.column === finding.column),
           );
@@ -154,7 +147,6 @@ export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
             lintFinding = { ruleId: match.ruleId, message: match.message.slice(0, GUIDE_MESSAGE_CHARS), line: match.line, sourceLine };
           }
         } catch (error) {
-          // Linter unavailable or failed: continue as a normal guide call.
           req.log.warn({ err: error }, "editor guide could not lint the code");
         }
       }

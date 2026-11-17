@@ -8,7 +8,6 @@ import { FONT, LINE_H, directionFor, layoutDiagram, pathOf, wrap, type DiagramPr
 
 type Props = DiagramProps & { alt: string; timeline?: Timeline };
 
-// Hairline outlines; the active node takes the accent and its selection tint. Colours are tokens, so both themes follow.
 function Shape({ n, shape, active }: { n: PlacedNode; shape: DiagramProps["shape"]; active: boolean }) {
   const { x, y, w, h } = n;
   const c = active
@@ -26,17 +25,16 @@ function Diagram({ block, state }: BlockViewProps<Props> & { state?: TimelineSta
   const [failed, setFailed] = useState(false);
   const marker = useId();
   const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0); // 0 = unmeasured: top-to-bottom
+  const [width, setWidth] = useState(0);
 
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(([e]) => setWidth(e!.contentRect.width));
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  // Only the direction matters, so the layout reruns when the width crosses the breakpoint, not on every resize.
   const dir = directionFor(p.kind, width);
   useEffect(() => {
     let live = true;

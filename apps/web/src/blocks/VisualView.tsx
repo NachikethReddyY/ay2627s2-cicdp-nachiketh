@@ -5,19 +5,16 @@ import { plan } from "./model.ts";
 import { RENDERERS } from "./registry.ts";
 import type { GameCompletionContext } from "./registry.ts";
 
-// Same glass card as BlockFrame's fallback: a hairline edge and one soft lift.
 const card = "rounded-2xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm break-words shadow-[var(--lift-sm)]";
 
 function Rejected({ alt }: { alt: string }) {
   return <div className={card} role="img" aria-label={alt || "Visual unavailable"}>{alt || "This visual can't be shown."}</div>;
 }
 
-// describe() runs outside BlockFrame's error boundary, so a throw must not blank the lesson.
 function describe(mod: BlockModule | undefined, block: Block): string {
   try { return mod?.describe(block) ?? block.type; } catch { return block.type; }
 }
 
-/** Renders a visual doc. Always re-parses first, so nothing unvalidated reaches a block. */
 export default function VisualView({ doc, gameCompletion, registry = CLIENT_BLOCKS }: { doc: unknown | Spec; gameCompletion?: GameCompletionContext; registry?: readonly BlockModule[] }) {
   const p = useMemo(() => plan(doc, registry), [doc, registry]);
   if (p.fatal) return <Rejected alt="" />;

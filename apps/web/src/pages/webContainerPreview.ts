@@ -12,10 +12,6 @@ type RuntimeWindow = typeof globalThis & {
 
 const runtimeWindow = globalThis as RuntimeWindow;
 
-// Forward console output, DOM, styles, network and sources from the isolated preview back to the editor's
-// devtools panel. The bridge stays inside the preview. Message shapes: see previewDevtoolsProtocol.ts.
-// This is a raw <script> in the preview page: plain JavaScript only, no backticks, no template placeholders,
-// no backslashes (the whole thing sits inside a template literal).
 export const PREVIEW_BRIDGE = `<script>
 (() => {
   const send = (payload) => {
@@ -353,7 +349,6 @@ function withPreviewBridge(content: string): string {
   return content.replace(/<head([^>]*)>/i, `<head$1>${PREVIEW_BRIDGE}`);
 }
 
-/** Path inside the container, relative to the demo project folder. */
 function relativePreviewPath(path: string): string {
   const relative = path.startsWith(`${DEMO_DIRECTORY}/`) ? path.slice(DEMO_DIRECTORY.length + 1) : path;
   return relative.split("/").filter(Boolean).join("/");
@@ -380,7 +375,6 @@ function toFileTree(files: PreviewFile[]): FileSystemTree {
   return root;
 }
 
-/** Every file under the project folder, skipping node_modules (installed packages are not part of the snapshot). */
 async function listPreviewFiles(container: WebContainer, directory = "."): Promise<string[]> {
   const entries = await container.fs.readdir(directory, { withFileTypes: true });
   const files: string[] = [];
@@ -401,7 +395,6 @@ async function readPreviewFile(container: WebContainer, relative: string): Promi
   }
 }
 
-/** A project-relative path may be touched only if it stays inside the project and outside node_modules. */
 function isProjectPath(relative: string): boolean {
   return relative.split("/").every((part) => part !== "" && part !== "." && part !== ".." && part !== "node_modules");
 }
@@ -421,10 +414,6 @@ async function entryKind(container: WebContainer, relative: string): Promise<"fi
   return entry.isFile() ? "file" : undefined;
 }
 
-/**
- * Remove the one entry that blocks writing `relative`: a regular file where a parent folder is needed, or a
- * folder where the file goes. Returns false when nothing safe to remove was found.
- */
 async function clearConflict(
   container: WebContainer,
   relative: string,
@@ -442,14 +431,12 @@ async function clearConflict(
   }
 
   if (!isProjectPath(relative) || (await entryKind(container, relative)) !== "directory") return false;
-  // Removing this folder must not take any snapshot file with it.
   const prefix = `${relative}/`;
   for (const key of snapshot.keys()) if (key.startsWith(prefix)) return false;
   await container.fs.rm(relative, { recursive: true, force: true });
   return true;
 }
 
-/** Write one project file and its folders. If a conflicting entry blocks it, remove that entry and retry once. */
 async function writeProjectFile(
   container: WebContainer,
   relative: string,
@@ -457,7 +444,6 @@ async function writeProjectFile(
   snapshot: ReadonlyMap<string, string>,
 ): Promise<void> {
   const write = async () => {
-    // writeFile does not create parent folders, so a new file in a new folder needs its folder first.
     const slash = relative.lastIndexOf("/");
     if (slash > 0) await container.fs.mkdir(relative.slice(0, slash), { recursive: true });
     await container.fs.writeFile(relative, content);
@@ -470,10 +456,6 @@ async function writeProjectFile(
   }
 }
 
-/**
- * Make the running workspace match the snapshot: write files that differ, then remove files the snapshot
- * no longer has. Returns true when package.json changed, so the caller can install again.
- */
 async function syncPreviewWorkspace(container: WebContainer, files: PreviewFile[]): Promise<boolean> {
   const snapshot = new Map<string, string>();
   for (const file of files) {
@@ -489,7 +471,6 @@ async function syncPreviewWorkspace(container: WebContainer, files: PreviewFile[
   }
 
   for (const relative of await listPreviewFiles(container)) {
-    // npm writes the lock file during install, so it is never part of the snapshot and must not be removed.
     if (!snapshot.has(relative) && relative !== "package-lock.json") await container.fs.rm(relative, { force: true });
   }
   return packageChanged;
@@ -502,7 +483,6 @@ function boot() {
       coep: "require-corp",
     });
     runtimeWindow.__learnquestWebContainer = pending;
-    // Drop a failed boot so the next Preview retries. The catch is handled, so callers still see the rejection.
     pending.catch(() => {
       if (runtimeWindow.__learnquestWebContainer === pending) {
         runtimeWindow.__learnquestWebContainer = undefined;
@@ -512,7 +492,6 @@ function boot() {
   return runtimeWindow.__learnquestWebContainer;
 }
 
-/** Mount the editor workspace, install its packages once, and return the dev-server URL. */
 export async function startWebPreview(
   files: PreviewFile[],
   options: { onStage?(stage: string): void } = {},
@@ -522,7 +501,6 @@ export async function startWebPreview(
     await container.mount(toFileTree(files));
     runtimeWindow.__learnquestPreviewMounted = true;
   } else if (await syncPreviewWorkspace(container, files)) {
-    // A changed package.json needs its own install; the cached install promise only covers the previous one.
     runtimeWindow.__learnquestPreviewInstall = undefined;
   }
 
@@ -532,7 +510,6 @@ export async function startWebPreview(
       const install = await container.spawn("npm", ["install"], { output: false });
       const exitCode = await install.exit;
       if (exitCode !== 0) {
-        // Remount on the next attempt, so a retry does not keep a demo mounted before the saved project was read.
         runtimeWindow.__learnquestPreviewMounted = false;
         runtimeWindow.__learnquestPreviewInstall = undefined;
         throw new Error(`Dependency installation exited with code ${exitCode}`);
@@ -576,7 +553,6 @@ export async function syncWebPreviewFile(path: string, content: string): Promise
     new Map([[relative, content]]),
   );
   if (relative === "package.json") {
-    // The cached install covers the previous manifest. Clear it so the next Preview runs npm install again.
     runtimeWindow.__learnquestPreviewInstall = undefined;
   }
 }

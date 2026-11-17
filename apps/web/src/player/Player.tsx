@@ -32,7 +32,6 @@ function loadVolume() {
     const v = JSON.parse(localStorage.getItem(VOL_KEY) ?? "null");
     if (typeof v?.volume === "number") return { volume: Math.min(100, Math.max(0, v.volume)), muted: !!v.muted };
   } catch {
-    /* storage unavailable: use defaults */
   }
   return { volume: 60, muted: false };
 }
@@ -50,11 +49,7 @@ const useDesktop = () =>
     () => false,
   );
 
-// `live` = a lesson from the API: one step at a time, the instructions window holds the predict/reveal panel.
-// `code` swaps the replay (editor + transport bar) for the learner's own editor: practice lessons, no video.
-// `narration` is the signed URL of this step's audio, when it has one; it drives the volume controls.
 type Live = { idx: number; finished?: boolean; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
-// Without `live` this is the bundled sample (dev only): `sample` supplies its mode and worked examples.
 type Sample = { mode: "task" | "video"; examples: string[] };
 type Props = { title: string; stepTitles: string[]; timeline: Timeline; live?: Live; sample?: Sample };
 
@@ -87,12 +82,10 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const [idle, setIdle] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [explorer, setExplorer] = useState(desktop);
-  // Volume and mute drive the step's narration audio; with no narration the controls are hidden.
   const [vol, setVol] = useState(loadVolume);
   const narration = live?.narration;
   const narrationText = live?.narrationText;
   const audioRef = useRef<HTMLAudioElement>(null);
-  // Speech reads the same narration text when the step has no audio URL, or its audio fails to load (signed URLs expire).
   const speaker = useMemo(
     () =>
       typeof window === "undefined"
@@ -102,22 +95,21 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   );
   const [failedAudio, setFailedAudio] = useState<string | undefined>();
   const useSpeech = !!speaker && !!narrationText && (!narration || failedAudio === narration);
-  // Playable: an audio URL that has not failed, or speech for the text.
   const hasNarration = (!!narration && failedAudio !== narration) || (!!narrationText && !!speaker);
   const volRef = useRef(vol);
   volRef.current = vol;
   const level = (v: { volume: number; muted: boolean }) => (v.muted ? 0 : v.volume / 100);
-  const appliedLevel = useRef(-1); // the speech volume already in effect
+  const appliedLevel = useRef(-1);
   useEffect(() => {
     if (!speaker || !useSpeech || !narrationText) return;
     appliedLevel.current = level(volRef.current);
     speaker.speak(narrationText, { volume: volRef.current.volume / 100, muted: volRef.current.muted });
-    speaker.resume(); // a pause from the previous step must not leave the new one silent
-    return () => speaker.cancel(); // step change and unmount
+    speaker.resume();
+    return () => speaker.cancel();
   }, [speaker, useSpeech, narrationText]);
   useEffect(() => {
     const l = level(vol);
-    if (!useSpeech || l === appliedLevel.current) return; // the mount run must not re-speak the sentence just started
+    if (!useSpeech || l === appliedLevel.current) return;
     appliedLevel.current = l;
     speaker?.setVolume(l);
   }, [speaker, useSpeech, vol]);
@@ -128,22 +120,18 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
     a.muted = vol.muted;
   }, [vol, narration]);
   useEffect(() => {
-    // A browser may refuse autoplay before the learner has touched the page; pressing Play retries it (see toggle).
     void audioRef.current?.play().catch(() => {});
   }, [narration]);
   useEffect(() => {
     try {
       localStorage.setItem(VOL_KEY, JSON.stringify(vol));
     } catch {
-      /* ignore */
     }
   }, [vol]);
   const toggleMute = () => setVol((v) => (v.muted || v.volume === 0 ? { volume: v.volume || 50, muted: false } : { ...v, muted: true }));
   const setVolume = (volume: number) => setVol({ volume, muted: false });
 
   const frame = useMemo(() => seek(timeline, r.t), [timeline, r.t]);
-  // Any pause of the replay (Play/Pause, picking a file in the explorer) pauses the narration too. When the replay
-  // just reaches its end, the narration is left to finish its sentence.
   const ended = r.t >= timeline.duration;
   useEffect(() => {
     if (!r.playing && !ended) {
@@ -154,15 +142,13 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const paths = Object.keys(frame.files);
   const viewed = picked && picked in frame.files ? picked : frame.activePath;
   const toggle = () => {
-    if (!r.playing) setPicked(null); // playing makes the view follow the replay again
-    // Narration follows the Play/Pause control. Play is a user gesture, so it also recovers from a refused autoplay.
+    if (!r.playing) setPicked(null);
     const a = audioRef.current;
-    if (a && !r.playing && a.paused) void a.play().catch(() => {}); // pausing is handled by the effect below
+    if (a && !r.playing && a.paused) void a.play().catch(() => {});
     if (useSpeech && !r.playing) speaker?.resume();
     r.toggle();
   };
 
-  // Auto-hide controls: only while playing on desktop and the pointer is not on the pill.
   const arm = useCallback(() => {
     clearTimeout(idleTimer.current);
     if (r.playing && desktop && !overPill.current) idleTimer.current = window.setTimeout(() => setIdle(true), IDLE_MS);
@@ -179,8 +165,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const cur = live ? live.idx : stepIndexAt(timeline, r.t);
   const N = stepTitles.length;
   const stepTitle = stepTitles[cur] ?? "";
-  // Each reveal swaps in a longer timeline; play it from the start.
-  const playLatest = useRef(r.play); // the effect below must run on a new reveal only, not whenever play's identity changes
+  const playLatest = useRef(r.play);
   const resumeSpeech = useRef(() => {});
   useEffect(() => {
     playLatest.current = r.play;
@@ -190,9 +175,8 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   });
   useEffect(() => {
     if (live?.playKey) {
-      setPicked(null); // follow the replay's active file
+      setPicked(null);
       playLatest.current();
-      // The pause effect above ran first in this commit (the replay was not playing yet); undo it so speech is heard.
       resumeSpeech.current();
     }
   }, [live?.playKey]);
@@ -206,10 +190,9 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
       e.preventDefault();
       return;
     }
-    if (code) return; // the replay shortcuts mean nothing without a replay
-    // Keys belong to Monaco, form fields, the slider thumb (Radix handles arrows itself) and the window move handle.
+    if (code) return;
     if (e.ctrlKey || e.metaKey || e.altKey || el.closest(".monaco-editor, input, select, textarea, [role=slider], [role=menubar], [role=menu], [data-move-handle]")) return;
-    const onButton = el.tagName === "BUTTON"; // Space activates a focused button natively
+    const onButton = el.tagName === "BUTTON";
     const k = e.key;
     if ((k === " " && !onButton) || k === "k" || k === "K") toggle();
     else if (k === "ArrowLeft") e.shiftKey ? r.stepBoundary(-1) : r.seekBy(-5000);
@@ -247,7 +230,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
     id,
     label,
     tone,
-    icon: !task && id === "code" ? icons.play : icons[id], // video lessons show a player, not code
+    icon: !task && id === "code" ? icons.play : icons[id],
     running: W.state(id) !== "closed",
     pressed: W.state(id) === "open",
     onClick: () => (W.state(id) === "open" ? W.setState(id, "minimized") : W.open(id)),

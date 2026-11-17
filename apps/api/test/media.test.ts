@@ -16,7 +16,7 @@ after(() => {
   return app.close();
 });
 
-const MP3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]); // "ID3" tag
+const MP3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
 
@@ -79,7 +79,6 @@ test("lessons.get returns signed narration, and no images, for a visible lesson"
   const { versionId, stepId } = await lessonVersion();
   setStorage(memoryStorage());
   const key = await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: MP3, contentType: "audio/mpeg" });
-  // Images are signed inline in part.doc by resolveDocImages, so the media list leaves them out.
   await saveMedia({ lessonVersionId: versionId, stepId, kind: "image", body: PNG, contentType: "image/png" });
 
   const body = out(await trpc(app, cookie).q("lessons.get", { id: "lesson-1" }));
@@ -109,11 +108,9 @@ test("the database allows only one ready narration per step, and the import trea
   const [first] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
   await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" });
   await assert.rejects(saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" }));
-  // An image for the same step is still allowed.
   await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "image", body: PNG, contentType: "image/png" });
   assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 1);
 
-  // Two overlapping imports of another step: exactly one stores it, neither throws.
   const [, second] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
   const runs = await Promise.all([1, 2].map(() => importNarration("lesson-1", [{ idx: second!.idx, body: MP3 }])));
   assert.equal(runs.flatMap((r) => r.saved).length, 1);
@@ -127,7 +124,6 @@ test("importNarration refuses unknown steps, bad bytes and missing storage befor
   await assert.rejects(importNarration("lesson-1", [{ idx: 999, body: MP3 }]), /no step with idx 999/);
   await assert.rejects(importNarration("no-such-lesson", [{ idx: 0, body: MP3 }]), /not found/);
   const [first] = await db.select({ idx: steps.idx }).from(steps).limit(1);
-  // e.g. `1.mp3` and `01.mp3` in one folder
   await assert.rejects(importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }, { idx: first!.idx, body: MP3 }]), /More than one file for step idx/);
   await rejects(importNarration("lesson-1", [{ idx: first!.idx, body: PNG }]), "Media bytes do not match type");
   setStorage(null);
@@ -145,9 +141,7 @@ test("importNarration with replace retires the old ready narration and stores th
   const NEW_MP3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 1]);
 
   assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }]), { saved: [a!.idx], skipped: [] });
-  // Without the flag a second file for a stored step is still skipped.
   assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: NEW_MP3 }]), { saved: [], skipped: [a!.idx] });
-  // With the flag the old row is retired and the new file is stored.
   assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: NEW_MP3 }], { replace: true }), { saved: [a!.idx], skipped: [] });
 
   const rows = await db.select().from(lessonMedia).where(eq(lessonMedia.stepId, a!.id)).orderBy(asc(lessonMedia.createdAt));
@@ -165,9 +159,7 @@ test("a rejected or failed replacement leaves the old narration ready", async ()
   const readyRows = () => db.select().from(lessonMedia).where(and(eq(lessonMedia.stepId, a!.id), eq(lessonMedia.status, "ready")));
   const [before] = await readyRows();
 
-  // Bad bytes: the check runs before anything is written or retired.
   await rejects(importNarration("lesson-1", [{ idx: a!.idx, body: PNG }], { replace: true }), "Media bytes do not match type");
-  // Storage failure on the new object: the old row is still the one ready row.
   setStorage({ put: async () => { throw new Error("bucket down"); }, signGet: async (key) => key });
   await assert.rejects(importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }], { replace: true }), /bucket down/);
   setStorage(mem);
@@ -200,7 +192,6 @@ test("s3 signing is local, 2h, and pinned to the start of the hour", async () =>
   });
   const realNow = Date.now;
   try {
-    // 10:30 and 10:59 UTC: same hour, so the same signed URL.
     Date.now = () => Date.UTC(2026, 10, 1, 10, 30);
     const a = await store.signGet("v/x/y.mp3");
     Date.now = () => Date.UTC(2026, 10, 1, 10, 59);
@@ -212,7 +203,6 @@ test("s3 signing is local, 2h, and pinned to the start of the hour", async () =>
     assert.equal(url.searchParams.get("X-Amz-Date"), "20261101T100000Z");
     assert.equal(url.pathname, "/lq-media-dev/v/x/y.mp3");
 
-    // The next hour gets a new signature.
     Date.now = () => Date.UTC(2026, 10, 1, 11, 0);
     assert.notEqual(await store.signGet("v/x/y.mp3"), a);
   } finally {
