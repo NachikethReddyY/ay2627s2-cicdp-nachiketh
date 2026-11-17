@@ -13,7 +13,7 @@
 
 **LearnSlop turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.**
 
-Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. Help when stuck is Sloppy, a chat in practice. Its guardrails stop it from giving the finished answer, and the answer key stays server-side.
+Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. The AI help is Sloppy, a chat in practice. It answers a learner who is stuck, and its guardrails stop it from giving the finished answer; the answer key stays server-side.
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 

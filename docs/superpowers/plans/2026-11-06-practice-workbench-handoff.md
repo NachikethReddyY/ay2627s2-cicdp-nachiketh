@@ -49,7 +49,7 @@ Tasks 4–6 each get a browser check on `/test/editor` before their commit.
 
 ## Out of scope
 
-The AI guide "Sloppy" is out of scope because it conflicts with the no-free-chat-tutor rule. Also
+The AI guide "Sloppy" was out of scope under the old no-free-chat-tutor rule. That rule is replaced: Sloppy is the AI help chat (see AGENTS.md). Also
 left out: the debugger, source control, Share, notifications, preview, and search across files.
 Leave these out of the UI rather than adding buttons that do nothing.
 

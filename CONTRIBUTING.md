@@ -85,7 +85,7 @@ These hold for every change (see [AGENTS.md](AGENTS.md) for the full list):
 - Hints and answers stay server-side. Never ship expected output or answer keys to the client.
 - Engine calls go through an OpenAI-compatible interface. No provider lock-in.
 - Generated lessons, quizzes and games are reviewed by a human author before publish.
-- No free-chat tutor in core. Interaction is structured.
+- Sloppy, the AI help chat in practice, is part of core. It guides and does not hand over finished solutions. Other interaction is structured.
 
 ## Data and privacy
 
