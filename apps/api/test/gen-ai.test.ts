@@ -207,3 +207,12 @@ test("a predict lesson comes from the engine over HTTP and the learner never see
   assert.equal(out(res).steps.length, 3);
   assert.doesNotMatch(res.body, /"(answer|accepted|expectedOutput)"/);
 });
+
+test("a generated course is one section: every lesson sits in level 1, whatever the model suggested", async () => {
+  const t = trpc(app, await signUp(app, "one-section@example.com"));
+  const res = await t.m("paths.generate", { prompt: "learn rust" });
+  assert.equal(res.statusCode, 200, res.body);
+  const course = out(await t.q("courses.get", { slug: out(res).firstCourseSlug }));
+  assert.ok(course.lessons.length > 0);
+  assert.deepEqual([...new Set(course.lessons.map((l: { level: number }) => l.level))], [1]);
+});

@@ -53,7 +53,7 @@ const schema = z
     // Snapshot to create learner sandboxes from. Unset: Daytona's default image.
     DAYTONA_SNAPSHOT: z.preprocess(blankIsUnset, z.string().min(1).optional()),
     // Minutes without activity before a learner's shell sandbox stops itself (Daytona enforces it, so it survives API restarts).
-    DAYTONA_AUTO_STOP_MINUTES: z.coerce.number().int().positive().default(15),
+    DAYTONA_AUTO_STOP_MINUTES: z.coerce.number().int().positive().default(3),
     // Shell containers join this bridge (created on demand, inter-container traffic off) instead of Docker's default one.
     SANDBOX_NETWORK: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/).default("lq-sbx"),
     // Optional OCI runtime for shell containers, e.g. "runsc" (gVisor). Unset: Docker's default runtime.

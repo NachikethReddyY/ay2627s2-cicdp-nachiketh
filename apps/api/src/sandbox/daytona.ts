@@ -72,7 +72,7 @@ export function daytonaBackend(opts: {
   runnerStopMinutes?: number;
 }): SandboxBackend {
   const { client } = opts;
-  const autoStop = opts.autoStopMinutes ?? 15;
+  const autoStop = opts.autoStopMinutes ?? 3;
   const maxShells = opts.maxShells ?? (() => env.SANDBOX_MAX_SHELLS);
   const base = opts.snapshot ? { snapshot: opts.snapshot } : {};
   const finding = new Map<string, Promise<DaytonaSandbox>>();

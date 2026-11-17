@@ -17,7 +17,7 @@ import {
 
 type Exec = (cmd: string, args: string[]) => Promise<{ stdout: string; stderr?: string }>;
 const run: Exec = promisify(execFile);
-const IDLE_MS = 15 * 60_000;
+const IDLE_MS = 3 * 60_000;
 
 // pnpm unpacks node-pty's prebuilt spawn-helper without the exec bit, which makes every spawn fail with posix_spawnp.
 try {

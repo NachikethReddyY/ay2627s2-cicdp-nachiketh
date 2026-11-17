@@ -13,7 +13,7 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 | `DAYTONA_API_URL` | SDK default | Self-hosted Daytona only. |
 | `DAYTONA_TARGET` | SDK default | Region to create sandboxes in. |
 | `DAYTONA_SNAPSHOT` | Daytona default image | Snapshot built from `services/sandbox` so Python/Node match the Docker image. |
-| `DAYTONA_AUTO_STOP_MINUTES` | `15` | Idle minutes before Daytona stops a learner's shell sandbox. |
+| `DAYTONA_AUTO_STOP_MINUTES` | `3` | Idle minutes before Daytona stops a learner's shell sandbox. The Docker backend uses the same 3-minute idle stop. |
 | `SANDBOX_MAX_TABS` / `SANDBOX_MAX_SHELLS` / `SANDBOX_MAX_RUNS` | 4 / 50 / 20 | Per-learner tabs, live terminals, live runs. |
 
 ## Guide and practice
