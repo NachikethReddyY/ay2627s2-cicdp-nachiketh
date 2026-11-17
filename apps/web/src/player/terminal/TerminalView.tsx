@@ -22,6 +22,41 @@ const DARK_COLORS: TerminalThemeColors = {
   palette: [0xececec, 0xff6b61, 0x3fc07a, 0xe0a84a, 0x8fb0ff, 0xcba6f7, 0x78c2ff, 0x3a3a3a, 0x9a9a9a, 0xff6b61, 0x3fc07a, 0xe0a84a, 0x8fb0ff, 0xcba6f7, 0x78c2ff, 0xffffff],
 };
 
+const parseColor = (value: string): number | null => {
+  const v = value.trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v);
+  if (hex) return parseInt(hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join("") : hex[1], 16);
+  const rgb = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(v);
+  return rgb ? (Number(rgb[1]) << 16) | (Number(rgb[2]) << 8) | Number(rgb[3]) : null;
+};
+
+const luma = (c: number) => (0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255)) / 255;
+
+/** matchMedia is missing in jsdom and some embeds: treat that as light and skip the change listener. */
+const colorScheme = () => (typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : undefined);
+
+/** Outside .wb the terminal follows the page tokens (--code, --tx, --ac) on the root, in light and dark. */
+function rootTheme(): TerminalThemeColors {
+  const css = getComputedStyle(document.documentElement);
+  const token = (name: string) => parseColor(css.getPropertyValue(name));
+  const dark = colorScheme()?.matches ?? false;
+  const background = token("--code") ?? (dark ? DARK_COLORS : LIGHT_COLORS).background;
+  const base = luma(background) < 0.5 ? DARK_COLORS : LIGHT_COLORS;
+  // --acT is the readable accent on dark surfaces; --ac is too dim there.
+  const cursor = token(base === DARK_COLORS ? "--acT" : "--ac") ?? base.cursor;
+  return { foreground: token("--tx") ?? base.foreground, background, cursor, palette: base.palette };
+}
+
+// wterm paints the DOM from these; var() keeps them in step with the root tokens without a re-read.
+const ROOT_TERM_VARS = {
+  "--term-app-bg": "var(--code)",
+  "--term-app-fg": "var(--tx)",
+  "--term-app-cursor": "var(--acT)",
+  "--term-selection-bg": "var(--sel)",
+};
+
+const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
+
 // Wterm renders the terminal in the DOM and Ghostty supplies full VT emulation.
 // The existing shell socket continues to carry input, output, and PTY resize events.
 export default function TerminalView({ shell, active = true, fitKey }: TerminalViewProps) {
@@ -38,7 +73,11 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
     const terminal = terminalRef.current;
     if (!terminal) return;
     const workbench = terminal.element.closest<HTMLElement>(".wb");
-    if (!workbench) return;
+    if (!workbench) {
+      for (const [name, value] of Object.entries(ROOT_TERM_VARS)) terminal.element.style.setProperty(name, value);
+      terminal.setThemeColors(rootTheme());
+      return;
+    }
     const dark = workbench.dataset.resolved === "dark";
     terminal.setThemeColors(dark ? DARK_COLORS : LIGHT_COLORS);
   }, []);
@@ -88,7 +127,12 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
 
   useEffect(() => {
     const workbench = ref.current?.instance?.element.closest<HTMLElement>(".wb");
-    if (!workbench) return;
+    if (!workbench) {
+      const scheme = colorScheme();
+      scheme?.addEventListener("change", applyWorkbenchTheme);
+      applyWorkbenchTheme();
+      return () => scheme?.removeEventListener("change", applyWorkbenchTheme);
+    }
     const observer = new MutationObserver(applyWorkbenchTheme);
     observer.observe(workbench, { attributes: true, attributeFilter: ["data-resolved"] });
     applyWorkbenchTheme();
@@ -98,7 +142,7 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
   useEffect(() => {
     let live = true;
     let loaded: GhosttyCore | null = null;
-    void GhosttyCore.load({ backgroundColor: "#ffffff", foregroundColor: "#1c1c1e" }).then((next) => {
+    void GhosttyCore.load({ backgroundColor: hex(rootTheme().background), foregroundColor: hex(rootTheme().foreground) }).then((next) => {
       loaded = next;
       // Record focus before the terminal mounts, because wterm focuses its textarea during init.
       priorFocusRef.current = document.activeElement;
@@ -113,8 +157,8 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
     };
   }, []);
 
-  if (coreError) return <p role="status" className="p-3 text-xs text-white/75">Could not start the terminal emulator.</p>;
-  if (!core) return <p role="status" className="p-3 text-xs text-white/75">Preparing terminal…</p>;
+  if (coreError) return <p role="status" className="p-3 text-xs text-ink/75">Could not start the terminal emulator.</p>;
+  if (!core) return <p role="status" className="p-3 text-xs text-ink/75">Preparing terminal…</p>;
 
   return (
     <Terminal

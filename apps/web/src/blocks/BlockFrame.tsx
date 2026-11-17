@@ -9,9 +9,9 @@ export default class BlockFrame extends Component<Props, { failed: boolean; asTe
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <div role="group" className="rounded-2xl border-2 border-ink bg-white p-3 text-sm">
-        <p className="break-words font-bold">{this.props.describe}</p>
-        <button type="button" className="mt-2 min-h-11 rounded-full border-2 border-ink px-4 font-extrabold" aria-expanded={this.state.asText}
+      <div role="group" className="rounded-2xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm shadow-[var(--lift-sm)]">
+        <p className="break-words font-medium">{this.props.describe}</p>
+        <button type="button" className="pill mt-2 min-h-11 px-4 text-sm" aria-expanded={this.state.asText}
           onClick={() => this.setState((s) => ({ asText: !s.asText }))}>
           Show as text
         </button>

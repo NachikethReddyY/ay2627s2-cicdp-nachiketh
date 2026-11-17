@@ -26,8 +26,8 @@ const hasWebGL2 = () => {
 };
 const slowConnection = () => shouldStartAsPoster((navigator as unknown as { connection?: { saveData?: boolean; effectiveType?: string } }).connection);
 
-const btn = "grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-ink bg-white";
-const textBtn = "mt-2 min-h-11 rounded-full border-2 border-ink bg-white px-4 font-extrabold";
+const btn = "pill grid h-11 w-11 shrink-0 place-items-center";
+const textBtn = "btn mt-2 text-sm";
 
 function Prim({ p, state, ms, paused, objs }: { p: Primitive; state?: TimelineState; ms: number; paused: boolean; objs: Objs }) {
   const g = useRef<Object3D>(null);
@@ -167,7 +167,7 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
       <div className="relative">
         <div
           role={orbiting ? "application" : "img"} aria-label={p.alt} tabIndex={orbiting ? 0 : undefined}
-          className="relative w-full min-w-0 max-w-full select-none overflow-hidden rounded-2xl border-2 border-ink bg-white"
+          className="relative w-full min-w-0 max-w-full select-none overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--side)]"
           style={{ aspectRatio: "4 / 3", touchAction: "pan-y" }}
           onPointerDown={orbiting ? (e) => {
             const touch = e.pointerType === "touch";
@@ -196,7 +196,7 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
             {tagged.map((x) => (
               <span key={x.id} ref={(el) => { if (el) labels.current.set(x.id, el); else labels.current.delete(x.id); }}
-                className="absolute left-0 top-0 max-w-[40%] break-words rounded-full border-2 border-ink bg-paper px-2 text-xs font-extrabold"
+                className="absolute left-0 top-0 max-w-[40%] break-words rounded-full border border-[var(--line)] bg-[var(--code)] px-2 text-xs font-semibold"
                 style={{ opacity: resolve(x, state).opacity, visibility: "hidden" }}>
                 {x.label}
               </span>
@@ -204,8 +204,8 @@ function Scene({ p, desc, state, ms, paused = false }: { p: Props; desc: string;
           </div>
         </div>
         {lost && (
-          <div role="group" aria-label={p.alt} className="absolute inset-0 grid place-content-center justify-items-center gap-1 overflow-auto rounded-2xl border-2 border-ink bg-white p-3 text-center">
-            <p className="break-words text-sm font-bold">{desc}</p>
+          <div role="group" aria-label={p.alt} className="absolute inset-0 grid place-content-center justify-items-center gap-1 overflow-auto rounded-2xl border border-[var(--line)] bg-[var(--code)] p-3 text-center">
+            <p className="break-words text-sm font-semibold">{desc}</p>
             <button type="button" className={textBtn} onClick={() => { setLost(false); setGen((g) => g + 1); }}>Tap to reload 3D</button>
           </div>
         )}
@@ -236,7 +236,7 @@ function Timed({ p, desc, timeline }: { p: Props; desc: string; timeline: NonNul
 }
 
 type Status = "pending" | "poster" | "live" | "nowebgl";
-const box = "min-w-0 max-w-full break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm";
+const box = "min-w-0 max-w-full break-words rounded-2xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm shadow-[var(--lift-sm)]";
 
 export default function Scene3dView({ block }: BlockViewProps<Props>) {
   const p = block.props;
@@ -257,12 +257,12 @@ export default function Scene3dView({ block }: BlockViewProps<Props>) {
   }, [status]);
 
   // Over budget: text only, there is nothing to retry. Render errors fall to BlockFrame, which shows the same text.
-  if (over) return <p role="img" aria-label={p.alt} className={`${box} font-bold`}>{desc}</p>;
+  if (over) return <p role="img" aria-label={p.alt} className={`${box} font-semibold`}>{desc}</p>;
   if (status === "live" && held) return p.timeline ? <Timed p={p} desc={desc} timeline={p.timeline} /> : <Scene p={p} desc={desc} ms={0} />;
   const action = status === "poster" ? "Tap to load 3D" : status === "nowebgl" ? "Tap to reload 3D" : null;
   return (
     <div role="group" aria-label={p.alt} className={box}>
-      <p className="font-bold">{desc}</p>
+      <p className="font-semibold">{desc}</p>
       {busy && <p className="mt-1">Another 3D view is open on this page.</p>}
       {action && <button type="button" className={textBtn} onClick={() => { setBusy(false); setStatus("pending"); }}>{action}</button>}
     </div>

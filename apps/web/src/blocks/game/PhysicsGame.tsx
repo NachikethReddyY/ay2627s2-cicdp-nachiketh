@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { MAX_ANGLE, MIN_ANGLE, simulateLaunch, type PublicGameProps, type PhysicsProps } from "@learnquest/ui-catalog";
 import type { GameApi } from "./api.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
-import Shell, { btn } from "./Shell.tsx";
+import Shell, { btnPrimary } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
 
 const W = 400;
@@ -54,9 +54,9 @@ export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind
   };
 
   const slider = (label: string, value: number, min: number, max: number, set: (n: number) => void, unit: string) => (
-    <label className="flex flex-col text-sm font-bold">
+    <label className="flex flex-col text-sm font-medium">
       {label}: {value} {unit}
-      <input type="range" min={min} max={max} step={1} value={value} disabled={over} onChange={(e) => set(Number(e.target.value))} className="min-h-11" />
+      <input type="range" min={min} max={max} step={1} value={value} disabled={over} onChange={(e) => set(Number(e.target.value))} className="min-h-11 accent-[var(--ac)]" />
     </label>
   );
 
@@ -65,16 +65,16 @@ export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind
   return (
     <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <div role="group" aria-label="Physics game" className="flex min-w-0 flex-col gap-3">
-        <svg role="img" aria-label={`Ground with a target ${kind.target.width} metres wide at ${kind.target.x} metres${shot ? `; last throw landed at ${shot.landX.toFixed(1)} metres` : ""}`} viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full rounded-2xl border-2 border-ink bg-paper">
-          <line x1={0} x2={W} y1={H - 10} y2={H - 10} stroke="var(--color-ink)" strokeWidth={2} />
-          <rect x={sx(kind.target.x - kind.target.width / 2)} y={H - 16} width={Math.max(2, sx(kind.target.width))} height={12} fill="var(--color-green)" stroke="var(--color-ink)" strokeWidth={2} />
-          {shot && <path d={d} fill="none" stroke="var(--color-blue)" strokeWidth={2} pathLength={1} strokeDasharray={1} strokeDashoffset={0} style={reduced ? undefined : { animation: "lq-draw 1s ease-out" }} />}
+        <svg role="img" aria-label={`Ground with a target ${kind.target.width} metres wide at ${kind.target.x} metres${shot ? `; last throw landed at ${shot.landX.toFixed(1)} metres` : ""}`} viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full rounded-xl border border-[var(--line)] bg-[var(--code)]">
+          <line x1={0} x2={W} y1={H - 10} y2={H - 10} stroke="var(--mu)" strokeWidth={2} />
+          <rect x={sx(kind.target.x - kind.target.width / 2)} y={H - 16} width={Math.max(2, sx(kind.target.width))} height={12} fill="var(--ok)" stroke="var(--okT)" strokeWidth={1.5} rx={2} />
+          {shot && <path d={d} fill="none" stroke="var(--ac)" strokeWidth={2} pathLength={1} strokeDasharray={1} strokeDashoffset={0} style={reduced ? undefined : { animation: "lq-draw 1s ease-out" }} />}
         </svg>
         {!reduced && <style>{"@keyframes lq-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}"}</style>}
         {slider("Angle", angle, MIN_ANGLE, MAX_ANGLE, setAngle, "degrees")}
         {slider("Speed", speed, 1, kind.maxSpeed, setSpeed, "m/s")}
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={`${btn} bg-green`} disabled={over || busy} onClick={launch}>Launch</button>
+          <button type="button" className={btnPrimary} disabled={over || busy} onClick={launch}>Launch</button>
         </div>
       </div>
     </Shell>

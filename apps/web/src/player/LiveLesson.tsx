@@ -9,8 +9,8 @@ import Steps from "./live/Steps";
 import WatchView from "./live/WatchView";
 import { lessonTitle } from "./live/courseProgress";
 
-// Practice embeds the code editor (Monaco), so it loads on demand with the player.
-const PracticeView = lazy(() => import("./live/PracticeView"));
+// Practice is the workbench with the lesson's own file. It embeds the code editor (Monaco), so it loads on demand.
+const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
   const { data, error, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
@@ -35,9 +35,9 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
 
   if (error)
     return (
-      <Notice pip="pip-oops">
-        {isNotFound(error) ? "We couldn't find that lesson." : "Pip couldn't write this lesson."}{" "}
-        {!isNotFound(error) && <button type="button" className="pill bg-white px-3 py-1 text-sm" onClick={reload}>Try again</button>}{" "}
+      <Notice>
+        {isNotFound(error) ? "We couldn't find that lesson." : "We couldn't write this lesson."}{" "}
+        {!isNotFound(error) && <button type="button" className="pill px-3 py-1 text-sm" onClick={reload}>Try again</button>}{" "}
         <a href="/" className="underline">Home</a>
       </Notice>
     );
@@ -46,9 +46,9 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     const title = courseState.data ? lessonTitle(courseState.data.lessons, slug) : undefined;
     return (
       <Notice>
-        <p>{slow ? "Pip is writing your next lesson…" : "Loading lesson…"}</p>
+        <p>{slow ? "Writing your next lesson…" : "Loading lesson…"}</p>
         {title && <p className="mt-1 text-sm font-normal">Up next: {title}</p>}
-        <div className="mt-3 h-3 w-64 max-w-full overflow-hidden rounded-full border-[3px] border-ink bg-white" aria-hidden="true">
+        <div className="mt-3 h-3 w-64 max-w-full overflow-hidden track" aria-hidden="true">
           <div className="sketch h-full w-1/3 rounded-full bg-blue" />
         </div>
       </Notice>
@@ -62,20 +62,21 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   // The player (and Monaco with it) loads only for the lessons that have a code window.
   const fallback = <Notice><p>Loading lesson…</p></Notice>;
   if (data.kind === "learn" && part?.kind === "learn")
-    return <div className="flex h-dvh flex-col">{progress}<LearnView title={data.title} body={part.body} doc={part.doc} next={next} /></div>;
+    // The learn view has no course progress strip; the moon canvas matches the rest of the app.
+    return <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={next} /></div>;
   if (data.kind === "watch" && part?.kind === "watch")
     return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={next} /></Suspense>; // codecasts: no course progress strip
   if (data.kind === "practice" && part?.kind === "practice")
-    return <Suspense fallback={fallback}><PracticeView lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
+    return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
     return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} title={data.title} intro={part.intro} doc={part.doc} next={next} onComplete={courseState.reload} /></div>;
   if (data.kind === "predict" && data.steps.length > 0)
     return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} onFinished={courseState.reload} /></Suspense></>;
   // A part the server could not provide (no content, or content of another kind), or a predict lesson with no steps.
   return (
-    <Notice pip="pip-oops">
+    <Notice>
       This lesson isn't ready yet.{" "}
-      <button type="button" className="pill bg-white px-3 py-1 text-sm" onClick={reload}>Try again</button>{" "}
+      <button type="button" className="pill px-3 py-1 text-sm" onClick={reload}>Try again</button>{" "}
       <a href="/" className="underline">Home</a>
     </Notice>
   );

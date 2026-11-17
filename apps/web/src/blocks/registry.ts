@@ -10,7 +10,7 @@ const mods = import.meta.glob<{ default: ComponentType<BlockViewProps> }>(["./*/
 const Scene3d = lazy(() => import("./scene3d/View.tsx"));
 // A failed chunk import rejects into the nearest error boundary (BlockFrame), which shows the block's describe() text.
 const Scene3dLoader: ComponentType<BlockViewProps> = (props) =>
-  createElement(Suspense, { fallback: createElement("p", { className: "rounded-2xl border-2 border-ink bg-white p-3 text-sm font-bold" }, "Loading 3D scene...") }, createElement(Scene3d, props));
+  createElement(Suspense, { fallback: createElement("p", { className: "rounded-2xl border border-[var(--line)] bg-[var(--code)] p-3 text-sm font-bold" }, "Loading 3D scene...") }, createElement(Scene3d, props));
 
 // Keyed by block type, taken from the folder name.
 export const RENDERERS: Record<string, ComponentType<BlockViewProps>> = Object.fromEntries(

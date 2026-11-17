@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import { Check, ExternalLink, FilePlus2, FolderPlus, LoaderCircle, Maximize2, Minimize2, MonitorPlay, Play, RefreshCw, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { usePanel } from "../player/terminal/usePanel";
+import type { EditorHandle } from "../player/EditorPane";
 import TerminalView from "../player/terminal/TerminalView";
 import { createShellSocket, type ShellSocket, type ShellState } from "../player/terminal/shellSocket";
 import { ApiError, getWorkspaceFile, listFileDirectories, listFiles, moveWorkspaceFile, putFile, putWorkspaceFile, readWorkspaceFiles } from "../player/runPython";
@@ -14,6 +15,10 @@ import Workbench from "../player/workbench/Workbench";
 import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
 import { languageOf, pickTestLesson } from "./testEditorFixture";
+import { testEditorLesson } from "./testEditorLesson";
+import { useSearch } from "@tanstack/react-router";
+import { trpc } from "../lib/trpc";
+import { useApi } from "../lib/api";
 import { DEMO_DIRECTORY, DEMO_ENTRY_FILE, DEMO_PROJECT_FILES } from "./testEditorDemo";
 import { Toaster, toast } from "sonner";
 import { removeWebPreviewFile, startWebPreview, syncWebPreviewFile, type PreviewFile } from "./webContainerPreview";
@@ -188,7 +193,16 @@ async function savedProjectFiles(): Promise<{ files: PreviewFile[]; binarySkippe
   return { files, binarySkipped };
 }
 
-export default function TestEditor() {
+// `replay` lets a caller (the test player) push replay frames into the editor.
+export default function TestEditor({ replay, dock = true }: { replay?: Ref<EditorHandle>; dock?: boolean } = {}) {
+  // The router parses the value as JSON, so a numeric slug arrives as a number.
+  const { lesson: rawSlug } = useSearch({ strict: false }) as { lesson?: unknown };
+  const slug = rawSlug === undefined || rawSlug === "" ? undefined : String(rawSlug);
+  const lessonState = useApi(`test-editor-lesson:${slug ?? ""}`, () => (slug ? trpc.lessons.get.query({ id: slug }) : Promise.resolve(null)));
+  const lessonError = slug && !lessonState.loading && lessonState.error ? "Could not load the lesson." : undefined;
+  const loaded = slug && lessonState.data ? testEditorLesson(lessonState.data) : undefined;
+  const liveLesson = loaded && "instructions" in loaded ? loaded : undefined;
+  const lessonNote = lessonError ?? (loaded && "error" in loaded ? loaded.error : undefined);
   const [tree, setTree] = useState<TreeNode[]>(demoTree);
   const [open, setOpen] = useState(DEMO_ENTRY_FILE);
   const [content, setContent] = useState(DEMO_ENTRY_TEXT);
@@ -1064,13 +1078,13 @@ export default function TestEditor() {
   const bottom = (
     <div className="flex h-full min-h-0 min-w-0 bg-[var(--code)] text-[var(--tx)]">
       <div className={`relative grid min-h-0 min-w-0 flex-1 ${splitTerminals && secondaryTerminal ? "grid-cols-2 gap-1" : "grid-cols-1"}`}>
-        {shellMessage && <div role="status" aria-live="polite" className="absolute left-2 top-1 z-10 flex items-center gap-1.5 rounded-md bg-[var(--pane)]/90 px-2 py-1 font-sans text-xs text-[var(--mu)] shadow-sm">{shellState.kind === "connecting" && <LoaderCircle size={12} aria-hidden="true" className="motion-safe:animate-spin" />}{shellMessage}</div>}
+        {shellMessage && <div role="status" aria-live="polite" className="absolute left-2 top-1 z-10 flex items-center gap-1.5 rounded-md bg-[var(--tbar)]/90 px-2 py-1 font-sans text-xs text-[var(--mu)] shadow-sm">{shellState.kind === "connecting" && <LoaderCircle size={12} aria-hidden="true" className="motion-safe:animate-spin" />}{shellMessage}</div>}
         {terminals.map((terminal) => {
           const visible = visibleTerminalIds.has(terminal.id);
           const column = splitTerminals && secondaryTerminal ? (terminal.id === activeTerminalId ? 1 : terminal.id === secondaryTerminal.id ? 2 : 0) : 1;
           return <div key={terminal.id} className="relative min-h-0 min-w-0 p-1" style={visible ? { gridColumn: column, gridRow: 1 } : { position: "absolute", inset: 0, visibility: "hidden", pointerEvents: "none" }}>
             <TerminalView shell={terminal.socket} active={panel.state.open && visible} fitKey={`${terminals.length}-${splitTerminals}-${activeTerminalId}`} />
-            {visible && <button type="button" className="wb-tb wb-n34 absolute right-2 top-2 z-10 h-7 w-7 rounded-full border border-[var(--line)] bg-[var(--pane)]/95 p-0 shadow-sm" aria-label={`Close ${terminal.label}`} title={`Close ${terminal.label}`} onClick={() => closeTerminal(terminal.id)}>
+            {visible && <button type="button" className="wb-tb wb-n34 absolute right-2 top-2 z-10 h-7 w-7 rounded-full border border-[var(--line)] bg-[var(--tbar)]/95 p-0 shadow-sm" aria-label={`Close ${terminal.label}`} title={`Close ${terminal.label}`} onClick={() => closeTerminal(terminal.id)}>
               <X size={13} strokeWidth={1.8} aria-hidden="true" />
             </button>}
           </div>;
@@ -1089,7 +1103,7 @@ export default function TestEditor() {
             onDragStart={(event) => { event.dataTransfer.setData("text/plain", terminal.id); event.dataTransfer.effectAllowed = "move"; }}
             onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }}
             onDrop={(event) => { event.preventDefault(); reorderTerminals(event.dataTransfer.getData("text/plain"), terminal.id); }}
-            className={`flex h-8 min-w-8 cursor-grab items-center justify-center rounded-full px-2 font-mono text-[10px] font-semibold transition-colors active:cursor-grabbing ${activeTerminalId === terminal.id ? "bg-[var(--ac)] text-white shadow-sm" : "text-[var(--mu)] hover:bg-[var(--hover)] hover:text-[var(--tx)]"}`}
+            className={`flex h-8 min-w-8 cursor-grab items-center justify-center rounded-full px-2 font-mono text-[10px] font-semibold transition-colors active:cursor-grabbing ${activeTerminalId === terminal.id ? "bg-[var(--ac)] text-white shadow-sm" : "text-[var(--mu)] hover:bg-[var(--hov)] hover:text-[var(--tx)]"}`}
           >T{index + 1}</button>)}
         </div>
       </aside>}
@@ -1113,7 +1127,7 @@ export default function TestEditor() {
     },
   };
 
-  const openLang = languageOf(open, "javascript");
+  const openLang = languageOf(open, liveLesson?.language ?? "javascript");
   const previewLive = browserPreview.state === "ready" || browserPreview.state === "starting";
   const previewVisible = previewLive && previewOpen;
   const dockItems: EditorDockItem[] = [
@@ -1139,6 +1153,7 @@ export default function TestEditor() {
       navigator={navigator}
       editor={open ? <WorkbenchEditor
         key={open}
+        ref={replay}
         transportRef={runRef}
         edit={{ value: content, language: openLang, onChange: changeContent, readOnly: !bufferConfirmed }}
       /> : <div role={workspaceLoading || shellState.kind === "connecting" ? "status" : undefined} aria-live={workspaceLoading || shellState.kind === "connecting" ? "polite" : undefined} className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-[var(--mu)]">
@@ -1266,8 +1281,10 @@ export default function TestEditor() {
       previewHost,
     )}
     {/* The Notepad shows the lesson's instructions as its pinned Instructions tab. Keep this prop when moving the notepad. */}
-    {notepadOpen && previewHost && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={pickTestLesson(openLang).instructions} />, previewHost)}
-    <EditorDock items={dockItems} />
+    {notepadOpen && previewHost && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={liveLesson?.instructions ?? pickTestLesson(openLang).instructions} />, previewHost)}
+    {/* Always mounted, so a screen reader announces the note when its text appears. Clicks pass through to the toolbar. */}
+    <p role="status" aria-live="polite" className={lessonNote ? "fixed bottom-16 left-3 z-50 pointer-events-none rounded-lg border border-[var(--line)] bg-[var(--glass)] px-3 py-1.5 text-sm font-semibold text-[var(--tx)] backdrop-blur-xl" : "sr-only"}>{lessonNote ? `${lessonNote} Showing the fixture lesson.` : ""}</p>
+    {dock && <EditorDock items={dockItems} />}
     <Toaster position="bottom-right" richColors closeButton />
     </>
   );

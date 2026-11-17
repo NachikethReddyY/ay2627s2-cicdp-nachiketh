@@ -437,6 +437,33 @@
       @starting-style { opacity: 0; transform: translateY(5px); }
     }
   }
+
+  /* Sloppy's panel was drawn in light colours only. In the dark theme it takes the workbench tokens instead. */
+  .wb[data-resolved="dark"] .wb-ai-iconbtn, .wb[data-resolved="dark"] .wb-ai-name { color: var(--tx); background: var(--pane2); border-color: var(--line); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .wb[data-resolved="dark"] .wb-ai-reply { color: var(--tx); background: var(--pane2); border-color: var(--line); box-shadow: 0 3px 10px rgba(0,0,0,.3); }
+  .wb[data-resolved="dark"] .wb-ai-time { color: var(--mu); }
+  .wb[data-resolved="dark"] .wb-ai-guide .wb-ask { background: var(--pane2); border-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-context { border-bottom-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-context-chip { background: var(--selrow); }
+  .wb[data-resolved="dark"] .wb-ai-context-file, .wb[data-resolved="dark"] .wb-ai-context-lines { color: var(--tx); }
+  .wb[data-resolved="dark"] .wb-ai-context-file { background: var(--sel); color: var(--acT); }
+  .wb[data-resolved="dark"] .wb-ai-context-chip > button, .wb[data-resolved="dark"] .wb-ai-attach { color: var(--mu); }
+  .wb[data-resolved="dark"] .wb-ai-context-chip > button:hover { background: var(--hov); }
+  .wb[data-resolved="dark"] .wb-ai-attach:hover, .wb[data-resolved="dark"] .wb-ai-attach[aria-expanded="true"] { background: var(--hov); color: var(--acT); }
+  .wb[data-resolved="dark"] .wb-ai-attach-menu { background: var(--tbar); border-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-attach-menu button { color: var(--tx); }
+  .wb[data-resolved="dark"] .wb-ai-attach-menu button:disabled { color: var(--mu); }
+  .wb[data-resolved="dark"] .wb-ai-prompt { color: var(--tx); background: var(--pane2); border-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-prompt:hover { border-color: var(--ac); background: var(--sel); }
+  .wb[data-resolved="dark"] .wb-ai-challenge { background: var(--pane2); border-color: var(--line); box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+  .wb[data-resolved="dark"] .wb-ai-challenge-title { color: var(--mu); }
+  .wb[data-resolved="dark"] .wb-ai-progress i, .wb[data-resolved="dark"] .wb-ai-hint-steps .connector { background: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-options button { color: var(--tx); background: var(--tbar); border-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-options button:hover { background: var(--sel); border-color: var(--ac); }
+  .wb[data-resolved="dark"] .wb-ai-hints { background: var(--tbar); border-top-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-hint-steps > span:not(.connector) { background: var(--tbar); border-color: var(--line); }
+  .wb[data-resolved="dark"] .wb-ai-hint-copy { color: var(--tx); }
+  .wb[data-resolved="dark"] .wb-ai-hint-steps > span.locked { color: var(--mu); }
 }
 
 /* Monaco's hover and suggest widgets (editor help). Outside the components layer on purpose: Monaco's own
@@ -672,3 +699,13 @@ input.wb-dt-edit:not(.wb-dt-prop):not(.wb-dt-val) { width: calc(100% - 12px); ma
   .wb-preview-float-actions { gap: 0; }
   .wb-preview-float-actions .wb-tb { width: 26px; }
 }
+
+/* The lesson's Next link comes from the sticker layout (.btn in index.css, outside any layer). In the workbench toolbar
+   it is drawn as an accent pill; these rules are unlayered too, so the higher selector wins. */
+.wb .lq-next > div { display: flex; }
+.wb .lq-next .btn {
+  margin: 0; display: inline-flex; align-items: center; height: 26px; padding: 0 14px; border: 0; border-radius: 13px;
+  background: var(--ac); color: #fff; box-shadow: none; font-size: 13px; font-weight: 600; line-height: 1; text-decoration: none; transform: none;
+}
+.wb .lq-next .btn:hover, .wb .lq-next .btn:active { transform: none; box-shadow: none; filter: brightness(1.1); }
+.wb .lq-next .btn:disabled { opacity: 0.5; }

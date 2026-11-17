@@ -3,7 +3,7 @@ import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, 
 import type { PublicGameProps } from "@learnquest/ui-catalog";
 import type { GameApi } from "./api.ts";
 import { setupFor, type DragKind, type Item, type Placed, type Zone } from "./dragSetup.ts";
-import Shell, { btn } from "./Shell.tsx";
+import Shell, { btn, btnPrimary } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
 
 function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected: boolean; disabled: boolean; onTap: () => void }) {
@@ -19,8 +19,13 @@ function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected:
       onClick={onTap}
       disabled={disabled}
       style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, touchAction: "none" }}
-      className={`${btn} max-w-full break-words text-left text-sm ${selected ? "bg-sun" : ""} ${isDragging ? "opacity-60" : ""}`}
+      className={`${btn} max-w-full break-words text-left text-sm ${selected ? "!border-[var(--ac)] !bg-[color-mix(in_srgb,var(--ac)_16%,transparent)]" : ""} ${isDragging ? "opacity-60" : ""}`}
     >
+      {selected && (
+        <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" className="mr-1 inline-block shrink-0 align-[-2px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8.5l3.5 3.5L13 4.5" />
+        </svg>
+      )}
       {item.label}
     </button>
   );
@@ -43,9 +48,9 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
         }
       }}
       onClick={(e) => { if (!fromItem(e)) onTap(); }}
-      className={`flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-ink p-2 ${over ? "bg-sun" : "bg-paper"}`}
+      className={`flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed p-2 ${over ? "border-[var(--ac)] bg-[color-mix(in_srgb,var(--ac)_12%,transparent)]" : "border-[var(--mu)] bg-[var(--code)]"}`}
     >
-      <span className="text-xs font-extrabold">{zone.label}</span>
+      <span className="text-xs font-semibold text-[var(--mu)]">{zone.label}</span>
       {children}
     </div>
   );
@@ -132,8 +137,8 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
       <DndContext sensors={sensors} onDragEnd={onDragEnd} onDragOver={(e) => setHot(e.over ? String(e.over.id) : null)} onDragCancel={() => setHot(null)}>
         <div role="group" aria-label={`${setup.title} game`} className="flex min-w-0 flex-col gap-3">
           {pool.length > 0 && (
-            <div role="group" aria-label="Pool" className="flex min-w-0 flex-wrap gap-2 rounded-2xl border-2 border-ink p-2">
-              <span className="w-full text-xs font-extrabold">Pool</span>
+            <div role="group" aria-label="Pool" className="flex min-w-0 flex-wrap gap-2 rounded-xl border border-[var(--line)] p-2">
+              <span className="w-full text-xs font-semibold text-[var(--mu)]">Pool</span>
               {pool.map(itemButton)}
             </div>
           )}
@@ -149,7 +154,7 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
           </div>
           <p className="text-xs">Drag an item into a box, or tap an item and then tap a box. Keyboard: Tab to an item, press Space to pick it up, arrows to move, Space to drop.</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={`${btn} bg-green`} disabled={over || busy} onClick={check}>Check</button>
+            <button type="button" className={btnPrimary} disabled={over || busy} onClick={check}>Check</button>
           </div>
         </div>
       </DndContext>

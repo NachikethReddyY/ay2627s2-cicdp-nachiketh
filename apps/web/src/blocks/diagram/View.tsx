@@ -8,9 +8,12 @@ import { FONT, LINE_H, directionFor, layoutDiagram, pathOf, wrap, type DiagramPr
 
 type Props = DiagramProps & { alt: string; timeline?: Timeline };
 
+// Hairline outlines; the active node takes the accent and its selection tint. Colours are tokens, so both themes follow.
 function Shape({ n, shape, active }: { n: PlacedNode; shape: DiagramProps["shape"]; active: boolean }) {
   const { x, y, w, h } = n;
-  const c = { fill: active ? "var(--color-sun)" : "var(--color-paper)", stroke: "var(--color-ink)", strokeWidth: active ? 4 : 2 };
+  const c = active
+    ? { fill: "var(--sel)", stroke: "var(--ac)", strokeWidth: 2 }
+    : { fill: "var(--code)", stroke: "var(--mu)", strokeWidth: 1 };
   if (shape === "circle") return <circle cx={x} cy={y} r={w / 2} {...c} />;
   if (shape === "diamond") return <polygon points={`${x},${y - h / 2} ${x + w / 2},${y} ${x},${y + h / 2} ${x - w / 2},${y}`} {...c} />;
   const r = shape === "round" ? Math.min(h / 2, 20) : 4;
@@ -44,28 +47,28 @@ function Diagram({ block, state }: BlockViewProps<Props> & { state?: TimelineSta
   }, [p, dir]);
 
   let body;
-  if (failed) body = <p className="break-words rounded-2xl border-2 border-ink bg-white p-3 text-sm">{BLOCKS.find((m) => m.type === "diagram")!.describe(block)}</p>;
-  else if (!layout) body = <div role="img" aria-label={p.alt} className="h-24 w-full rounded-2xl border-2 border-ink bg-white" />;
+  if (failed) body = <p className="break-words rounded-2xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm shadow-[var(--lift-sm)]">{BLOCKS.find((m) => m.type === "diagram")!.describe(block)}</p>;
+  else if (!layout) body = <div role="img" aria-label={p.alt} className="h-24 w-full rounded-2xl border border-[var(--line)] bg-[var(--code)]" />;
   else body = (
     <svg role="img" aria-label={p.alt} viewBox={`0 0 ${layout.width} ${layout.height}`} width={layout.width} height={layout.height}
       style={{ maxWidth: "100%", height: "auto", aspectRatio: `${layout.width} / ${layout.height}` }}
-      className="block rounded-2xl border-2 border-ink bg-white" fontSize={FONT}>
+      className="block rounded-2xl border border-[var(--line)] bg-[var(--code)]" fontSize={FONT}>
       <defs>
         <marker id={marker} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0 0L10 5L0 10z" fill="var(--color-ink)" />
+          <path d="M0 0L10 5L0 10z" fill="var(--mu)" />
         </marker>
       </defs>
       {layout.edges.map((e, i) => (
         <g key={i}>
-          <path d={pathOf(e.points)} fill="none" stroke="var(--color-ink)" strokeWidth={1.5} markerEnd={`url(#${marker})`} />
-          {e.label && <rect x={e.lx - e.lw / 2} y={e.ly - e.lh / 2} width={e.lw} height={e.lh} rx={4} fill="var(--color-paper)" stroke="var(--color-ink)" strokeWidth={1} />}
-          {e.label && <text textAnchor="middle" fill="var(--color-ink)">{wrap(e.label).map((l, k, a) => <tspan key={k} x={e.lx} y={e.ly + (k - (a.length - 1) / 2) * LINE_H} dominantBaseline="central">{l}</tspan>)}</text>}
+          <path d={pathOf(e.points)} fill="none" stroke="var(--mu)" strokeWidth={1.5} markerEnd={`url(#${marker})`} />
+          {e.label && <rect x={e.lx - e.lw / 2} y={e.ly - e.lh / 2} width={e.lw} height={e.lh} rx={4} fill="var(--code)" stroke="var(--line)" strokeWidth={1} />}
+          {e.label && <text textAnchor="middle" fill="var(--tx)">{wrap(e.label).map((l, k, a) => <tspan key={k} x={e.lx} y={e.ly + (k - (a.length - 1) / 2) * LINE_H} dominantBaseline="central">{l}</tspan>)}</text>}
         </g>
       ))}
       {layout.nodes.map((n) => (
         <g key={n.id}>
           <Shape n={n} shape={p.shape} active={state?.[n.id]?.active === true} />
-          <text textAnchor="middle" fill="var(--color-ink)">
+          <text textAnchor="middle" fill="var(--tx)">
             {n.lines.map((l, i) => <tspan key={i} x={n.x} y={n.y + (i - (n.lines.length - 1) / 2) * LINE_H} dominantBaseline="central">{l}</tspan>)}
           </text>
         </g>

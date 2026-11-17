@@ -20,6 +20,8 @@ type Props = {
   onRun(): void;
   /** Run / Stop / Check / Next. */
   actions: ReactNode;
+  /** Drawn before the layout toggles, for example a link home. */
+  trailing?: ReactNode;
   /** Draw the window's traffic lights at the start (the navigator that normally holds them is hidden). */
   lights?: boolean;
   /** Draw the design's planned Back/Forward as inert controls. */
@@ -121,7 +123,7 @@ export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: 
   );
 }
 
-export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, onRun, actions, lights = false, planned = false }: Props) {
+export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, onRun, actions, trailing, lights = false, planned = false }: Props) {
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
       <div className="flex h-12 flex-none items-center gap-2 px-2 sm:gap-3 sm:px-3">
@@ -153,6 +155,7 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
           }}
         >{actions}</div>
         <span className="flex flex-none items-center gap-px">
+          {trailing}
           <ToggleButton t={nav} icon={PanelLeft} />
           <ToggleButton t={terminal} icon={PanelBottom} />
           <ToggleButton t={util} icon={PanelRight} />

@@ -1,0 +1,260 @@
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Check, Square } from "lucide-react";
+import { usePanel } from "../terminal/usePanel";
+import TerminalView from "../terminal/TerminalView";
+import DocsPanel from "../workbench/DocsPanel";
+import { DOCS } from "../workbench/docs";
+import FileTreeView from "../workbench/FileTreeView";
+import Segmented from "../workbench/Segmented";
+import Workbench from "../workbench/Workbench";
+import { useFloatingWindow } from "../workbench/useFloatingWindow";
+import { PreviewResizeHandles } from "../../pages/PreviewResizeHandles";
+import EditorDock, { type EditorDockItem } from "../../pages/EditorDock";
+import { EditorAppIcon, NotepadAppIcon } from "../../pages/DockAppIcons";
+import Notepad from "../../pages/Notepad";
+import WorkbenchEditor from "../workbench/WorkbenchEditor";
+import type { WorkbenchStatus } from "../workbench/StatusBar";
+import type { LintFinding } from "../runPython";
+import LessonResults from "./LessonResults";
+import LessonVideo from "./LessonVideo";
+import { monacoLanguage, type PracticeLanguage, type PracticeTest } from "./checkModel";
+import { findingPointer } from "./lintModel";
+import { actionGuards, lessonFile, shellLine } from "./lessonWorkbenchModel";
+import { usePracticeRunner } from "./usePracticeRunner";
+import type { Part } from "./types";
+
+// Sloppy is the help chat. It loads on first use, and stays mounted afterwards so its conversation survives a tab switch.
+const AIGuide = lazy(() => import("../workbench/PlannedParts").then((m) => ({ default: m.AIGuide })));
+
+// The API's part type lists python and javascript; the practice view also takes typescript and a list of tests.
+type PracticePart = Omit<Extract<Part, { kind: "practice" }>, "language"> & { language?: PracticeLanguage; tests?: PracticeTest[] };
+type Tab = "instructions" | "video" | "results" | "sloppy" | "docs";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "instructions", label: "Task" },
+  { id: "video", label: "Watch" },
+  { id: "results", label: "Results" },
+  { id: "sloppy", label: "Sloppy" },
+  { id: "docs", label: "Docs" },
+];
+const ROOT = "Lesson"; // the tree's one folder; the lesson title would break the slash-joined paths
+
+const BUSY = "Running…";
+
+// A practice lesson in the workbench: the lesson's own file in the editor, the task, Check results, Sloppy and Docs on the right,
+// and the sandbox terminal below. Nothing here is a planned or inert control (showPlanned stays off).
+export default function LessonWorkbench({ lessonId, title, part, next }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode }) {
+  const practice = part as PracticePart;
+  const language = monacoLanguage(practice.language);
+  const { fileName, languageLabel } = lessonFile(language);
+  const [code, setCode] = useState(part.starterCode);
+  const [tab, setTab] = useState<Tab>("instructions");
+  const [sloppyMounted, setSloppyMounted] = useState(false);
+  const [revealDocs, setRevealDocs] = useState(0); // bumped so the Docs column (or drawer) opens when a result lands in it
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<{ text: string } | null>(null); // a question from the video's Explain button
+  const [pendingFinding, setPendingFinding] = useState<{ ruleId: string; line: number; column?: number } | null>(null);
+  const win = useFloatingWindow();
+  const [notepadOpen, setNotepadOpen] = useState(false);
+  const [host, setHost] = useState<HTMLElement | null>(null); // the desk, so the Notepad opens on it as in /test/editor
+  useEffect(() => setHost(document.querySelector(".wb")), []);
+  const panel = usePanel(); // no container: the workbench clamps the height at render
+  const { dispatch: panelDispatch } = panel;
+  const runRef = useRef<HTMLButtonElement>(null);
+  const r = usePracticeRunner({ lessonId, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
+
+  // Focus the terminal only after the learner opens it, not when a page loads with the panel restored open.
+  const mountedOpen = useRef(panel.state.open);
+  const [interacted, setInteracted] = useState(false);
+  useEffect(() => {
+    if (panel.state.open !== mountedOpen.current) setInteracted(true);
+  }, [panel.state.open]);
+
+  const show = (t: Tab) => {
+    setTab(t);
+    setRevealDocs((n) => n + 1);
+    if (t === "sloppy") setSloppyMounted(true);
+  };
+  const can = actionGuards({ busy: r.busy, checkBusy: r.checkBusy, lintBusy: r.lintBusy, code });
+  const run = () => {
+    if (!can.run) return;
+    panelDispatch({ type: "open" }); // one-shot output lands in the panel's Output pane
+    void r.run();
+  };
+  const check = () => {
+    if (!can.check) return;
+    show("results");
+    void r.check();
+  };
+  const lint = () => {
+    if (!can.lint) return;
+    show("results");
+    void r.lint();
+  };
+  const askAbout = (finding: LintFinding) => {
+    setPendingFinding(findingPointer(finding)); // a fresh object each click, so asking again re-sends
+    show("sloppy");
+  };
+
+  const tree = useMemo(() => [{ name: ROOT, open: true, children: [{ name: fileName }] }], [fileName]);
+  const open = useMemo(() => new Set([ROOT]), []);
+  const navigator = (
+    <div className="min-w-0">
+      <FileTreeView label="Lesson files" nodes={tree} open={open} selected={`${ROOT}/${fileName}`} onToggle={() => {}} onSelect={() => {}} />
+    </div>
+  );
+
+  // Submit is the one toolbar action: the server judges the code against the lesson's tests. Run and Lint stay in the command palette.
+  const actions = (
+    <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={check} disabled={!can.check}>
+      <Check size={15} strokeWidth={1.75} aria-hidden="true" />
+      {r.checkBusy ? "Submitting…" : "Submit"}
+    </button>
+  );
+  const trailing = <span className="lq-next">{next}</span>;
+
+  const instructions = <p className="whitespace-pre-wrap">{part.instructions}</p>;
+  const docs = (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="wb-scroll flex h-[43px] flex-none items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-[var(--line)] px-2.5">
+        <Segmented className="wb-pill gap-1" role="group" aria-label="Side panel view">
+          {TABS.map((t) => (
+            <button key={t.id} type="button" className="wb-ptab" aria-pressed={tab === t.id} onClick={() => show(t.id)}>{t.label}</button>
+          ))}
+        </Segmented>
+      </div>
+      <div hidden={tab !== "instructions"} className="wb-prose wb-scroll min-h-0 flex-1 overflow-auto px-3 py-2.5">{instructions}</div>
+      <div hidden={tab !== "video"} className="wb-scroll min-h-0 flex-1 overflow-auto">
+        <LessonVideo
+          title={title}
+          captionsSrc={`/video/${lessonId}.vtt`}
+          chaptersSrc={`/video/${lessonId}.chapters.vtt`}
+          onExplain={(text) => {
+            setPendingPrompt({ text }); // a fresh object each click, so asking again re-sends
+            show("sloppy");
+          }}
+          sources={[
+            { src: `/video/${lessonId}.mp4`, type: "video/mp4" },
+            { src: `/audio/${lessonId}.mp3`, type: "audio/mpeg" },
+          ]}
+        />
+      </div>
+      <div hidden={tab !== "results"} className="flex min-h-0 flex-1 flex-col">
+        <LessonResults result={r.result} tests={practice.tests} checkError={r.checkError} findings={r.findings} lintError={r.lintError} onAsk={askAbout} />
+      </div>
+      {sloppyMounted && (
+        <div hidden={tab !== "sloppy"} className="flex min-h-0 min-w-0 flex-1">
+          <Suspense fallback={null}>
+            <AIGuide fileName={fileName} filePath={fileName} projectRoot="." code={code} language={language} selection={null} pendingFinding={pendingFinding} onFindingSent={() => setPendingFinding(null)} pendingPrompt={pendingPrompt} onPromptSent={() => setPendingPrompt(null)} />
+          </Suspense>
+        </div>
+      )}
+      <div hidden={tab !== "docs"} className="flex min-h-0 flex-1 flex-col">
+        <DocsPanel selected={selectedDoc} onSelect={setSelectedDoc} />
+      </div>
+    </div>
+  );
+
+  const line = shellLine(r.shellState);
+  const bottom = (
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--code)] text-[var(--tx)]">
+      {r.showOutput && (
+        <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-24 flex-none flex-col border-b border-[var(--line)]">
+          <div className="flex flex-none items-center gap-2 px-3 py-1">
+            <h3 id="out-h" className="text-xs font-semibold">Output</h3>
+            {r.sid && (
+              <button type="button" onClick={r.stop} className="wb-tb wb-outline ml-auto h-6 px-2 text-xs">
+                <Square size={11} fill="currentColor" aria-hidden="true" /> Stop
+              </button>
+            )}
+          </div>
+          <pre aria-label="Output" tabIndex={0} className="wb-mono m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-3 pb-2 text-xs">{r.term}</pre>
+          {r.sid && (
+            <form onSubmit={r.answer} className="flex flex-none items-center gap-2 border-t border-[var(--line)] px-3 py-1.5 text-xs">
+              <span aria-hidden="true" className="font-semibold">{">"}</span>
+              <input
+                autoFocus
+                value={r.typed}
+                onChange={(e) => r.setTyped(e.target.value)}
+                aria-label="Type your answer and press Enter"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="type your answer, then Enter"
+                className="min-w-0 flex-1 border-0 bg-transparent text-[var(--tx)] outline-none placeholder:text-[var(--mu)]"
+              />
+            </form>
+          )}
+        </section>
+      )}
+      {(line || r.runNote) && (
+        <div role="status" aria-live="polite" className="flex flex-none items-center gap-2 px-3 py-1 font-sans text-xs text-[var(--mu)]">
+          {line && <span>{line.text}</span>}
+          {line?.retry && r.shell && <button type="button" onClick={() => r.shell?.connect()} className="underline">Try again</button>}
+          {r.runNote && <span>{r.runNote}</span>}
+        </div>
+      )}
+      <div className="relative min-h-0 flex-1 p-1">
+        {r.shell && <TerminalView shell={r.shell} active={panel.state.open && interacted} />}
+      </div>
+    </div>
+  );
+
+  const status: WorkbenchStatus = r.checkBusy ? { text: "Checking…", tone: "busy" }
+    : r.lintBusy ? { text: "Linting…", tone: "busy" }
+    : r.busy ? { text: BUSY, tone: "busy" }
+    : r.runNote ? { text: r.runNote, tone: "error" }
+    : { text: "Ready" };
+
+  const paletteDocs = DOCS.map((d) => ({ id: d.id, title: d.title, sub: d.src }));
+  const paletteCommands = [
+    { id: "run", title: "Run", run },
+    { id: "check", title: "Submit", run: check },
+    { id: "lint", title: "Lint", run: lint },
+  ];
+
+  const dockItems: EditorDockItem[] = [
+    { id: "editor", label: "Code editor", art: <EditorAppIcon />, pressed: !notepadOpen, onSelect: () => setNotepadOpen(false) },
+    { id: "notepad", label: "Notepad", art: <NotepadAppIcon />, pressed: notepadOpen, onSelect: () => setNotepadOpen((o) => !o) },
+  ];
+
+  return (
+    <>
+    <Workbench
+      title={title}
+      fileName={fileName}
+      language={language}
+      navigator={navigator}
+      editor={<WorkbenchEditor key={fileName} transportRef={runRef} edit={{ value: code, language, onChange: setCode }} />}
+      bottom={bottom}
+      bottomTitle="Terminal"
+      instructions={instructions}
+      docs={docs}
+      actions={actions}
+      trailing={trailing}
+      paletteFiles={[{ id: fileName, title: fileName, sub: ROOT }]}
+      paletteCommands={paletteCommands}
+      paletteDocs={paletteDocs}
+      onOpenFile={() => {}}
+      onOpenDoc={(id) => {
+        setSelectedDoc(id);
+        show("docs");
+      }}
+      status={status}
+      languageLabel={languageLabel}
+      panel={panel}
+      revealDocs={revealDocs}
+      showPlanned
+      floatingWindow={{
+        style: win.style,
+        resizeHandles: <PreviewResizeHandles onResizeStart={win.onResizeStart} onResizeMove={win.onResizeMove} onResizeEnd={win.onResizeEnd} />,
+        onDragStart: win.onDragStart,
+        onDragMove: win.onDragMove,
+        onDragEnd: win.onDragEnd,
+      }}
+      aiContext={{ fileName, filePath: fileName, projectRoot: ".", code, language }}
+    />
+    {notepadOpen && host && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={part.instructions} />, host)}
+    <EditorDock items={dockItems} />
+    </>
+  );
+}

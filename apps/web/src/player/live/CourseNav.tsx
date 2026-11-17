@@ -16,7 +16,7 @@ export const NextLink = ({ href, children }: { href: string; children: ReactNode
     e.preventDefault();
     router.history.push(href);
   };
-  return <a href={href} onClick={go} className="btn mt-4 inline-block">{children}</a>;
+  return <a href={href} onClick={go} className="btn mt-4">{children}</a>;
 };
 
 // Where this part sits in its course, so the learner knows how many are left.
@@ -26,7 +26,7 @@ export function LessonProgress({ id, course }: { id: string; course: CourseState
   if (!data || i < 0) return null;
   const { done, total } = courseProgress(data.lessons);
   return (
-    <div className="sticky top-0 z-30 px-4 pt-3 pb-2 backdrop-blur" style={{ background: "#fff4e0" }}>
+    <div className="sticky top-0 z-30 px-4 pt-3 pb-2 border-b border-[var(--line)] bg-[var(--glass)] backdrop-blur-xl">
       <div className="mx-auto max-w-3xl">
         <Bar value={done} total={total} label="Course progress" />
       </div>
