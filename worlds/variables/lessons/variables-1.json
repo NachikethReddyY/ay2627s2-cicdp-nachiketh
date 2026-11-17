@@ -1,0 +1,97 @@
+{
+  "slug": "variables-1",
+  "title": "Name a value that never changes",
+  "concepts": [
+    "variables",
+    "constants"
+  ],
+  "position": 0,
+  "status": "published",
+  "steps": [
+    {
+      "public": {
+        "title": "Declare a fixed rate",
+        "prompt": "A tax rate stays the same for the whole cart. Which keyword should declare it?",
+        "kind": "mcq",
+        "options": [
+          "let",
+          "const",
+          "var, inside a loop",
+          "No keyword is needed"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/cart.js": "export function total(items) {\n  return items.length;\n}\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/cart.js",
+            "oldStart": 1,
+            "lines": [
+              "+const TAX_RATE = 0.2;",
+              "+",
+              " export function total(items) {",
+              "   return items.length;",
+              " }"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "The value is written once and then only read.",
+            "eliminate": 0
+          },
+          {
+            "text": "Pick the keyword that forbids reassigning the name."
+          }
+        ],
+        "explanations": {
+          "workedExample": "const names a value that cannot be reassigned. TAX_RATE is read by the total, never changed, so const says that to the reader.",
+          "practice": "Declare a DISCOUNT constant that holds 0.1."
+        },
+        "narration": "A tax rate is set once and then read many times. const makes that promise in the code, so nobody can reassign it by accident."
+      }
+    },
+    {
+      "public": {
+        "title": "Make the rate a constant",
+        "prompt": "TAX_RATE should never be reassigned. Type the keyword that declares it.",
+        "kind": "cloze"
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/cart.js": "let TAX_RATE = 0.2;\n\nexport function total(items) {\n  return items.length;\n}\n"
+        },
+        "hunks": [
+          {
+            "id": "h2",
+            "file": "src/cart.js",
+            "oldStart": 1,
+            "lines": [
+              "-let TAX_RATE = 0.2;",
+              "+const TAX_RATE = 0.2;",
+              " "
+            ]
+          }
+        ],
+        "answer": "const",
+        "accepted": [
+          "const"
+        ],
+        "hints": [
+          {
+            "text": "It is the same keyword you chose in the last question."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Swapping let for const turns a value that could change into one that cannot. The line still reads the same otherwise.",
+          "practice": "Change var API_URL to a constant."
+        },
+        "narration": "let allows reassignment. Changing one word to const stops that, and the rest of the file stays the same."
+      }
+    }
+  ]
+}

@@ -109,7 +109,7 @@ export async function generatePath(learnerId: string, topic: string) {
     if (e instanceof EngineError) {
       // An upstream failure (5xx) means the learner got no path: give the daily slot back. Bad output (422) still uses it.
       if (e.status >= 500) await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
-      if (e.status === 504) throw new TRPCError({ code: "TIMEOUT", message: "Pip ran out of time sketching that path. Try again." });
+      if (e.status === 504) throw new TRPCError({ code: "TIMEOUT", message: "That path took too long to generate. Try again." });
     }
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't build that path. Try again." });
   }
@@ -144,7 +144,8 @@ async function persistPath(ownerId: string, learnerId: string, outline: Exclude<
           slug: slugify(l.title, 40),
           worldId: world!.id,
           title: l.title,
-          level: l.level,
+          // A generated course is one section, so every lesson sits in level 1 whatever the model suggested.
+          level: 1,
           position: i,
           concepts: l.concepts,
           kind: l.kind,

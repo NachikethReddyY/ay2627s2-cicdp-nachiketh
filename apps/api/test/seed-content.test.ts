@@ -68,7 +68,8 @@ test("seed is idempotent and gives the expected ids", async () => {
   const first = await count();
   await seed();
   assert.deepEqual(await count(), first);
-  assert.deepEqual(first, { lessons: 2, steps: 6, concepts: 3 });
+  // Lessons 1 and 2 plus the two sample worlds (variables and loops).
+  assert.deepEqual(first, { lessons: 4, steps: 10, concepts: 7 });
 
   const l1 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-1")))[0]!;
   const l2 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-2")))[0]!;

@@ -1,0 +1,103 @@
+{
+  "slug": "loops-1",
+  "title": "Turn products into labels",
+  "concepts": [
+    "loops",
+    "array map"
+  ],
+  "position": 0,
+  "status": "published",
+  "steps": [
+    {
+      "public": {
+        "title": "Map each product to its name",
+        "prompt": "Each product should become its name. Which method returns a new list of the same length?",
+        "kind": "mcq",
+        "options": [
+          "forEach",
+          "map",
+          "filter",
+          "find"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/labels.js": "export function labels(products) {\n  return products;\n}\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/labels.js",
+            "oldStart": 1,
+            "lines": [
+              " export function labels(products) {",
+              "-  return products;",
+              "+  return products.map((p) => p.name);",
+              " }"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "forEach runs a function for each item but returns nothing.",
+            "eliminate": 0
+          },
+          {
+            "text": "The method you want builds a new list from each item's result."
+          }
+        ],
+        "explanations": {
+          "workedExample": "map calls a function on every item and collects the results into a new array of the same length. Here each product turns into its name.",
+          "practice": "Write prices(products) that returns the price of each product using map."
+        },
+        "narration": "map takes each item, runs your function on it, and collects the results. The list keeps its length, so every product gets exactly one label."
+      }
+    },
+    {
+      "public": {
+        "title": "Keep only the items in stock",
+        "prompt": "Now keep only the products whose stock is above zero. Which method keeps some items and drops the rest?",
+        "kind": "mcq",
+        "options": [
+          "map",
+          "filter",
+          "reduce",
+          "join"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/stock.js": "export function inStock(products) {\n  return products;\n}\n"
+        },
+        "hunks": [
+          {
+            "id": "h2",
+            "file": "src/stock.js",
+            "oldStart": 1,
+            "lines": [
+              " export function inStock(products) {",
+              "-  return products;",
+              "+  return products.filter((p) => p.stock > 0);",
+              " }"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "The result can be shorter than the input, so map is not the answer."
+          },
+          {
+            "text": "The method that keeps an item when its test returns true."
+          }
+        ],
+        "explanations": {
+          "workedExample": "filter keeps each item whose test returns true. Products with no stock fail the test and drop out of the new list.",
+          "practice": "Write onSale(products) that keeps items where p.sale is true."
+        },
+        "narration": "filter also builds a new list, but it keeps only the items that pass the test. The input list is left as it was."
+      }
+    }
+  ]
+}
