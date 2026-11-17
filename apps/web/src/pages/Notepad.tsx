@@ -214,7 +214,7 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
       {!minimized && <>
         <div role="tablist" aria-label="Notes" className="flex h-8 shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-[var(--line)] bg-[var(--side)] px-1.5 pt-1">
           {instructions && (
-            <div className={`flex min-w-0 max-w-[140px] shrink-0 items-center rounded-t-md px-2.5 text-[12px] ${showingInstructions ? "bg-[var(--code)] text-[var(--tx)]" : "text-[var(--mu)] hover:text-[var(--tx)]"}`}>
+            <div className={`flex min-w-0 max-w-[140px] shrink-0 items-center px-2.5 text-[12px] ${showingInstructions ? "bg-[var(--code)] text-[var(--tx)] shadow-[inset_0_-2px_0_var(--acT)]" : "text-[var(--mu)] hover:text-[var(--tx)]"}`}>
               <button type="button" role="tab" aria-selected={showingInstructions} onClick={() => setOnInstructions(true)} className="min-w-0 flex-1 truncate py-1 text-left">
                 Instructions
               </button>
@@ -223,17 +223,17 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
           {store.notes.map((note, index) => {
             const selected = !showingInstructions && note.id === active.id;
             return (
-              <div key={note.id} className={`group flex min-w-0 max-w-[140px] shrink-0 items-center gap-1 rounded-t-md pl-2.5 pr-1 text-[12px] ${selected ? "bg-[var(--code)] text-[var(--tx)]" : "text-[var(--mu)] hover:text-[var(--tx)]"}`}>
+              <div key={note.id} className={`group flex min-w-0 max-w-[140px] shrink-0 items-center gap-1 pl-2.5 pr-1 text-[12px] ${selected ? "bg-[var(--code)] text-[var(--tx)] shadow-[inset_0_-2px_0_var(--acT)]" : "text-[var(--mu)] hover:text-[var(--tx)]"}`}>
                 <button type="button" role="tab" aria-selected={selected} onClick={() => { setOnInstructions(false); update({ ...store, activeId: note.id }); }} className="min-w-0 flex-1 truncate py-1 text-left">
                   {tabTitle(note, index)}
                 </button>
-                <button type="button" aria-label={`Close ${tabTitle(note, index)}`} title="Close tab" onClick={() => closeTab(note.id)} className="grid size-4 shrink-0 place-items-center rounded text-[var(--mu)] hover:bg-[var(--hover)] hover:text-[var(--tx)]">
+                <button type="button" aria-label={`Close ${tabTitle(note, index)}`} title="Close tab" onClick={() => closeTab(note.id)} className="grid size-4 shrink-0 place-items-center rounded text-[var(--mu)] hover:bg-[var(--hov)] hover:text-[var(--tx)]">
                   <X size={11} aria-hidden="true" />
                 </button>
               </div>
             );
           })}
-          <button type="button" aria-label="New note" title="New note" onClick={addTab} className="grid size-6 shrink-0 place-items-center self-center rounded-md text-[var(--mu)] hover:bg-[var(--hover)] hover:text-[var(--tx)]">
+          <button type="button" aria-label="New note" title="New note" onClick={addTab} className="grid size-6 shrink-0 place-items-center self-center rounded-md text-[var(--mu)] hover:bg-[var(--hov)] hover:text-[var(--tx)]">
             <Plus size={13} aria-hidden="true" />
           </button>
         </div>
@@ -244,7 +244,7 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
             placeholder="Jot down notes while you work… Markdown works too."
             spellCheck={false}
             onChange={(event) => editActive(event.target.value)}
-            className="min-h-0 min-w-0 flex-1 resize-none bg-[var(--code)] p-3 font-mono text-[13px] leading-relaxed text-[var(--tx)] outline-none placeholder:text-[var(--mu)]"
+            className="min-h-0 min-w-0 flex-1 resize-none bg-[var(--code)] p-3 font-mono text-[13px] leading-relaxed text-[var(--tx)] placeholder:text-[var(--mu)]"
           />}
           {showPreview && <article aria-label={showingInstructions ? "Instructions" : "Rendered Markdown"} className="wb-notepad-preview min-h-0 min-w-0 flex-1">
             {showingInstructions

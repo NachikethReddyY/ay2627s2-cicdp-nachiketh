@@ -1,70 +1,197 @@
 @import "tailwindcss";
 
-/* Playful system: warm white canvas, ink outlines, hard offset shadows, bright sticker colours. */
-@theme {
-  --font-display: "Fraunces", Georgia, serif;
-  --font-sans: "Nunito", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --color-ink: #1b1b1f;
-  --color-paper: #fffdf8;
-  --color-green: #22c55e;
-  --color-green-deep: #15803d;
-  --color-blue: #3b5bff;
-  --color-sun: #ffd23f;
-  --color-pink: #ff8fb1;
-  --color-pink-deep: #b0245a;
-  --color-lilac: #b9a4ff;
-  --color-mint: #b6f0cf;
+/* One visual language for the whole app: Geist and Geist Mono, cool grey surfaces, 1px hairlines, one blue
+   accent, glass panels, pill controls, calm motion. Light by default, dark under prefers-color-scheme.
+   The landing page (.lp, pages/landing.css) and the practice workbench (.wb, player/workbench/workbench.css)
+   define the same token names at their own scope; their values win inside those scopes and match these.
+   DESIGN.md documents the table. The old sticker system (cream canvas, ink outlines, hard offset shadows) is gone. */
+:root {
+  color-scheme: light dark;
+
+  /* surfaces and text */
+  --page: #f6f6f8; --tx: #1c1c1e; --mu: #555a66; --line: #d7d6d6; --side: #edecec; --code: #ffffff; --tbar: #ffffff;
+  --pane2: rgba(255, 255, 255, 0.5); --ed: #ffffff; --chip: #ffffff; --track: #e4e4e8;
+  --selrow: #d7d6d6; --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
+  --cur: #fff6cf; --numdim: #b4b8c0;
+  /* accent and status */
+  --ac: #2f5fd6; --acT: #2852c0; --ok: #1f9d55; --okT: #177a42; --bad: #c2362f; --warn: #b7791f;
+  --on-ac: #ffffff; --on-ok: #0c2417;
+  /* UI components need 3:1 against their surface: field edges, and the accent when it is a fill or a line */
+  --line-strong: #8a8f9a; --ac-g: var(--ac);
+  /* syntax colours: meaning only (keyword, function, number, string) */
+  --kw: #9b2393; --fn: #326d74; --nu: #1c00cf; --str: #c41a16;
+  /* glass */
+  --win: rgba(255, 255, 255, 0.3); --edge: rgba(255, 255, 255, 0.7); --vib: rgba(237, 236, 236, 0.82);
+  --glass: rgba(255, 255, 255, 0.82); --glass-edge: rgba(255, 255, 255, 0.9); --glass-line: rgba(20, 30, 70, 0.1);
+  /* depth: one soft, large shadow; never an offset */
+  --lift: 0 1px 2px rgba(20, 30, 70, 0.08), 0 18px 48px -18px rgba(20, 30, 70, 0.28);
+  --lift-sm: 0 1px 2px rgba(20, 30, 70, 0.08), 0 6px 18px -8px rgba(20, 30, 70, 0.2);
+  --glow: 0 10px 28px -10px color-mix(in srgb, var(--ac) 70%, transparent);
+  /* semantic aliases */
+  --surface: var(--code); --surface-2: var(--side); --border: var(--line); --focus: var(--acT);
+  /* type and motion */
+  --sans: "Geist", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #1e1e1e; --tx: #ececec; --mu: #a3a3a8; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
+    --pane2: #303030; --ed: #262626; --chip: #303030; --track: #3a3a3a;
+    --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
+    --cur: #34322a; --numdim: #5f5f5f;
+    --acT: #8fb0ff; --ok: #3fc07a; --okT: #3fc07a; --bad: #ff6b61; --warn: #e0a84a;
+    --line-strong: #7c7c82; --ac-g: #6f93ff;
+    --kw: #ff7ab2; --fn: #78c2ff; --nu: #d9c97c; --str: #ff8170;
+    --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
+    --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1);
+    --lift: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 48px -18px rgba(0, 0, 0, 0.6);
+    --lift-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px -8px rgba(0, 0, 0, 0.5);
+  }
 }
 
-body {
-  background: var(--color-paper);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
+/* Tailwind theme: the old sticker names now point at tokens, so bg-paper, text-ink, bg-sun and the rest follow
+   light and dark automatically. static: some of these are read as var(--color-ink) from TSX strings. */
+@theme static {
+  --font-display: "Geist", system-ui, sans-serif;
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --color-white: var(--on-ac);
+  --color-ink: var(--tx);
+  --color-paper: var(--page);
+  --color-green: var(--ok);
+  --color-green-deep: var(--okT);
+  --color-blue: var(--ac);
+  --color-pink-deep: var(--kw);
+  /* the sticker fills become soft tints of the meaning colours; --tx stays readable on every one */
+  --color-sun: color-mix(in srgb, var(--warn) 24%, var(--code));
+  --color-pink: color-mix(in srgb, var(--kw) 16%, var(--code));
+  --color-lilac: color-mix(in srgb, var(--ac) 16%, var(--code));
+  --color-mint: color-mix(in srgb, var(--ok) 20%, var(--code));
 }
 
-.font-display { font-variation-settings: "SOFT" 100; }
-
-/* outlined card with a hard offset shadow */
-.chunk {
-  border: 3px solid var(--color-ink);
-  box-shadow: 6px 6px 0 var(--color-ink);
-  border-radius: 1.5rem;
+@layer base {
+  body {
+    background: var(--page);
+    color: var(--tx);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* one focus ring everywhere: 2px accent just outside the control */
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  ::selection { background: var(--sel); }
+  code, kbd, samp, pre { font-family: var(--font-mono); }
 }
 
-/* pressable pill with a "lip" underneath */
-.btn {
-  display: inline-block;
-  border-radius: 9999px;
-  padding: 0.85rem 1.75rem;
-  font-weight: 800;
-  color: var(--color-ink);
-  background: var(--color-green);
-  box-shadow: 0 5px 0 var(--color-green-deep);
-  transition: transform 0.08s, box-shadow 0.08s;
+/* Compat for the sticker utilities that pages still use. Replace them with tokens as each page migrates. */
+@layer utilities {
+  .bg-white { background-color: var(--code); }
+  .border-ink { border-color: var(--line); }
 }
-.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 0 var(--color-green-deep); }
-.btn:active { transform: translateY(5px); box-shadow: 0 0 0 var(--color-green-deep); }
-.btn:focus-visible, .pill:focus-visible { outline: 3px solid var(--color-blue); outline-offset: 3px; }
 
-/* shared outline + lip so every control reads as one family (no background: set per use) */
-.pill, .opt, .track { border: 3px solid var(--color-ink); }
-.pill { border-radius: 9999px; box-shadow: 0 4px 0 var(--color-ink); font-weight: 800; }
-.opt { border-radius: 0.75rem; box-shadow: 0 4px 0 var(--color-ink); }
-.track { border-radius: 9999px; overflow: hidden; background: white; }
+@layer components {
+  /* solid fills carry their own readable text; a text-* utility on the same element still wins */
+  .bg-green { color: var(--on-ok); }
+  .bg-blue { color: var(--on-ac); }
 
+  /* glass panel: 1px hairline, soft large shadow, no offset */
+  .chunk {
+    border: 1px solid var(--glass-line);
+    border-radius: 1.25rem;
+    background: var(--glass);
+    box-shadow: var(--lift);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+
+  /* primary pill: accent fill, glow on hover, press scales to 0.96 */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    padding: 0 1.5rem;
+    background: var(--ac);
+    color: var(--on-ac);
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(20, 30, 70, 0.2);
+    transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out, transform 0.15s var(--out);
+  }
+  .btn:hover:enabled, a.btn:hover { background: color-mix(in srgb, var(--ac) 88%, black); box-shadow: var(--glow); }
+  .btn:active:enabled, a.btn:active { transform: scale(0.96); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* ghost pill: glass fill, 1px edge. Background is a default so bg-* utilities still tint it. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35em;
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--code) 60%, transparent);
+    color: var(--tx);
+    font-weight: 600;
+    transition: background-color 0.15s ease-out, border-color 0.15s ease-out, transform 0.15s var(--out);
+  }
+  button.pill, a.pill { cursor: pointer; }
+  button.pill:hover:enabled, a.pill:hover { border-color: color-mix(in srgb, var(--mu) 45%, var(--line)); }
+  button.pill:active:enabled, a.pill:active { transform: scale(0.97); }
+
+  /* answer option: a 12px glass tile. Lifts 2px on hover; correct and wrong tint it per use. */
+  .opt {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--glass);
+    color: var(--tx);
+    transition: transform 0.15s var(--out), border-color 0.15s ease-out, box-shadow 0.15s ease-out, background-color 0.15s ease-out;
+  }
+  .opt:enabled:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--mu) 45%, var(--line)); box-shadow: var(--lift-sm); }
+  .opt:enabled:active { transform: scale(0.98); box-shadow: none; }
+
+  /* hairline pill track; fill it with bg-blue (progress) or bg-green (done) */
+  .track { border: 1px solid var(--line); border-radius: 9999px; overflow: hidden; background: var(--track); }
+
+  /* Loader: three keys press in turn (one press per 2.1s cycle; each block's delay staggers it). */
+  .loader-block {
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 60px;
+    border: 1px solid var(--glass-line);
+    border-radius: 14px;
+    box-shadow: var(--lift-sm);
+    color: var(--tx);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 18px;
+    animation: loader-press 2.1s infinite;
+  }
+  .loader-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--mu); animation: loader-dot 0.9s infinite ease-in-out; }
+
+  /* confetti: opacity 0 at rest so reduced-motion (animation: none) shows nothing */
+  .confetti { position: absolute; width: 10px; height: 14px; border-radius: 3px; opacity: 0; animation: burst 0.95s var(--out) both; }
+}
+
+/* Calm motion: small travel, ease-out, one settle. */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-7px) rotate(-1deg); }
-  40% { transform: translateX(6px) rotate(1deg); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(3px); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
 }
-.shake { animation: shake 0.4s; }
+.shake { animation: shake 0.35s ease-out; }
 
 @keyframes float {
   0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
-  50% { transform: translateY(-8px) rotate(var(--r, 0deg)); }
+  50% { transform: translateY(-5px) rotate(var(--r, 0deg)); }
 }
 .float { animation: float 4s ease-in-out infinite; }
 
@@ -73,87 +200,63 @@ body {
   100% { transform: translateX(300%); }
 }
 .sketch { animation: sketch 1.4s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .sketch { animation: none; }
-}
 
 @keyframes pop {
-  0% { transform: scale(0.6); }
-  60% { transform: scale(1.18); }
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.06); }
   100% { transform: scale(1); }
 }
-.pop { animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.pop { animation: pop 0.35s var(--pop); }
 
 @keyframes hop {
   0%, 100% { transform: translateY(0); }
-  35% { transform: translateY(-22px) scale(1.04, 0.96); }
-  65% { transform: translateY(0) scale(0.97, 1.03); }
+  40% { transform: translateY(-10px); }
+  70% { transform: translateY(0); }
 }
 .hop { animation: hop 0.6s ease-out 2; }
 
 @keyframes wiggle {
-  0%, 100% { transform: rotate(-4deg); }
-  50% { transform: rotate(4deg); }
+  0%, 100% { transform: rotate(-2.5deg); }
+  50% { transform: rotate(2.5deg); }
 }
-.wiggle { animation: wiggle 1.4s ease-in-out infinite; transform-origin: 50% 90%; }
+.wiggle { animation: wiggle 1.8s ease-in-out infinite; transform-origin: 50% 90%; }
 
 @keyframes slide-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-.slide-in { animation: slide-in 0.3s ease-out both; }
+.slide-in { animation: slide-in 0.3s var(--out) both; }
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
 }
-.rise { animation: rise 0.5s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+.rise { animation: rise 0.5s var(--out) both; }
 
-/* animates outline, not box-shadow, so a .btn's own lip shadow survives the pulse */
+/* a soft accent halo that fades out; animates outline, so a .btn's own glow survives the pulse */
 @keyframes ring {
-  0% { outline: 0 solid rgb(255 210 63 / 0.9); }
-  100% { outline: 10px solid rgb(255 210 63 / 0); }
+  0% { outline: 0 solid color-mix(in srgb, var(--ac) 45%, transparent); }
+  100% { outline: 8px solid transparent; }
 }
-.ring { animation: ring 1.4s ease-out infinite; }
+.ring { animation: ring 1.6s ease-out infinite; }
 /* keep the focus outline visible: the pulse animates outline too */
 .ring:focus-visible { animation: none; }
 
-/* confetti: opacity 0 at rest so reduced-motion (animation: none) shows nothing */
 @keyframes burst {
   0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(0.6); }
   100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--rot)) scale(1); }
 }
-.confetti { position: absolute; width: 10px; height: 14px; border: 2px solid var(--color-ink); border-radius: 3px; opacity: 0; animation: burst 0.95s ease-out both; }
 
-/* Loader: code blocks press in turn (one press per 2.1s cycle; each block's delay staggers it). */
 @keyframes loader-press {
-  0%, 100% { transform: translateY(0); box-shadow: 0 6px 0 var(--color-ink); }
-  12% { transform: translateY(5px); box-shadow: 0 0 0 var(--color-ink); }
-  24% { transform: translateY(0); box-shadow: 0 6px 0 var(--color-ink); }
-}
-.loader-block {
-  display: grid;
-  place-items: center;
-  width: 72px;
-  height: 60px;
-  border: 3px solid var(--color-ink);
-  border-radius: 14px;
-  box-shadow: 0 6px 0 var(--color-ink);
-  font-family: var(--font-mono);
-  font-weight: 900;
-  font-size: 18px;
-  animation: loader-press 2.1s infinite;
+  0%, 100% { transform: translateY(0); box-shadow: var(--lift-sm); }
+  12% { transform: translateY(3px) scale(0.97); box-shadow: none; }
+  24% { transform: translateY(0); box-shadow: var(--lift-sm); }
 }
 
 @keyframes loader-dot {
   0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-5px); }
+  30% { transform: translateY(-4px); }
 }
-.loader-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-ink); animation: loader-dot 0.9s infinite ease-in-out; }
-
-.opt { transition: transform 0.1s, box-shadow 0.1s; }
-.opt:enabled:hover { transform: translateY(-2px); box-shadow: 0 6px 0 var(--color-ink); }
-.opt:enabled:active { transform: translateY(4px); box-shadow: 0 0 0 var(--color-ink); }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
@@ -168,35 +271,58 @@ body {
   height: 1.15em;
   margin-right: -2px;
   vertical-align: text-bottom;
-  background: var(--color-blue);
+  background: var(--ac);
   animation: lq-blink 1s step-end infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .lq-caret::before { animation: none; }
 }
 
 /* Lesson player windows: morph between rects (never while dragging) and tuck into the dock. */
 .win-morph {
   transition:
-    left 0.26s cubic-bezier(0.2, 1.2, 0.4, 1),
-    top 0.26s cubic-bezier(0.2, 1.2, 0.4, 1),
-    width 0.26s cubic-bezier(0.2, 1.2, 0.4, 1),
-    height 0.26s cubic-bezier(0.2, 1.2, 0.4, 1),
-    transform 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+    left 0.26s var(--out),
+    top 0.26s var(--out),
+    width 0.26s var(--out),
+    height 0.26s var(--out),
+    transform 0.26s var(--out),
     opacity 0.2s linear;
 }
 
-/* Learn parts: Markdown body. Code colours follow the palette; hljs tokens come from rehype-highlight. */
+/* Learn parts: Markdown body. Code colours follow the syntax tokens; hljs tokens come from rehype-highlight. */
 .lq .learn-md > * + * { margin-top: 0.75rem; }  /* .lq p resets margins; this must out-rank it */
-.learn-md h2, .learn-md h3 { font-family: var(--font-display, inherit); font-weight: 900; font-size: 1.35rem; margin-top: 1.25rem; }
+.learn-md h2, .learn-md h3 { font-family: var(--font-display, inherit); font-weight: 600; letter-spacing: -0.02em; font-size: 1.35rem; margin-top: 1.25rem; }
 .learn-md ul { list-style: disc; padding-left: 1.5rem; }
 .learn-md ol { list-style: decimal; padding-left: 1.5rem; }
-.learn-md a { color: var(--color-blue); text-decoration: underline; }
-.learn-md code:not(pre code) { background: var(--color-mint); border-radius: 0.375rem; padding: 0.1rem 0.35rem; font-size: 0.95em; }
-.learn-md pre code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
-.learn-md .hljs-keyword, .learn-md .hljs-built_in, .learn-md .hljs-selector-tag { color: #7c3aed; font-weight: 700; }
-.learn-md .hljs-string, .learn-md .hljs-template-variable { color: var(--color-green-deep); }
-.learn-md .hljs-number, .learn-md .hljs-literal { color: #c2410c; }
-.learn-md .hljs-comment { color: #6b7280; font-style: italic; }
-.learn-md .hljs-title, .learn-md .hljs-function { color: var(--color-blue); font-weight: 700; }
-.learn-md .hljs-attr, .learn-md .hljs-variable { color: #0e7490; }
+.learn-md a { color: var(--acT); text-decoration: underline; text-underline-offset: 3px; }
+/* Lesson text: one readable column, larger body copy, rounded code blocks and inline code chips */
+.lq .learn-md { font-size: 17px; line-height: 1.7; }
+.lq .learn-md pre { border-radius: 16px; }
+/* Code blocks: language, copy and wrap controls sit in one toolbar at the top right; the code starts below it */
+.lq .code-block { position: relative; }
+.lq .code-block pre.code-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.lq .code-toolbar { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 1; }
+.lq .code-lang { position: absolute; right: 0.875rem; bottom: 0.5rem; font: 500 12px/1 var(--sans); color: var(--mu); pointer-events: none; }
+.lq .code-actions { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--glass); backdrop-filter: blur(12px); opacity: 0; transition: opacity 0.15s ease-out; }
+.lq .code-block:hover .code-actions, .lq .code-block:focus-within .code-actions { opacity: 1; }
+.lq .code-toolbar button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 999px; background: transparent; color: var(--mu); cursor: pointer; }
+.lq .code-toolbar button:hover { color: var(--tx); background: var(--hov); }
+.lq .code-toolbar button[aria-pressed="true"] { color: var(--tx); background: var(--sel); }
+.lq .learn-md :not(pre) > code { padding: 2px 7px; border: 1px solid var(--line); border-radius: 8px; background: #2c1111; color: #db0000; font-size: 0.9em; }
+/* The lesson page has no home.css, so the moon canvas is set here: black, with the learn text on top. */
+.lq.lq-moon {
+  background: #000;
+  color-scheme: dark;
+  --tx: #ededed; --mu: #c4c4c4; --faint: #b0b0b0;
+  --code: rgba(10, 10, 10, 0.72); --chip: rgba(255, 255, 255, 0.06); --hov: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.12); --line-strong: rgba(255, 255, 255, 0.2); --pane2: rgba(255, 255, 255, 0.06); --track: rgba(255, 255, 255, 0.1);
+  --glass: rgba(14, 14, 16, 0.86); --glass-line: rgba(255, 255, 255, 0.12);
+  --ring: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  --lift: 0 2px 2px rgba(0, 0, 0, 0.3), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
+}
+.lq.lq-moon .player-content { background: transparent; }
+.learn-md code:not(pre code) { background: var(--side); border: 1px solid var(--line); border-radius: 0.375rem; padding: 0.1rem 0.35rem; font-size: 0.92em; }
+.learn-md pre code { font-family: var(--mono); font-weight: 400; }
+.learn-md .hljs-keyword, .learn-md .hljs-built_in, .learn-md .hljs-selector-tag { color: var(--kw); }
+.learn-md .hljs-string, .learn-md .hljs-template-variable { color: var(--str); }
+.learn-md .hljs-number, .learn-md .hljs-literal { color: var(--nu); }
+.learn-md .hljs-comment { color: var(--mu); font-style: italic; }
+.learn-md .hljs-title, .learn-md .hljs-function { color: var(--fn); }
+.learn-md .hljs-attr, .learn-md .hljs-variable { color: var(--fn); }

@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { LayoutGrid, List } from "lucide-react";
 import { useApi, type ExplorePath } from "../lib/api";
 import { trpc } from "../lib/trpc";
-import TopNav from "../components/TopNav";
-import { AiBadge, Page, Spinner } from "../components/Bits";
+import { authClient } from "../lib/auth";
+import { AiBadge, Spinner } from "../components/Bits";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
+import { Input } from "../components/ui/input";
+import { Logo } from "./landing/Logo";
 import "./home.css";
 import "./explore.css";
 
 const tabs = [["official", "Official"], ["community", "Community"], ["mine", "Mine"]] as const;
-const tones = ["lq-bg-lilac lq-tl2", "lq-bg-pink lq-tr", "lq-bg-mint lq-tl", "lq-bg-sun lq-tr2"];
+
+// Each path's cover shows its own subject. A path without an entry gets no photo, so it never shows another course's image.
+const covers: Record<string, string> = {
+  "js-foundations": "/images/covers/js-foundations.jpg",
+  "sample-courses": "/images/covers/sample-courses.jpg",
+};
 
 function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
   const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
@@ -19,88 +28,78 @@ function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
   if (state === "idle" || state === "error")
     return (
       <div className="explore-pub">
-        <button type="button" className="lq-btn lq-btn-surface lq-btn-sm" onClick={() => setState("confirm")}>Publish</button>
+        <button type="button" className="pill explore-action" onClick={() => setState("confirm")}>Publish</button>
         {state === "error" && <p role="alert" className="explore-pub-err">Couldn't publish. Try again.</p>}
       </div>
     );
   return (
     <div role="group" aria-label={`Publish ${p.title}`} className="explore-confirm">
       <span>Make this path public?</span>
-      <button ref={confirmRef} type="button" disabled={state === "busy"} className="lq-btn lq-btn-sun lq-btn-sm"
+      <button ref={confirmRef} type="button" disabled={state === "busy"} className="btn explore-action"
         onClick={() => { setState("busy"); trpc.paths.publish.mutate({ slug: p.slug }).then(onDone, () => setState("error")); }}>
         Yes, publish
       </button>
-      <button type="button" disabled={state === "busy"} className="lq-btn lq-btn-surface lq-btn-sm" onClick={() => setState("idle")}>Cancel</button>
+      <button type="button" disabled={state === "busy"} className="pill explore-action" onClick={() => setState("idle")}>Cancel</button>
     </div>
   );
 }
 
-function Row({ p, onDone, scope, tone }: { p: ExplorePath; onDone: () => void; scope: string; tone: string }) {
+function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: string }) {
   const [busy, setBusy] = useState(false);
   const [joinFailed, setJoinFailed] = useState(false);
+  const navigate = useNavigate();
+  const first = p.courses[0];
+  // The cover and title open the path's first course; a path with no courses has nothing to open.
+  const body = (
+    <>
+      <div className="explore-cover" aria-hidden="true"
+        style={{ "--cover": covers[p.slug] ? `url("${covers[p.slug]}")` : "none" } as React.CSSProperties} />
+      <div className="explore-card-title">
+        <h2>
+          {p.title}
+          {p.origin === "ai" && <span className="explore-ai"><AiBadge /></span>}
+        </h2>
+        <p className="explore-tagline">{p.tagline}</p>
+        <p className="explore-meta">
+          <span>{p.courseCount} {p.courseCount === 1 ? "course" : "courses"}</span>
+          <span>{p.learners} {p.learners === 1 ? "learner" : "learners"}</span>
+        </p>
+      </div>
+    </>
+  );
   return (
-    <li className={`lq-card lq-cc lq-lift explore-card ${tone}`}>
-      <div className="explore-card-head">
-        <div className="explore-card-title">
-          <h2>
-            {p.title}
-            {p.origin === "ai" && <span className="explore-ai"><AiBadge /></span>}
-          </h2>
-          <p className="explore-tagline">{p.tagline}</p>
-          <p className="explore-meta">{p.courseCount} {p.courseCount === 1 ? "course" : "courses"} · {p.learners} {p.learners === 1 ? "learner" : "learners"}</p>
-        </div>
+    <li className="explore-card">
+      {first ? (
+        <Link to="/courses/$slug" params={{ slug: first.slug }} className="explore-open">{body}</Link>
+      ) : (
+        <div className="explore-open">{body}</div>
+      )}
+      <div className="explore-card-action">
         {scope === "mine" && p.visibility === "private" ? (
           <Publish p={p} onDone={onDone} />
         ) : p.enrolled ? (
-          <span className="lq-sticker lq-bg-mint explore-joined">Joined ✓</span>
+          <span className="explore-joined">Joined ✓</span>
         ) : (
           <div>
-            <button type="button" disabled={busy} className="lq-btn lq-btn-surface lq-btn-sm"
-              onClick={() => { setBusy(true); setJoinFailed(false); trpc.paths.enroll.mutate({ slug: p.slug }).then(onDone, () => setJoinFailed(true)).finally(() => setBusy(false)); }}>
+            <button type="button" disabled={busy} className="pill explore-action"
+              onClick={() => { setBusy(true); setJoinFailed(false); trpc.paths.enroll.mutate({ slug: p.slug }).then(() => {
+                onDone();
+                // Joining opens the path at its first course, so the learner starts straight away.
+                if (first) navigate({ to: "/courses/$slug", params: { slug: first.slug } });
+              }, () => setJoinFailed(true)).finally(() => setBusy(false)); }}>
               Join
             </button>
-            {joinFailed && <p role="alert" className="mt-1 text-sm font-bold">Couldn't join. Try again.</p>}
+            {joinFailed && <p role="alert" className="explore-join-err">Couldn't join. Try again.</p>}
           </div>
         )}
       </div>
-      <ul className="explore-courses">
-        {p.courses.map((c) => (
-          <li key={c.slug}><Link to="/courses/$slug" params={{ slug: c.slug }} className="explore-tag">{c.title}</Link></li>
-        ))}
-      </ul>
     </li>
   );
 }
 
-// Hand-picked collections, shown above the community list. Stays quiet (renders nothing) if there are none or the load fails,
-// so a curation problem never hides the paths below it.
-// `refresh` changes whenever any list changed something (a join or publish), so both lists stay in step.
-function Collections({ onDone, refresh }: { onDone: () => void; refresh: number }) {
-  const { data, error, reload } = useApi("collections", () => trpc.collections.list.query());
-  const seen = useRef(refresh);
-  useEffect(() => {
-    if (seen.current === refresh) return;
-    seen.current = refresh;
-    reload();
-  }, [refresh, reload]);
-  if (error || (data && data.length === 0)) return null;
-  if (!data) return <div className="explore-collections" aria-busy="true"><Spinner /></div>;
-  return (
-    <div className="explore-collections">
-      {data.map((c) => (
-        <section key={c.slug} aria-labelledby={`col-${c.slug}`} className="explore-collection">
-          <h2 id={`col-${c.slug}`} className="explore-col-h">{c.title}</h2>
-          {c.description && <p className="explore-col-desc">{c.description}</p>}
-          <ul className="lq-comm explore-list">
-            {c.paths.map((p, i) => <Row key={p.slug} p={p} onDone={onDone} scope="official" tone={tones[i % 4]} />)}
-          </ul>
-        </section>
-      ))}
-    </div>
-  );
-}
-
 export default function Explore() {
+  const { data: session } = authClient.useSession();
+  const initial = session?.user.email?.charAt(0).toUpperCase() ?? "?";
   const [scope, setScope] = useState<(typeof tabs)[number][0]>("official");
   const [q, setQ] = useState("");
   const [dq, setDq] = useState("");
@@ -109,48 +108,87 @@ export default function Explore() {
     return () => clearTimeout(t);
   }, [q]);
   const { data, error, reload } = useApi(`paths:${scope}:${dq}`, () => trpc.paths.list.query({ scope, q: dq || undefined }));
-  const [refresh, setRefresh] = useState(0);
-  const refreshAll = useCallback(() => { reload(); setRefresh((n) => n + 1); }, [reload]);
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const refreshAll = useCallback(() => reload(), [reload]);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // Arrow keys wrap between the tabs, and Home and End jump to the ends; each one selects the tab it lands on.
+  const onTabKey = (e: React.KeyboardEvent, i: number) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    let next = (i + step + tabs.length) % tabs.length;
+    if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    else if (!step) return;
+    e.preventDefault();
+    setScope(tabs[next][0]);
+    tabRefs.current[next]?.focus();
+  };
 
   return (
-    <div className="lq lq-explore">
-      <TopNav />
-      <Page>
+    <div className="lq lq-moon lq-explore">
+      <header className="lq-topbar">
+        <Link to="/" className="lq-logo">
+          <Logo />
+        </Link>
+        <nav className="lq-topnav" aria-label="Main">
+          <Link to="/" className="lq-topnav-link">Home</Link>
+          <Link to="/explore" className="lq-topnav-link" aria-current="page">Explore</Link>
+          <Link to="/account" className="lq-avatar" aria-label="Account settings">{initial}</Link>
+        </nav>
+      </header>
+
+      <main className="lq-wrap">
         <div className="explore-page">
-          <h1 className="explore-h">Explore</h1>
+          <Breadcrumb className="explore-crumb">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link to="/" />}>Home</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Explore</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+          <h1 className="sr-only">Explore</h1>
           <div className="explore-filters">
-            <div role="group" aria-label="Path source" className="explore-tabs">
-              {tabs.map(([v, label]) => (
-                <button key={v} type="button" aria-pressed={scope === v} onClick={() => setScope(v)}
-                  className="lq-chip explore-tab">{label}</button>
+            <div role="tablist" aria-label="Path source" className="explore-tabs">
+              {tabs.map(([v, label], i) => (
+                <button key={v} ref={(el) => { tabRefs.current[i] = el; }} type="button" role="tab"
+                  id={`tab-${v}`} aria-selected={scope === v} aria-controls="explore-results"
+                  tabIndex={scope === v ? 0 : -1} onKeyDown={(e) => onTabKey(e, i)}
+                  onClick={() => setScope(v)} className="explore-tab">{label}</button>
               ))}
             </div>
             <div className="explore-search-wrap">
               <label htmlFor="q" className="sr-only">Search paths</label>
-              <input id="q" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search paths"
-                className="explore-search" />
+              <Input id="q" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search paths" />
             </div>
           </div>
-          {scope !== "mine" && !dq && <Collections onDone={refreshAll} refresh={refresh} />}
-          <div className="explore-results">
+          {data && data.length > 0 && (
+            <div className="explore-bar">
+              <div role="group" aria-label="Layout" className="explore-view">
+                <button type="button" aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => setView("grid")}>
+                  <LayoutGrid size={18} aria-hidden="true" />
+                </button>
+                <button type="button" aria-label="List view" aria-pressed={view === "list"} onClick={() => setView("list")}>
+                  <List size={18} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )}
+          <div id="explore-results" role="tabpanel" tabIndex={0} aria-labelledby={`tab-${scope}`} className="explore-results">
             {error ? (
-              <div className="lq-empty-card">
-                <img src="/img/pip-oops.png" alt="" />
-                <div><p>Couldn't load paths.</p></div>
-              </div>
+              <div className="explore-empty"><p>Couldn't load paths.</p></div>
             ) : !data ? <Spinner /> : data.length === 0 ? (
-              <div className="lq-empty-card">
-                <img src="/img/pip-think.png" alt="" />
-                <div><p>{scope === "mine" ? "You haven't joined or made any paths yet." : "Nothing here yet."}</p></div>
-              </div>
+              <div className="explore-empty"><p>{scope === "mine" ? "You haven't joined or made any paths yet." : "Nothing here yet."}</p></div>
             ) : (
-              <ul className="lq-comm explore-list">
-                {data.map((p, i) => <Row key={p.slug} p={p} onDone={refreshAll} scope={scope} tone={tones[i % 4]} />)}
+              <ul className="explore-list" data-view={view}>
+                {data.map((p) => <Row key={p.slug} p={p} onDone={refreshAll} scope={scope} />)}
               </ul>
             )}
           </div>
         </div>
-      </Page>
+      </main>
     </div>
   );
 }

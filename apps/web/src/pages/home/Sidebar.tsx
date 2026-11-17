@@ -56,7 +56,11 @@ export default function Sidebar({ stats, leaderboard }: { stats: HomeData["stats
                   </li>
                 ))}
               </ol>
-              {leaderboard.rank === null && <p className="lq-board-own">You have {leaderboard.xp} XP this week.</p>}
+              {leaderboard.rows.some((r) => r.you) ? (
+                <p className="lq-board-own">You&apos;re #{leaderboard.rows.find((r) => r.you)?.rank} this week with {leaderboard.xp} XP.</p>
+              ) : leaderboard.rank === null && (
+                <p className="lq-board-own">You&apos;re not ranked yet. Earn XP this week to get on the board.</p>
+              )}
               {leaderboard.rank !== null && leaderboard.rank > leaderboard.rows.length && (
                 <ol className="lq-board lq-board-self">
                   <li className="you">

@@ -15,7 +15,7 @@ function Pill({ kind }: { kind: Lesson["kind"] }) {
 
 type Props = { l: Lesson; slug: string; state: "done" | "cur" | "locked"; x: number; cta: string; open: boolean; setOpen: (s: string | null) => void };
 
-const stateText = { done: "DONE", cur: "NOW", locked: "LOCKED" };
+const stateText = { done: "Done", cur: "Now", locked: "Locked" };
 
 export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Props) {
   const reduce = useReducedMotion();
@@ -45,10 +45,10 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
   const face = (
     <motion.span
       className={`lesson-face ${state}`}
-      whileTap={reduce ? undefined : { y: 4, boxShadow: "1px 1px 0 var(--ink)" }}
+      whileTap={reduce ? undefined : { scale: 0.94 }}
       transition={{ type: "spring", stiffness: 600, damping: 25 }}
     >
-      <Icon size={state === "cur" ? 30 : 26} strokeWidth={3} aria-hidden />
+      <Icon size={state === "cur" ? 26 : 22} strokeWidth={2.25} aria-hidden />
     </motion.span>
   );
 
@@ -71,15 +71,6 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
           <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={`${l.title}${state === "done" ? " (complete)" : ""}`} className="lesson-hit" onClick={click}>
             {face}
           </Link>
-        )}
-        {state === "cur" && (
-          <motion.img
-            src="/img/pip-cheer.png"
-            alt=""
-            className={`lesson-pip ${left ? "left" : "right"}`}
-            animate={reduce ? undefined : { y: [0, -8, 0] }}
-            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          />
         )}
       </div>
 
@@ -118,7 +109,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
             <Link
               to="/play"
               search={{ lesson: l.slug, course: slug }}
-              className={`lq-btn ${state === "done" ? "lq-btn-surface" : "lq-btn-ink"} lesson-pop-btn`}
+              className={`${state === "done" ? "pill" : "btn"} lesson-pop-btn`}
             >
               {cta}
             </Link>

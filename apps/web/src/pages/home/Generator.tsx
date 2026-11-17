@@ -1,29 +1,28 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { trpc } from "../../lib/trpc";
-import { dismissJob, getJob, startGeneration, subscribeJob } from "./generationJob";
+import { dismissJob, getJob, getQueue, startGeneration, subscribeJob } from "./generationJob";
 import { Flame } from "lucide-react";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
 
 const aiErrors: Record<string, string> = {
-  PRECONDITION_FAILED: "Pip's AI helper isn't switched on here yet.",
-  TOO_MANY_REQUESTS: "You've sketched 5 paths today. Pip needs a nap, try again tomorrow!",
-  BAD_REQUEST: "Pip only draws coding paths. Try a language, a tool or a project idea!",
-  TIMEOUT: "Pip took too long sketching that path. Give it another go in a moment.",
+  PRECONDITION_FAILED: "Path generation isn't switched on here yet.",
+  TOO_MANY_REQUESTS: "You've generated 5 paths today. Try again tomorrow.",
+  BAD_REQUEST: "We only generate coding paths. Try a language, a tool or a project idea.",
+  TIMEOUT: "That path took too long to generate. Try again in a moment.",
 };
-const genericError = "Oops, Pip dropped the pencil. We couldn't generate that path. Check your connection and try again.";
+const genericError = "We couldn't generate that path. Check your connection and try again.";
 
 export default function Generator() {
   const job = useSyncExternalStore(subscribeJob, getJob);
+  const queue = useSyncExternalStore(subscribeJob, getQueue);
   const [q, setQ] = useState(() => ("prompt" in job ? job.prompt : ""));
   const [empty, setEmpty] = useState(false);
   const navigate = useNavigate();
   // Only a path this visit is waiting on opens by itself. One that finished while the learner was away waits for a click.
   const waiting = useRef(job.status === "running");
   const busy = job.status === "running";
-  // A timed-out request may still finish on the server, so no new request starts until it has.
-  const locked = busy || (job.status === "failed" && job.pending);
   const err = job.status === "failed" ? (aiErrors[job.code ?? ""] ?? genericError) : null;
 
   useEffect(() => {
@@ -34,6 +33,7 @@ export default function Generator() {
     }
   }, [job, navigate]);
 
+  // A prompt sent while another path is being generated joins the queue and starts after the learner has seen that result.
   const run = (prompt: string) => {
     waiting.current = true;
     void startGeneration(prompt, (p) => trpc.paths.generate.mutate({ prompt: p }));
@@ -41,14 +41,13 @@ export default function Generator() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (locked) return;
     if (!q.trim()) {
       setEmpty(true);
       return;
     }
     run(q.trim());
+    setQ("");
   };
-
 
   return (
     <section className="lq-card lq-gen lq-gen-photo lq-bg-blue lq-rise d1" aria-labelledby="gen-h">
@@ -60,16 +59,16 @@ export default function Generator() {
         <label htmlFor="gen-q">What do you want to learn to code?</label>
         <div className="lq-gen-row">
           <input
-            id="gen-q" type="text" autoComplete="off" placeholder="e.g. loops, hooks, joins" value={q} disabled={busy} aria-describedby="gen-status"
+            id="gen-q" type="text" autoComplete="off" placeholder="e.g. loops, hooks, joins" value={q} aria-describedby="gen-status"
             onChange={(e) => {
               setQ(e.target.value);
               setEmpty(false);
               dismissJob(); // the learner is writing a new prompt, so the last outcome is no longer news
             }}
           />
-          <button className="lq-btn lq-btn-blue" type="submit" disabled={locked} aria-busy={busy}>
+          <button className="lq-btn lq-btn-blue" type="submit" aria-busy={busy}>
             {busy && <svg className="lq-spin" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" /></svg>}
-            Generate
+            {busy ? "Queue" : "Generate"}
           </button>
         </div>
       </form>
@@ -87,7 +86,12 @@ export default function Generator() {
         {busy && (
           <p className="lq-msg load">
             <svg className="lq-sketch" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path className="lq-msg-sketch" d="M3 22c8-14 14-14 18-4s10 8 14-2 12-10 26 2" fill="none" strokeWidth={3} strokeLinecap="round" /></svg>
-            Pip is sketching your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
+            Generating your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
+          </p>
+        )}
+        {queue.length > 0 && (
+          <p className="lq-msg load">
+            {queue.length === 1 ? "1 path queued" : `${queue.length} paths queued`}: {queue.join(", ")}
           </p>
         )}
         {job.status === "done" && !waiting.current && (

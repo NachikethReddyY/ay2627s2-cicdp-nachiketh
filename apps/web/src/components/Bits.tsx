@@ -9,7 +9,7 @@ export function Bar({ value, total, label }: { value: number; total: number; lab
   );
 }
 
-export function PipEmpty({ children }: { children: ReactNode }) {
+export function EmptyNote({ children }: { children: ReactNode }) {
   return (
     <div className="chunk px-6 py-5">
       <div className="max-w-[52ch] text-pretty font-medium leading-relaxed">{children}</div>
