@@ -1,9 +1,10 @@
 type Props = { label?: string };
 
+// Glyph colours carry meaning, as in the editor: number, keyword, success.
 const blocks = [
-  { glyph: "{ }", bg: "bg-sun", delay: "0s" },
-  { glyph: "=>", bg: "bg-pink", delay: "0.7s" },
-  { glyph: "✓", bg: "bg-mint", delay: "1.4s" },
+  { glyph: "{ }", tone: "text-[var(--nu)]", delay: "0s" },
+  { glyph: "=>", tone: "text-[var(--kw)]", delay: "0.7s" },
+  { glyph: "✓", tone: "text-[var(--ok)]", delay: "1.4s" },
 ];
 
 // Three code blocks press in turn, like keys being typed. Motion stops under prefers-reduced-motion (index.css).
@@ -14,14 +15,14 @@ export default function Loader({ label = "Loading" }: Props) {
         {blocks.map((b) => (
           <span
             key={b.glyph}
-            className={`loader-block ${b.bg}`}
+            className={`loader-block bg-[var(--glass)] ${b.tone}`}
             style={{ animationDelay: b.delay }}
           >
             {b.glyph}
           </span>
         ))}
       </div>
-      <p className="flex items-center gap-2 rounded-full border-[3px] border-ink bg-white px-5 py-2 text-sm font-extrabold shadow-[0_4px_0_var(--color-ink)]">
+      <p className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--glass)] px-5 py-2 text-sm font-medium text-[var(--mu)]">
         {label}
         <span aria-hidden="true" className="flex gap-1">
           <i className="loader-dot" style={{ animationDelay: "0s" }} />

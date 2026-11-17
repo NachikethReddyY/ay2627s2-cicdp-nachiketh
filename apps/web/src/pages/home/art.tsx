@@ -16,10 +16,6 @@ export function Bolt({ w, h }: { w: number; h: number }) {
   );
 }
 
-// Pip, the real mascot art from public/img. The pose tracks the generator state.
-export function Pip({ src, size }: { src: string; size: number }) {
-  return <img className="lq-pip" src={src} width={size} height={size} alt="" aria-hidden="true" style={{ objectFit: "contain" }} />;
-}
 
 export function Arrow() {
   return (

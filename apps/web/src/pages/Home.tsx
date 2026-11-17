@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useApi, type PathCardData } from "../lib/api";
 import { trpc } from "../lib/trpc";
 import { authClient } from "../lib/auth";
-import { PipEmpty, Spinner } from "../components/Bits";
+import { EmptyNote, Spinner } from "../components/Bits";
 import { Logo } from "./landing/Logo";
 import Continue from "./home/Continue";
 import Generator from "./home/Generator";
@@ -63,32 +63,29 @@ export default function Home() {
 
             {error || !data ? (
               error ? (
-                <PipEmpty>Couldn't load your home. <button type="button" className="lq-pill" onClick={reload}>Retry</button></PipEmpty>
+                <EmptyNote>Couldn't load your home. <button type="button" className="lq-pill" onClick={reload}>Retry</button></EmptyNote>
               ) : <Spinner />
             ) : (
               <>
-                {data.continue ? null : data.paths.length === 0 ? (
-                  <section aria-labelledby="start" className="lq-rise d2">
+                {!data.continue && data.paths.length === 0 && data.official.length > 0 && (
+                  <section aria-labelledby="start" className="lq-rise d2 lq-start-section">
                     <div className="lq-sec-head">
                       <h2 id="start">Start a path</h2>
-                      <span className="lq-sticker lq-bg-sun">OFFICIAL</span>
                     </div>
-                    {data.official.length === 0 ? <PipEmpty>No paths yet. <button type="button" className="lq-see-all" onClick={() => document.getElementById("gen-q")?.focus()}>Describe a topic above</button> to build your first one.</PipEmpty> : (
-                      <ul style={{ display: "flex", flexDirection: "column", gap: 18, listStyle: "none", margin: 0, padding: 0 }}>
-                        {data.official.map((p, i) => (
-                          <li key={p.slug} className={`lq-card ${i === 0 ? "lq-bg-sun" : ""}`} style={{ padding: 22, borderRadius: 20, display: "flex", alignItems: "center", gap: 16 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <h3 style={{ fontSize: 22 }}>{p.title}</h3>
-                              <p className="lq-tagline">{p.tagline}</p>
-                              <p style={{ font: "500 12px var(--mono)", color: "var(--mu)", marginTop: 6 }}>{p.courseCount} {p.courseCount === 1 ? "course" : "courses"}</p>
-                            </div>
-                            <PathAction p={p} onDone={reload} label="Start" />
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <ul style={{ display: "flex", flexDirection: "column", gap: 18, listStyle: "none", margin: 0, padding: 0 }}>
+                      {data.official.map((p, i) => (
+                        <li key={p.slug} className={`lq-card ${i === 0 ? "lq-bg-sun" : ""}`} style={{ padding: 22, borderRadius: 20, display: "flex", alignItems: "center", gap: 16 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h3 style={{ fontSize: 22 }}>{p.title}</h3>
+                            <p className="lq-tagline">{p.tagline}</p>
+                            <p style={{ font: "500 12px var(--mono)", color: "var(--mu)", marginTop: 6 }}>{p.courseCount} {p.courseCount === 1 ? "course" : "courses"}</p>
+                          </div>
+                          <PathAction p={p} onDone={reload} label="Start" />
+                        </li>
+                      ))}
+                    </ul>
                   </section>
-                ) : null}
+                )}
 
                 {data.paths.length > 0 && (
                   <section aria-labelledby="mine" className="lq-rise d3">
@@ -109,7 +106,7 @@ export default function Home() {
                       <span className="lq-sticker lq-bg-lilac">SHARED</span>
                       <Link to="/explore" className="lq-see-all">See all →</Link>
                     </div>
-                    {data.community.length === 0 ? <PipEmpty>No community paths yet. Be the first to share one.</PipEmpty> : (
+                    {data.community.length === 0 ? <EmptyNote>No community paths yet. Be the first to share one.</EmptyNote> : (
                       <ul className="lq-comm">
                         {data.community.slice(0, 4).map((p: PathCardData, i) => (
                           <li key={p.slug}>

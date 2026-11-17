@@ -4,6 +4,7 @@ import {
   motion,
   MotionValue,
   useMotionValue,
+  useReducedMotion,
   useSpring,
   useTransform,
 } from "motion/react"
@@ -27,7 +28,7 @@ const DEFAULT_DISTANCE = 140
 const DEFAULT_DISABLEMAGNIFICATION = false
 
 const dockVariants = cva(
-  "supports-backdrop-blur:bg-white/10 supports-backdrop-blur:dark:bg-black/10 mx-auto mt-8 flex h-[58px] w-max items-center justify-center gap-2 rounded-2xl border border-oklch(0.922 0 0) p-2 backdrop-blur-md dark:border-oklch(1 0 0 / 10%)"
+  "mx-auto mt-8 flex h-[58px] w-max items-center justify-center gap-2 rounded-2xl border border-[var(--glass-line)] bg-[var(--glass)] p-2 shadow-[var(--lift-sm)] backdrop-blur-xl"
 )
 
 const Dock = React.forwardRef<HTMLDivElement, DockProps>(
@@ -118,7 +119,8 @@ const DockIcon = ({
     return val - bounds.x - bounds.width / 2
   })
 
-  const targetSize = disableMagnification ? size : magnification
+  const reduced = useReducedMotion()
+  const targetSize = disableMagnification || reduced ? size : magnification
 
   const sizeTransform = useTransform(
     distanceCalc,
@@ -135,10 +137,10 @@ const DockIcon = ({
   return (
     <motion.div
       ref={ref}
-      style={{ width: scaleSize, height: scaleSize, padding }}
+      style={{ width: reduced ? size : scaleSize, height: reduced ? size : scaleSize, padding }}
       className={cn(
         "flex aspect-square cursor-pointer items-center justify-center rounded-full",
-        disableMagnification && "hover:bg-oklch(0.556 0 0) transition-colors dark:hover:bg-oklch(0.708 0 0)",
+        disableMagnification && "transition-colors hover:bg-[var(--hov)]",
         className
       )}
       {...props}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dismissJob, getJob, startGeneration } from "./generationJob.ts";
+import { dismissJob, getJob, getQueue, startGeneration } from "./generationJob.ts";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -16,17 +16,23 @@ test("a tRPC error keeps its code so the page can explain it", async () => {
   assert.deepEqual(getJob(), { status: "failed", prompt: "baking", code: "BAD_REQUEST", pending: false });
 });
 
-test("a request that never answers shows TIMEOUT, and retry waits until the abandon window ends", async () => {
+test("a request that never answers shows TIMEOUT, and a retry is queued until the abandon window ends", async () => {
   let calls = 0;
   void startGeneration("rust", () => (calls++, new Promise(() => undefined)), { timeoutMs: 10, abandonMs: 40 });
   await wait(20);
   assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: true });
 
-  await startGeneration("rust", () => (calls++, new Promise(() => undefined)), { timeoutMs: 10, abandonMs: 40 });
+  await startGeneration("rust", async () => (calls++, { firstCourseSlug: "rust-basics" }), { timeoutMs: 10, abandonMs: 40 });
   assert.equal(calls, 1, "no second request while the first may still finish");
+  assert.deepEqual(getQueue(), ["rust"]);
 
   await wait(50);
   assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: false });
+  dismissJob();
+  assert.equal(calls, 2, "the queued retry starts once the timed-out job has been seen");
+  await wait(0);
+  assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-basics" });
+  dismissJob();
 });
 
 test("dismissJob keeps a timed-out job the server may still answer", async () => {
@@ -49,18 +55,46 @@ test("a late answer after the timeout still reaches the page", async () => {
   assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-late" });
 });
 
-test("a second start while one is running does not send another request", async () => {
-  let calls = 0;
-  const slow = () => {
-    calls++;
-    return new Promise<{ firstCourseSlug: string }>((resolve) => setTimeout(() => resolve({ firstCourseSlug: "a" }), 20));
-  };
-  const first = startGeneration("rust", slow);
-  const second = startGeneration("python", slow);
+test("a start while one is running is queued, not sent, and waits for the learner to see the job before it", async () => {
+  const sent: string[] = [];
+  let finish!: (r: { firstCourseSlug: string }) => void;
+  const first = startGeneration("rust", () => new Promise((resolve) => { finish = resolve; }));
+  void startGeneration("python", async () => (sent.push("python"), { firstCourseSlug: "python-basics" }));
   assert.deepEqual(getJob(), { status: "running", prompt: "rust" });
-  await Promise.all([first, second]);
-  assert.equal(calls, 1);
+  assert.deepEqual(getQueue(), ["python"]);
+  assert.deepEqual(sent, []);
+
+  finish({ firstCourseSlug: "rust-basics" });
+  await first;
+  assert.deepEqual(sent, [], "the queued prompt waits while the finished job is unseen");
   assert.equal(getJob().status, "done");
+
+  dismissJob();
+  assert.deepEqual(sent, ["python"]);
+  assert.deepEqual(getQueue(), []);
+  assert.deepEqual(getJob(), { status: "running", prompt: "python" });
+  await wait(0);
+  assert.deepEqual(getJob(), { status: "done", prompt: "python", courseSlug: "python-basics" });
+});
+
+test("queued prompts run one at a time, in the order they were submitted", async () => {
+  const order: string[] = [];
+  const quick = (name: string) => async () => (order.push(name), { firstCourseSlug: `${name}-basics` });
+  let finish!: (r: { firstCourseSlug: string }) => void;
+  void startGeneration("first", () => new Promise((resolve) => { finish = resolve; }));
+  void startGeneration("second", quick("second"));
+  void startGeneration("third", quick("third"));
+  assert.deepEqual(getQueue(), ["second", "third"]);
+
+  finish({ firstCourseSlug: "first-basics" });
+  await wait(0);
+  dismissJob();
+  assert.deepEqual(order, ["second"]);
+  assert.deepEqual(getQueue(), ["third"]);
+  await wait(0);
+  dismissJob();
+  assert.deepEqual(order, ["second", "third"]);
+  assert.deepEqual(getQueue(), []);
 });
 
 test("dismissJob clears a settled job but never a running one", async () => {

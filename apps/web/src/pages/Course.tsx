@@ -5,6 +5,7 @@ import { useApi, type CourseData } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { isNotFound, trpc } from "../lib/trpc";
 import { Spinner } from "../components/Bits";
+import { Logo } from "./landing/Logo";
 import LessonNode from "./course/LessonNode";
 import PathTrack from "./course/PathTrack";
 import "./home.css";
@@ -36,11 +37,10 @@ export default function Course() {
   let body;
   if (error) {
     body = (
-      <div className="lq-empty-card course-empty">
-        <img src="/img/pip-oops.png" alt="" />
+      <div className="chunk course-empty">
         <div>
           <p>{isNotFound(error) ? "We couldn't find that course." : "Couldn't load this course."}</p>
-          <Link to="/explore" className="lq-btn lq-btn-blue course-empty-btn">Explore paths</Link>
+          <Link to="/explore" className="btn course-empty-btn">Explore paths</Link>
         </div>
       </div>
     );
@@ -59,11 +59,11 @@ export default function Course() {
     let n = 0;
     body = (
       <div className="course-wrap">
-        <section className="lq-card course-head">
+        <section className="chunk course-head">
           <p className="course-eyebrow">
-            <span className="lq-sticker lq-bg-sun">COURSE</span>
+            <span className="course-badge">Course</span>
             <span className="course-eyebrow-n">
-              // {data.lessons.length} {data.lessons.length === 1 ? "LESSON" : "LESSONS"}
+              · {data.lessons.length} {data.lessons.length === 1 ? "lesson" : "lessons"}
             </span>
           </p>
           <h1>{data.title}</h1>
@@ -72,13 +72,13 @@ export default function Course() {
           {lvNow !== undefined && (
             <div className="course-prog">
               <p className="course-prog-label">{doneInLv} of {inLv.length} {inLv.length === 1 ? "lesson" : "lessons"} done in Level {lvNow}</p>
-              <div className="lq-meter lg f-mint" role="progressbar" aria-label={`Level ${lvNow} progress`} aria-valuemin={0} aria-valuemax={inLv.length} aria-valuenow={doneInLv}>
+              <div className="course-meter" role="progressbar" aria-label={`Level ${lvNow} progress`} aria-valuemin={0} aria-valuemax={inLv.length} aria-valuenow={doneInLv}>
                 <span className={pct === 0 ? "zero" : ""} style={{ width: `${pct}%` }} />
               </div>
             </div>
           )}
           <button type="button" aria-expanded={syl} aria-controls="syllabus" onClick={() => setSyl(!syl)} className="course-syl-btn">
-            {syl ? "HIDE" : "SHOW"} SYLLABUS <ChevronDown size={16} aria-hidden />
+            {syl ? "Hide" : "Show"} syllabus <ChevronDown size={16} aria-hidden />
           </button>
           {syl && (
             <ol id="syllabus" className="course-syl">
@@ -87,7 +87,7 @@ export default function Course() {
                 return (
                   <li key={l.slug} className={st}>
                     <span className="course-syl-mark" aria-hidden="true">
-                      {st === "done" ? <Check size={15} strokeWidth={3.5} /> : st === "cur" ? <Star size={14} strokeWidth={3} /> : <Lock size={12} strokeWidth={3} />}
+                      {st === "done" ? <Check size={14} strokeWidth={2.5} /> : st === "cur" ? <Star size={13} strokeWidth={2.25} /> : <Lock size={12} strokeWidth={2.25} />}
                     </span>
                     <span className="course-syl-code">L{String(l.level).padStart(2, "0")}</span>
                     <span className="course-syl-title">{l.title}</span>
@@ -110,7 +110,7 @@ export default function Course() {
                   <div className="course-lv">
                     <span className="course-lv-line" aria-hidden="true" />
                     <h2 id={`lv${lv}`} className="course-lv-pill">
-                      LEVEL {String(lv).padStart(2, "0")} // {ls[0].title.toUpperCase()}
+                      Level {lv} · {ls[0].title}
                     </h2>
                     <span className="course-lv-line" aria-hidden="true" />
                   </div>
@@ -133,10 +133,10 @@ export default function Course() {
         {current && (
           <div className="course-cta">
             <div className="course-cta-text">
-              <p className="course-cta-meta">LEVEL {current.level} • LESSON {data.lessons.filter((l) => l.level === current.level).indexOf(current) + 1}</p>
+              <p className="course-cta-meta">Level {current.level} · Lesson {data.lessons.filter((l) => l.level === current.level).indexOf(current) + 1}</p>
               <p className="course-cta-title">{current.title}</p>
             </div>
-            <Link to="/play" search={{ lesson: current.slug, course: slug }} className="lq-btn lq-btn-ink course-cta-btn">
+            <Link to="/play" search={{ lesson: current.slug, course: slug }} className="btn course-cta-btn">
               {current.done > 0 ? "Continue" : "Start"}
             </Link>
           </div>
@@ -145,21 +145,17 @@ export default function Course() {
     );
   }
 
-  const who = session?.user.name || session?.user.email;
+  const initial = session?.user.email?.charAt(0).toUpperCase() ?? "?";
   return (
-    <div className="lq course">
-      <header className="lq-topbar course-top">
+    <div className="lq lq-moon course">
+      <header className="lq-topbar">
         <Link to="/" className="lq-logo">
-          <svg width="42" height="42" viewBox="0 0 40 40" aria-hidden="true">
-            <rect x="2" y="2" width="36" height="36" rx="10" fill="#2257FF" stroke="#15121F" strokeWidth={3} />
-            <path d="M15 13l-6 7 6 7M25 13l6 7-6 7" fill="none" stroke="#FFD23F" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="lq-logo-word">Learn<span className="lq-logo-q">Slop</span></span>
+          <Logo />
         </Link>
-        <nav aria-label="Main" className="course-nav">
-          <Link to="/" className="lq-pill lq-navlink">Home</Link>
-          <Link to="/explore" className="lq-pill lq-navlink">Explore</Link>
-          {who && <span role="img" aria-label={`Signed in as ${who}`} className="lq-pill course-avatar">{who[0].toUpperCase()}</span>}
+        <nav className="lq-topnav" aria-label="Main">
+          <Link to="/" className="lq-topnav-link">Home</Link>
+          <Link to="/explore" className="lq-topnav-link">Explore</Link>
+          <Link to="/account" className="lq-avatar" aria-label="Account settings">{initial}</Link>
         </nav>
       </header>
       <main className="course-main">{body}</main>

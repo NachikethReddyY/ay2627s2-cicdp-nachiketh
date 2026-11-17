@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { BLOCKS, parseSpec } from "@learnquest/ui-catalog";
 import VisualView from "../blocks/VisualView";
-import "./home.css";
 import "./devblocks.css";
 
 const examples = [
@@ -56,23 +55,23 @@ export default function DevBlocks() {
   }
 
   return (
-    <main className="lq devblocks">
+    <main className="devblocks">
       <div className="db-wrap">
         <header className="db-header">
-          <span className="lq-sticker lq-bg-pink">DEV TOOL</span>
+          <span className="db-tag">DEV TOOL</span>
           <h1>Block playground</h1>
           <p>Generate a visual, inspect its spec, and try edits live.</p>
         </header>
         {reducedMotion && <p className="db-notice" role="status">Reduce motion is on in your system settings, so animations are paused. Use the step controls to move through the steps.</p>}
         <div className="db-grid">
           <section className="db-controls" aria-label="Block controls">
-            <div className="lq-card db-panel">
+            <div className="chunk db-panel">
               <label className="db-label" htmlFor="db-prompt">Prompt</label>
               <textarea id="db-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} maxLength={500} />
               <div className="db-picks" aria-label="Example prompts">
-                {examples.map((example) => <button className="lq-chip" type="button" key={example} onClick={() => setPrompt(example)}>{example}</button>)}
+                {examples.map((example) => <button className="db-chip" type="button" key={example} onClick={() => setPrompt(example)}>{example}</button>)}
               </div>
-              <button type="button" disabled={loading || !prompt.trim()} onClick={generate} className="lq-btn lq-btn-sun db-generate">
+              <button type="button" disabled={loading || !prompt.trim()} onClick={generate} className="btn db-generate">
                 {loading && <span aria-hidden="true" className="db-spinner" />}
                 {loading ? "Generating…" : "Generate"}
               </button>
@@ -80,19 +79,19 @@ export default function DevBlocks() {
                 {status === "loading" ? "Generating…" : status === "done" ? "Done." : status === "error" ? error : "Idle"}
               </p>
             </div>
-            <details className="lq-card db-details" open={specOpen} onToggle={(e) => setSpecOpen(e.currentTarget.open)}>
+            <details className="chunk db-details" open={specOpen} onToggle={(e) => setSpecOpen(e.currentTarget.open)}>
               <summary>Spec JSON</summary>
               <label className="db-label" htmlFor="db-spec">Edit spec JSON</label>
               <textarea id="db-spec" value={src} onChange={(e) => setSrc(e.target.value)} rows={14} spellCheck={false} />
             </details>
-            {res && <details className="lq-card db-details db-parse">
+            {res && <details className="chunk db-details db-parse">
               <summary>Parse result</summary>
               {res.issues.length > 0 && <div className="db-issues"><h2>Issues</h2><ul>{res.issues.map((issue, index) => <li key={`${issue.path}-${index}`}><code>{issue.path}</code>: {issue.message}</li>)}</ul></div>}
               <pre>{JSON.stringify(res, null, 2)}</pre>
             </details>}
           </section>
           <section className="db-preview" aria-label="Rendered visual">
-            <div className="lq-card db-preview-card">
+            <div className="chunk db-preview-card">
               <h2>Preview</h2>
               {dropped.length > 0 && <div className="db-notice" role="alert">A visual was dropped because it failed validation. {dropped.length > 3 ? `First 3 of ${dropped.length} issues:` : "Issues:"}<ul>{dropped.slice(0, 3).map((i, n) => <li key={n}>{plainIssue(i)}</li>)}</ul></div>}
               {res ? <VisualView doc={src} registry={BLOCKS} /> : <p className="db-empty">Your rendered visual will appear here.</p>}
