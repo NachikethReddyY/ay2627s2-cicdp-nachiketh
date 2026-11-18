@@ -5,13 +5,13 @@ FROM node:22-slim AS checker
 # packages/ui-catalog (importers: packages/ui-catalog -> zod); bump both together.
 WORKDIR /repo/packages/ui-catalog
 COPY packages/ui-catalog/package.json ./
-RUN npm install --omit=dev --no-save --no-package-lock zod@4.6.7
+RUN npm install --ignore-scripts --omit=dev --no-save --no-package-lock zod@4.6.7
 COPY packages/ui-catalog/src ./src
 
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-RUN pip install --no-cache-dir uv==0.8.13
+RUN pip install --no-cache-dir --only-binary :all: uv==0.8.13
 
 # Mirror the monorepo layout: visual.py's parents[3] is /repo, so CHECK_SCRIPT resolves to
 # /repo/packages/ui-catalog/src/gen/check.ts. Node runs that checker.

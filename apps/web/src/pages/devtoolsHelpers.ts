@@ -104,14 +104,17 @@ export function visibleNetwork(entries: readonly NetworkEntry[], clearedUpTo: nu
 export type ParsedDeclaration = { property: string; value: string; important: boolean };
 
 export function parseDeclaration(text: string): ParsedDeclaration | null {
-  const trimmed = text.trim().replace(/;+\s*$/, "");
+  const input = text.trim();
+  let end = input.length;
+  while (end > 0 && input[end - 1] === ";") end--;
+  const trimmed = input.slice(0, end);
   const colon = trimmed.indexOf(":");
   if (colon <= 0) return null;
   const property = trimmed.slice(0, colon).trim();
   let value = trimmed.slice(colon + 1).trim();
   if (!property) return null;
   let important = false;
-  const match = /\s*!\s*important\s*$/i.exec(value);
+  const match = /!\s*important$/i.exec(value);
   if (match) {
     important = true;
     value = value.slice(0, match.index).trim();

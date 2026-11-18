@@ -41,7 +41,7 @@ export function table(p: Props): { header: string[]; rows: (string | number)[][]
     const r = parseExpr(p.expr ?? "", ["x", ...Object.keys(vars)]);
     const rows = [0, 1, 2, 3, 4].map((i) => {
       const x = lo + ((hi - lo) * i) / 4;
-      const y = r.ok ? evalExpr(r.ast, { ...vars, x }) : NaN;
+      const y = r.ok ? evalExpr(r.ast, { ...vars, x }) : Number.NaN;
       return [x, Number.isNaN(y) ? "undefined" : Math.round(y * 1000) / 1000];
     });
     return { header: [xName, yName], rows };

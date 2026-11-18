@@ -24,6 +24,9 @@ test("unsupported browser gives no speaker", () => {
 test("splits sentences", () => {
   assert.deepEqual(splitSentences("One. Two! Three? Four"), ["One.", "Two!", "Three?", "Four"]);
   assert.deepEqual(splitSentences("  "), []);
+  assert.deepEqual(splitSentences("Wait...') Next? Yes!No."), ["Wait...')", "Next?", "Yes!No."]);
+  const long = "x".repeat(100_000) + "!".repeat(100_000) + "x";
+  assert.deepEqual(splitSentences(long), [long]);
 });
 
 test("speaks sentences in sequence", () => {

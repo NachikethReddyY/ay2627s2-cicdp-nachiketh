@@ -71,7 +71,7 @@ function points(p: ChartProps): Plot {
 function curve(p: ChartProps, vals: Record<string, number>): Plot {
   const [lo, hi] = [p.xMin ?? DEFAULT_DOMAIN[0], p.xMax ?? DEFAULT_DOMAIN[1]];
   const parsed = parseExpr(p.expr ?? "", ["x", ...Object.keys(vals)]);
-  const pts = sample((x) => (parsed.ok ? evalExpr(parsed.ast, { ...vals, x }) : NaN), lo, hi);
+  const pts = sample((x) => (parsed.ok ? evalExpr(parsed.ast, { ...vals, x }) : Number.NaN), lo, hi);
   const xt = niceTicks(lo, hi);
   const x = linear([lo, hi], PLOT_X);
   const { y, yTicks, dom } = yScale([], false, curveRange(pts));

@@ -13,7 +13,23 @@ export type Speaker = {
 const FATAL = new Set(["not-allowed", "synthesis-failed"]);
 
 export function splitSentences(text: string): string[] {
-  return (text.match(/.+?(?:[.!?]+["')\]]*(?=\s|$)|$)/gs) ?? []).map((s) => s.trim()).filter(Boolean);
+  const sentences: string[] = [];
+  let start = 0;
+  let i = 1;
+  while (i < text.length) {
+    if (!".!?".includes(text[i])) { i++; continue; }
+    while (i < text.length && ".!?".includes(text[i])) i++;
+    while (i < text.length && "\"')]".includes(text[i])) i++;
+    if (i === text.length || /\s/.test(text[i])) {
+      const sentence = text.slice(start, i).trim();
+      if (sentence) sentences.push(sentence);
+      start = i;
+      i++;
+    }
+  }
+  const remaining = text.slice(start).trim();
+  if (remaining) sentences.push(remaining);
+  return sentences;
 }
 
 export function createSpeaker(synth: Synth | null | undefined, makeUtterance: (text: string) => Utterance): Speaker | null {

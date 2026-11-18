@@ -70,7 +70,14 @@ def _system(system: str, schema: dict[str, Any], mode: str) -> str:
 
 
 def _parse[T: BaseModel](content: str, model: type[T], context: dict[str, Any] | None = None) -> T:
-    body = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
+    body = content.strip()
+    if body.startswith("```"):
+        body = body[3:]
+        if body.startswith("json"):
+            body = body[4:]
+        body = body.lstrip()
+    if body.endswith("```"):
+        body = body[:-3].rstrip()
     return model.model_validate(json.loads(body), context=context)
 
 

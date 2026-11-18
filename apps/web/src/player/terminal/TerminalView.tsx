@@ -25,7 +25,7 @@ const DARK_COLORS: TerminalThemeColors = {
 const parseColor = (value: string): number | null => {
   const v = value.trim();
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v);
-  if (hex) return parseInt(hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join("") : hex[1], 16);
+  if (hex) return Number.parseInt(hex[1].length === 3 ? [...hex[1]].map((c) => c + c).join("") : hex[1], 16);
   const rgb = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(v);
   return rgb ? (Number(rgb[1]) << 16) | (Number(rgb[2]) << 8) | Number(rgb[3]) : null;
 };
