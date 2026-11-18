@@ -1,7 +1,5 @@
 import { type CheckResponse, type PracticeLanguage } from "./live/checkModel.ts";
 
-// Practice code (Python, JavaScript or TypeScript) runs on the server in a locked-down container. A run is live: the client polls its output and sends each typed answer.
-// `passed` is the server's verdict, sent only for a Check run once it has ended.
 export type PyPoll = { output: string; next: number; done: boolean; error?: string; passed?: boolean };
 
 export class ApiError extends Error {
@@ -20,51 +18,38 @@ async function call<T>(fullPath: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-// With `lessonId` the run is a Check: the server compares the output and records the lesson as complete on a match.
 export const startPython = (code: string, language: PracticeLanguage, lessonId?: string) =>
   call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId }) });
 
-/** Check: the server runs every test for the lesson and returns per-test results (POST /api/sandbox/check). */
 export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
 
 export type LintFinding = { ruleId: string; line: number; column: number; message: string };
-/** Style lint, done on the server (POST /api/practice/lint). Only the code and language are sent. */
 export const lintPractice = (code: string, language: PracticeLanguage) =>
   call<{ findings: LintFinding[] }>("/api/practice/lint", { method: "POST", body: JSON.stringify({ code, language }) });
 
-/** A Check passes only on the server's word; a missing verdict (an older server, a dropped field) is a fail. */
 export const checkPassed = (p: Pick<PyPoll, "error" | "passed">) => !p.error && p.passed === true;
 export const pollPython = (id: string, from: number) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`);
 export const sendPythonLine = (id: string, line: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}/input`, { method: "POST", body: JSON.stringify({ line }) });
 export const stopPython = (id: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}`, { method: "DELETE" });
 
-/** Writes the learner's editor file into their sandbox home (PUT /api/sandbox/files/:name). */
 export const putFile = (name: "solution.py" | "solution.js" | "solution.ts", content: string) =>
   call<unknown>(`/api/sandbox/files/${name}`, { method: "PUT", body: JSON.stringify({ content }) }).then(() => undefined);
 
 export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; size: number };
-/** One directory level of the learner's sandbox home (or of `dir`, relative to it). */
 export const listFiles = (dir?: string) =>
   call<{ entries: DirEntry[]; truncated: boolean }>(`/api/sandbox/files${dir === undefined ? "" : `?dir=${encodeURIComponent(dir)}`}`);
 
-/** Lists several open workspace folders in one request. */
 export const listFileDirectories = (directories: string[]) => {
   const query = directories.map((dir) => `dir=${encodeURIComponent(dir)}`).join("&");
   return call<{ directories: Record<string, { entries: DirEntry[]; truncated: boolean } | null> }>(`/api/sandbox/files/batch?${query}`);
 };
 
-/** Reads one editable file from the authenticated learner workspace. */
 export const getWorkspaceFile = (path: string) =>
   call<{ content: string }>(`/api/sandbox/workspace-file?path=${encodeURIComponent(path)}`);
 
-/** Most paths one batch read accepts (the server's MAX_BATCH_READ). */
 export const WORKSPACE_READ_BATCH = 64;
 export type WorkspaceFileSkip = { path: string; reason: "not_found" | "file_too_large" };
-/**
- * Reads many editable files in one request per 64 paths, sent one batch at a time.
- * Missing and oversized files come back in `skipped` instead of failing the read.
- */
 export async function readWorkspaceFiles(paths: string[]): Promise<{ files: { path: string; content: string }[]; skipped: WorkspaceFileSkip[] }> {
   const files: { path: string; content: string }[] = [];
   const skipped: WorkspaceFileSkip[] = [];
@@ -79,18 +64,10 @@ export async function readWorkspaceFiles(paths: string[]): Promise<{ files: { pa
   return { files, skipped };
 }
 
-// A keepalive request may outlive the page, but browsers cap the whole request (body and headers) at 64 KiB.
 const KEEPALIVE_BODY_LIMIT = 60 * 1024;
 
-// A save that never settles would block every later save, so each attempt is aborted after this long.
 const SAVE_TIMEOUT_MS = 15_000;
 
-/**
- * Saves one editable file to the authenticated learner workspace.
- * `keepalive` lets the save finish after the page unloads. Bodies at or over the cap use a normal request instead.
- * A keepalive save the browser rejects with a TypeError (in-flight keepalive quota used up) is retried once without keepalive.
- * A save that takes longer than SAVE_TIMEOUT_MS rejects.
- */
 export const putWorkspaceFile = (path: string, content: string, options: { keepalive?: boolean } = {}) => {
   const body = JSON.stringify({ path, content });
   const wantKeepalive = options.keepalive === true && new TextEncoder().encode(body).length < KEEPALIVE_BODY_LIMIT;
@@ -109,7 +86,6 @@ export const putWorkspaceFile = (path: string, content: string, options: { keepa
   return attempt.then(() => undefined);
 };
 
-/** Moves one file into an existing workspace folder. */
 export const moveWorkspaceFile = (source: string, targetDir: string) =>
   call<unknown>("/api/sandbox/workspace-file/move", { method: "POST", body: JSON.stringify({ source, targetDir }) }).then(() => undefined);
 
@@ -125,7 +101,6 @@ export const askEditorGuide = (input: {
   code: string;
   selection: string;
   messages: GuideChatMessage[];
-  /** A lint finding to explain: a pointer only (rule, line and column), never the finding text. */
   finding?: { ruleId: string; line: number; column?: number };
 }) => call<{ guide: { message: string; widgets: GuideWidget[] } }>("/api/guide/chat", {
   method: "POST",

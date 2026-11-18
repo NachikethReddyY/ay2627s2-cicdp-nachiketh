@@ -20,11 +20,10 @@ export type StepPublic = {
 
 export type Reveal = {
   answer: { type: "mcq"; index: number } | { type: "cloze"; text: string };
-  // Same shape as player-core's Hunk; defined here so this file stays import-free for node --test.
   hunks: { id: string; file: string; oldStart: number; lines: string[] }[];
   explanations: { workedExample: string; practice: string; inferred: true };
-  narration: string; // spoken or captioned on reveal; the worked example unless the step has its own
-  source: { repo: string; sha: string; path: string } | null; // null for AI lessons
+  narration: string;
+  source: { repo: string; sha: string; path: string } | null;
 };
 
 export type AttemptResult = {
@@ -130,7 +129,7 @@ export const stepMachine = setup({
           { guard: { type: "isState", params: { s: "hinting" } }, target: "hinting", actions: "storeLoaded" },
           { guard: { type: "isState", params: { s: "revealed" } }, target: "revealed", actions: "storeLoaded" },
           { guard: { type: "isState", params: { s: "skipped" } }, target: "skipped", actions: "storeLoaded" },
-          { target: "predicting", actions: "storeLoaded" }, // an unknown state must not leave the step loading forever
+          { target: "predicting", actions: "storeLoaded" },
         ],
       },
     },

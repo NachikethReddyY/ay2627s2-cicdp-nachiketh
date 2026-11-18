@@ -3,7 +3,6 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 
-// No trusted proxy: this app is a direct client, so a forwarded-for header must not change its address.
 const app = buildApp({ trustProxy: false });
 after(() => app.close());
 

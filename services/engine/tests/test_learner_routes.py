@@ -48,7 +48,7 @@ def test_update_shape(client: TestClient) -> None:
     assert [u["conceptId"] for u in updates] == ["vars", "loops"]
     assert updates[0]["pPosterior"] == pytest.approx(0.474, abs=0.01)
     assert updates[0]["pNext"] == pytest.approx(0.579, abs=0.01)
-    assert updates[1]["pNext"] == updates[0]["pNext"]  # null prior falls back to pInit 0.2
+    assert updates[1]["pNext"] == updates[0]["pNext"]
 
 
 def test_update_cloze_guess_default(client: TestClient) -> None:

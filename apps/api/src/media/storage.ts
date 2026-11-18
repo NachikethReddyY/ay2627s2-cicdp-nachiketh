@@ -7,8 +7,6 @@ export interface Storage {
   signGet(key: string): Promise<string>;
 }
 
-// Signed URLs live 2h from the start of the current hour, so every request in an hour gets the same URL
-// and the browser cache hits; a URL is valid for at least an hour.
 const SIGN_TTL_SECONDS = 7200;
 const hourStart = () => new Date(Math.floor(Date.now() / 3600_000) * 3600_000);
 
@@ -33,7 +31,6 @@ export function s3Storage(cfg: {
           Key: key,
           Body: body,
           ContentType: contentType,
-          // Keys are UUIDs and never change, so a cached copy never goes stale.
           CacheControl: "private, max-age=31536000, immutable",
         }),
       );
@@ -60,7 +57,6 @@ export function memoryStorage(): Storage & { objects: Map<string, { body: Uint8A
   };
 }
 
-// Picked once at startup from env; tests swap it with setStorage.
 export let storage: Storage | null = env.S3_BUCKET
   ? s3Storage({
       endpoint: env.S3_ENDPOINT!,

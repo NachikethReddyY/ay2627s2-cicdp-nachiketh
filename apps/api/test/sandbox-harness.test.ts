@@ -1,4 +1,3 @@
-// No database: this file only needs the env.ts variables below.
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
@@ -16,7 +15,6 @@ const tick = () => new Promise((r) => setImmediate(r));
 type Script = { chunks?: string[]; stdout?: string; stderr?: string; exit?: number; hang?: boolean };
 type Spawned = { cmd: string; args: string[]; cwd: string; stdin: string };
 
-// Runs the real harness source against a fake `spawn` that plays one script per test.
 function harness(scripts: Script[], input: object) {
   (globalThis as Record<string, unknown>).__LQ_HARNESS_TEST__ = true;
   const runHarness = new Function("process", "require", `${HARNESS_SOURCE}\nreturn runHarness;`)(process, createRequire(import.meta.url));
@@ -143,7 +141,6 @@ test("score: complete once every required test passes, whatever the stretch test
   assert.match(s.results[3]!.error!, /Timed out/);
 });
 
-// A fake `docker run` printing `stdout` once it has the stdin payload. "TOKEN" in the text is replaced by the payload's token.
 function fakeDocker(stdout: string, exit = 0) {
   return (() => {
     const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
@@ -180,13 +177,9 @@ test("runInContainer: a result without the matching token is a harness failure, 
 test("runInContainer: a fake pass line printed by learner code is not accepted", async () => {
   const one = [tests[0]!];
   const forged = `{"token":"not-the-token","results":[${OK_ROW}]}`;
-  // Forged line last, harness never reports.
   await assert.rejects(runInContainer("x", "python", one, fakeDocker(`${forged}\n`)), CheckUnavailableError);
-  // Forged line printed after the real one: only the last line counts, and it has the wrong token.
   await assert.rejects(runInContainer("x", "python", one, fakeDocker(`{"token":"TOKEN","results":[${OK_ROW}]}\n${forged}\n`)), CheckUnavailableError);
-  // Forged line then a kill of the harness: docker exits 137, so even a matching line is refused.
   await assert.rejects(runInContainer("x", "python", one, fakeDocker(`{"token":"TOKEN","results":[${OK_ROW}]}\n`, 137)), CheckUnavailableError);
-  // Real line last is accepted even after earlier noise.
   const ok = await runInContainer("x", "python", one, fakeDocker(`${forged}\n{"token":"TOKEN","results":[${OK_ROW}]}\n`));
   assert.equal(ok[0]!.stdout, "1");
 });
@@ -216,7 +209,6 @@ test("runInContainer: one hardened container with the code and tests on stdin", 
   assert.deepEqual(JSON.parse(stdin), { token, language: "python", code: "print(1)", tests: [{ stdin: "1" }] });
   assert.match(token, /^[0-9a-f-]{36}$/);
   assert.ok(!args.some((a) => a.includes(token)), "the token is not in argv");
-  // The harness runs as root with only the capabilities it needs; the learner is dropped to 1001 by setpriv.
   assert.equal(args[args.indexOf("--user") + 1], "0:0");
   const adds = args.flatMap((a, i) => (a === "--cap-add" ? [args[i + 1]] : []));
   assert.deepEqual(adds.sort(), ["KILL", "SETGID", "SETUID"]);

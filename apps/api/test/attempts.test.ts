@@ -26,7 +26,6 @@ const hint = (c: string, id: string) => trpc(app, c).m("steps.hint", { id });
 const skip = (c: string, id: string) => trpc(app, c).m("steps.skip", { id });
 const attempt = (c: string, id: string, answer: object) => trpc(app, c).m("steps.attempt", { id, answer });
 const mcq = (c: string, choice: number) => attempt(c, "s1", { kind: "mcq", choice });
-// s1 answer is index 1.
 
 test("401 without login", async () => {
   const t = trpc(app);
@@ -70,7 +69,7 @@ test("full MCQ path ends revealed after a failed retry", async () => {
   assert.equal(mid.rungsTaken, 2);
 
   r = out(await mcq(c, 2));
-  assert.deepEqual([r.state, r.attemptAllowed], ["hinting", true]); // retry offered
+  assert.deepEqual([r.state, r.attemptAllowed], ["hinting", true]);
   r = out(await mcq(c, 2));
   assert.equal(r.state, "revealed");
   assert.equal((await mcq(c, 1)).statusCode, 409);
@@ -79,7 +78,7 @@ test("full MCQ path ends revealed after a failed retry", async () => {
   assert.equal(rev.statusCode, 200);
   assert.deepEqual(out(rev).answer, { type: "mcq", index: 1 });
   assert.equal(out(rev).explanations.inferred, true);
-  assert.match(out(rev).narration, /^The cart needs a total\./); // lesson-1.json supplies the narration text
+  assert.match(out(rev).narration, /^The cart needs a total\./);
 
   const rows = await db.select().from(attempts).where(eq(attempts.stepId, "s1"));
   assert.equal(rows.filter((x) => x.observed).length, 1);
@@ -165,8 +164,6 @@ test("batched mutation with no input (what httpBatchLink sends) is accepted", as
   assert.equal(res.statusCode, 200, res.body);
 });
 
-// shortcut: tRPC's Fastify plugin replaces our strict JSON parser, so __proto__ is no longer a 400; it is parsed
-// as a plain own key and zod strips it. Upgrade if a handler ever spreads raw input.
 test("JSON with a __proto__ key is neutralised", async () => {
   const c = await signUp(app);
   const res = await app.inject({
@@ -193,7 +190,6 @@ test("a step of a superseded lesson version is not playable", async () => {
       secret: { beforeFiles: {}, hunks: [], answer: 0, hints: [], explanations: { workedExample: "", practice: "" } },
     })
     .returning();
-  // lesson.current_version_id still points at the seeded version, so the new version's step is not current.
   assert.equal((await get(c, stale!.id)).statusCode, 404);
   assert.equal((await attempt(c, stale!.id, { kind: "mcq", choice: 0 })).statusCode, 404);
   assert.equal((await get(c, "s1")).statusCode, 200);
@@ -220,7 +216,7 @@ test("reveal returns the step's own narration, not the worked example", async ()
       },
     })
     .returning();
-  assert.equal((await reveal(c, own!.id)).statusCode, 409); // not before the answer
+  assert.equal((await reveal(c, own!.id)).statusCode, 409);
   assert.equal(out(await attempt(c, own!.id, { kind: "mcq", choice: 0 })).correct, true);
   const rev = out(await reveal(c, own!.id));
   assert.equal(rev.narration, "Spoken narration text.");
@@ -245,7 +241,6 @@ test("mcq choice is validated against the step's option count", async () => {
   assert.equal((await attempt(c, two!.id, { kind: "mcq", choice: 3 })).statusCode, 400);
   const r = out(await attempt(c, two!.id, { kind: "mcq", choice: 0 }));
   assert.equal(r.correct, false);
-  // No hints on this step: the wrong answer leaves a retry instead of a dead end.
   assert.equal(r.attemptAllowed, true);
   assert.equal(out(await attempt(c, two!.id, { kind: "mcq", choice: 1 })).correct, true);
 });

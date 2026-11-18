@@ -29,7 +29,7 @@ test("speed steps through the list and wraps to the first", () => {
   assert.deepEqual(SPEEDS, [1, 1.25, 1.5, 0.75]);
   assert.equal(nextSpeed(1), 1.25);
   assert.equal(nextSpeed(0.75), 1);
-  assert.equal(nextSpeed(3), 1); // an unlisted speed restarts the cycle
+  assert.equal(nextSpeed(3), 1);
 });
 
 const chapters = [{ start: 0, title: "Intro" }, { start: 30, title: "Two cups" }, { start: 90, title: "Counting" }];

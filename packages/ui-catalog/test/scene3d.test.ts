@@ -13,7 +13,6 @@ test("valid scenes parse cleanly", () => {
   assert.equal(r.spec.blocks.length, 2);
 });
 
-// Each negative fixture is [text block, bad scene]; the scene is dropped and the text kept.
 for (const [name, path, msg] of [
   ["too-many-primitives", "blocks.1.props.primitives", /60|at most|too big/i],
   ["group-in-group", "blocks.1.props.groups.1.children.0", /cannot contain group/],

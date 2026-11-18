@@ -2,18 +2,15 @@ import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { KEY_STEP } from "../terminal/usePanel";
 
 type Props = {
-  /** "vertical" is a bar between columns (drags left/right); "horizontal" is a bar between rows. */
   orientation: "vertical" | "horizontal";
   label: string;
   value: number;
   min: number;
   max: number;
   onResize(px: number): void;
-  /** The panel sits after the bar (right or below), so dragging toward it shrinks it. */
   after?: boolean;
 };
 
-// A resize handle with the terminal's contract: pointer-capture drag, arrow keys move KEY_STEP px.
 export default function Splitter({ orientation, label, value, min, max, onResize, after = false }: Props) {
   const drag = useRef<{ start: number; value: number } | null>(null);
   const vertical = orientation === "vertical";

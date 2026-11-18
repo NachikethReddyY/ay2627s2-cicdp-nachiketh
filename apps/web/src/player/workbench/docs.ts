@@ -1,5 +1,3 @@
-// Starter language reference for the Docs panel and the palette's docs mode. Hand-written and generic:
-// nothing here may be a lesson's answer or expected output.
 
 export type DocSource = "JavaScript docs" | "TypeScript docs" | "Python docs";
 
@@ -12,9 +10,7 @@ export type Doc = {
   syntax: string;
   example: string;
   detail: string;
-  /** Ids of related entries. */
   see: string[];
-  /** Identifiers a hover matches (`for`, `push`). */
   words: string[];
 };
 
@@ -200,7 +196,6 @@ export const DOCS: Doc[] = [
   },
 ];
 
-/** Docs whose title, tags or snippet contain `q` (case-insensitive). A blank query gives nothing. */
 export function searchDocs(q: string, docs: Doc[] = DOCS): Doc[] {
   const needle = q.trim().toLowerCase();
   if (!needle) return [];
@@ -213,7 +208,6 @@ const BY_LANGUAGE: Record<DocLanguage, DocSource[]> = {
   python: ["Python docs"],
 };
 
-/** The entry a hover on `word` should show, for the file's language. */
 export function docForWord(word: string, language: DocLanguage): Doc | undefined {
   const sources = BY_LANGUAGE[language];
   return DOCS.find((d) => sources.includes(d.src) && d.words.includes(word));

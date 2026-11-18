@@ -10,9 +10,23 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "test:scripts": "node --test scripts/narrate.test.ts"
+    "test:scripts": "node --test scripts/*.test.ts",
+    "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e",
+    "lint:comments": "node scripts/check-comments.ts",
+    "agent:verify": "scripts/agent-verify.sh",
+    "agent:merge": "node scripts/merge-gate.ts",
+    "revert-rate": "node scripts/revert-rate.ts",
+    "validator": "node tools/validator/src/cli.ts",
+    "validator:up": "node tools/validator/src/cli.ts up",
+    "validator:down": "node tools/validator/src/cli.ts down",
+    "validator:smoke": "node tools/validator/src/cli.ts smoke",
+    "review": "node scripts/agent-review.ts",
+    "index": "node tools/repo-index/src/cli.ts index"
   },
   "devDependencies": {
+    "@babel/parser": "^8.1.2",
+    "oxlint": "^1.94.0",
+    "oxlint-tsgolint": "^7.0.2007",
     "turbo": "^2.11.10"
   },
   "dependencies": {

@@ -2,18 +2,18 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, typ
 import { FOCUS } from "./ui";
 import type { Kind, Rect } from "./useWindows";
 
-const MS = 260; // keep in sync with .win-morph in index.css
+const MS = 260;
 
 type Props = {
   id: string;
-  label: string; // window name, e.g. "Code"
-  title: string; // visible title text
+  label: string;
+  title: string;
   tone: string;
   hidden: boolean;
-  dockId: string; // data-dock-id of the dock button this window tucks into
+  dockId: string;
   fill: "zoom" | "full" | null;
-  dragging: boolean; // no morph while the user drags or resizes
-  rect?: Rect & { z: number }; // desktop only; undefined = stacked phone layout
+  dragging: boolean;
+  rect?: Rect & { z: number };
   onClose(): void;
   onMinimize(): void;
   onZoom(): void;
@@ -22,7 +22,7 @@ type Props = {
   onDrag(kind: Kind, e: PointerEvent): void;
   onNudge(kind: Kind, dx: number, dy: number): void;
   onPointerMove?(): void;
-  titleExtra?: ReactNode; // right side of the title bar (not a drag area)
+  titleExtra?: ReactNode;
   children: ReactNode;
 };
 
@@ -51,7 +51,6 @@ function Light({ kind, label, color, disabled, onClick }: { kind: keyof typeof g
   );
 }
 
-// Corners sit over the lines' ends; the edges are the lines between them.
 const HANDLES: [Kind, string, string][] = [
   ["nw", "top-0 left-0 size-3", "cursor-nwse-resize"],
   ["ne", "top-0 right-0 size-3", "cursor-nesw-resize"],
@@ -66,12 +65,11 @@ const HANDLES: [Kind, string, string][] = [
 const STEP = 24;
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-STEP, 0], ArrowRight: [STEP, 0], ArrowUp: [0, -STEP], ArrowDown: [0, STEP] };
 
-/** A macOS-style window: absolutely positioned on desktop, a plain stacked card on phones. */
 export default function Window(p: Props) {
   const { id, label, rect, hidden, dockId } = p;
   const full = p.fill === "full";
   const ref = useRef<HTMLElement>(null);
-  const [gone, setGone] = useState(hidden); // display:none, only after the tuck animation ends
+  const [gone, setGone] = useState(hidden);
   const [tuck, setTuck] = useState<{ dx: number; dy: number } | null>(hidden ? { dx: 0, dy: 0 } : null);
   const hasRect = !!rect;
   useEffect(() => {
@@ -81,10 +79,9 @@ export default function Window(p: Props) {
     const f1 = requestAnimationFrame(() => {
       if (!hidden) {
         setGone(false);
-        f2 = requestAnimationFrame(() => setTuck(null)); // one frame later so the transition runs from the dock
+        f2 = requestAnimationFrame(() => setTuck(null));
         return;
       }
-      // Vector from the window centre to the dock button centre (offset* ignore transforms).
       const el = ref.current;
       const d = document.querySelector(`[data-dock-id="${dockId}"]`)?.getBoundingClientRect();
       const a = el?.offsetParent?.getBoundingClientRect();

@@ -11,19 +11,16 @@ import { PRACTICE_LANGUAGES, type PracticeLanguage, type PracticeTest } from "..
 import { atCapacity, reserveCheckSlot } from "./run.ts";
 import { HARNESS_SOURCE, TEST_TIMEOUT_MS } from "./checkHarness.ts";
 
-// Multi-test Check of a practice lesson: one locked-down container runs the learner's code once per test.
 export const MAX_CHECK_CODE = 20_000;
-const BUDGET_S = 32; // host backstop for the whole container; the harness stops starting tests at 24 s
-const CONTAINER_LIMIT_S = BUDGET_S + 3; // in-container kill, in case the host's `docker rm` is slow
+const BUDGET_S = 32;
+const CONTAINER_LIMIT_S = BUDGET_S + 3;
 
 export type RawResult = { exit: number | null; timedOut: boolean; overflow: boolean; stdout: string; stderr: string };
 export type Status = "pass" | "fail" | "timeout" | "error";
 
-/** Pass = clean exit and matching trimmed stdout; a killed test is a timeout; any other non-zero exit is an error. */
 export function classify(raw: RawResult, expectedStdout: string): Status {
   if (raw.timedOut) return "timeout";
   if (raw.exit !== 0) return "error";
-  // Output cut off at the cap was not seen in full, so it cannot be judged a match.
   if (raw.overflow) return "fail";
   return raw.stdout.trim() === expectedStdout.trim() ? "pass" : "fail";
 }
@@ -32,7 +29,6 @@ export class CheckUnavailableError extends Error {}
 
 type Spawn = typeof nodeSpawn;
 let spawnImpl: Spawn = nodeSpawn;
-/** Tests swap in a fake `docker`; pass nothing to restore the real one. */
 export function setCheckSpawnForTests(s?: Spawn): void {
   spawnImpl = s ?? nodeSpawn;
 }
@@ -42,17 +38,12 @@ const RawSchema = z.object({
   results: z.array(z.object({ exit: z.number().int().nullable(), timedOut: z.boolean(), overflow: z.boolean(), stdout: z.string(), stderr: z.string() })),
 });
 
-/** Runs the code against every test in one container. Throws CheckUnavailableError unless the harness reports on every test. */
 export function runInContainer(code: string, language: PracticeLanguage, tests: PracticeTest[], spawn: Spawn = spawnImpl): Promise<RawResult[]> {
   const name = `lq-check-${randomUUID()}`;
-  const token = randomUUID(); // sent on stdin only (argv and env are visible to the learner) and must come back in the result
+  const token = randomUUID();
   const args = [
     "run", "--rm", "-i", "--name", name, "--network", "none",
     "--cpus", "0.5", "--memory", "256m", "--pids-limit", "64",
-    // The harness runs as root so the learner (uid 1001, started through setpriv) is a different uid and cannot
-    // open /proc/<harness pid>/fd or read its memory: that is what stops a forged result line and a read of the
-    // hidden test stdin. Root keeps only SETUID and SETGID (to drop to 1001) and KILL (to stop a timed-out learner
-    // process it does not own); the learner itself gets an empty capability set. no-new-privileges still applies.
     "--cap-drop", "ALL", "--cap-add", "SETUID", "--cap-add", "SETGID", "--cap-add", "KILL",
     "--security-opt", "no-new-privileges",
     "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "0:0",
@@ -63,10 +54,10 @@ export function runInContainer(code: string, language: PracticeLanguage, tests: 
     let settled = false;
     const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
     const cleanup = () => {
-      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+      try { child.kill("SIGKILL"); } catch { }
       const rm = spawn("docker", ["rm", "-f", name], { stdio: "ignore" });
       rm.on("error", () => {});
-      setTimeout(() => { try { rm.kill("SIGKILL"); } catch { /* done */ } }, 10_000).unref();
+      setTimeout(() => { try { rm.kill("SIGKILL"); } catch { } }, 10_000).unref();
     };
     const settle = (fn: () => void) => {
       if (settled) return;
@@ -82,8 +73,6 @@ export function runInContainer(code: string, language: PracticeLanguage, tests: 
     child.on("error", () => settle(() => reject(new CheckUnavailableError("spawn failed"))));
     child.on("close", (code: number | null) =>
       settle(() => {
-        // The LAST line only, from a container that exited cleanly, carrying this check's token. Anything else
-        // (missing, malformed, wrong length, wrong token, killed harness) is a harness failure, never a pass.
         const line = out.split("\n").map((l) => l.trim()).filter(Boolean).at(-1);
         try {
           if (code !== 0) throw new Error("exit");
@@ -105,12 +94,11 @@ export type CheckResult = {
   stdin?: string; expectedStdout?: string; actualStdout?: string; error?: string;
 };
 
-/** Scores raw results. Hidden tests carry only id, name, stretch, visibility and status. */
 export function score(tests: PracticeTest[], raws: RawResult[]) {
   const required = { passed: 0, total: 0 };
   const stretch = { passed: 0, total: 0 };
   const results: CheckResult[] = tests.map((t, i) => {
-    const raw = raws[i]!;
+    const raw = raws[i];
     const status = classify(raw, t.expectedStdout);
     const bucket = t.stretch ? stretch : required;
     bucket.total++;
@@ -134,7 +122,6 @@ export function score(tests: PracticeTest[], raws: RawResult[]) {
   };
 }
 
-/** Keeps the greater best_points (and its max); complete never goes back to false. */
 async function saveBest(learnerId: string, lessonId: string, points: number, maxPoints: number, complete: boolean) {
   const {
     rows: [row],
@@ -147,10 +134,10 @@ async function saveBest(learnerId: string, lessonId: string, points: number, max
       complete = check_results.complete OR EXCLUDED.complete,
       updated_at = now()
     RETURNING best_points, max_points`);
-  return { points: row!.best_points, maxPoints: row!.max_points };
+  return { points: row.best_points, maxPoints: row.max_points };
 }
 
-const active = new Set<string>(); // learners with a check in flight: one at a time each
+const active = new Set<string>();
 
 export async function sandboxCheckRoute(app: FastifyInstance) {
   const Body = z.object({
@@ -170,7 +157,7 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
     if (!found) return reply.status(404).send(fail("not_found", "Practice lesson not found"));
     if (atCapacity()) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     if (active.has(learner)) return reply.status(429).send(fail("busy", "Wait for your running check to finish"));
-    const release = reserveCheckSlot(); // counts against SANDBOX_MAX_RUNS together with ordinary runs
+    const release = reserveCheckSlot();
     if (!release) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     active.add(learner);
     try {

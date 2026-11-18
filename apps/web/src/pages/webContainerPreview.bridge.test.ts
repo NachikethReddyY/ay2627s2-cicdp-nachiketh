@@ -2,9 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 
-// webContainerPreview.ts pulls in @webcontainer/api and extensionless imports that plain node cannot load, so the
-// test reads the constant out of the source. The bridge has no backslashes or template placeholders, so the raw
-// text between the backticks is its value.
 const source = readFileSync(new URL("./webContainerPreview.ts", import.meta.url), "utf8");
 const start = source.indexOf("PREVIEW_BRIDGE = `") + "PREVIEW_BRIDGE = `".length;
 const PREVIEW_BRIDGE = source.slice(start, source.indexOf("</script>`;", start) + "</script>".length);

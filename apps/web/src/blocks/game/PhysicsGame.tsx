@@ -20,13 +20,11 @@ export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind
   const [busy, setBusy] = useState(false);
   const gen = useRef(0);
   const over = outcome === "win" || outcome === "lose";
-  // Scale so the target and the farthest throw both fit the picture.
   const span = Math.max(kind.target.x + kind.target.width, (kind.maxSpeed * kind.maxSpeed) / 9.8) * 1.1;
   const sx = (x: number) => (x / span) * W;
   const sy = (y: number) => H - 10 - (y / span) * W;
   const preview = useMemo(() => simulateLaunch(kind, angle, speed), [kind, angle, speed]);
 
-  // The picture comes from the shared simulator; whether the throw wins is the server's call.
   const launch = async () => {
     if (over || busy) return;
     setBusy(true);
@@ -60,7 +58,6 @@ export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind
     </label>
   );
 
-  // Reduced motion: the finished flight is drawn at once. Otherwise the CSS draw-in animation plays it; it has no timer, so nothing times the learner out.
   const d = shot ? shot.path.map((q, i) => `${i ? "L" : "M"}${sx(q.x).toFixed(1)} ${sy(q.y).toFixed(1)}`).join(" ") : "";
   return (
     <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>

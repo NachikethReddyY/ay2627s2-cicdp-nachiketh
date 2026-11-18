@@ -3,8 +3,6 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 
-// Own file: rate-limit.test.ts uses up this process's limit for 127.0.0.1.
-// No trusted proxy: this app is a direct client, so a forwarded-for header must not change its address.
 const app = buildApp({ trustProxy: false });
 after(() => app.close());
 

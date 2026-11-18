@@ -1,18 +1,11 @@
-/** The floating preview window's box, in viewport pixels. */
 export type PreviewRect = { left: number; top: number; width: number; height: number };
 
-/** The edge or corner being dragged: n, s, e, w, or a corner such as "ne". */
 export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
-// Match .wb-preview-float's min-width and min-height, and keep 8px clear of the viewport edge.
 const MIN_WIDTH = 300;
 const MIN_HEIGHT = 240;
 const MARGIN = 8;
 
-/**
- * The box after dragging `edge` by (dx, dy) from `start`. The edge opposite the one dragged stays put.
- * Size is clamped to the window's minimum and to the viewport (with an 8px margin).
- */
 export function resizeRect(
   start: PreviewRect,
   edge: ResizeEdge,

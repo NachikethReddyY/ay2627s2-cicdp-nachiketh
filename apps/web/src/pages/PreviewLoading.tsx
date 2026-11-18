@@ -3,14 +3,11 @@ import "./previewLoading.css";
 
 type Props = {
   state: "starting" | "error";
-  /** The build step shown while starting, such as "Installing packages…". */
   stage?: string;
-  /** The failure shown in the error state. */
   message?: string;
   onRetry(): void;
 };
 
-/** Covers the preview viewport while the project builds, or when the build failed. */
 export function PreviewLoading({ state, stage, message, onRetry }: Props) {
   if (state === "error") {
     return (

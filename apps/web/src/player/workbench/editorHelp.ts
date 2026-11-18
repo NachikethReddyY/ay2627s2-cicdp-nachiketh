@@ -1,13 +1,8 @@
 import type { editor, IDisposable, languages, Position } from "monaco-editor";
-import { DOCS, docForWord, type Doc, type DocLanguage } from "./docs.ts";
-
-// Editor help for practice: hovers and completion details come from the docs catalogue, and error
-// hovers get one plain-English line under Monaco's own message. No quick fixes and no code
-// generation. Monaco is imported as types only so `node --test` can load explainMarker.
+import { docForWord, type Doc, type DocLanguage } from "./docs.ts";
 
 type Monaco = typeof import("monaco-editor");
 
-/** One plain-English sentence for a Monaco marker message, or undefined when there is nothing to add. */
 export function explainMarker(message: string): string | undefined {
   const name = /^Cannot find name '([^']+)'/.exec(message)?.[1];
   if (name) return `The name '${name}' is used here, but nothing with that name exists yet. Create it before this line runs, or check the spelling.`;
@@ -21,7 +16,6 @@ export function explainMarker(message: string): string | undefined {
   return undefined;
 }
 
-/** The catalogue word a hover on `word` means. `log` only counts after `console.`, so Math.log stays plain. */
 export function hoverWord(word: string, before: string): string {
   return word === "log" && /\bconsole\.\s*$/.test(before) ? "console" : word;
 }
@@ -29,8 +23,6 @@ export function hoverWord(word: string, before: string): string {
 const asDocLanguage = (l: string): DocLanguage | undefined => (l === "javascript" || l === "typescript" || l === "python" ? l : undefined);
 const block = (lang: string, code: string) => "```" + lang + "\n" + code + "\n```";
 const COMMAND = "lq.openDoc";
-/** Languages with a help editor mounted, and how many. Completion enrichment only runs while it is above 0. */
-// Kept on globalThis so an HMR reload of this module does not orphan the count.
 const helpActive: Map<string, number> = ((globalThis as { __lqHelpActive?: Map<string, number> }).__lqHelpActive ??= new Map());
 let commandCount = 0;
 
@@ -47,10 +39,6 @@ function docMarkdown(doc: Doc, lang: string): string {
   return [`**${doc.title}**`, doc.snippet, block(lang, doc.syntax), "Example", block(lang, doc.example)].join("\n\n");
 }
 
-/**
- * Registers the hover provider, the completion enrichment and the "Open in Docs" command for one
- * editor. Dispose it when the editor goes away. `editor` limits the providers to that editor's model.
- */
 export function registerEditorHelp(
   monaco: Monaco,
   language: string,
@@ -101,12 +89,6 @@ export function registerEditorHelp(
 type Provider = languages.CompletionItemProvider;
 type EnrichedItem = languages.CompletionItem & { lqDoc?: string };
 
-/**
- * Wraps a language service completion provider so its own suggestions carry the docs entry for words
- * in the catalogue (detail and documentation). Monaco cannot edit another provider's items, and a
- * second provider would list every word twice, so monaco.ts wraps the TS/JS provider as it registers.
- * Nothing is added to what a suggestion inserts.
- */
 export function wrapCompletionProvider(provider: Provider, language: string): Provider {
   const docLang = asDocLanguage(language);
   const merge = (item: EnrichedItem): EnrichedItem => {
@@ -123,7 +105,7 @@ export function wrapCompletionProvider(provider: Provider, language: string): Pr
       const typed = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column });
       let end = typed.length;
       while (end > 0 && /\w/.test(typed[end - 1])) end--;
-      const before = typed.slice(0, end); // text before the word being typed
+      const before = typed.slice(0, end);
       const suggestions = r.suggestions.map((it): languages.CompletionItem => {
         const word = typeof it.label === "string" ? it.label : it.label.label;
         const doc = docForWord(hoverWord(word, before), docLang);
@@ -136,7 +118,7 @@ export function wrapCompletionProvider(provider: Provider, language: string): Pr
     resolveCompletionItem: provider.resolveCompletionItem && (async (item, token) => {
       const resolved = await provider.resolveCompletionItem!(item, token);
       const lqDoc = (item as EnrichedItem).lqDoc;
-      if (!resolved || resolved === item || !lqDoc) return resolved; // same item: already carries the docs
+      if (!resolved || resolved === item || !lqDoc) return resolved;
       const have = resolved.documentation;
       if ((typeof have === "string" ? have : have?.value)?.includes(lqDoc)) return resolved;
       return merge({ ...resolved, lqDoc });

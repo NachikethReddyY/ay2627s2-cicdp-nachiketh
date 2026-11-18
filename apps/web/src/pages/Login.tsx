@@ -12,14 +12,12 @@ type Mode = "in" | "up";
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Checked here rather than by the browser, so the problem shows in the same toast as server errors.
 function checkForm(email: string, password: string): string | null {
   if (!EMAIL_SHAPE.test(email.trim())) return "Enter an email address like name@example.com.";
   if (password.length < 8) return "Use at least 8 characters for your password.";
   return null;
 }
 
-// Turn an auth error into a message the learner can act on. Unknown errors fall back to a per-mode line.
 function describeAuthError(error: { status?: number; message?: string }, action: Mode): string {
   if (error.status === 429) return "Too many attempts. Wait a minute, then try again.";
   if (error.status !== undefined && error.status >= 500) return "The server had a problem. Try again in a moment.";
@@ -35,12 +33,10 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { data } = authClient.useSession();
-  // Mode toggle drag state: thumb offset in px while sliding, and whether the thumb is pressed.
   const [dragX, setDragX] = useState<number | null>(null);
   const [pressing, setPressing] = useState(false);
   const drag = useRef<{ x: number; thumb: number; moved: boolean } | null>(null);
 
-  // The toast clears itself after a few seconds, or when the learner dismisses it.
   useEffect(() => {
     if (!error) return;
     const timer = setTimeout(() => setError(null), 6000);
@@ -57,7 +53,6 @@ export default function Login() {
           ? await authClient.signIn.email({ email, password })
           : await authClient.signUp.email({ email, password, name });
       if (result.error) setError(describeAuthError(result.error, action));
-      // Every successful sign-in lands on home. The guard's ?redirect= is ignored on purpose.
       else location.assign("/");
     } catch {
       setError("Can't reach the server. Check your connection and try again.");
@@ -88,10 +83,8 @@ export default function Login() {
   }
 
   const isIn = mode === "in";
-  // The submit button stays inactive until both fields have a value.
   const ready = email.trim() !== "" && password !== "";
 
-  // Taps go through the buttons' onClick. A drag past a small threshold captures the pointer and commits by release position.
   function onToggleDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     drag.current = { x: e.clientX, thumb: (e.currentTarget.clientWidth - 8) / 2, moved: false };
@@ -247,7 +240,6 @@ export default function Login() {
                   />
                 </div>
 
-                {/* The global .lp-btn:disabled dims the whole button. Keep the label at full contrast while busy, and show the inactive look until the fields are filled. */}
                 <button
                   type="submit"
                   disabled={busy || !ready}

@@ -10,7 +10,6 @@ import { scene3dBlock } from "../blocks/scene3d/index.ts";
 import { stageBlock } from "../blocks/stage/index.ts";
 import { textBlock } from "../blocks/text/index.ts";
 
-/** `path` is dotted from the spec root; dots and backslashes inside segments are escaped. */
 export type Issue = { path: string; message: string };
 
 export type Block<P = unknown> = { type: string; id: string; props: P };
@@ -18,19 +17,13 @@ export type Spec = { v: 1; blocks: Block[] };
 
 export type BlockModule<P = any> = {
   type: string;
-  /** Strict props schema (z.strictObject) with its caps; the core wraps it as { type, id, props }. */
   schema: z.ZodType<P>;
-  /** Semantic checks the schema cannot express. Paths are relative to the block, e.g. "props.items.0". */
   check: (block: Block<P>, ...ctx: any[]) => Issue[];
-  /** One-line plain-text summary of the block, for logs and screen-reader fallbacks. */
   describe: (block: Block<P>) => string;
-  /** Prompt fragment that teaches the model this block. */
   prompt: string;
-  /** Most blocks of this type allowed in one spec. */
   budget: number;
 };
 
-// Registered block modules.
 export const BLOCKS: readonly BlockModule[] = [textBlock, imageBlock, diagramBlock, chartBlock, stageBlock, scene3dBlock, gameBlock];
 
 export type ParseResult = { ok: true; spec: Spec; issues: Issue[] } | { ok: false; issues: Issue[] };
@@ -45,11 +38,6 @@ const zodIssues = (error: z.ZodError, prefix: PropertyKey[] = []): Issue[] =>
       : [{ path: at([...prefix, ...i.path]), message: i.message }],
   );
 
-/**
- * Envelope failures reject the whole spec. Otherwise each block is parsed on its own:
- * valid blocks are kept, bad ones are dropped and reported. `ok` is false when no block survives.
- * `enabled` is the registry to accept; a registered module left out of it is rejected as disabled.
- */
 export function parseSpec(input: unknown, enabled: readonly BlockModule[] = BLOCKS): ParseResult {
   let data = input;
   try {

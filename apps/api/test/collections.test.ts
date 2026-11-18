@@ -15,10 +15,9 @@ async function makeAdmin(email: string) {
   const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
   await db.update(learners).set({ isAdmin: true }).where(eq(learners.userId, u!.id));
 }
-// Signs up an admin, and a plain learner, returning both cookies.
 async function setup() {
   const admin = await signUp(app, "admin@example.com");
-  await q(admin, "collections.list"); // creates the learner row
+  await q(admin, "collections.list");
   await makeAdmin("admin@example.com");
   const learner = await signUp(app, "learner@example.com");
   return { admin, learner };
@@ -46,7 +45,7 @@ test("only admins can change what is featured", async () => {
     assert.equal(res.statusCode, 403, path);
     assert.equal(code(res), "FORBIDDEN");
   }
-  assert.equal(out(await q(learner, "collections.list")).length, 1); // nothing changed
+  assert.equal(out(await q(learner, "collections.list")).length, 1);
   assert.equal((await m(admin, "collections.setFeatured", { slug: "start-here", featured: false })).statusCode, 200);
   assert.deepEqual(out(await q(learner, "collections.list")), []);
   assert.equal(out(await q(admin, "collections.adminList"))[0].featured, false);
@@ -58,7 +57,6 @@ test("admin creates, fills and orders a collection; unfeatured and empty ones st
   assert.equal((await m(admin, "collections.create", { slug: "by-topic", title: "By topic", description: "d" })).statusCode, 200);
   assert.equal(code(await m(admin, "collections.create", { slug: "by-topic", title: "again" })), "CONFLICT");
   assert.equal((await m(admin, "collections.setFeatured", { slug: "by-topic", featured: true })).statusCode, 200);
-  // Featured but empty: hidden.
   assert.deepEqual(out(await q(learner, "collections.list")).map((c: { slug: string }) => c.slug), ["start-here"]);
 
   assert.equal(code(await m(admin, "collections.setPaths", { slug: "by-topic", pathSlugs: ["p-priv"] })), "BAD_REQUEST");
@@ -69,7 +67,6 @@ test("admin creates, fills and orders a collection; unfeatured and empty ones st
   assert.deepEqual(list.map((c: { slug: string }) => c.slug), ["start-here", "by-topic"]);
   assert.deepEqual(list[1].paths.map((p: { slug: string }) => p.slug), ["p-two", "p-one"]);
 
-  // A path made private later disappears from the collection.
   await db.update(paths).set({ visibility: "private" }).where(eq(paths.slug, "p-two"));
   assert.deepEqual(out(await q(learner, "collections.list"))[1].paths.map((p: { slug: string }) => p.slug), ["p-one"]);
 });
@@ -84,7 +81,7 @@ test("only the first 12 featured collections are listed, each with all its paths
     await m(admin, "collections.setPaths", { slug, pathSlugs: i === 12 ? ["p-b"] : ["p-a", "p-b"] });
   }
   const list = out(await q(learner, "collections.list"));
-  assert.equal(list.length, 12); // start-here (position 0) plus c-00..c-10
+  assert.equal(list.length, 12);
   assert.ok(list.every((c: { paths: unknown[] }) => c.paths.length > 0));
   assert.deepEqual(list[1].paths.map((p: { slug: string }) => p.slug), ["p-a", "p-b"]);
 });

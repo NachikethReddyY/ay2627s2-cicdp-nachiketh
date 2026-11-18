@@ -62,7 +62,7 @@ for (const [src, msg, pos] of [
 }
 
 test("nesting", () => {
-  assert.ok(parseExpr("(".repeat(30) + "x" + ")".repeat(30), ["x"]).ok); // parentheses add no depth
+  assert.ok(parseExpr("(".repeat(30) + "x" + ")".repeat(30), ["x"]).ok);
   assert.ok(parseExpr("sin(".repeat(8) + "x" + ")".repeat(8), ["x"]).ok);
 });
 
@@ -76,7 +76,6 @@ test("fuzz: parse never throws and accepted input always evaluates", () => {
     }),
     { numRuns: 2000 },
   );
-  // grammar-shaped strings, so the accept path is exercised
   const piece = fc.constantFrom("x", "a", "1", "2.5", "+", "-", "*", "/", "^", "(", ")", ",", "sin(", "max(", "min(", "log(", " ");
   let accepted = 0;
   fc.assert(

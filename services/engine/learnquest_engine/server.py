@@ -100,7 +100,7 @@ class CapBody:
         while True:
             message = await receive()
             if message["type"] != "http.request":
-                break  # client went away
+                break
             size += len(message.get("body", b""))
             if size > MAX_BODY_BYTES:
                 await too_large(scope, receive, send)
@@ -156,7 +156,6 @@ def visual_route(body: VisualRequest) -> JSONResponse:
         len(found),
     )
     if found:
-        # One repair call with the exact problems, then give up with a clear 422.
         log.warning("visual: first pass issues: %s", found)
         repaired = visual.generate_visual(body.prompt, found, doc)
         t3 = time.monotonic()
@@ -180,7 +179,6 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 
 @app.post("/v1/guide/chat", dependencies=[Depends(require_token)])
 def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
-    # exclude_none keeps the model input unchanged when no lint finding is sent.
     result = guide.reply(body.model_dump(exclude_none=True))
     return _body("guide", result)
 
@@ -200,7 +198,6 @@ def next_route(body: learner.NextRequest) -> learner.NextResponse:
 
 @app.exception_handler(visual.CheckerUnavailable)
 def checker_unavailable(_: Request, exc: visual.CheckerUnavailable) -> JSONResponse:
-    # Fail closed: a document the checker never saw must not be served as valid.
     log.error("visual checker unavailable: %s", exc)
     return JSONResponse(
         status_code=503,
@@ -215,14 +212,12 @@ def generation_error(_: Request, exc: GenerationError) -> JSONResponse:
 
 @app.exception_handler(AuthenticationError)
 def provider_auth(_: Request, exc: AuthenticationError) -> JSONResponse:
-    # Log the cause for the operator; the client only learns that the upstream failed.
     log.error("LLM provider rejected the credentials; check LLM_API_KEY")
     return JSONResponse(status_code=502, content={"error": "upstream"})
 
 
 @app.exception_handler(Timeout)
 def upstream_timeout(_: Request, exc: Timeout) -> JSONResponse:
-    # 504, not 502: the API maps it to a learner-facing timeout and does not charge the daily path.
     log.error("LLM upstream failure: %s", type(exc).__name__)
     return JSONResponse(status_code=504, content={"error": "timeout"})
 

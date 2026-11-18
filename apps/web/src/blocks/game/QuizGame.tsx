@@ -6,7 +6,6 @@ import type { Outcome } from "./model.ts";
 
 export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: PublicQuiz; api: GameApi }) {
   const maxLives = p.shell.lives;
-  // The choices the server has already marked right; the next question is always the one after them.
   const [confirmed, setConfirmed] = useState<number[]>([]);
   const [lives, setLives] = useState(maxLives);
   const [outcome, setOutcome] = useState<Outcome>("play");
@@ -52,7 +51,7 @@ export default function QuizGame({ p, kind, api }: { p: PublicGameProps; kind: P
     setLive("Back at the first question.");
   };
 
-  const question = kind.questions[index]!;
+  const question = kind.questions[index];
   return (
     <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <div role="group" aria-label={`Question ${index + 1} of ${kind.questions.length}`} className="flex min-w-0 flex-col gap-3">

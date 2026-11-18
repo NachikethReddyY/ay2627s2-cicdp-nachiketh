@@ -6,7 +6,6 @@ const MAX_MD = 2000;
 
 type Props = { md: string };
 
-// Tags and comments only; a bare "<" or "a < b" is fine because the renderer shows everything as text anyway.
 const HTML = /<\/?[a-z!]/i;
 
 export const textBlock: BlockModule<Props> = {

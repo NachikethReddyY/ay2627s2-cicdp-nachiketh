@@ -28,7 +28,9 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 | `services/sandbox` | Code execution sandbox (Daytona backend) |
 | `packages/player-core` | Shared timeline and replay logic |
 | `packages/ui-catalog` | Shared UI blocks, including diagram and scene blocks |
-| `docs/` | Plans, ADRs, diagrams |
+| `tools/` | Developer and agent tooling (repo index and MCP server), not shipped |
+| `scripts/` | Repo checks, merge gate, review pipeline, metrics, with tests |
+| `docs/` | Plans, ADRs, diagrams, design references. Agent guides in `docs/agents/` |
 | `DESIGN.md` | Visual design system (Geist, glass, light and dark, Pip the sprout mascot) |
 
 ## Commands
@@ -54,7 +56,42 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
 - **Data.** Do not add learner or child data beyond account email, attempts and mastery.
-- **Ask first** before changing product scope, audience, the learner model, or anything that touches auth, billing or deployment.
+- **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment are allowed, but only through the sensitive merge gate (see Merging).
+
+## Foundations first
+
+Fix the foundations before building on top. If the inner loop (lint, types, tests, boundaries) lets slop through, automating it only produces more slop faster. When an agent makes a mistake, the fix goes in this order:
+
+1. Change the code or API so the mistake cannot be written.
+2. Add a deterministic check: a lint rule, a boundary check, a test, a property test.
+3. Only then, and only if judgement is needed, write it in a skill or in this file.
+
+Never add a prose rule for something a check can catch. Agents copy the code they see, so clean up an anti-pattern the same time you ban it.
+
+## Guardrails in code
+
+Every correction becomes a check. These run in CI and in `pnpm agent:verify`.
+
+- **Type-aware lint.** `pnpm lint:types` runs oxlint with type-aware rules (oxlint-tsgolint, built on the TypeScript 7 compiler, so it works where typescript-eslint does not). Errors fail. Warnings are a ratchet capped by `--max-warnings` in the root `package.json`; lower the number when you fix some, never raise it.
+- **No comments.** `pnpm lint:comments` (also run by `test:scripts`) fails on any comment in TypeScript or JavaScript. Make the code say it: a better name, a smaller function, a test that states the rule. Directives are allowed only with a reason after `--`: `eslint-disable`, `oxlint-disable`, `@ts-expect-error`. `node scripts/check-comments.ts --fix` strips banned comments. Comments rot, agents use them to justify shortcuts, and nothing enforces them.
+- **No new `useEffect` or timers.** `apps/web/eslint.config.js` bans new `useEffect` and imperative timers in product code and limits web imports from the API to `import type { AppRouter } from "@learnquest/api/router"`. Files that already use a pattern sit in `apps/web/eslint.allowlists.js`, which only shrinks. A test fails if a list grows or holds a stale entry.
+- **Boundaries.** `scripts/check-boundaries.ts` keeps `packages/*` from importing apps, keeps the API from importing the web app, and rejects `@ts-ignore`, `@ts-nocheck` and bare `eslint-disable`. It also forbids disabling `no-restricted-syntax` or `no-restricted-imports`.
+- **Python.** Ruff in `services/engine` checks for stray `print` (`T20`), security smells (`S`) and bare `noqa` or `type: ignore` (`PGH003`, `PGH004`), and mypy runs `--strict`. `#` comments are banned too: `services/engine/scripts/check_comments.py` (run by pytest) allows only coded directives such as `# noqa: S101` and `# type: ignore[code]`, and `--fix` strips the rest. Docstrings are not comments and stay.
+- **Property tests.** Invariants that must hold for any input (predict before reveal, mastery bounds, seeking) are property tests, not examples. See `*.property.test.ts`.
+- **Revert rate.** `pnpm revert-rate` reports the share of changes on main that were reverted. Watch it; if it rises, tighten the checks.
+- When you fix the same kind of mistake twice, add the check in the same PR. Make the error message say how to fix the cause.
+
+## Verification loop
+
+To see or test the running app, use the validator: `pnpm validator:up` starts Postgres-backed API, web and a fake LLM and signs in a test learner, `pnpm validator browse ...` drives it with agent-browser, `pnpm validator:down` stops it. See `docs/agents/validator.md`. It needs no Docker and no model key.
+
+Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware lint, boundaries and comment checks, the script tests, `turbo run lint test build` against the test Postgres, and the engine checks. Say what ran and what passed. A change that touches a screen also needs the running app: see `docs/feature-map.md` for the names and `e2e/` for the Playwright suite.
+
+## Merging
+
+Agents merge their own PRs. The gate is `pnpm agent:merge <pr>` (`scripts/merge-gate.ts`): the PR must be open and not a draft, CI green on the head commit, no conflicts, no requested changes, no unresolved review threads, and `agent:verify` must pass locally. It then squash-merges at the exact head commit. A merge to main deploys to production after CI, so the gate is the only door. It also stops agents from merging while the 30-day revert rate is above 5%; a human merges until it falls.
+
+PRs that touch sensitive paths (see `SENSITIVE` in `scripts/merge-gate.ts`: auth and tRPC guards, access and env config, the sandbox and practice code, answer and hint routers, migrations, workflows and `.github`, infra, engine prompts, the lint and comment guardrails, the merge, check and review tooling, agent tooling, and the repo rules in AGENTS.md and REVIEW.md) need `--review-result <file>`: the `--json` output of `pnpm review` on the exact PR head commit, with status `clean`. Use a reviewer on a different model than the author (`--author`). The gate also requires every CI job (`lint`, `unit`, `engine`, `deploy-scripts`, `e2e`) to have succeeded, GitHub to report the PR as mergeable, and the local checkout to be the PR head with a clean tree, because `agent:verify` runs on it. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 
@@ -62,6 +99,8 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - `docs/idea.md`: pitch and research.
 - `DESIGN.md`: visual design system.
 - `README.md`: local setup and engine configuration.
+- `docs/agents/README.md`: how agents work here, the verification loop, merge and review.
+- `docs/feature-map.md`: learner-facing names for screens and features, with routes and code.
 
 ## Open work after the pivot
 

@@ -1,11 +1,5 @@
-// Lines that already have Markdown structure keep their own breaks.
 const STRUCTURE = /^\s*(?:[-*+]\s|\d+[.)]\s|#|>|\|)/;
 
-/**
- * Lesson text is written with single line breaks between sentences, which Markdown joins into one run of text.
- * Between plain prose lines, make a paragraph break; keep list, heading and quote lines on their own lines.
- * Fenced code blocks are left exactly as written.
- */
 export function keepLineBreaks(markdown: string): string {
   return markdown
     .split(/(```[\s\S]*?```)/g)

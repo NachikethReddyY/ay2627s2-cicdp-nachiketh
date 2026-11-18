@@ -24,9 +24,7 @@ test("streak counts back from today, or yesterday while today is open", () => {
   m.set("2026-10-29", 3);
   assert.equal(streak(m, "2026-10-29"), 3);
   assert.equal(streak(m, "2026-10-31"), 0);
-  // Crosses a month boundary.
   assert.equal(streak(new Map([["2026-10-31", 3], ["2026-11-01", 3]]), "2026-11-01"), 2);
-  // Calendar week: Monday first, so 2026-10-29 (a Thursday) starts the week on 2026-10-26.
   assert.deepEqual(week(m, "2026-10-29").map((d) => d.day), ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
   assert.deepEqual(week(m, "2026-10-29").map((d) => d.state), ["past", "past", "past", "today", "future", "future", "future"]);
 });
@@ -79,7 +77,6 @@ test("enrolled learner gets continue, progress and XP", async () => {
 test("game completion grants XP once and leaves lesson mastery unchanged", async () => {
   const cookie = await signUp(app);
   const before = (await db.select().from(stepProgress)).length;
-  // games.check only records a win for a real game block of a game-practice lesson, so seed one.
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
   const [game] = await db.insert(lessons).values({ slug: "game-xp", title: "Game", worldId: world!.id, sourceKind: "authored", kind: "game-practice", status: "published" }).returning();
   await db.insert(lessonVersions).values({ lessonId: game!.id, version: 1, content: { kind: "game-practice", intro: "Play.", doc: { v: 1, blocks: [{ type: "game", id: "quiz-one", props: { title: "Quiz", goalText: "Answer.", alt: "A one question quiz.", hints: [], shell: {}, kind: { kind: "quiz", questions: [{ prompt: "2 + 2?", options: ["3", "4"], answer: 1 }] } } }] } } });
@@ -203,7 +200,6 @@ test("me.update: validates timezone and goal, empty body is a no-op", async () =
   const cookie = await signUp(app, "a@example.com");
   assert.equal((await m(cookie, "me.update", { timezone: "Mars/Olympus" })).statusCode, 400);
   assert.equal((await m(cookie, "me.update", { dailyGoalXp: 25 })).statusCode, 400);
-  // Intl accepts offsets; Postgres reads them with the opposite sign, so they are rejected.
   for (const tz of ["+05:00", "-03:30", "UTC+5", "Mars/Olympus", ""]) {
     assert.equal((await m(cookie, "me.update", { timezone: tz })).statusCode, 400, tz);
   }
@@ -213,7 +209,6 @@ test("me.update: validates timezone and goal, empty body is a no-op", async () =
   const [row] = await db.select().from(learners);
   assert.deepEqual({ timezone: row!.timezone, goal: row!.dailyGoalXp }, { timezone: "Asia/Kolkata", goal: 100 });
   assert.equal(out(await get(cookie)).stats.dailyGoalXp, 100);
-  // home.get reports the stored zone so another device's browser can tell its own zone differs.
   assert.equal(out(await get(cookie)).stats.timezone, "Asia/Kolkata");
 
   assert.equal((await m(cookie, "me.update", null)).statusCode, 200);
@@ -238,7 +233,6 @@ test("paths never list another user's private course", async () => {
   assert.equal(list[0].courseCount, 1);
   const detail = out(await q(cookie, "paths.get", { slug: "js-foundations" }));
   assert.equal(detail.courses.length, 1);
-  // The owner still sees it.
   const mine = out(await q(other, "paths.get", { slug: "js-foundations" }));
   assert.equal(mine.courses.length, 2);
 });
@@ -252,7 +246,6 @@ test("paths.publish fails closed when moderation is unavailable or flags the pat
   const [world] = await db.insert(worlds).values({ slug: "pub-course", title: "Pub Course", visibility: "private", ownerId: id, origin: "ai" }).returning();
   await db.insert(pathCourses).values({ pathId: await pathId("pub-me"), worldId: world!.id, position: 0 });
   try {
-    // Provider down (the same error the real provider throws without MODERATION_API_KEY).
     setModerationClient(async () => {
       throw new Error("Moderation is not configured");
     });

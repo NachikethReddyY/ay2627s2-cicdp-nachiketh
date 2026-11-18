@@ -1,0 +1,83 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "oxc",
+    "import",
+    "promise"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/*.gen.ts",
+    "**/*.generated.ts",
+    "apps/api/drizzle/**",
+    ".agents/**",
+    "spikes/**"
+  ],
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-base-to-string": "error",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": true,
+        "allowDefaultCaseForExhaustiveSwitch": true
+      }
+    ],
+    "typescript/only-throw-error": "off",
+    "typescript/prefer-promise-reject-errors": "off",
+    "typescript/unbound-method": "warn",
+    "typescript/ban-ts-comment": "error",
+    "no-console": "off",
+    "no-debugger": "error",
+    "eqeqeq": [
+      "error",
+      "always",
+      {
+        "null": "ignore"
+      }
+    ],
+    "no-var": "error",
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "promise/no-callback-in-promise": "off",
+    "import/default": "off",
+    "eslint/no-control-regex": "off",
+    "eslint/no-useless-escape": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/require-array-sort-compare": "off",
+    "typescript/no-implied-eval": "off",
+    "eslint/no-unused-expressions": "off",
+    "typescript/no-misused-promises": "off"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "apps/api/test/**",
+        "e2e/**"
+      ],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/unbound-method": "off",
+        "typescript/no-unnecessary-type-assertion": "off",
+        "eslint/no-unused-expressions": "off",
+        "typescript/no-misused-promises": "off",
+        "typescript/switch-exhaustiveness-check": "off",
+        "typescript/no-base-to-string": "off"
+      }
+    }
+  ]
+}

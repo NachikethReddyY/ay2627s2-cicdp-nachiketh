@@ -1,6 +1,5 @@
 import type { StepInput } from "@learnquest/player-core";
 
-// Synthetic lesson (ours, MIT). Each step's beforeFiles is the previous step's result.
 const CART = "src/cart.js";
 const TEST = "src/cart.test.js";
 

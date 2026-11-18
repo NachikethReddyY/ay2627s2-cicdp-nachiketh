@@ -17,7 +17,7 @@ function Dir({ path, refreshKey, depth }: { path: string; refreshKey: number; de
 
   const seq = useRef(0);
   const load = useCallback(() => {
-    const mine = ++seq.current; // a slower, older response must not overwrite a newer one
+    const mine = ++seq.current;
     setError(null);
     listFiles(path || undefined).then(
       (l) => { if (mine === seq.current) setListing(l); },

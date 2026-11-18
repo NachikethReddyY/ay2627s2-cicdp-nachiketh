@@ -50,7 +50,6 @@ export default function Course() {
     const done = (l: CourseData["lessons"][number]) => l.total > 0 && l.done >= l.total;
     const current = data.lessons.find((l) => !done(l));
     const levels = [...new Set(data.lessons.map((l) => l.level))].sort((a, b) => a - b);
-    // progress bar follows the current lesson's level, or the last level once everything is done
     const lvNow = current?.level ?? levels[levels.length - 1];
     const inLv = data.lessons.filter((l) => l.level === lvNow);
     const doneInLv = inLv.filter(done).length;

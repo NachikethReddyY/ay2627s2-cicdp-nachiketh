@@ -3,15 +3,14 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 export type WinId = "instructions" | "code";
 export type WinState = "open" | "minimized" | "closed";
 export type Rect = { x: number; y: number; w: number; h: number };
-// zoom: the size while zoomed, kept apart so un-zooming restores the normal rect and re-zooming restores this one.
 export type Win = Rect & { state: WinState; z: number; zoom?: Rect };
 
 const MIN_W = 320;
 const MIN_H = 240;
 const GAP = 16;
-const DOCK = 88; // bottom space kept free for the dock
+const DOCK = 88;
 type Size = { w: number; h: number };
-type Desk = Size & { ox: number; oy: number; vw: number; vh: number }; // desktop size, its viewport origin, viewport size
+type Desk = Size & { ox: number; oy: number; vw: number; vh: number };
 export type Fill = { id: WinId; kind: "zoom" | "full" } | null;
 
 const bounds = (s: Size): Size => ({ w: s.w, h: Math.max(0, s.h - DOCK) });
@@ -19,7 +18,6 @@ const bounds = (s: Size): Size => ({ w: s.w, h: Math.max(0, s.h - DOCK) });
 type Dir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 export type Kind = "move" | Dir;
 
-/** Resizes from the edges or corners named in `dir`; the opposite side stays put and the size stops at the minimum. */
 function resizeRect(s: Rect, dx: number, dy: number, dir: Dir, b: Size): Rect {
   let { x, y, w, h } = s;
   if (dir.includes("e")) w = s.w + dx;
@@ -35,7 +33,6 @@ function resizeRect(s: Rect, dx: number, dy: number, dir: Dir, b: Size): Rect {
   return clampRect({ x, y, w, h }, b, true);
 }
 
-/** Keeps a rect inside the bounds; when resizing, the size gives way and the position stays. */
 function clampRect(r: Rect, b: Size, resize = false): Rect {
   const w = Math.min(Math.max(resize ? Math.min(r.w, b.w - r.x) : r.w, MIN_W), Math.max(MIN_W, b.w));
   const h = Math.min(Math.max(resize ? Math.min(r.h, b.h - r.y) : r.h, MIN_H), Math.max(MIN_H, b.h));
@@ -53,15 +50,13 @@ function layout(s: Size, task: boolean): Record<WinId, Rect> {
   };
 }
 
-/** Window manager state: plain React state, positions in px inside the desktop element. */
 export function useWindows(desktop: RefObject<HTMLElement | null>, task: boolean, enabled: boolean) {
   const [size, setSize] = useState<Desk>({ w: 0, h: 0, ox: 0, oy: 0, vw: 0, vh: 0 });
-  const [wins, setWins] = useState<Partial<Record<WinId, Win>>>({}); // only windows the user touched; the rest follow the default layout
-  // Zoom/full screen are display-only: the stored rect is untouched, so leaving restores it exactly.
+  const [wins, setWins] = useState<Partial<Record<WinId, Win>>>({});
   const [fill, setFill] = useState<Fill>(null);
   const [dragging, setDragging] = useState(false);
   const zTop = useRef(10);
-  const dragEnd = useRef<(() => void) | null>(null); // detaches the window listeners of a drag in progress
+  const dragEnd = useRef<(() => void) | null>(null);
   useEffect(() => () => dragEnd.current?.(), []);
 
   useEffect(() => {
@@ -86,19 +81,16 @@ export function useWindows(desktop: RefObject<HTMLElement | null>, task: boolean
   const patch = (id: WinId, fn: (w: Win) => Partial<Win>) => setWins((o) => ({ ...o, [id]: { ...(o[id] ?? base(id)), ...fn(o[id] ?? base(id)) } }));
 
   const front = (id: WinId) => patch(id, () => ({ z: ++zTop.current }));
-  /** Moves or resizes from `from`; while zoomed the change goes to the zoom rect, otherwise to the normal rect. */
   const change = (id: WinId, kind: Kind, dx: number, dy: number, b: Size, from: Rect, zoomed: boolean) =>
     patch(id, () => {
       const next = kind === "move" ? clampRect({ ...from, x: from.x + dx, y: from.y + dy }, b) : resizeRect(from, dx, dy, kind, b);
       return zoomed ? { zoom: next } : next;
     });
-  /** The zoomed rect: the last size the user gave it while zoomed, or the whole desktop. */
   const zoomOf = (id: WinId): Rect => {
     const b = bounds(size);
     return wins[id]?.zoom ?? { x: GAP, y: GAP, w: b.w - 2 * GAP, h: b.h - 2 * GAP };
   };
 
-  /** Rect to draw: a zoomed window uses its zoom rect, a full-screen one the whole viewport. */
   const rect = (id: WinId): Win | undefined => {
     if (!size.w) return undefined;
     const w = get(id);
@@ -114,7 +106,7 @@ export function useWindows(desktop: RefObject<HTMLElement | null>, task: boolean
   };
 
   return {
-    fill: enabled ? fill : null, // the stacked phone layout has no full screen; the state returns when the window widens again
+    fill: enabled ? fill : null,
     dragging,
     frontId,
     state: (id: WinId) => get(id).state,
@@ -123,14 +115,13 @@ export function useWindows(desktop: RefObject<HTMLElement | null>, task: boolean
     open: (id: WinId) => patch(id, () => ({ state: "open", z: ++zTop.current })),
     setState: (id: WinId, state: WinState) => {
       if (fill?.kind === "full" && fill.id === id) {
-        if (state === "minimized") return; // minimize is disabled while full screen
+        if (state === "minimized") return;
         setFill(null);
       }
       patch(id, () => ({ state }));
     },
     toggleZoom: (id: WinId) => toggleFill(id, "zoom"),
     toggleFull: (id: WinId) => toggleFill(id, "full"),
-    /** Pointer drag (move or resize). Window-level listeners, so it tracks outside the element. */
     drag: (id: WinId, kind: Kind, e: ReactPointerEvent) => {
       if ((fill?.kind === "full" && fill.id === id) || e.button !== 0) return;
       e.preventDefault();

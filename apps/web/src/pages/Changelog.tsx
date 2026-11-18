@@ -1,9 +1,3 @@
-// Adapted from the Magic UI changelog template (https://magicui.design/docs/templates/changelog,
-// source: https://github.com/magicuidesign/changelog-template), MIT licence per its README,
-// copyright Magic UI contributors. The template's layout is kept: a sticky date column, a vertical line
-// with a dot per entry, the title and a collapsible list of details.
-// The entries are GitHub releases, written to changelog-releases.generated.ts by scripts/sync-releases.mjs.
-// Styled by pages/changelog.css (`.cl`) on the landing page's tokens (`.lp`), so it matches the home page.
 import Markdown from "react-markdown";
 import { Disclosure } from "../components/Disclosure";
 import {
@@ -22,7 +16,6 @@ const RELEASES_URL = "https://github.com/NachikethReddyY/ay2627s2-cicdp-nachiket
 const formatDate = (iso: string) =>
   new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(iso));
 
-/** /changelog: the GitHub release notes, newest first. */
 export default function Changelog() {
   return (
     <div className="lp cl">

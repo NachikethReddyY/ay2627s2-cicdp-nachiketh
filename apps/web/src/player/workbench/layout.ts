@@ -28,7 +28,6 @@ export type LayoutAction =
   | { type: "utilTab"; tab: Layout["utilTab"] }
   | { type: "theme"; theme: Theme };
 
-// "system" follows the OS colour scheme; the other two ignore it.
 export function resolveTheme(t: Theme, prefersDark: boolean): "light" | "dark" {
   return t === "system" ? (prefersDark ? "dark" : "light") : t;
 }
@@ -55,28 +54,22 @@ function maxLeftWidth(container: number): number {
   return Number.isFinite(container) ? Math.max(LEFT_MIN, Math.floor(container * LEFT_MAX_FRACTION)) : Number.MAX_SAFE_INTEGER;
 }
 
-/** Adjust reducer space for the panel width that rendering clamps but does not persist. */
 export function resizeContainerForPanel(container: number, storedWidth: number, visibleWidth: number): number {
   return container + storedWidth - visibleWidth;
 }
 
-// Largest navigator width that still leaves the editor EDITOR_MIN px.
 function leftLimit(s: Layout, container: number): number {
   if (!Number.isFinite(container)) return Number.MAX_SAFE_INTEGER;
   const room = container - (s.showUtil ? s.utilW : 0) - EDITOR_MIN;
   return clamp(room, LEFT_MIN, maxLeftWidth(container));
 }
 
-// Largest utility width that still leaves the editor EDITOR_MIN px.
 function utilLimit(s: Layout, container: number): number {
   if (!Number.isFinite(container)) return UTIL_MAX;
   const room = container - (s.showLeft ? s.leftW : 0) - EDITOR_MIN;
   return clamp(room, UTIL_MIN, UTIL_MAX);
 }
 
-// Put both widths inside their design ranges, then, if the visible panels leave
-// the editor less than EDITOR_MIN px, shrink the utility area first and the
-// navigator second. If even the minimums do not fit, the minimums are returned.
 export function clampLayout(s: Layout, container: number): Layout {
   let leftW = s.showLeft ? clamp(s.leftW, LEFT_MIN, maxLeftWidth(container)) : clamp(s.leftW, LEFT_MIN, Number.MAX_SAFE_INTEGER);
   let utilW = clamp(s.utilW, UTIL_MIN, UTIL_MAX);
@@ -127,14 +120,10 @@ function readRaw(store: Pick<Storage, "getItem"> | undefined, key: string): stri
   }
 }
 
-// The theme lives under its own key (lq.theme) so the plan's storage contract holds.
-// Anything other than a known theme string falls back to "system".
 function parseTheme(raw: string | null): Theme {
   return THEMES.includes(raw as Theme) ? (raw as Theme) : DEFAULT_LAYOUT.theme;
 }
 
-// Each field is checked on its own: a bad field falls back to its default and
-// the valid fields are kept. The theme comes from lq.theme, the rest from lq.workbench.
 export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout {
   const theme = parseTheme(readRaw(store, THEME_KEY));
   const raw = readRaw(store, LAYOUT_KEY);
@@ -148,8 +137,6 @@ export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ...DEFAULT_LAYOUT, theme };
   const p = parsed as Record<string, unknown>;
   return {
-      // 300 px was the old navigator minimum; treat that value as the old
-      // default so existing workbench layouts pick up the slimmer navigator.
       leftW: p.leftW === 300 ? DEFAULT_LAYOUT.leftW : inRange(p.leftW, LEFT_MIN, Number.MAX_SAFE_INTEGER) ? p.leftW : DEFAULT_LAYOUT.leftW,
     utilW: inRange(p.utilW, UTIL_MIN, UTIL_MAX) ? p.utilW : DEFAULT_LAYOUT.utilW,
     showLeft: typeof p.showLeft === "boolean" ? p.showLeft : DEFAULT_LAYOUT.showLeft,
@@ -160,19 +147,15 @@ export function loadLayout(store: Pick<Storage, "getItem"> | undefined): Layout 
   };
 }
 
-// Writes theme to lq.theme and the other fields to lq.workbench. Each write is
-// guarded on its own, so a failing write does not stop the other one.
 export function saveLayout(store: Pick<Storage, "setItem"> | undefined, s: Layout): void {
   const { theme, ...rest } = s;
   try {
     store?.setItem(LAYOUT_KEY, JSON.stringify(rest));
   } catch {
-    // Storage can be full or blocked; the layout still works without persistence.
   }
   try {
     store?.setItem(THEME_KEY, theme);
   } catch {
-    // As above.
   }
 }
 
@@ -184,8 +167,6 @@ function safeLocalStorage(): Storage | undefined {
   }
 }
 
-// Toggles and resizes do not re-clamp: consumers must call clampLayout at render
-// with the current container width.
 export function useLayout(): [Layout, Dispatch<LayoutAction>] {
   const [layout, dispatch] = useReducer(layoutReducer, undefined, () => loadLayout(safeLocalStorage()));
 

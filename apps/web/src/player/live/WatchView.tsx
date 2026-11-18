@@ -8,9 +8,8 @@ export default function WatchView({ title, part, next }: { title: string; part: 
     try {
       return buildTimeline([{ beforeFiles: part.beforeFiles, hunks: part.hunks }]);
     } catch {
-      return buildTimeline([{ beforeFiles: part.beforeFiles, hunks: [] }]); // a bad hunk must not blank the player
+      return buildTimeline([{ beforeFiles: part.beforeFiles, hunks: [] }]);
     }
   }, [part]);
-  // A codecast is video only: no instructions window; Next sits under the player.
   return <Player title={title} stepTitles={[title]} timeline={timeline} live={{ idx: 0, panel: null, footer: next, playKey: part }} />;
 }

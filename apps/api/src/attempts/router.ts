@@ -15,7 +15,6 @@ const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
 const State = z.enum(["predicting", "hinting", "revealed", "skipped"]);
 const Hint = z.object({ rung: z.number(), text: z.string(), eliminate: z.number().optional() });
 const Body = z.discriminatedUnion("kind", [
-  // Upper bound is checked against the step's real option count in `attempt`.
   z.object({ kind: z.literal("mcq"), choice: z.number().int().min(0).max(3) }),
   z.object({ kind: z.literal("cloze"), text: z.string().max(200) }),
 ]);
@@ -23,7 +22,6 @@ const Body = z.discriminatedUnion("kind", [
 const conflict = (message: string) => new TRPCError({ code: "CONFLICT", message });
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Step not found" });
 
-// Loads the published step or throws NOT_FOUND.
 async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
   if (!step) throw notFound();
@@ -42,7 +40,6 @@ async function loadStep(id: string, learnerId: string) {
       and(
         eq(steps.id, id),
         eq(lessons.status, "published"),
-        // Only the lesson's current version is playable; steps of superseded versions are gone.
         eq(lessons.currentVersionId, steps.lessonVersionId),
         visibleWorld(learners.userId, worlds),
       ),
@@ -51,12 +48,10 @@ async function loadStep(id: string, learnerId: string) {
 }
 type Step = NonNullable<Awaited<ReturnType<typeof loadStep>>>;
 
-// Concept names only (public labels), resolved like mastery does: the step's own list, else its lesson's.
 const missedOf = (step: Step) => resolveConcepts(step.secret.concepts, step.lessonConcepts, `step ${step.id}`);
 
 const hintAt = (step: Step, rung: number) => {
-  const h = step.secret.hints[rung - 1]!;
-  // Eliminate is only meaningful on MCQ rung 1.
+  const h = step.secret.hints[rung - 1];
   const eliminate = step.pub.kind === "mcq" && rung === 1 ? h.eliminate : undefined;
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
@@ -69,7 +64,6 @@ async function readProgress(learnerId: string, stepId: string): Promise<Progress
   return p ?? fresh();
 }
 
-// Serialised per (learner, step) by the row lock, so parallel identical requests can't both be "first".
 function mutate(
   learnerId: string,
   step: Step,
@@ -81,7 +75,7 @@ function mutate(
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
-    const r = next(p!, action, { hintCount: step.secret.hints.length });
+    const r = next(p, action, { hintCount: step.secret.hints.length });
     if ("conflict" in r) return r;
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
@@ -109,15 +103,13 @@ function mutate(
           missedConcepts: o.type === "skip" || o.correct ? [] : missedOf(step),
         })
         .returning({ id: attempts.id });
-      attemptId = row!.id;
+      attemptId = row.id;
       observedFirst = n === 0;
     }
     return { ...r, attemptId, observed: attemptId !== undefined && observedFirst };
   });
 }
 
-// Applies the learner's pending observations. Mastery is secondary: a failure never fails the attempt,
-// and the next read of me.mastery / me.next catches up.
 async function applyMastery(learnerId: string, out: { observed: boolean }) {
   if (!out.observed) return;
   try {
@@ -195,7 +187,6 @@ export const stepsRouter = router({
         attemptId: out.attemptId!,
         correct,
         feedback: correct ? "Correct!" : "Not quite.",
-        // Same list the attempt row stores.
         missedConcepts: correct ? [] : missedOf(step),
         hintsUsed: out.progress.rungsTaken,
         state: out.progress.state,

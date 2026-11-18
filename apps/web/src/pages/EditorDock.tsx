@@ -6,16 +6,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 export type EditorDockItem = {
   id: string;
   label: string;
-  /** The app's full squircle artwork, which fills the tile. */
   art: ReactNode;
   pressed?: boolean;
   disabled?: boolean;
-  /** Draw a divider before this item, to split the dock into groups. */
   dividerBefore?: boolean;
   onSelect(): void;
 };
 
-/** macOS-style dock of app tiles at the bottom of the test editor. Hidden on narrow screens. */
 export default function EditorDock({ items }: { items: EditorDockItem[] }) {
   return (
     <TooltipProvider>
@@ -27,11 +24,9 @@ export default function EditorDock({ items }: { items: EditorDockItem[] }) {
         iconDistance={100}
         className="h-[56px] gap-1.5 rounded-[30px] border-transparent bg-white/20 px-2.5 py-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,.4),0_12px_32px_rgba(0,0,0,.16)] backdrop-blur-3xl"
       >
-        {/* DockIcon must stay a direct child of Dock, with no Fragment in between: Dock only sizes and magnifies direct DockIcon children. */}
         {items.flatMap((item) => [
           ...(item.dividerBefore ? [<span key={`${item.id}-divider`} aria-hidden="true" className="mx-1.5 h-10 w-px self-center bg-[var(--line)]" />] : []),
           <DockIcon key={item.id} className="relative rounded-[22%]">
-                {/* Absolute, so the tile fills the icon's box whatever its magnified size. */}
                 <Tooltip>
                   <TooltipTrigger
                     render={

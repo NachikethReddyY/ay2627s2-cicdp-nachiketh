@@ -1,17 +1,16 @@
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Columns2, Eye, Maximize2, Minimize2, Pencil, Plus, X } from "lucide-react";
+import { Columns2, Eye, Minimize2, Pencil, Plus, X } from "lucide-react";
 
-// Notes survive a reload in this browser only. Storage can be blocked (private windows, cleared site data), so the notepad still works without it.
 const STORAGE_KEY = "lq.notepad.notes";
 const LEGACY_KEY = "lq.notepad.text";
 const MIN_W = 220;
 const MIN_H = 160;
 const DEFAULT_W = 288;
 const DEFAULT_H = 288;
-const SPLIT_W = 600; // wide enough for the editor and the rendered page side by side
-const EDGE = 8; // keeps the header reachable when the window is dragged off the edge
+const SPLIT_W = 600;
+const EDGE = 8;
 
 type Note = { id: string; text: string };
 type View = "edit" | "split" | "preview";
@@ -25,7 +24,6 @@ function blankNote(): Note {
   return { id: newId(), text: "" };
 }
 
-// Reads the saved tabs, or migrates the single note from before tabs existed. Bad data falls back to one blank tab.
 function readStore(): Store {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -40,7 +38,6 @@ function readStore(): Store {
       return { notes: [note], activeId: note.id };
     }
   } catch {
-    // Fall through to a blank note.
   }
   const note = blankNote();
   return { notes: [note], activeId: note.id };
@@ -50,11 +47,9 @@ function saveStore(store: Store) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
-    // The notes stay in memory for this session.
   }
 }
 
-// A tab is named after the first line of its text, so the tab strip needs no rename step.
 function tabTitle(note: Note, index: number) {
   const first = note.text.split("\n").map((line) => line.replace(/^[#>\-*\s`]+/, "").trim()).find(Boolean);
   if (!first) return `Note ${index + 1}`;
@@ -63,22 +58,10 @@ function tabTitle(note: Note, index: number) {
 
 type Box = { left: number; top: number; width: number; height: number };
 
-/**
- * A floating scratch pad that looks like the browser preview window: same chrome, dots and tokens.
- * It must render inside the workbench (.wb) so the theme variables apply. Drag the title bar to move it,
- * drag the corner to resize, and use the dots to minimize, maximize or close. Several notes live in tabs,
- * and each one can be shown as Markdown, side by side with the source. Text is kept per browser.
- */
-//
-// NOTE FOR FUTURE EDITS: the lesson's instructions are shown in this window as the pinned "Instructions" tab.
-// Pass them in through the `instructions` prop (Markdown, the lesson's own instructions text). Keep that tab
-// when changing the notepad, and keep it read-only: it is never saved into the learner's notes.
 export default function Notepad({ onClose, instructions }: { onClose(): void; instructions?: string }) {
   const [store, setStore] = useState(readStore);
   const [view, setView] = useState<View>("edit");
-  // The Instructions tab is selected by default when there are instructions, and a note tab takes over when picked.
   const [onInstructions, setOnInstructions] = useState(Boolean(instructions));
-  // null until the first move or resize, so the window starts at its default corner.
   const [box, setBox] = useState<Box | null>(null);
   const [minimized, setMinimized] = useState(false);
   const [maximized, setMaximized] = useState(false);
@@ -103,7 +86,6 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
     update({ notes: [...store.notes, note], activeId: note.id });
   }
 
-  // Closing the last tab leaves a blank one, so there is always a note to write in.
   function closeTab(id: string) {
     const index = store.notes.findIndex((note) => note.id === id);
     const rest = store.notes.filter((note) => note.id !== id);
@@ -116,7 +98,6 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
     update({ notes: rest, activeId });
   }
 
-  // The box the window would have at the start of a gesture, measured if it has never moved yet.
   function currentBox(): Box {
     if (box) return box;
     const rect = windowRef.current?.getBoundingClientRect();
@@ -159,14 +140,11 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  // Maximize fills the workspace above the dock, and un-maximizing returns to the box the window had before.
   function toggleMaximized() {
     setMaximized((value) => !value);
     setMinimized(false);
   }
 
-  // The stylesheet owns the maximized and minimized geometry, so inline sizes only apply to the normal window.
-  // Side-by-side needs more width, so the window widens to fit it unless the learner has already made it wider.
   const style: CSSProperties = { zIndex: 61 };
   if (!maximized) {
     const baseWidth = box?.width ?? DEFAULT_W;

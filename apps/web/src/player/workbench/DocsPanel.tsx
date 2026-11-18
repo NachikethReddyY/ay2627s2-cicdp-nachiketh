@@ -3,7 +3,6 @@ import { Search } from "lucide-react";
 import { DOCS, searchDocs, type Doc } from "./docs";
 
 type Props = {
-  /** Id of the doc to show. The caller owns it so the palette and hovers can open one. */
   selected: string | null;
   onSelect(id: string): void;
 };

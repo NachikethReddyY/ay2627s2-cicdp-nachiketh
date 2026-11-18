@@ -35,7 +35,6 @@ test("a stalled moderation provider is aborted within the timeout and the failur
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((_url: unknown, init?: RequestInit) =>
     new Promise((_res, rej) => init?.signal?.addEventListener("abort", () => rej(init.signal!.reason)))) as typeof fetch;
-  // A short timeout keeps the test fast. AbortSignal.timeout's timer is unref'd, so hold the loop open while the call waits.
   setModerationTimeoutForTests(200);
   const keepAlive = setTimeout(() => {}, 3_000);
   try {

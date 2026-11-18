@@ -45,7 +45,7 @@ const configure = (url: string, style: "images" | "chat") =>
   Object.assign(env, { IMAGE_BASE_URL: url, IMAGE_API_KEY: "test-key", IMAGE_MODEL: "test-model", IMAGE_API_STYLE: style, AI_DAILY_BUDGET_USD: 100, AI_MONTHLY_BUDGET_USD: 100, IMAGE_ESTIMATE_USD: 0.04 });
 const saved = { AI_KILL_SWITCH: env.AI_KILL_SWITCH, AI_DAILY_BUDGET_USD: env.AI_DAILY_BUDGET_USD, AI_MONTHLY_BUDGET_USD: env.AI_MONTHLY_BUDGET_USD, IMAGE_ESTIMATE_USD: env.IMAGE_ESTIMATE_USD };
 afterEach(async () => {
-  await db.delete(spendLedger); // image spend would otherwise leak into the other suites
+  await db.delete(spendLedger);
   setModerationClient(clean);
   setStorage(null);
   Object.assign(env, { IMAGE_BASE_URL: undefined, IMAGE_API_KEY: undefined, IMAGE_MODEL: undefined, ...saved });
@@ -96,7 +96,7 @@ test("over budget or kill switch falls back with no HTTP call", async () => {
   configure(f.url, "images");
   setModerationClient(clean);
   const learnerId = await learnerId_();
-  Object.assign(env, { AI_DAILY_BUDGET_USD: 0.001 }); // a positive limit below the image estimate; 0 would mean unlimited
+  Object.assign(env, { AI_DAILY_BUDGET_USD: 0.001 });
   assert.equal((await generateImage({ ...base, lessonVersionId: "v1", learnerId })).status, "fallback");
   Object.assign(env, { ...saved, AI_KILL_SWITCH: true });
   assert.equal((await generateImage({ ...base, lessonVersionId: "v1", learnerId })).status, "fallback");
@@ -122,7 +122,7 @@ test("resolveDocImages rewrites generate blocks for the client and never leaks t
   const first = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
   assert.deepEqual(first.blocks.map((b) => b.id), ["t", "a", "g"]);
   assert.equal((first.blocks[2]!.props as any).source, "generated-pending", "a read does not wait on the provider");
-  await idleImages(); // generation runs after the read returns
+  await idleImages();
   const out = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
   assert.deepEqual(out.blocks.map((b) => b.id), ["t", "a", "g"]);
   const g = out.blocks[2]!.props as any;
@@ -144,7 +144,7 @@ test("the daily cap returns the fallback with no provider call once reached", as
   setStorage(memoryStorage());
   const lessonVersionId = await versionId();
   const learnerId = await learnerId_();
-  assert.equal((await generateImage({ ...base, prompt: "first", lessonVersionId, learnerId })).status, "ready"); // free tier: 1 per day
+  assert.equal((await generateImage({ ...base, prompt: "first", lessonVersionId, learnerId })).status, "ready");
   assert.equal((await generateImage({ ...base, prompt: "second", lessonVersionId, learnerId })).status, "fallback");
   assert.equal(f.calls.length, 1);
 });
@@ -251,7 +251,7 @@ test("prewarm generates each image once, so a later read costs no provider call"
       { type: "image", id: "b", props: { source: "generate", prompt: "A leaf, flat colours", alt: "A leaf" } },
     ],
   };
-  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_(), tier: "max" as const }; // free allows one image a day
+  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_(), tier: "max" as const };
   await prewarmDocImages(doc, opts);
   assert.equal(f.calls.length, 2);
   const shown = await resolveDocImages(doc, opts);

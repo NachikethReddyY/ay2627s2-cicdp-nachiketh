@@ -9,7 +9,6 @@ const mod = BLOCKS.find((m) => m.type === "game")!;
 const fixture = (n: string) => (JSON.parse(load(n)).blocks[0].props as GameProps).kind as GridProps;
 const SOLVE = fixture("valid-grid-solve");
 const LOOP = fixture("valid-grid-loop");
-// An open 3 by 3 board, robot at the centre facing up, goal top-left, one gem at the centre-left.
 const open = (o: Partial<GridProps> = {}): GridProps => ({
   kind: "grid",
   size: { w: 3, h: 3 },
@@ -36,7 +35,6 @@ test("valid game fixtures parse cleanly", () => {
   }
 });
 
-// Each negative fixture is [text block, bad game]; the game is dropped and the text kept.
 for (const [name, path, msg] of [
   ["unsolvable", "blocks.1.props.kind.goal", /cannot be reached/],
   ["goal-in-wall", "blocks.1.props.kind.walls.0", /wall is on the goal/],
@@ -97,7 +95,6 @@ test("the move log has one line per step and ends at the goal", () => {
     "forward to column 4, row 2",
     "forward to column 4, row 3, the goal",
   ]);
-  // Reaching the goal ends the run; later commands are not run.
   assert.equal(simulate([...SOLVE.solution!, "forward"], SOLVE).steps, 7);
 });
 
@@ -107,7 +104,6 @@ test("a repeat expands in order and the trace points back at it", () => {
   assert.equal(r.steps, 19, "the last turn right never runs: the 19th step lands on the goal");
   assert.deepEqual(r.trace.slice(0, 5).map((t) => t.command), ["forward", "left", "forward", "right", "forward"]);
   assert.deepEqual(r.trace.slice(3, 5).map((t) => t.at), [[0, 3], [0, 0]]);
-  // The flat program does the same moves but breaks the 5-block limit: the loop is needed.
   const flat: GridStep[] = Array.from({ length: 5 }, () => ["forward", "left", "forward", "right"] as const).flat();
   assert.match(simulate(flat, LOOP).error!, /20 blocks; this puzzle allows 5/);
   assert.ok(simulate(flat, { ...LOOP, maxBlocks: undefined }).ok);
@@ -143,7 +139,6 @@ test("solvable: BFS over position, direction and gems", () => {
   assert.ok(solvable(open({ maxSteps: 3 })));
   assert.equal(solvable(open({ commands: ["forward", "right"], start: { x: 1, y: 1, dir: "down" }, maxSteps: 3 })), false);
   assert.equal(solvable(open({ gems: [{ x: 2, y: 2 }], commands: ["forward", "left", "right"] })), false, "no pick");
-  // The goal ends the run, so a gem behind the goal on a one-row board is out of reach.
   assert.equal(solvable(open({ size: { w: 3, h: 1 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 1, y: 0 }, gems: [{ x: 2, y: 0 }] })), false);
 });
 
@@ -201,7 +196,6 @@ test("budget is 2 game blocks per spec", () => {
   assert.match(r.issues[0].message, /too many "game" blocks \(max 2\)/);
 });
 
-// Any program from the grammar, including repeats that break the puzzle's limits.
 const command = fc.constantFrom(...GRID_COMMANDS);
 const step: fc.Arbitrary<GridStep> = fc.oneof(command, fc.record({ repeat: fc.integer({ min: -1, max: 12 }), body: fc.array(command, { maxLength: 8 }) }));
 const board = fc.constantFrom(SOLVE, LOOP, open({ gems: [{ x: 2, y: 0 }], allowRepeat: { maxTimes: 9, maxBody: 6 } }), open({ commands: ["forward"] }));

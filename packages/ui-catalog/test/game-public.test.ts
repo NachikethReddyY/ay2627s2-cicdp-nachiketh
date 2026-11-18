@@ -18,7 +18,6 @@ const doc = { v: 1, blocks: kinds.map((kind, i) => ({ type: "game", id: `g${i}`,
 
 test("a public game doc parses with the client registry and carries no answers", () => {
   const pub = publicDoc(doc, () => 0.5);
-  // The catalog allows two games per doc, so parse them in pairs.
   const blocks = (pub as { blocks: unknown[] }).blocks;
   let parsed = 0;
   for (let i = 0; i < blocks.length; i += 2) {

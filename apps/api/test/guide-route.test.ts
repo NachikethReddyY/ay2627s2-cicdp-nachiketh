@@ -1,4 +1,3 @@
-// No database: the chat is only checked up to its sign-in guard, so no learner or engine call happens.
 process.env.NODE_ENV = "production";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
@@ -39,7 +38,6 @@ const FOUND = { ruleId: "no-var", line: 2, column: 3, message: "Unexpected var, 
 
 test("POST /guide/chat is registered in production with no flag (401 without a session)", async () => {
   const app = await appWithGuide();
-  // No session: the sign-in guard answers before any engine call.
   const res = await app.inject({ method: "POST", url: "/guide/chat", payload: {} });
   assert.equal(res.statusCode, 401);
   assert.equal(res.json().error.code, "unauthorized");
@@ -166,9 +164,9 @@ test("column picks the right finding when two share a rule and line", async () =
   assert.equal((await send({ ruleId: "no-var", line: 1, column: 12 })).statusCode, 200);
   assert.equal((calls[0]!.lintFinding as { message: string }).message, "second var");
   assert.equal((calls[0]!.lintFinding as { sourceLine: string }).sourceLine, code);
-  await send({ ruleId: "no-var", line: 1 }); // no column: first hit
+  await send({ ruleId: "no-var", line: 1 });
   assert.equal((calls[1]!.lintFinding as { message: string }).message, "first var");
-  await send({ ruleId: "no-var", line: 1, column: 5 }); // no finding at that column
+  await send({ ruleId: "no-var", line: 1, column: 5 });
   assert.equal("lintFinding" in calls[2]!, false);
   await app.close();
 });

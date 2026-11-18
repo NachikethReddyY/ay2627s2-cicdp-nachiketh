@@ -14,15 +14,12 @@ from .config import get_settings
 from .schemas import json_schema
 
 litellm.telemetry = False
-litellm.drop_params = True  # servers that don't know temperature etc. shouldn't 400
+litellm.drop_params = True
 
 log = logging.getLogger(__name__)
 
-# Set per model when its server rejects json_schema; sticks for the process.
-# shortcut: never resets, restart to retry schema (upgrade if servers change at runtime).
 _auto_modes: dict[str, str] = {}
 
-# Only a rejection that is about the structured-output request itself triggers the fallback.
 _FORMAT_ERROR = re.compile(
     r"response_format|json_schema|json_object|schema|grammar|structured|guided|unimplemented",
     re.IGNORECASE,
@@ -33,7 +30,6 @@ def _is_format_error(e: BadRequestError) -> bool:
     return not isinstance(e, ContextWindowExceededError) and bool(_FORMAT_ERROR.search(str(e)))
 
 
-# Monotonic end time shared by every generate() call of one request; unset outside a request.
 _deadline: contextvars.ContextVar[float | None] = contextvars.ContextVar("deadline", default=None)
 
 
@@ -66,7 +62,6 @@ class _Truncated(Exception):
 
 
 def _system(system: str, schema: dict[str, Any], mode: str) -> str:
-    # "schema" sends the schema as response_format; every other mode must state it in the prompt.
     if mode == "schema":
         return system
     return (
@@ -98,9 +93,8 @@ def generate[T: BaseModel](
     started = time.monotonic()
 
     def remaining() -> float:
-        # One budget for the whole request, so retries and repairs cannot outlast the caller.
         end = _deadline.get()
-        if end is None:  # no request context (scripts, evals): budget per generate() call
+        if end is None:
             end = started + cfg.LLM_DEADLINE_S
         left = end - time.monotonic()
         if left <= 0:
@@ -126,7 +120,7 @@ def generate[T: BaseModel](
                     response_format=formats.get(mode),
                     max_completion_tokens=max_tokens or cfg.LLM_MAX_TOKENS,
                     timeout=min(cfg.LLM_TIMEOUT_S, remaining()),
-                    num_retries=0,  # retries are ours (one repair), never silent litellm ones
+                    num_retries=0,
                     temperature=0.4,
                 )
                 break
@@ -140,7 +134,6 @@ def generate[T: BaseModel](
         usage["completion_tokens"] += getattr(u, "completion_tokens", 0) or 0
         choice = res.choices[0]
         if getattr(choice, "finish_reason", None) == "length":
-            # A cut-off reply is never valid JSON; repairing it would only resend the cut text.
             raise _Truncated
         return str(choice.message.content or "")
 

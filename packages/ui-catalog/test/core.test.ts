@@ -5,7 +5,6 @@ import fc from "fast-check";
 import { z } from "zod";
 import { BLOCKS, RESERVED, alt, blockSchema, color, parseSpec, sanitize, text, type BlockModule, type ParseResult } from "../src/index.ts";
 
-// Test-only module: the core ships with an empty registry, so fixtures use "probe".
 const probe: BlockModule<{ title: string; alt: string; tone?: string; secret?: { token: string } }> = {
   type: "probe",
   schema: z.strictObject({ title: text(40), alt: alt(), tone: color().optional(), secret: z.strictObject({ token: text(40) }).optional() }),
@@ -69,7 +68,6 @@ test("unknown property paths escape dots within a key", () => {
   assert.equal(backslashKey, "blocks.0.props.secret\\\\token");
 });
 
-// Each fixture has a good block 0 and a bad block 1: the bad one is dropped, the good one kept.
 for (const [name, path, message] of [
   ["unknown-type.json", "blocks.1.type", /unknown block type "globe"/],
   ["reserved-run.json", "blocks.1.type", /"run" blocks are not available/],
@@ -97,7 +95,6 @@ test("budget caps blocks per type", () => {
   assert.deepEqual(paths(r), ["blocks.2"]);
 });
 
-// the "disabled" message needs a module in BLOCKS; covered below with text.
 test("a type outside the enabled list is rejected", () => {
   const r = parseSpec(fixture("valid.json"), []);
   assert.equal(r.ok, false);

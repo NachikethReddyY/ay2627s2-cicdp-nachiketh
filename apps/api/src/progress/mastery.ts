@@ -10,17 +10,11 @@ import { lessonDone, lessonTotal, listed } from "./shared.ts";
 export const MASTERED_AT = 0.95;
 export const UNLOCK_AT = 0.8;
 const BATCH = 50;
-/** Well under PostgreSQL's 30 s idle_in_transaction_session_timeout (db/client.ts): engine calls run inside a transaction. */
 const ENGINE_CALL_TIMEOUT_MS = 8_000;
-/** Time box for one catch-up. Rows and worlds past it stay pending (or stale) for the next call. */
 const CATCH_UP_BUDGET_MS = 12_000;
 
 export type AttemptFacts = { observed: boolean; kind: "mcq" | "cloze" | "skip"; correct: boolean | null; hintsUsed: number };
 
-/**
- * Maps an attempt to a BKT observation. Only the first action on a step counts: clean correct is a success;
- * a wrong answer, a hint-assisted answer or a skip is a failure. Anything else makes no observation.
- */
 export function observationOf(a: AttemptFacts): "correct" | "incorrect" | null {
   if (!a.observed) return null;
   if (a.kind !== "skip" && a.correct === true && a.hintsUsed === 0) return "correct";
@@ -32,7 +26,6 @@ export const slugOf = (name: string) => name.trim().toLowerCase();
 const MAX_CONCEPT_LEN = 100;
 const MAX_CONCEPTS_PER_STEP = 50;
 
-/** Keeps the engine's limits on concepts: strings only, at most 100 characters, at most 50 per list. Logs what it drops. */
 function validConcepts(raw: unknown, where: string): string[] {
   if (raw == null) return [];
   if (!Array.isArray(raw)) {
@@ -45,20 +38,13 @@ function validConcepts(raw: unknown, where: string): string[] {
   return kept;
 }
 
-/** Engine defaults (services/engine bkt.py) for the parameters a world may override. */
 export const BKT_DEFAULTS: BktParams = { pSlip: 0.1, pLearn: 0.2, pInit: 0.2 };
-/** The engine's ranges: pSlip in (0, 0.5), pLearn and pInit in [0, 1]. */
 const BKT_RANGES: Record<keyof BktParams, (v: number) => boolean> = {
   pSlip: (v) => v > 0 && v < 0.5,
   pLearn: (v) => v >= 0 && v <= 1,
   pInit: (v) => v >= 0 && v <= 1,
 };
 
-/**
- * Merges a world's config.bkt over the engine defaults, field by field. An invalid field falls back to its
- * default (logged). pGuess is never sent: the engine picks it by question type, so a configured one is ignored.
- * Returns undefined when the world configures nothing, so the engine uses its own defaults.
- */
 export function mergeBkt(raw: unknown, where: string): BktParams | undefined {
   if (raw == null) return undefined;
   if (typeof raw !== "object" || Array.isArray(raw)) {
@@ -77,14 +63,7 @@ export function mergeBkt(raw: unknown, where: string): BktParams | undefined {
   return out;
 }
 
-/**
- * Transient trouble is retried later: the engine answering 5xx, 408 or 429, or being unreachable (the client
- * reports that as EngineError 502). Transient database errors (see TRANSIENT_PG_CODES) count too. Anything else (other database errors, invalid engine responses, bugs) will not
- * get better by waiting, so the row is skipped.
- */
-/** Postgres: serialization_failure, deadlock_detected, lock_not_available, query_canceled. */
 const TRANSIENT_PG_CODES = new Set(["40001", "40P01", "55P03", "57014"]);
-/** node-postgres puts the SQLSTATE on `code`; drizzle may wrap the driver error in `cause`. */
 const pgCode = (e: unknown): string | undefined => {
   for (let cur: unknown = e, i = 0; cur && typeof cur === "object" && i < 3; cur = (cur as { cause?: unknown }).cause, i++) {
     const c = (cur as { code?: unknown }).code;
@@ -96,11 +75,6 @@ const isTransient = (e: unknown) =>
   (e instanceof EngineError && (e.status >= 500 || e.status === 408 || e.status === 429)) ||
   TRANSIENT_PG_CODES.has(pgCode(e) ?? "");
 
-/**
- * Distinct concept names, trimmed, keyed by slug. A step's own list wins over its lesson's.
- * Concept names are public labels: they appear in attempt feedback (missedConcepts) and in me.mastery, so
- * they must never hold anything secret (answers, hints).
- */
 function conceptNames(stepConcepts: unknown, lessonConcepts: string[], where: string) {
   const own = validConcepts(stepConcepts, where);
   const source = own.length ? own : validConcepts(lessonConcepts, where);
@@ -109,12 +83,10 @@ function conceptNames(stepConcepts: unknown, lessonConcepts: string[], where: st
   return bySlug;
 }
 
-/** The concept names an attempt on a step touches, resolved the same way mastery does (step first, then lesson). */
 export const resolveConcepts = (stepConcepts: unknown, lessonConcepts: string[], where: string): string[] => [
   ...conceptNames(stepConcepts, lessonConcepts, where).values(),
 ];
 
-/** Inserts missing concepts for the world and returns slug -> id. */
 async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string>) {
   if (names.size === 0) return new Map<string, string>();
   await tx
@@ -128,9 +100,7 @@ async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string
   return new Map(rows.map((r) => [r.slug, r.id]));
 }
 
-/** Asks the engine what comes next in the world and stores it when it is new information. */
 async function recommend(tx: Db, learnerId: string, worldId: string): Promise<void> {
-  // The same lessons the course lists show (shared.ts `listed`): published, or AI drafts written on first play.
   const worldLessons = await tx
     .select({ id: lessons.id, status: lessons.status, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
     .from(lessons)
@@ -148,11 +118,9 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   const { rows } = await tx.execute<{ id: string; done: number; total: number }>(sql`
     SELECT l.id, ${lessonDone(learnerId)} AS done, ${lessonTotal} AS total
     FROM lessons l WHERE l.world_id = ${worldId} AND ${listed}`);
-  // A draft is unfinished until it is written: an unwritten lesson has no steps or parts to complete.
   const published = new Set(worldLessons.filter((l) => l.status === "published").map((l) => l.id));
   const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total && published.has(r.id)).map((r) => r.id));
 
-  // Sorted by slug: the hash below depends on array order, and PostgreSQL does not order unsorted rows.
   const known = await tx
     .select({ conceptId: mastery.conceptId, slug: concepts.slug, pKnown: mastery.pKnown })
     .from(mastery)
@@ -160,7 +128,6 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
     .where(and(eq(mastery.learnerId, learnerId), eq(concepts.worldId, worldId)))
     .orderBy(asc(concepts.slug));
 
-  // The engine sees slugs, not UUIDs, so its reason text is readable. Slugs are unique per world.
   const idOfSlug = new Map(ids);
   for (const k of known) idOfSlug.set(k.slug, k.conceptId);
 
@@ -168,7 +135,7 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   const worldTitle = world?.title.trim() ?? "";
   const request: NextRequest = {
     mastery: known.map((k) => ({ conceptId: k.slug, pKnown: k.pKnown })),
-    edges: [], // no prerequisite edges exist yet, so every concept counts as unlocked
+    edges: [],
     lessons: worldLessons.map((l, order) => ({
       lessonId: l.id,
       ...(l.title.trim() && { title: l.title.trim() }),
@@ -188,7 +155,6 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
     .where(and(eq(recommendations.learnerId, learnerId), eq(recommendations.worldId, worldId)))
     .orderBy(desc(recommendations.createdAt), desc(recommendations.id))
     .limit(1);
-  // Nothing the engine sees has changed since the stored recommendation, so asking again cannot tell us more.
   const inputHash = hashInput(request);
   if (latest?.inputHash === inputHash) return;
 
@@ -197,16 +163,10 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   await insertRecommendation(tx, learnerId, worldId, result, inputHash);
 }
 
-/**
- * Bump together with POLICY_VERSION in services/engine/learnquest_engine/policy.py (a test keeps them equal).
- * It is part of the cache hash, so a policy or reason-text change invalidates stored recommendations.
- */
 export const POLICY_VERSION = "4";
 
-/** Code-unit order, not localeCompare: the hash must not depend on the host's locale. */
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** JSON with object keys sorted at every level, so equal values always serialise equally. */
 function stableStringify(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
   if (v && typeof v === "object") {
@@ -216,7 +176,6 @@ function stableStringify(v: unknown): string {
   return JSON.stringify(v) ?? "null";
 }
 
-/** sha256 over the whole /v1/next request plus the policy version: anything the engine sees can change the answer. */
 function hashInput(r: NextRequest): string {
   return createHash("sha256").update(stableStringify({ policyVersion: POLICY_VERSION, request: r })).digest("hex");
 }
@@ -233,20 +192,9 @@ const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: Nex
     inputHash,
   });
 
-/**
- * Applies up to 50 pending observed attempts to the learner's mastery, then records a fresh recommendation for
- * every world that changed (and for `worldId`, when it differs from the latest stored one). One transaction,
- * serialised per learner by a row lock; mastery_applied_at makes it idempotent. Each row runs in a savepoint:
- * a row that can never succeed is logged and marked applied so it cannot block the learner; transient engine
- * trouble stops the batch and leaves the row (and later ones) pending. Earlier writes are kept either way.
- * Engine calls here hold the transaction open, so each has a short timeout and the whole catch-up is time-boxed
- * (CATCH_UP_BUDGET_MS). Otherwise PostgreSQL would close the idle transaction and the request would wait for the full engine timeout.
- */
 export async function applyObservations(learnerId: string, opts: { worldId?: string } = {}): Promise<void> {
   await withTx(async (tx) => {
     const started = Date.now();
-    // NO KEY UPDATE still serialises concurrent calls but, unlike FOR UPDATE, does not conflict with the
-    // FOR KEY SHARE lock that inserts into step_progress, attempts and hint_events take on this row.
     await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
     const pending = await tx
       .select({
@@ -323,8 +271,6 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
       await tx.update(attempts).set({ masteryAppliedAt: new Date() }).where(eq(attempts.id, a.id));
     }
 
-    // Recompute for changed worlds and for the requested world; recommend() skips the engine when its inputs match the stored hash.
-    // The engine can fail here without losing the mastery writes above.
     const want = new Set([...touched, ...(opts.worldId ? [opts.worldId] : [])]);
     for (const worldId of want) {
       if (Date.now() - started > CATCH_UP_BUDGET_MS) {

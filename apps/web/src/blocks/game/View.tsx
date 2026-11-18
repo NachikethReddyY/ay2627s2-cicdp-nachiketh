@@ -44,7 +44,6 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
   return (
     <svg role="group" aria-label="Grid" viewBox={`0 0 ${g.size.w * C} ${g.size.h * C}`} style={{ width: "100%", maxWidth: g.size.w * 64, height: "auto" }} className="block">
       {cells}
-      {/* aria-hidden: the robot is already in its cell's label. The slide is decorative, so reduced motion drops it. */}
       <g aria-hidden="true" style={{ transform: `translate(${at.x * C}px, ${at.y * C}px)`, transition: reduced ? undefined : "transform 150ms ease-out" }}>
         <Robot dir={at.dir} />
       </g>
@@ -69,21 +68,18 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
   const [busy, setBusy] = useState(false);
   const gen = useRef(0);
   const run = watch ?? ran;
-  const at: At = idx > 0 && run ? run.trace[idx - 1]! : start;
+  const at: At = idx > 0 && run ? run.trace[idx - 1] : start;
   const max = g.maxBlocks ?? MAX_PROGRAM_STEPS;
 
-  // One place for buttons, keys and taps.
   const dispatch = (i: Intent) => {
     if (outcome === "win" || outcome === "lose") return;
     if (busy) return;
     if (i.type === "step") {
       if (!watch || !g.solution) return setLive("");
-      // At the end already, so the last check failed or was incomplete: Step re-runs it instead of dead-ending.
       const atEnd = idx >= watch.trace.length;
       const text = atEnd ? "" : announceStep(watch, idx);
       if (!atEnd) setIdx(idx + 1);
       if (!atEnd && idx + 1 < watch.trace.length) return setLive(text);
-      // Reaching the end of a watched solution is the win, but the server decides: it replays the program and records it.
       setBusy(true);
       const mine = gen.current;
       const solution = g.solution;
@@ -100,7 +96,6 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
     if (!c.build) return;
     if (i.type === "run") {
       if (!program.length) return setLive("Add a command first.");
-      // The trace and move log come from the shared simulator; whether the run wins is the server's call.
       const r = simulate(program, g);
       setBusy(true);
       const mine = gen.current;
@@ -142,7 +137,6 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
         {c.step && (
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btn} onClick={() => dispatch({ type: "step" })}>Step</button>
-            {/* shortcut: Play is one step per press (no timer, WCAG 2.2.1), so it matches Step; it is off under reduced motion */}
             <button type="button" className={btn} disabled={reduced} onClick={() => dispatch({ type: "step" })}>Play</button>
           </div>
         )}

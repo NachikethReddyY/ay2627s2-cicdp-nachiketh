@@ -1,6 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
 
-// One S-curve per level: x is each node's offset from the centre line, y climbs from the bottom row.
 export default function PathTrack({ xs, lit, row }: { xs: number[]; lit: number; row: number }) {
   const reduce = useReducedMotion();
   const h = xs.length * row;

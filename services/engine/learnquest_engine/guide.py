@@ -45,8 +45,6 @@ class GuideReply(BaseModel):
 
 
 def _system() -> str:
-    # Read on each request so local persona edits take effect without restarting
-    # the long-running development engine.
     return PROMPT.read_text("utf-8")
 
 

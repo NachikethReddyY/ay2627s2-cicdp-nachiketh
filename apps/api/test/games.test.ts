@@ -16,7 +16,6 @@ const q = (cookie: string, path: string, input?: unknown) => trpc(app, cookie).q
 const shell = { goalText: "Win.", alt: "A game used in tests.", shell: {} };
 const game = (id: string, title: string, hints: string[], kind: unknown) => ({ type: "game", id, props: { title, ...shell, hints, kind } });
 
-// Game 0..5 in this order: quiz, grid, order, match, sort, physics.
 const blocks = [
   game("quiz", "Quiz", ["quiz hint 1", "quiz hint 2"], { kind: "quiz", questions: [{ prompt: "2 + 2?", options: ["3", "4"], answer: 1 }, { prompt: "Pick c", options: ["a", "b", "c"], answer: 2 }] }),
   game("grid", "Grid", ["grid hint"], {
@@ -67,7 +66,6 @@ test("lessons.get sends each game kind as an exact allowlist of keys", async () 
   assert.deepEqual([...by.match.kind.lefts].sort(), ["cat", "cow", "dog"]);
   assert.deepEqual([...by.sort.kind.cards].sort(), ["fern", "fox", "oak", "owl"]);
 
-  // Nothing secret appears anywhere in the response.
   const raw = res.body;
   for (const secret of ["hint 1", "hint 2", "grid hint", "\"answer\"", "\"solution\"", "\"pairs\"", "\"bucket\""]) assert.ok(!raw.includes(secret), secret);
 });
@@ -108,7 +106,6 @@ test("watch mode sends its solution, debug mode its starter, and nothing else ex
   assert.equal(watch.gameIndex, 3);
   const debug = toPublicGame({ ...base, kind: { ...grid, mode: "debug", starter: ["forward"] } } as unknown as GameProps, 0);
   assert.deepEqual(keys(debug.kind), ["commands", "gems", "goal", "kind", "maxSteps", "mode", "size", "start", "starter", "walls"]);
-  // A field added to the stored game later is not sent unless the allowlist names it.
   const extra = toPublicGame({ ...base, secret: "x", kind: { kind: "order", items: ["a", "b"], leak: 1 } } as unknown as GameProps, 0);
   assert.deepEqual(keys(extra), SHELL_KEYS);
   assert.deepEqual(keys(extra.kind), ["items", "kind"]);
@@ -121,37 +118,31 @@ test("games.check grades every kind on the server", async () => {
   await addGame("games-1");
   const verdict = async (i: number, s: unknown) => out(await check(cookie, i, s));
 
-  // quiz: graded per question, won only when every question is answered and right
   assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1] }), { correct: false, complete: false, questionResults: [true] });
   assert.deepEqual(await verdict(0, { kind: "quiz", answers: [0] }), { correct: false, complete: false, questionResults: [false] });
   assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1, 0] }), { correct: false, complete: false, questionResults: [true, false] });
   assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1, 2] }), { correct: true, complete: true, questionResults: [true, true] });
   assert.equal((await check(cookie, 0, { kind: "quiz", answers: [1, 2, 0] })).statusCode, 400, "more answers than questions");
 
-  // grid: the stored simulator runs the submitted program
   const good = ["forward", "forward", "forward", "pick", "right", "forward", "forward"];
   assert.equal((await verdict(1, { kind: "grid", program: good })).complete, true);
   assert.equal((await verdict(1, { kind: "grid", program: ["forward"] })).correct, false);
   assert.equal((await verdict(1, { kind: "grid", program: [{ repeat: 3, body: ["forward"] }, "pick", "right", { repeat: 2, body: ["forward"] }] })).correct, false, "repeat is not allowed in this puzzle");
 
-  // order
   assert.equal((await verdict(2, { kind: "order", order: ["first", "second", "third", "fourth"] })).complete, true);
   assert.equal((await verdict(2, { kind: "order", order: ["second", "first", "third", "fourth"] })).correct, false);
   assert.equal((await verdict(2, { kind: "order", order: ["first", "second"] })).correct, false);
 
-  // match
   const pairs = [{ left: "cat", right: "meows" }, { left: "dog", right: "barks" }, { left: "cow", right: "moos" }];
   assert.equal((await verdict(3, { kind: "match", pairs: [...pairs].reverse() })).complete, true, "order of pairs does not matter");
   assert.equal((await verdict(3, { kind: "match", pairs: [{ left: "cat", right: "barks" }, { left: "dog", right: "meows" }, { left: "cow", right: "moos" }] })).correct, false);
   assert.equal((await verdict(3, { kind: "match", pairs: [pairs[0], pairs[0], pairs[2]] })).correct, false, "a repeated left is not a match");
 
-  // sort
   const cards = [{ text: "fox", bucket: 1 }, { text: "oak", bucket: 0 }, { text: "owl", bucket: 1 }, { text: "fern", bucket: 0 }];
   assert.equal((await verdict(4, { kind: "sort", cards })).complete, true);
   assert.equal((await verdict(4, { kind: "sort", cards: cards.map((c) => ({ ...c, bucket: 1 - c.bucket })) })).correct, false);
   assert.equal((await verdict(4, { kind: "sort", cards: cards.slice(1) })).correct, false);
 
-  // physics: 14 m/s at 45 degrees lands at 20 m
   assert.equal((await verdict(5, { kind: "physics", angle: 45, speed: 14 })).complete, true);
   assert.equal((await verdict(5, { kind: "physics", angle: 45, speed: 5 })).correct, false);
   assert.equal((await check(cookie, 5, { kind: "physics", angle: 45, speed: 21 })).statusCode, 400, "above the speed slider");

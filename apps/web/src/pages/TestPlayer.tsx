@@ -6,8 +6,6 @@ import { useReplay } from "../player/useReplay";
 import type { EditorHandle } from "../player/EditorPane";
 import lesson from "../player/fixtures/lesson1";
 
-// Dev-only: the editor test page with the lesson player's transport controls over it.
-// The controls drive the fixture lesson's timeline, and each frame is shown in the editor.
 export default function TestPlayer() {
   const timeline = useMemo(() => buildTimeline(lesson.steps.map((s) => s.input)), []);
   const editorRef = useRef<EditorHandle>(null);

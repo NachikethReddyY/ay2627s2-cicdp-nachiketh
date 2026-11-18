@@ -4,7 +4,6 @@ import { CircleX, GitBranch, LoaderCircle, TriangleAlert, WrapText } from "lucid
 export type WorkbenchStatus = {
   text: string;
   verdict?: ReactNode;
-  /** Dot colour: ready (green), busy (accent), error (red). Default ready. */
   tone?: "ready" | "busy" | "error";
 };
 
@@ -18,7 +17,6 @@ type Props = {
   wordWrap?: boolean;
   onWordWrap?(): void;
   branch?: string;
-  /** Static sample of the design's branch, problem counts, indent and encoding (not built yet). */
   planned?: boolean;
 };
 
@@ -28,7 +26,6 @@ export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap =
     <footer className="flex h-[25px] flex-none items-center gap-4 overflow-hidden whitespace-nowrap border-t border-[var(--line)] bg-[var(--side)] px-3 text-[11.5px] text-[var(--mu)]">
       {planned && (
         <>
-          {/* Only a real git checkout has a branch to show. */}
           {branch && (
             <span className="wb-mono flex flex-none items-center gap-1.5">
               <GitBranch size={14} strokeWidth={1.9} aria-hidden="true" />
@@ -49,7 +46,6 @@ export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap =
           </span>
         </>
       )}
-      {/* The idle "Ready" text is not shown; only work in progress, errors and verdicts appear. */}
       {status.tone !== "ready" && (
         <span role="status" className="flex min-w-0 items-center gap-3">
           {status.tone === "busy" && <LoaderCircle size={13} aria-hidden="true" className="flex-none motion-safe:animate-spin" />}
@@ -64,7 +60,6 @@ export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap =
       {planned && <span className="flex-none">Spaces: 2</span>}
       {planned && <span className="flex-none">UTF-8</span>}
       <span className="flex-none">{language}</span>
-      {/* The design's connection dot ends the bar; its colour follows the status. */}
       <span aria-hidden="true" className="wb-dot" style={{ color: DOT[status.tone ?? "ready"] }} />
     </footer>
   );

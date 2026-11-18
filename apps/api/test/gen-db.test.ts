@@ -23,7 +23,6 @@ test("withTx keeps the original error when ROLLBACK also fails, and destroys tha
   );
   assert.ok(released instanceof Error, "a client whose ROLLBACK failed is released with an error so the pool discards it");
   assert.equal((released as Error).message, "rollback failed");
-  // The pool still works.
   assert.equal((await pool.query("SELECT 1 AS one")).rows[0].one, 1);
 });
 

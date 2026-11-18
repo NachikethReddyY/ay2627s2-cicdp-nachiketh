@@ -58,5 +58,4 @@ export {
 
 import { BLOCKS as ALL_BLOCKS, type BlockModule } from "./core/parse.ts";
 import { publicGameBlock as clientGame } from "./blocks/game/public.ts";
-/** What the web app parses lesson docs with: the registry with the game block swapped for its client-safe form. */
 export const CLIENT_BLOCKS: readonly BlockModule[] = ALL_BLOCKS.map((m) => (m.type === "game" ? clientGame : m));

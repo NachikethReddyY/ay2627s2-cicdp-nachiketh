@@ -1,4 +1,3 @@
-// Runs the real harness in the real sandbox image. Skipped when Docker or the image is not available.
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL ??= "postgres://x:x@localhost:5432/x_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
@@ -61,7 +60,6 @@ test("a program that prints too much fails instead of passing", { skip, timeout:
   assert.equal(s.results[0]!.status, "fail");
 });
 
-// Privilege separation: the harness is root, the learner is uid 1001, so the learner cannot reach the harness through /proc.
 const dockerUp = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
 const skipPriv = (!dockerUp && "docker is not running") || skip;
 const isPass = (s: ReturnType<typeof score>) => s.results[0]!.status === "pass";

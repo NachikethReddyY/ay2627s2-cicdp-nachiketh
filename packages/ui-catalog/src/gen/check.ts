@@ -1,4 +1,3 @@
-// Sidecar for the engine: reads one JSON doc on stdin, prints {"issues": [{path, message}]} (empty when clean).
 import { readFileSync } from "node:fs";
 import { parseSpec } from "../index.ts";
 

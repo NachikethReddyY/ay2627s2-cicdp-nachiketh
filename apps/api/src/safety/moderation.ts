@@ -15,7 +15,7 @@ const provider: ModerationClient = async (input) => {
     method: "POST",
     headers: { authorization: `Bearer ${env.MODERATION_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({ model: "omni-moderation-latest", input }),
-    signal: AbortSignal.timeout(moderationTimeoutMs), // an abort throws, so isSafe applies its usual failOpen policy
+    signal: AbortSignal.timeout(moderationTimeoutMs),
   });
   if (!response.ok) throw new Error("Moderation provider unavailable");
   const json = (await response.json()) as { results?: Array<{ flagged?: boolean; category_scores?: Record<string, number> }> };
@@ -30,25 +30,18 @@ export function setModerationClient(client: ModerationClient): void {
   moderationClient = client;
 }
 
-/** Tests shorten the provider timeout instead of waiting on it. */
 export function setModerationTimeoutForTests(ms: number): void {
   moderationTimeoutMs = ms;
 }
 
-/**
- * failOpen: when the moderation service is unavailable, allow the text (learner topics and generated lessons).
- * Images never fail open: imagegen calls this without it, so a safety outage stops images but not lessons.
- */
 export async function isSafe(
   input: string,
   client: ModerationClient = moderationClient,
   { failOpen = false }: { failOpen?: boolean } = {},
 ): Promise<boolean> {
-  // Only trusted, exact curriculum topics bypass the provider. Learner text never enters this list.
   if (allowList.test(input.trim())) return true;
   try {
     const result = await client(input);
-    // Only the categories the provider returned: omni-moderation has no jailbreak score, and a missing one must not block.
     return !result.flagged && Object.values(result.scores).every((score) => score < THRESHOLD);
   } catch (error) {
     if (failOpen) console.warn("moderation unavailable; text allowed", error instanceof Error ? error.message : "");
@@ -56,5 +49,4 @@ export async function isSafe(
   }
 }
 
-/** Text check for topics and generated lessons: fails open when moderation is down. */
 export const isSafeText = (input: string) => isSafe(input, moderationClient, { failOpen: true });

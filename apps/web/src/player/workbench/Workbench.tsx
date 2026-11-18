@@ -1,11 +1,11 @@
 import { Columns2, List, Maximize2, Minimize2, Plus, Sparkles, X } from "lucide-react";
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { MAX_FRACTION, MIN_HEIGHT, clampHeight, isToggleKey, type usePanel } from "../terminal/usePanel";
 import { WorkbenchContext, type WorkbenchContextValue, type WorkbenchProblem } from "./context";
 import { EDITOR_MIN, LEFT_MAX_FRACTION, LEFT_MIN, UTIL_MAX, UTIL_MIN, clampLayout, resizeContainerForPanel, resolveTheme, useLayout, type Layout } from "./layout";
 import CommandPalette, { type PaletteCommand } from "./CommandPalette";
 import { paletteKey, type PaletteItem, type PaletteMode } from "./palette";
-import { NAV_TABS, Soon, type NavView } from "./Planned";
+import { NAV_TABS, type NavView } from "./Planned";
 import Segmented from "./Segmented";
 import Splitter from "./Splitter";
 import StatusBar, { type WorkbenchStatus } from "./StatusBar";
@@ -13,7 +13,6 @@ import Toolbar, { Breadcrumbs, TrafficLights } from "./Toolbar";
 import { DrawerCloseContext } from "./TreeRow";
 import "./workbench.css";
 
-// The planned parts hold sample text, so they load only when showPlanned is on.
 const DebugBar = lazy(() => import("./PlannedParts").then((m) => ({ default: m.DebugBar })));
 const DebugConsole = lazy(() => import("./PlannedParts").then((m) => ({ default: m.DebugConsole })));
 const PlannedNavView = lazy(() => import("./PlannedParts").then((m) => ({ default: m.PlannedNavView })));
@@ -25,18 +24,13 @@ export type WorkbenchLanguage = "javascript" | "typescript" | "python";
 type Props = {
   title: string;
   fileName: string;
-  /** Folders above the file, root first, for the breadcrumb (Main.dc.html). Without it the breadcrumb shows the lesson title. */
   crumbs?: string[];
-  /** The symbol under the caret, last in the breadcrumb. */
   symbol?: string;
   language: WorkbenchLanguage;
   navigator: ReactNode;
-  /** Use WorkbenchEditor so the editor follows the workbench theme. */
   editor: ReactNode;
   bottom: ReactNode;
-  /** Heading of the bottom panel. Default "Terminal". */
   bottomTitle?: string;
-  /** Real shell sessions for the test workbench's terminal tabs. */
   terminalSessions?: {
     items: { id: string; label: string }[];
     activeId: string;
@@ -45,35 +39,21 @@ type Props = {
     split: boolean;
     onToggleSplit(): void;
   };
-  /** Shown in the stacked (narrow) layout only; the wide layout keeps the lesson text in the navigator tree. */
   instructions?: ReactNode;
   docs: ReactNode;
   actions: ReactNode;
-  /** Drawn in the toolbar before the layout toggles. */
   trailing?: ReactNode;
-  /** Palette entries: the open files, the lesson's own commands (Run, Check...) and the docs catalogue. */
   paletteFiles: PaletteItem[];
   paletteCommands: PaletteCommand[];
   paletteDocs: PaletteItem[];
   onOpenFile(id: string): void;
-  /** Called after the workbench has switched to the Docs tab. */
   onOpenDoc(id: string): void;
   status: WorkbenchStatus;
-  /** Git branch injected by Vite at startup for the local workbench preview. */
   gitBranch?: string;
-  /** Status-bar language for the open file; defaults to the lesson language. */
   languageLabel?: string;
-  /** Hide Ln/Col (a rendered preview has no caret). */
   noCursor?: boolean;
-  /** Bottom panel open/height state (lq.terminal), shared with whatever renders inside it. */
   panel: ReturnType<typeof usePanel>;
-  /**
-   * Also draw the design's planned parts (AI help, debugger, source control, search, Share,
-   * notifications, Back/Forward) as inert "Coming soon" controls. Default false: the practice
-   * view must not show dead controls. The /test/editor page turns it on.
-   */
   showPlanned?: boolean;
-  /** Wide layout only: place the window on the desk. Drag it by the title bar, resize it from its edges. */
   floatingWindow?: {
     style: CSSProperties;
     resizeHandles: ReactNode;
@@ -81,14 +61,12 @@ type Props = {
     onDragMove(event: ReactPointerEvent<HTMLElement>): void;
     onDragEnd(): void;
   };
-  /** Bump this number to show the Docs column (the drawer in the narrow layout), for example so a result written there is seen. */
   revealDocs?: number;
-  /** Current editor context for the structured guide on the test workbench. */
   aiContext?: { fileName: string; filePath: string; projectRoot: string; code: string; language: string };
 };
 
 const LANG_NAMES: Record<WorkbenchLanguage, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" };
-const SPLIT = 12; // .wb-split-v width
+const SPLIT = 12;
 const WIDE = "(min-width: 1024px)";
 const DARK = "(prefers-color-scheme: dark)";
 
@@ -119,7 +97,6 @@ export default function Workbench(p: Props) {
   const [problems, setProblems] = useState<WorkbenchProblem[]>([]);
   const diagnostics = { errors: problems.filter((problem) => problem.severity === "error").length, warnings: problems.filter((problem) => problem.severity === "warning").length };
   const [overlay, setOverlay] = useState<Overlay>(null);
-  // Motion (theme fades, panels fading in) starts after the first paint, so loading does not flash.
   const [ready, setReady] = useState(false);
   const wbRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -132,20 +109,18 @@ export default function Workbench(p: Props) {
       cancelAnimationFrame(inner);
     };
   }, []);
-  const planned = p.showPlanned === true && wide; // the planned parts are drawn only in the wide layout
+  const planned = p.showPlanned === true && wide;
   const [navView, setNavView] = useState<NavView>("files");
   useEffect(() => setSelection(null), [p.aiContext?.filePath]);
   const [bottomTab, setBottomTab] = useState<"main" | "console">("main");
   const [panelMaximized, setPanelMaximized] = useState(false);
-  // Maximize is a desktop-only overlay; in the narrow layout the panel stays in flow, so nothing covers the page.
   const maximized = panelMaximized && wide;
   const floating = wide ? p.floatingWindow : undefined;
-  // A window is active while the last click landed inside it; inactive windows grey their traffic lights.
   const windowRef = useRef<HTMLDivElement>(null);
   const [windowActive, setWindowActive] = useState(true);
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => setWindowActive(windowRef.current?.contains(event.target as Node) ?? false);
-    const onBlur = () => setWindowActive(false); // another app or the desktop took focus
+    const onBlur = () => setWindowActive(false);
     document.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("blur", onBlur);
     return () => {
@@ -158,11 +133,9 @@ export default function Workbench(p: Props) {
   const { state: panel, dispatch: panelDispatch } = p.panel;
   useEffect(() => setProblems([]), [p.fileName]);
   useEffect(() => {
-    try { window.localStorage.setItem("lq.editor.wordWrap", String(wordWrap)); } catch { /* Settings still work for this session. */ }
+    try { window.localStorage.setItem("lq.editor.wordWrap", String(wordWrap)); } catch { }
   }, [wordWrap]);
 
-  // A theme change eases colours: [data-theming] turns the transitions on for 450 ms, set in the same commit as the
-  // new tokens so the change is animated. Hovers and everything else stay instant.
   const firstTheme = useRef(true);
   useLayoutEffect(() => {
     if (firstTheme.current) {
@@ -180,7 +153,6 @@ export default function Workbench(p: Props) {
   const centerRef = useRef<HTMLDivElement>(null);
   const [rowW, setRowW] = useState(Infinity);
   const [centerH, setCenterH] = useState(0);
-  // Measure the panel row and the centre column; clampLayout and the panel height follow them (Review Focus 4).
   useLayoutEffect(() => {
     const row = rowRef.current;
     const center = centerRef.current;
@@ -196,22 +168,16 @@ export default function Workbench(p: Props) {
     return () => ro.disconnect();
   }, [wide]);
 
-  // Space the panels share with the editor, without the splitter bars.
   const avail = rowW - (layout.showLeft ? SPLIT : 0) - (layout.showUtil ? SPLIT : 0);
   const panelAvail = Number.isFinite(avail) ? avail : Math.max(0, window.innerWidth - 64 - (layout.showLeft ? SPLIT : 0) - (layout.showUtil ? SPLIT : 0));
   const shown: Layout = clampLayout(layout, panelAvail);
   const leftMax = Math.max(LEFT_MIN, Math.min(Math.floor(panelAvail * LEFT_MAX_FRACTION), panelAvail - (shown.showUtil ? shown.utilW : 0) - EDITOR_MIN));
   const utilMax = Math.max(UTIL_MIN, Math.min(UTIL_MAX, panelAvail - (shown.showLeft ? shown.leftW : 0) - EDITOR_MIN));
-  // Rendering clamps the Docs width without saving it, so the navigator drag works from the width on screen.
   const leftResizeContainer = shown.showUtil ? resizeContainerForPanel(avail, layout.utilW, shown.utilW) : avail;
   const utilResizeContainer = shown.showLeft ? resizeContainerForPanel(avail, layout.leftW, shown.leftW) : avail;
 
-  // Fit the bottom panel into the centre column at render, like the widths. Only a user
-  // resize writes a new height, so a window that shrinks and grows again gets it back.
   const panelH = wide && centerH > 0 ? clampHeight(panel.height, centerH) : panel.height;
 
-  // Capture phase, so Ctrl+` toggles the panel even while the editor has focus.
-  // Consumers must not register their own Ctrl+` listener, or the panel toggles twice.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!isToggleKey(e)) return;
@@ -222,12 +188,10 @@ export default function Workbench(p: Props) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [panelDispatch]);
 
-  // Overlays only exist in the narrow layout.
   const openOverlay = wide ? null : overlay;
   const toggleNav = () => (wide ? dispatch({ type: "toggleLeft" }) : setOverlay((o) => (o === "nav" ? null : "nav")));
   const toggleUtil = () => (wide ? dispatch({ type: "toggleUtil" }) : setOverlay((o) => (o === "docs" ? null : "docs")));
 
-  // Command palette. Capture phase on window, so Cmd/Ctrl+P beats Monaco, xterm and the browser's print dialog.
   const [palette, setPalette] = useState<{ open: boolean; mode: PaletteMode }>({ open: false, mode: "file" });
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -257,7 +221,6 @@ export default function Workbench(p: Props) {
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const termBtn = useRef<HTMLButtonElement>(null);
-  // Closing the panel hides the control that had focus. Move focus to the toggle, but never pull it from the editor.
   const panelWasOpen = useRef(panel.open);
   useEffect(() => {
     if (panelWasOpen.current && !panel.open) {
@@ -266,7 +229,6 @@ export default function Workbench(p: Props) {
     }
     panelWasOpen.current = panel.open;
   }, [panel.open, p.bottomTitle]);
-  // Show the Docs column on request. Reads the latest layout through a ref, so only a new request acts.
   const revealRef = useRef({ wide, showUtil: layout.showUtil, dispatch });
   revealRef.current = { wide, showUtil: layout.showUtil, dispatch };
   const lastReveal = useRef(p.revealDocs ?? 0);
@@ -284,7 +246,6 @@ export default function Workbench(p: Props) {
     returnTo.current = overlay === "nav" ? navBtn.current : utilBtn.current;
     setOverlay(null);
   };
-  // The toggle is inert until the drawer is gone, so focus it after the commit.
   useEffect(() => {
     if (openOverlay != null || !returnTo.current) return;
     returnTo.current.focus();
@@ -337,7 +298,6 @@ export default function Workbench(p: Props) {
           </button>
         </span>
       </div>
-      {/* Keep the real panel mounted (a terminal keeps its session) while the sample console shows. */}
       <div className={`wb-appear wb-scroll min-h-0 flex-1 ${p.terminalSessions ? "overflow-x-hidden" : ""}`} hidden={bottomView === "console"}>
         {p.bottom}
       </div>
@@ -399,7 +359,6 @@ export default function Workbench(p: Props) {
         data-ready={ready || undefined}
         style={{ colorScheme: resolved }}
       >
-        {/* While a drawer is open, everything behind it is inert: out of the Tab order and the accessibility tree. */}
         <div
           inert={openOverlay != null}
           ref={windowRef}
@@ -409,7 +368,6 @@ export default function Workbench(p: Props) {
           style={floating?.style}
           onDragStart={floating && ((event) => event.preventDefault())}
           onPointerDown={floating && ((event) => {
-            // Only the title bar drags the window; its buttons and tabs keep their own clicks.
             const target = event.target as HTMLElement;
             if (target.closest("header, [data-window-drag]") && !target.closest("button, select, input, a, [role='tab']")) floating.onDragStart(event);
           })}
@@ -500,7 +458,6 @@ export default function Workbench(p: Props) {
                   {bottomPanel}
                 </main>
                 </div>
-                {/* The Docs column sits under the toolbar; its header shares the breadcrumb row's band. */}
               {shown.showUtil && (
                 <>
                   <Splitter
@@ -562,9 +519,6 @@ export default function Workbench(p: Props) {
   );
 }
 
-// Modal drawer for the narrow layout. The caller makes the rest of the workbench inert, so Tab stays
-// inside. Focus starts on Close; Escape closes from anywhere; a file row closes it after its click
-// is handled (via DrawerCloseContext).
 function Drawer({ side, label, onClose, children }: { side: "left" | "right"; label: string; onClose(): void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -573,10 +527,9 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
     closeRef.current?.focus();
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      // A text field with its own Esc (clear the query first) keeps it until it is empty.
       const t = e.target;
       if (t instanceof HTMLInputElement && (t.dataset.ownEsc !== undefined || (t.value !== "" && /^(text|search)$/.test(t.type)))) return;
-      if (document.querySelector("dialog[open]")) return; // the command palette owns Esc while it is open
+      if (document.querySelector("dialog[open]")) return;
       e.preventDefault();
       onCloseRef.current();
     };

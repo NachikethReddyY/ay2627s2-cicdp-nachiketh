@@ -5,7 +5,6 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const proxy = { "/api": { target: "http://localhost:3000", ws: true } };
-// Builds without git at /usr/bin/git (some Nix, Homebrew-only, or slim images) still build, labelled "detached".
 const gitBranch = (() => {
   try {
     return execFileSync("/usr/bin/git", ["branch", "--show-current"], { encoding: "utf8" }).trim() || "detached";

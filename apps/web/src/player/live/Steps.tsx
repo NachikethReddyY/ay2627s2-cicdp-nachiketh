@@ -18,16 +18,13 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
   const stepId = lesson.steps[idx]?.id;
   const [failed, setFailed] = useState("");
   const [busy, setBusy] = useState(false);
-  // Bumped by Retry so the load effects run again; the machine only re-syncs (CONFLICT) while answering.
   const [retries, setRetries] = useState(0);
   const state = snap.value as string;
 
-  // The server records a predict lesson's completion with its last answer; onFinished lets the course strip refetch it.
   useEffect(() => {
     if (state === "finished") onFinished?.();
   }, [state, onFinished]);
 
-  // Entering a step (or re-syncing after a 409) loads it; revealed or skipped steps then load their answer.
   useEffect(() => {
     if (state !== "browse" || !stepId) return;
     let live = true;
@@ -38,13 +35,12 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
     if ((state !== "revealed" && state !== "skipped") || reveal || !stepId) return;
     let live = true;
     trpc.steps.reveal.query({ id: stepId }).then(
-      (r) => live && send({ type: "REVEAL_LOADED", reveal: r as Reveal }), // hunks are unknown[] on the wire; the server validated them
+      (r) => live && send({ type: "REVEAL_LOADED", reveal: r as Reveal }),
       (e) => live && setFailed(rpcMsg(e)),
     );
     return () => { live = false; };
   }, [state, reveal, stepId, send, retries]);
 
-  // Runs one API call; a 409 means our view is stale, so the machine reloads the step.
   const run = async (f: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -61,11 +57,10 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
     try {
       return buildTimeline([{ beforeFiles, hunks: reveal?.hunks ?? [] }]);
     } catch {
-      return buildTimeline([{ beforeFiles, hunks: [] }]); // a bad hunk must not blank the player
+      return buildTimeline([{ beforeFiles, hunks: [] }]);
     }
   }, [step, reveal]);
 
-  // Narration explains the change, so it plays only once the learner has answered or skipped, never while predicting.
   const answered = state === "revealed" || state === "skipped";
   const narration = answered ? lesson.media.find((m) => m.stepId === stepId && m.kind === "narration")?.url : undefined;
 

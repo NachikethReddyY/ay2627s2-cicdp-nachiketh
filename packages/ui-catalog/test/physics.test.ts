@@ -11,7 +11,6 @@ test("a reachable target parses cleanly", () => {
 });
 
 test("an unreachable target is rejected at save", () => {
-  // At 10 m/s the farthest throw is about 10.2 m.
   const r = issues(kind(60, 2, 10));
   assert.equal(r.length, 1);
   assert.equal(r[0]!.path, "blocks.0.props.kind.target");

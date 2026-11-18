@@ -24,10 +24,8 @@ import { actionGuards, lessonFile, shellLine } from "./lessonWorkbenchModel";
 import { usePracticeRunner } from "./usePracticeRunner";
 import type { Part } from "./types";
 
-// Sloppy is the help chat. It loads on first use, and stays mounted afterwards so its conversation survives a tab switch.
 const AIGuide = lazy(() => import("../workbench/PlannedParts").then((m) => ({ default: m.AIGuide })));
 
-// The API's part type lists python and javascript; the practice view also takes typescript and a list of tests.
 type PracticePart = Omit<Extract<Part, { kind: "practice" }>, "language"> & { language?: PracticeLanguage; tests?: PracticeTest[] };
 type Tab = "instructions" | "video" | "results" | "sloppy" | "docs";
 const TABS: { id: Tab; label: string }[] = [
@@ -37,12 +35,10 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "sloppy", label: "Sloppy" },
   { id: "docs", label: "Docs" },
 ];
-const ROOT = "Lesson"; // the tree's one folder; the lesson title would break the slash-joined paths
+const ROOT = "Lesson";
 
 const BUSY = "Running…";
 
-// A practice lesson in the workbench: the lesson's own file in the editor, the task, Check results, Sloppy and Docs on the right,
-// and the sandbox terminal below. Nothing here is a planned or inert control (showPlanned stays off).
 export default function LessonWorkbench({ lessonId, title, part, next }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode }) {
   const practice = part as PracticePart;
   const language = monacoLanguage(practice.language);
@@ -50,20 +46,19 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
   const [code, setCode] = useState(part.starterCode);
   const [tab, setTab] = useState<Tab>("instructions");
   const [sloppyMounted, setSloppyMounted] = useState(false);
-  const [revealDocs, setRevealDocs] = useState(0); // bumped so the Docs column (or drawer) opens when a result lands in it
+  const [revealDocs, setRevealDocs] = useState(0);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
-  const [pendingPrompt, setPendingPrompt] = useState<{ text: string } | null>(null); // a question from the video's Explain button
+  const [pendingPrompt, setPendingPrompt] = useState<{ text: string } | null>(null);
   const [pendingFinding, setPendingFinding] = useState<{ ruleId: string; line: number; column?: number } | null>(null);
   const win = useFloatingWindow();
   const [notepadOpen, setNotepadOpen] = useState(false);
-  const [host, setHost] = useState<HTMLElement | null>(null); // the desk, so the Notepad opens on it as in /test/editor
+  const [host, setHost] = useState<HTMLElement | null>(null);
   useEffect(() => setHost(document.querySelector(".wb")), []);
-  const panel = usePanel(); // no container: the workbench clamps the height at render
+  const panel = usePanel();
   const { dispatch: panelDispatch } = panel;
   const runRef = useRef<HTMLButtonElement>(null);
   const r = usePracticeRunner({ lessonId, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
 
-  // Focus the terminal only after the learner opens it, not when a page loads with the panel restored open.
   const mountedOpen = useRef(panel.state.open);
   const [interacted, setInteracted] = useState(false);
   useEffect(() => {
@@ -78,7 +73,7 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
   const can = actionGuards({ busy: r.busy, checkBusy: r.checkBusy, lintBusy: r.lintBusy, code });
   const run = () => {
     if (!can.run) return;
-    panelDispatch({ type: "open" }); // one-shot output lands in the panel's Output pane
+    panelDispatch({ type: "open" });
     void r.run();
   };
   const check = () => {
@@ -92,7 +87,7 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
     void r.lint();
   };
   const askAbout = (finding: LintFinding) => {
-    setPendingFinding(findingPointer(finding)); // a fresh object each click, so asking again re-sends
+    setPendingFinding(findingPointer(finding));
     show("sloppy");
   };
 
@@ -104,7 +99,6 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
     </div>
   );
 
-  // Submit is the one toolbar action: the server judges the code against the lesson's tests. Run and Lint stay in the command palette.
   const actions = (
     <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={check} disabled={!can.check}>
       <Check size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -130,7 +124,7 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
           captionsSrc={`/video/${lessonId}.vtt`}
           chaptersSrc={`/video/${lessonId}.chapters.vtt`}
           onExplain={(text) => {
-            setPendingPrompt({ text }); // a fresh object each click, so asking again re-sends
+            setPendingPrompt({ text });
             show("sloppy");
           }}
           sources={[

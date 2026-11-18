@@ -31,11 +31,8 @@ test("resizeUtil clamps to 200 and 420", () => {
 });
 
 test("resize leaves the editor its 360 px", () => {
-  // 1000 - utilW 320 - 360 = 320, so the navigator cannot grow past 320.
   assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px: 520, container: 1000 }).leftW, 320);
-  // 900 - leftW 280 - 360 = 260, so the utility area cannot grow past 260.
   assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeUtil", px: 420, container: 900 }).utilW, 260);
-  // A window too small for the minimum still stops at the minimum.
   assert.equal(layoutReducer(DEFAULT_LAYOUT, { type: "resizeLeft", px: 520, container: 400 }).leftW, 240);
 });
 
@@ -77,7 +74,6 @@ test("clampLayout with a hidden panel only protects the visible one", () => {
   assert.equal(s.leftW, DEFAULT_LAYOUT.leftW, "the hidden navigator is not touched");
 });
 
-// Storage stub that answers only for the given keys; other keys read as missing.
 const store = (items: Record<string, string>) => ({ getItem: (k: string) => items[k] ?? null });
 
 test("loadLayout returns the defaults for missing or unusable storage", () => {

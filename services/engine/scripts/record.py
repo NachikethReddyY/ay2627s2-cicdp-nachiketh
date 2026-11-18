@@ -18,7 +18,6 @@ import litellm
 from learnquest_engine import pipeline
 from learnquest_engine.schemas import LessonContext
 
-# Keys and bearer tokens must never reach a fixture file.
 SECRET = re.compile(r'(sk-[A-Za-z0-9_-]+|Bearer\s+[^\s",]+)')
 
 
@@ -45,7 +44,6 @@ def main() -> None:
         else:
             pipeline.lesson(LessonContext.model_validate(data))
     finally:
-        # Saved even when generation fails, so invalid replies can become fixtures.
         text = SECRET.sub("[redacted]", json.dumps({"responses": raw}, indent=2))
         args.out.write_text(text + "\n")
         print(f"recorded {len(raw)} completion(s) to {args.out}")

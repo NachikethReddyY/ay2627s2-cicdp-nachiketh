@@ -1,4 +1,3 @@
-// Pure helpers for the renderer shell. No React or DOM, so node --test can run them.
 import { CLIENT_BLOCKS, parseSpec, type BlockModule, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
 
 type Item = { kind: "block"; block: Block } | { kind: "rejected"; alt: string; reasons: string[] };
@@ -9,10 +8,7 @@ const altOf = (raw: unknown): string => {
   return typeof a === "string" ? sanitize(a).trim().slice(0, MAX_ALT) : "";
 };
 
-/** Re-parses a doc and lines every raw block up with either its parsed block or a rejection (keeping its alt text). */
 export function plan(doc: unknown, registry: readonly BlockModule[] = CLIENT_BLOCKS): Plan {
-  // Lesson docs reach the browser with answers and hints already removed (games are public), so the default is the client registry.
-  // The author playground passes the full registry to preview a game as written.
   const res = parseSpec(doc, registry);
   if (!res.ok && res.issues.every((i) => !i.path.startsWith("blocks.")))
     return { items: [], issues: res.issues, fatal: true };
@@ -33,7 +29,6 @@ export function plan(doc: unknown, registry: readonly BlockModule[] = CLIENT_BLO
 export type Stepper = { step: number; playing: boolean };
 export type StepAction = "toggle" | "play" | "pause" | "next" | "prev" | "first" | "last" | { goto: number };
 
-/** Stepping by hand always pauses; reaching the last step stops playback. */
 export function stepReduce(t: Timeline, s: Stepper, a: StepAction): Stepper {
   const at = (i: number, playing = false): Stepper => ({ step: clampStep(t, i), playing });
   const last = stepCount(t) - 1;
@@ -47,27 +42,23 @@ export function stepReduce(t: Timeline, s: Stepper, a: StepAction): Stepper {
   return at(a.goto);
 }
 
-/** Auto-advance after the step's duration; stops on the last step. */
 export const tick = (t: Timeline, s: Stepper): Stepper => {
   const n = clampStep(t, s.step + 1);
   return { step: n, playing: n < stepCount(t) - 1 };
 };
 
-/** Reduced motion has no autoplay, so Play steps forward once instead of flipping to "Pause". */
 export const motionAction = (a: StepAction, reduced: boolean): StepAction => (reduced && (a === "play" || a === "toggle") ? "next" : a);
 
-/** Space, arrows and Home/End. Native controls (buttons, the scrub slider) keep their own keys. */
 export function keyAction(key: string, targetTag = "", mods: { alt?: boolean; ctrl?: boolean; meta?: boolean } = {}): StepAction | null {
   if (mods.alt || mods.ctrl || mods.meta) return null;
   if (["BUTTON", "INPUT", "TEXTAREA", "SELECT"].includes(targetTag.toUpperCase())) return null;
   return ({ " ": "toggle", ArrowRight: "next", ArrowLeft: "prev", Home: "first", End: "last" } as const)[key as " "] ?? null;
 }
 
-/** Reduced motion beats the spec's autoplay flag: start paused, in step mode. */
 export const initialPlaying = (autoplay: boolean | undefined, reducedMotion: boolean): boolean => !!autoplay && !reducedMotion;
 
 export const viewState = (t: Timeline, s: Pick<Stepper, "step">): { state: TimelineState; caption: string; count: number } => ({
   state: stateAt(t, s.step),
-  caption: t.steps[clampStep(t, s.step)]!.caption,
+  caption: t.steps[clampStep(t, s.step)].caption,
   count: stepCount(t),
 });

@@ -41,10 +41,10 @@ class Mastery:
 class Lesson:
     lesson_id: str
     concept_ids: Sequence[str]
-    kind: str  # learn | watch | practice | game-practice | predict
+    kind: str
     done: bool
     order: int
-    title: str | None = None  # display only; falls back to generic text
+    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,6 @@ class Recommendation:
     reason: str
 
 
-# Bump when the policy or its reasons change. The API keeps a copy for its cache hash.
 POLICY_VERSION = "4"
 
 LEARN_KINDS = ("learn", "watch")
@@ -143,7 +142,6 @@ def recommend(
         prereqs.setdefault(dst, []).append(src)
 
     def unlocked(concept: str) -> bool:
-        # An unobserved prerequisite counts as not yet known.
         return all(known.get(pre, 0.0) >= unlock_at for pre in prereqs.get(concept, []))
 
     course_order: dict[str, int] = {}
@@ -153,8 +151,6 @@ def recommend(
     for concept in known:
         course_order.setdefault(concept, len(course_order))
 
-    # Only a concept a remaining lesson teaches can be practised. Otherwise a concept
-    # below mastery with no lesson left would send the learner to an unrelated lesson.
     remaining_concepts = {c for lesson in remaining for c in lesson.concept_ids}
     open_below = [c for c, p in known.items() if p < mastered_at and c in remaining_concepts]
     candidates = [c for c in open_below if unlocked(c)]
@@ -173,7 +169,6 @@ def recommend(
         reason = _reason(code, [concept], p, locked=locked)
         return Recommendation(action, chosen.lesson_id, concept, code, reason)
 
-    # Only concepts at mastery count as mastered; a weak one with no lesson left is not claimed.
     mastered = sorted((c for c in known if known[c] >= mastered_at), key=lambda c: course_order[c])
     open_lessons = [lesson for lesson in remaining if all(unlocked(c) for c in lesson.concept_ids)]
     chosen = (open_lessons or remaining)[0]

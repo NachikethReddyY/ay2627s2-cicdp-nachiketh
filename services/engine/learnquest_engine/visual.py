@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from learnquest_engine.llm import Result, generate
 
 PROMPTS = Path(__file__).parent / "prompts"
-# The web's validator, run as a Node sidecar so the engine sees the same semantic rules.
 CHECK_SCRIPT = (
     Path(__file__).resolve().parents[3] / "packages" / "ui-catalog" / "src" / "gen" / "check.ts"
 )
@@ -77,7 +76,7 @@ _PART_FIX_LINE = (
     '- If the user message has a "fix_these_issues" field, correct exactly those problems in the\n'
     '  `doc` of "previous_part" and return the full corrected reply, keeping the rest unchanged.'
 )
-assert _RETURN_LINE in RULES and _FIX_LINE in RULES  # the part variant below edits these lines
+assert _RETURN_LINE in RULES and _FIX_LINE in RULES  # noqa: S101 (import-time invariant: the part variant below edits these lines)
 
 PART_RULES = RULES.replace(_RETURN_LINE, _PART_RETURN_LINE).replace(_FIX_LINE, _PART_FIX_LINE)
 
@@ -91,7 +90,6 @@ def _system(embedded: bool = False) -> str:
 def generate_visual(
     prompt: str, repair: list[str] | None = None, previous: dict[str, Any] | None = None
 ) -> Result[VisualDoc]:
-    # A repair call sends back the exact problems and the document they were found in.
     payload: dict[str, Any] = {"prompt": prompt}
     if repair:
         payload["fix_these_issues"] = repair
@@ -103,10 +101,6 @@ def issues(doc: dict[str, Any]) -> list[str]:
     errors = sorted(_validator().iter_errors(doc), key=lambda e: list(e.absolute_path))
     out: list[str] = []
     for e in errors[:20]:
-        # A oneOf failure only says "not valid under any of the given schemas"; report the
-        # most relevant nested error so the reason (e.g. a size over its cap) is visible.
-        # The deepest nested error is the branch that matched furthest.
-        # Its path is already absolute.
         cause = max(e.context, key=lambda c: len(c.absolute_path)) if e.context else None
         where = cause if cause is not None else e
         out.append(f"/{'/'.join(map(str, where.absolute_path))}: {where.message[:200]}")
@@ -123,7 +117,7 @@ def ts_issues(doc: dict[str, Any]) -> list[str]:
     if node is None or not CHECK_SCRIPT.is_file():
         raise CheckerUnavailable(f"node or {CHECK_SCRIPT} missing")
     try:
-        run = subprocess.run(
+        run = subprocess.run(  # noqa: S603 (fixed argv: resolved node and our own script, doc goes via stdin)
             [node, str(CHECK_SCRIPT)],
             input=json.dumps(doc),
             capture_output=True,

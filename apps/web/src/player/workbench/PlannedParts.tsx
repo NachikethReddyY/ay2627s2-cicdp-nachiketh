@@ -5,12 +5,8 @@ import { SOON, Soon, type NavView } from "./Planned";
 import type { WorkbenchProblem } from "./context";
 import { askEditorGuide, type GuideWidget } from "../runPython";
 
-// Sample-text views for the planned parts (showPlanned). Static text from the design, not lesson content.
-// Loaded lazily by the workbench.
-
 const icon = (I: LucideIcon, size = 15) => <I size={size} strokeWidth={1.8} aria-hidden="true" />;
 
-/** Run / Stop pill at the end of the navigator head (the design's run controls). */
 export function RunStopPill() {
   return (
     <span className="wb-pill ml-auto gap-0 shadow-[0_1px_2px_rgba(20,30,70,.1)]">
@@ -34,14 +30,11 @@ function GuideWidgetCard({ widget }: { widget: GuideWidget }) {
   </aside>;
 }
 
-// Must match the `code` max in GuideBody (apps/api/src/dev/route.ts).
 const GUIDE_CODE_LIMIT = 12_000;
 
-/** Fits the buffer into the guide's code limit, growing a window of lines around the selection (or the file start when there is none). */
 function clipGuideCode(code: string, selection: { startLine: number; endLine: number } | null) {
   if (code.length <= GUIDE_CODE_LIMIT) return { code, clipped: false, fromStart: false };
   const lines = code.split("\n");
-  // Monaco line numbers are 1-based. AIGuide gets no cursor position, so without a selection the window starts at line 1.
   const centre = selection ? Math.min(lines.length - 1, Math.max(0, Math.round((selection.startLine + selection.endLine) / 2) - 1)) : 0;
   let lo = centre;
   let hi = centre;
@@ -55,8 +48,6 @@ function clipGuideCode(code: string, selection: { startLine: number; endLine: nu
   return { code: lines.slice(lo, hi + 1).join("\n").slice(0, GUIDE_CODE_LIMIT), clipped: true, fromStart: !selection };
 }
 
-/** A useful, source-aware learning guide for the isolated /test/editor fixture. */
-// The guide sends the current editor context to the server-side AI engine.
 export function AIGuide({ fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent, pendingPrompt, onPromptSent }: { fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void; pendingPrompt?: { text: string } | null; onPromptSent?: () => void }) {
   const guideCode = clipGuideCode(code, selection);
   const [messages, setMessages] = useState<GuideMessage[]>([]);
@@ -73,8 +64,6 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
     imageUrls.current.clear();
     setImages([]);
   };
-  // Start a fresh chat when the file changes. Not on mount: a question the parent hands in at mount (a lint finding,
-  // the video's Explain) is asked by an effect below, and a reset on mount would wipe it (React's dev double-mount does).
   const chatPath = useRef(filePath);
   useEffect(() => {
     if (chatPath.current === filePath) return;
@@ -114,19 +103,16 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
       if (id === requestId.current) setSending(false);
     }
   };
-  // A lint finding handed in by the parent is asked once, as soon as the guide is free, then cleared.
   const handledFinding = useRef<object | null>(null);
   useEffect(() => {
     if (!pendingFinding || sending || handledFinding.current === pendingFinding) return;
     handledFinding.current = pendingFinding;
-    // The server re-lints only the code the guide sends, so the finding is sent only when that code is the start of the file through the finding's line.
     const lineCount = guideCode.code.split(/\r\n|\r|\n|\u2028|\u2029/).length;
     const inWindow = code.startsWith(guideCode.code) && pendingFinding.line <= lineCount;
     void ask(`Explain line ${pendingFinding.line}: ${pendingFinding.ruleId}`, inWindow ? pendingFinding : undefined);
     onFindingSent?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ask closes over the current thread; only a new finding or a free guide should fire it
   }, [pendingFinding, sending]);
-  // A question handed in by the parent (the lesson video's Explain button) is asked once, as soon as the guide is free, then cleared.
   const handledPrompt = useRef<object | null>(null);
   useEffect(() => {
     if (!pendingPrompt || sending || handledPrompt.current === pendingPrompt) return;
@@ -210,7 +196,6 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
   );
 }
 
-/** The floating debug bar over the editor. */
 export function DebugBar() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
@@ -238,7 +223,6 @@ export function DebugBar() {
   );
 }
 
-/** Sample output for the bottom panel's Debug console tab. */
 export function DebugConsole() {
   return (
     <div className="wb-mono px-3.5 py-2 text-xs leading-[1.65]">
@@ -265,7 +249,6 @@ const Sec = ({ children, open = false }: { children: ReactNode; open?: boolean }
   </div>
 );
 
-/** Static navigator views for the tabs that are not built yet. */
 export function PlannedNavView({ view, problems = [], branch = "main" }: { view: Exclude<NavView, "files">; problems?: WorkbenchProblem[]; branch?: string }) {
   switch (view) {
     case "search":
@@ -312,6 +295,8 @@ export function PlannedNavView({ view, problems = [], branch = "main" }: { view:
       );
     case "problems":
       return <ProblemsView problems={problems} />;
+    case "ai":
+      return null;
     case "debug":
       return (
         <>

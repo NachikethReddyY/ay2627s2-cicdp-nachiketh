@@ -1,21 +1,17 @@
 import { z } from "zod";
 
-// A blank value (e.g. `IMAGE_ESTIMATE_USD=` in .env) means unset, not 0 (which would reserve nothing).
 const blankIsUnset = (v: unknown) => (v === "" ? undefined : v);
 
 const schema = z
   .object({
     DATABASE_URL: z.string().min(1),
-    // Neon's pooled URL (-pooler host) is set as DATABASE_URL; the direct one is required (docs/api-plan.md §1).
     DATABASE_URL_UNPOOLED: z.string().min(1).optional(),
     BETTER_AUTH_SECRET: z.string().min(32),
     PUBLIC_ORIGIN: z.url().default("http://localhost:5173"),
     BETTER_AUTH_URL: z.url().optional(),
     PORT: z.coerce.number().int().positive().default(3000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    // IP or comma-separated IPs/CIDRs of the reverse proxy in front of the API. Unset: trust no forwarded address.
     TRUSTED_PROXY: z.string().optional(),
-    // Optional: without a key, paths.generate answers PRECONDITION_FAILED.
     MODERATION_API_KEY: z.string().min(1).optional(),
     IMAGE_BASE_URL: z.url().optional(),
     IMAGE_API_KEY: z.string().min(1).optional(),
@@ -25,49 +21,35 @@ const schema = z
     TIERS_JSON: z.string().optional(),
     AI_DAILY_BUDGET_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     AI_MONTHLY_BUDGET_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
-    // Estimated cost of one paid text call (outline, part, lesson), reserved before the call. A budget of 0 means unlimited.
     AI_CALL_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0.01)),
-    // Production refuses to start with both budgets at 0 unless this says the spend is meant to be uncapped.
     AI_BUDGET_UNLIMITED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     AI_KILL_SWITCH: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
-    // Lesson media bucket (docs/media-storage-plan.md §2). Unset: media calls answer PRECONDITION_FAILED.
     S3_ENDPOINT: z.url().optional(),
     S3_BUCKET: z.string().min(1).optional(),
     S3_ACCESS_KEY_ID: z.string().min(1).optional(),
     S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     S3_REGION: z.string().default("auto"),
-    // Dev-only visual playground (/api/dev/visual): the Python engine and the token it shares with services/engine/.env.
     ENGINE_URL: z.url().default("http://localhost:8000"),
     ENGINE_TOKEN: z.string().min(32).optional(),
-    // A lesson's visual pass can make up to three model calls, so the default covers the worst case.
     ENGINE_TIMEOUT_MS: z.coerce.number().int().positive().default(400_000),
-    OUTLINE_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000), // a path outline should not take longer than this
-    // Per-learner Docker shell (docs/plans/sandbox-editor-plan.md). Off: /sandbox/shell answers 503 and Docker is never touched.
+    OUTLINE_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
     SANDBOX_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     SANDBOX_IMAGE: z.string().min(1).default("lq-sandbox:dev"),
-    // Where shells and practice runs execute. "daytona" uses Daytona's hosted sandboxes and never loads Docker or node-pty (docs/configuration.md).
     SANDBOX_BACKEND: z.enum(["docker", "daytona"]).default("docker"),
     DAYTONA_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
     DAYTONA_API_URL: z.preprocess(blankIsUnset, z.url().optional()),
     DAYTONA_TARGET: z.preprocess(blankIsUnset, z.string().min(1).optional()),
-    // Snapshot to create learner sandboxes from. Unset: Daytona's default image.
     DAYTONA_SNAPSHOT: z.preprocess(blankIsUnset, z.string().min(1).optional()),
-    // Minutes without activity before a learner's shell sandbox stops itself (Daytona enforces it, so it survives API restarts).
     DAYTONA_AUTO_STOP_MINUTES: z.coerce.number().int().positive().default(3),
-    // Shell containers join this bridge (created on demand, inter-container traffic off) instead of Docker's default one.
     SANDBOX_NETWORK: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/).default("lq-sbx"),
-    // Optional OCI runtime for shell containers, e.g. "runsc" (gVisor). Unset: Docker's default runtime.
     SANDBOX_RUNTIME: z.preprocess(blankIsUnset, z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/).optional()),
-    // Comma-separated "owner/name" repos that imports may read. Empty (default): every import is rejected with 400.
     IMPORT_REPO_ALLOWLIST: z
       .string()
       .default("")
       .transform((v) => v.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean)),
-    // Caps that keep one learner, or a crowd, from exhausting the host.
-    SANDBOX_MAX_TABS: z.coerce.number().int().positive().default(4), // terminal tabs per learner
-    SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50), // live shell sessions in all
-    SANDBOX_MAX_RUNS: z.coerce.number().int().positive().default(20), // live code runs in all
-    // Hacker-edition stretch tests the engine adds to each practice part. They give bonus points only. 0 turns them off.
+    SANDBOX_MAX_TABS: z.coerce.number().int().positive().default(4),
+    SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50),
+    SANDBOX_MAX_RUNS: z.coerce.number().int().positive().default(20),
     PRACTICE_STRETCH_TESTS: z.coerce.number().int().min(0).max(10).default(0),
   })
   .refine((e) => !e.SANDBOX_ENABLED || e.SANDBOX_BACKEND !== "daytona" || !!e.DAYTONA_API_KEY, {
@@ -83,7 +65,6 @@ const schema = z
   )
   .refine(
     (e) => {
-      // AI is on when the engine is configured (ai/service.ts) or image generation is (media/imagegen.ts).
       const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL));
       return e.NODE_ENV !== "production" || !ai || e.AI_BUDGET_UNLIMITED || e.AI_DAILY_BUDGET_USD > 0 || e.AI_MONTHLY_BUDGET_USD > 0;
     },
@@ -98,10 +79,8 @@ const schema = z
     BETTER_AUTH_URL: e.BETTER_AUTH_URL ?? e.PUBLIC_ORIGIN,
   }));
 
-/** Exported so tests can check the rules without exiting the process. */
 export const parseEnv = (source: Record<string, string | undefined>) => schema.safeParse(source);
 
-/** Settings that are allowed but risky in production, logged loudly at startup. */
 export function startupWarnings(e: Pick<Env, "NODE_ENV" | "TRUSTED_PROXY">): string[] {
   if (e.NODE_ENV !== "production") return [];
   return e.TRUSTED_PROXY

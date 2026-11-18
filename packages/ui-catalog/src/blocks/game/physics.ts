@@ -12,18 +12,12 @@ export type PhysicsProps = { kind: "physics"; target: { x: number; width: number
 
 const physicsSchema = z.strictObject({
   kind: z.literal("physics"),
-  /** Where the target zone sits on the ground, in metres from the launcher, and how wide it is. */
   target: z.strictObject({ x: z.int().min(2).max(MAX_TARGET_X), width: z.int().min(1).max(20) }),
-  /** Top of the speed slider in m/s; the angle slider is fixed at MIN_ANGLE to MAX_ANGLE degrees. */
   maxSpeed: z.int().min(5).max(MAX_LAUNCH_SPEED),
 });
 
 export type Launch = { path: { x: number; y: number }[]; landX: number; hit: boolean };
 
-/**
- * Fixed-step projectile (semi-implicit Euler, no random input), shared by the save check and the browser
- * so both reach the same outcome. Pure arithmetic: no engine, no clock, nothing a learner wrote is run.
- */
 export function simulateLaunch(p: Pick<PhysicsProps, "target">, angle: number, speed: number): Launch {
   const r = (angle * Math.PI) / 180;
   let vx = speed * Math.cos(r);
@@ -36,7 +30,6 @@ export function simulateLaunch(p: Pick<PhysicsProps, "target">, angle: number, s
     const ny = y + vy * DT;
     const nx = x + vx * DT;
     if (ny <= 0) {
-      // Interpolate the last step so the landing point does not depend on the step size.
       x += (nx - x) * (y / (y - ny));
       path.push({ x, y: 0 });
       break;
@@ -49,13 +42,11 @@ export function simulateLaunch(p: Pick<PhysicsProps, "target">, angle: number, s
   return { path, landX, hit: Math.abs(landX - p.target.x) <= p.target.width / 2 };
 }
 
-/** True when some whole-number angle and speed on the sliders lands in the target. */
 export function reachable(p: PhysicsProps): boolean {
   for (let a = MIN_ANGLE; a <= MAX_ANGLE; a++) for (let s = 1; s <= p.maxSpeed; s++) if (simulateLaunch(p, a, s).hit) return true;
   return false;
 }
 
-/** The target must be hittable with the sliders as they are, or the game cannot be won. */
 export const physicsKind: GameKind<PhysicsProps> = {
   schema: physicsSchema,
   check: (p) => (reachable(p) ? [] : [{ path: "target", message: "no angle and speed on the sliders reaches the target" }]),

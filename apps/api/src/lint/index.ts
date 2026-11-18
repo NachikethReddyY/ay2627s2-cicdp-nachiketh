@@ -6,22 +6,20 @@ export type Finding = { ruleId: string; line: number; column: number; message: s
 export class LintUnavailableError extends Error {}
 
 export const LINT_TIMEOUT_MS = 2_000;
-const STARTUP_TIMEOUT_MS = 15_000; // loading ESLint, the TypeScript parser and the ruff WASM, once per worker
+const STARTUP_TIMEOUT_MS = 15_000;
 
 type Reply = { ready?: true; id?: number; findings?: Finding[]; error?: string };
 type Job = {
   code: string;
   language: LintLanguage;
   settled: boolean;
-  abort?: (why: string) => void; // set while the job runs on the worker; kills it
+  abort?: (why: string) => void;
   resolve: (f: Finding[]) => void;
   reject: (e: Error) => void;
 };
 
-/** Jobs waiting or running; a full queue rejects at once instead of growing without bound. */
 export const MAX_PENDING = 8;
 
-// One warm worker handles one job at a time. A timeout, crash or error kills it; the next job starts a fresh one.
 let worker: Worker | undefined;
 let ready: Promise<Worker> | undefined;
 let nextId = 0;
@@ -31,7 +29,7 @@ let pending = 0;
 
 function startWorker(): Promise<Worker> {
   const w = new Worker(new URL("./worker.ts", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: 256 } });
-  w.unref(); // an idle worker must not keep the process (or a test run) alive
+  w.unref();
   worker = w;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { kill(w); reject(new LintUnavailableError("lint worker did not start")); }, STARTUP_TIMEOUT_MS);
@@ -85,7 +83,7 @@ async function pump(): Promise<void> {
       try {
         ready ??= startWorker();
         const w = await ready.catch((e) => { ready = undefined; throw e; });
-        if (job.settled) continue; // timed out while the worker was starting
+        if (job.settled) continue;
         job.resolve(await run(job, w));
       } catch (e) {
         job.reject(e instanceof LintUnavailableError ? e : new LintUnavailableError(e instanceof Error ? e.message : "lint failed"));
@@ -96,11 +94,6 @@ async function pump(): Promise<void> {
   }
 }
 
-/**
- * Lints learner code without running it. Resolves with the findings ([] only when the code is clean) and rejects with
- * LintUnavailableError on timeout, a full queue or any internal failure. The timeout counts from the call, so time spent
- * waiting in the queue is included. Findings carry no fixes or replacement code.
- */
 export function lintCode(code: string, language: LintLanguage, opts: { timeoutMs?: number } = {}): Promise<Finding[]> {
   if (pending >= MAX_PENDING) return Promise.reject(new LintUnavailableError("lint queue is full"));
   pending++;
@@ -121,7 +114,7 @@ export function lintCode(code: string, language: LintLanguage, opts: { timeoutMs
     };
     const timer = setTimeout(() => {
       if (job.settled) return;
-      if (job.abort) job.abort("lint timed out"); // running: kills the worker and rejects
+      if (job.abort) job.abort("lint timed out");
       else {
         const i = queue.indexOf(job);
         if (i >= 0) queue.splice(i, 1);
@@ -135,7 +128,6 @@ export function lintCode(code: string, language: LintLanguage, opts: { timeoutMs
 
 const LINE_BREAK = /\r\n|\r|\n|\u2028|\u2029/;
 
-/** The text of a 1-based line, split the way ESLint counts lines (CRLF, CR, LF, U+2028, U+2029). */
 export function sourceLineOf(code: string, line: number): string {
   return code.split(LINE_BREAK)[line - 1] ?? "";
 }

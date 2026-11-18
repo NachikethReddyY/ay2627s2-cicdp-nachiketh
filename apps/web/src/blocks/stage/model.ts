@@ -1,16 +1,12 @@
-// Pure mapping from a stage shape plus timeline state to SVG attributes. No React or DOM, so node --test can run it.
 import { THEME_COLORS, type StageProps, type TimelineState } from "@learnquest/ui-catalog";
 
 export type StageShape = StageProps["shapes"][number];
 export type Resolved = {
-  /** Offset from the shape's own x,y; applied as a CSS transform so it can tween. */
   dx: number;
   dy: number;
-  /** Degrees about the shape's own x,y, and a scale factor. */
   rot: number;
   sc: number;
   opacity: number;
-  /** Pen-stroke reveal 0..1 for paths and lines. */
   draw: number;
   fill: string;
   stroke: string;
@@ -18,16 +14,14 @@ export type Resolved = {
   w: number;
   h: number;
   r: number;
-  /** Where the label is drawn, relative to the shape's own x,y (before dx,dy). */
   label: { x: number; y: number };
   labelPill: boolean;
 };
 
 export function segment(step: number, animate: boolean, poses: number[]): [number, number] | null {
-  return animate && step + 1 < poses.length ? [poses[step]!, poses[step + 1]!] : null;
+  return animate && step + 1 < poses.length ? [poses[step], poses[step + 1]] : null;
 }
 
-/** Freezes or releases a GSAP tween. Accepts any tween-like object so the helper stays testable without a DOM. */
 export function holdTween(tween: { pause(): unknown; resume(): unknown } | null | undefined, paused: boolean): void {
   if (paused) tween?.pause(); else tween?.resume();
 }
@@ -62,8 +56,8 @@ export function resolve(s: StageShape, state: TimelineState | undefined): Resolv
     : s.kind === "line" ? { x: (s.x + (s.x2 ?? s.x)) / 2, y: (s.y + (s.y2 ?? s.y)) / 2 }
     : { x: s.x, y: s.y };
   if (labelPill) label.y -= (s.kind === "circle" ? r : h / 2) + 4;
-  const token = tokenName(isColor(t?.fill) ? t!.fill as string : isColor(s.fill) ? s.fill : s.kind === "text" ? "ink" : "paper");
-  const colors = palette[token] ?? palette.paper!;
+  const token = tokenName(isColor(t?.fill) ? t.fill : isColor(s.fill) ? s.fill : s.kind === "text" ? "ink" : "paper");
+  const colors = palette[token] ?? palette.paper;
   return {
     dx: num(t?.x, s.x) - s.x,
     dy: num(t?.y, s.y) - s.y,

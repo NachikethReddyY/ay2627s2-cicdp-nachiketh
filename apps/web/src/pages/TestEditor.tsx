@@ -33,13 +33,10 @@ import { resizeRect, type PreviewRect, type ResizeEdge } from "./previewResize";
 import { readStoredPreviewWindow, writeStoredPreviewWindow } from "./previewMemory";
 import { readStoredCodeWindow, writeStoredCodeWindow } from "./codeWindowMemory";
 
-// Dev-only workbench for browsing and editing the authenticated container workspace.
-
 const READY: WorkbenchStatus = { text: "Ready" };
 const DEMO_WEB_FILES = DEMO_PROJECT_FILES.filter((file) => file.path.includes("/web/"));
 const DEMO_ENTRY_TEXT = DEMO_PROJECT_FILES.find((file) => file.path === DEMO_ENTRY_FILE)?.content ?? "";
 
-// The bundled demo as a file tree, so the editor paints at once while the sandbox is still starting.
 function demoTree(): TreeNode[] {
   const root: TreeNode[] = [];
   for (const { path } of DEMO_PROJECT_FILES) {
@@ -66,17 +63,15 @@ const joinPath = (parent: string, name: string) => (parent ? `${parent}/${name}`
 const MAX_TERMINALS = 4;
 type TerminalSession = { id: string; label: string; socket: ShellSocket };
 type BrowserPreview = { state: "idle" | "starting" | "ready" | "error"; url?: string; message?: string; stage?: string };
-// Files under the demo project are the web app, so Run builds it and opens the browser preview.
 const isWebProjectPath = (path: string) => path.startsWith(`${DEMO_DIRECTORY}/`);
 const RUNNABLE_EXTENSIONS = ["py", "js", "mjs", "cjs"];
-/** While a window is dragged or resized, stop text selection across the whole page until the pointer is released. */
 function lockSelectionUntilRelease() {
   const root = document.documentElement;
   const unlock = () => root.classList.remove("lq-no-select");
   root.classList.add("lq-no-select");
   window.addEventListener("pointerup", unlock, { once: true });
   window.addEventListener("pointercancel", unlock, { once: true });
-  window.addEventListener("blur", unlock, { once: true }); // released over another app, the pointerup never arrives
+  window.addEventListener("blur", unlock, { once: true });
 }
 
 type PreviewLog = { level: LogLevel; args: string[]; time: string };
@@ -85,7 +80,7 @@ async function ensureWebPreviewFiles() {
   let packageContent = DEMO_PROJECT_FILES.find((file) => file.path.endsWith("/package.json"))!.content;
   try {
     packageContent = (await getWorkspaceFile(`${DEMO_DIRECTORY}/package.json`)).content;
-  } catch { /* The first seed below supplies the package manifest. */ }
+  } catch { }
 
   try {
     const manifest = JSON.parse(packageContent) as {
@@ -109,7 +104,7 @@ async function ensureWebPreviewFiles() {
         devDependencies,
       }, null, 2) + "\n");
     }
-  } catch { /* Keep a learner's non-JSON manifest untouched. */ }
+  } catch { }
 
   await Promise.all(DEMO_WEB_FILES.map(async (file) => {
     if (!(await workspaceFileExists(file.path))) await putWorkspaceFile(file.path, file.content);
@@ -123,11 +118,6 @@ function workspaceNodes(entries: Awaited<ReturnType<typeof listFiles>>["entries"
     if (entry.type === "file") return { name: entry.name };
     return { name: entry.name, open: !dir && entry.name === DEMO_DIRECTORY, children: [] };
   });
-}
-
-async function workspaceTree(dir = ""): Promise<TreeNode[]> {
-  const { entries } = await listFiles(dir || undefined);
-  return workspaceNodes(entries, dir);
 }
 
 function mergeWorkspaceTree(current: TreeNode[], listings: Map<string, TreeNode[]>): TreeNode[] {
@@ -148,7 +138,6 @@ function workspaceFiles(nodes: TreeNode[], parent = ""): string[] {
   });
 }
 
-// Only a 404 means the file is missing. Any other failure is rethrown, so a seed never overwrites a file it could not read.
 async function workspaceFileExists(path: string) {
   try {
     await getWorkspaceFile(path);
@@ -159,17 +148,12 @@ async function workspaceFileExists(path: string) {
   }
 }
 
-// The sandbox API returns text only, so binary files would reach the preview corrupted. They are skipped by extension before any read.
 const BINARY_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "ico", "bmp", "woff", "woff2", "ttf", "otf", "eot", "pdf", "zip", "mp3", "mp4", "wav", "webm"]);
 const isBinaryFile = (name: string) => {
   const dot = name.lastIndexOf(".");
   return dot > 0 && BINARY_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
 };
 
-// Reads the demo project as it is saved in the sandbox, so a reload keeps learner edits to files that were never opened.
-// Dependencies and dotfiles are skipped, and a file too large to open is left out instead of failing the whole preview.
-// Binary assets are skipped and reported through binarySkipped, so the caller can tell the learner why the page may differ.
-// The paths are listed first, then read in batches of 64, so a project of any size costs one read request per 64 files.
 async function savedProjectFiles(): Promise<{ files: PreviewFile[]; binarySkipped: boolean }> {
   const paths: string[] = [];
   let binarySkipped = false;
@@ -193,11 +177,9 @@ async function savedProjectFiles(): Promise<{ files: PreviewFile[]; binarySkippe
   return { files, binarySkipped };
 }
 
-// `replay` lets a caller (the test player) push replay frames into the editor.
 export default function TestEditor({ replay, dock = true }: { replay?: Ref<EditorHandle>; dock?: boolean } = {}) {
-  // The router parses the value as JSON, so a numeric slug arrives as a number.
   const { lesson: rawSlug } = useSearch({ strict: false }) as { lesson?: unknown };
-  const slug = rawSlug === undefined || rawSlug === "" ? undefined : String(rawSlug);
+  const slug = rawSlug === undefined || rawSlug === "" ? undefined : typeof rawSlug === "string" ? rawSlug : JSON.stringify(rawSlug);
   const lessonState = useApi(`test-editor-lesson:${slug ?? ""}`, () => (slug ? trpc.lessons.get.query({ id: slug }) : Promise.resolve(null)));
   const lessonError = slug && !lessonState.loading && lessonState.error ? "Could not load the lesson." : undefined;
   const loaded = slug && lessonState.data ? testEditorLesson(lessonState.data) : undefined;
@@ -211,7 +193,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const [fileLoading, setFileLoading] = useState(false);
   const [status, setStatus] = useState<WorkbenchStatus>(READY);
   const [shellNote, setShellNote] = useState<string>();
-  // The name field shown under the tree while a new file or folder is being named.
   const [draftEntry, setDraftEntry] = useState<"file" | "folder" | null>(null);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState("terminal-1");
@@ -222,7 +203,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const [previewOpen, setPreviewOpen] = useState(false);
   const [notepadOpen, setNotepadOpen] = useState(false);
   const [previewMinimized, setPreviewMinimized] = useState(false);
-  // The window's box and full-screen state come back as the learner left them (per browser, see previewMemory).
   const [remembered] = useState(readStoredPreviewWindow);
   const [previewMaximized, setPreviewMaximized] = useState(remembered.maximized);
   const [previewPosition, setPreviewPosition] = useState<{ left: number; top: number } | null>(() => (remembered.rect ? { left: remembered.rect.left, top: remembered.rect.top } : null));
@@ -236,7 +216,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const [previewNetwork, setPreviewNetwork] = useState<NetworkEntry[]>([]);
   const [previewSources, setPreviewSources] = useState<SourceEntry[]>([]);
   const [previewSourceText, setPreviewSourceText] = useState<SourceText | null>(null);
-  // The panel reacts to a change of `seq`, so the same pick or tab request can happen twice.
   const devtoolsSeq = useRef(0);
   const [pickedElement, setPickedElement] = useState<{ nodeId: number; seq: number } | null>(null);
   const [openDevtoolsTab, setOpenDevtoolsTab] = useState<{ tab: DevtoolsTab; seq: number } | null>(null);
@@ -248,13 +227,8 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const previewDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
   const previewResizeStart = useRef<{ edge: ResizeEdge; pointerX: number; pointerY: number; rect: PreviewRect } | null>(null);
   const runRef = useRef<HTMLButtonElement>(null);
-  // The demo entry is open from the first paint, but it stays read-only until the sandbox copy confirms it,
-  // so typing cannot save over work the sandbox already holds.
   const activePath = useRef(DEMO_ENTRY_FILE);
   const activeContent = useRef(DEMO_ENTRY_TEXT);
-  // False until the open buffer matches the sandbox copy. Read by the loaders; bufferConfirmed mirrors it for rendering.
-  // The bundled entry file is editable from the start: edits sync to the live preview, and the loader skips
-  // replacing a dirty buffer when the sandbox copy arrives (signed-out sessions never confirm it).
   const openConfirmed = useRef(false);
   const [bufferConfirmed, setBufferConfirmed] = useState(true);
   const draftInput = useRef<HTMLInputElement>(null);
@@ -264,23 +238,19 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const shellSockets = useRef(new Set<ShellSocket>());
   const openRequest = useRef(0);
-  // Last known text of each file, so a click shows it at once while the sandbox copy is re-read behind it.
   const fileCache = useRef(new Map<string, string>(DEMO_PROJECT_FILES.map((file): [string, string] => [file.path, file.content])));
-  // The demo's folders are already in the tree, so opening them needs no listing.
   const loadedFolders = useRef(new Set<string>(["", DEMO_DIRECTORY, `${DEMO_DIRECTORY}/src`, `${DEMO_DIRECTORY}/web`]));
   const loadingWorkspace = useRef(false);
   const queuedWorkspaceRefresh = useRef(false);
   const workspaceLoad = useRef<Promise<void>>(Promise.resolve());
   const terminalNumber = useRef(1);
-  // Shell tab ids carry a per-page tag, so two windows never replace each other's terminal.
   const windowTag = useRef(Math.random().toString(36).slice(2, 10));
-  const panel = usePanel(); // no container: the workbench clamps the height at render
+  const panel = usePanel();
 
   useEffect(() => {
     setPreviewHost(document.querySelector(".wb"));
   }, []);
 
-  // Focus the new-entry field when it opens, instead of autoFocus.
   useEffect(() => {
     if (draftEntry) draftInput.current?.focus();
   }, [draftEntry]);
@@ -292,7 +262,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       const data = event.data;
       const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
       if (data.type === "ready") {
-        // A fresh page: node and request ids restart, so drop everything keyed by the old ones.
         setPreviewDom(null);
         setPreviewStyles(null);
         setPreviewSources([]);
@@ -336,7 +305,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       } else if (data.type === "source") {
         setPreviewSourceText({ url: event.data.url, text: event.data.text, error: event.data.error });
       } else if (data.type === "contextmenu") {
-        // The frame's coordinates are relative to the frame; the menu sits in the browser window.
         const frame = previewFrameRef.current?.getBoundingClientRect();
         const box = previewWindowRef.current?.getBoundingClientRect();
         if (frame && box) setPreviewMenu({ x: frame.left - box.left + event.data.x, y: frame.top - box.top + event.data.y });
@@ -373,8 +341,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     shellSockets.current.add(socket);
     setTerminals([{ id: "terminal-1", label: "Terminal 1", socket }]);
     setTerminalStates({ "terminal-1": socket.state() });
-    // Start the sandbox on open so the files load without opening the terminal. The terminal view's own connect() is a no-op once this one is connecting.
-    // Deferred, and cancelled on cleanup: React's development double-mount would otherwise open a socket and drop it at once.
     const timer = setTimeout(() => socket.connect(), 0);
     return () => clearTimeout(timer);
   }, []);
@@ -390,7 +356,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   }, [terminals]);
   const shell = terminals.find((terminal) => terminal.id === activeTerminalId)?.socket ?? null;
   const shellState = useMemo<ShellState>(() => terminalStates[activeTerminalId] ?? { kind: "idle" as const }, [activeTerminalId, terminalStates]);
-  // Switching files shows no spinner: the previous text stays until the new file arrives. Only the first load is busy.
   const workspaceStatus: WorkbenchStatus = workspaceLoading
     ? { text: "Loading workspace files…", tone: "busy" }
     : shellState.kind === "connecting"
@@ -428,27 +393,20 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     if (next.length < 2) setSplitTerminals(false);
   };
 
-  // Resolves false when the edits could not be saved, so callers can keep the buffer open.
-  // `keepalive` is for saves during unload or unmount, so the request can finish after the page goes away.
   const flushSave = useCallback((options: { keepalive?: boolean } = {}) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = null;
-    // Saves run one at a time, so a call waits for an earlier PUT before it reads the dirty flag.
     const path = activePath.current;
     const save = saveQueue.current.then(async () => {
-      // A queued save for a file that is no longer open has nothing left to write; openFile saved it first.
-      // With no open file there is nowhere to write these edits, so drop the flag or the openFile loop never ends.
       if (!path) {
         dirty.current = false;
         return true;
       }
       if (!dirty.current || activePath.current !== path) return true;
       const nextContent = activeContent.current;
-      // Stays dirty until the PUT succeeds, so a file switch waits for this save and a failed save keeps the buffer.
       try {
         await putWorkspaceFile(path, nextContent, { keepalive: options.keepalive === true });
         fileCache.current.set(path, nextContent);
-        // Edits typed while the PUT ran are newer than nextContent and stay dirty for the next save.
         if (activeContent.current === nextContent) dirty.current = false;
         return true;
       } catch (error) {
@@ -462,7 +420,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
 
   const refreshWorkspace = useCallback(async (seedIfEmpty = false): Promise<void> => {
     if (loadingWorkspace.current) {
-      // The running load may not seed, so wait for it and then seed.
       if (seedIfEmpty) {
         await workspaceLoad.current;
         return refreshWorkspace(true);
@@ -473,14 +430,12 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     loadingWorkspace.current = true;
     let finishLoad = () => {};
     workspaceLoad.current = new Promise<void>((resolve) => { finishLoad = resolve; });
-    // Only an empty tree is a loading state; the bundled demo already fills it at first paint.
     const showLoading = treeRef.current.length === 0;
     if (showLoading) setWorkspaceLoading(true);
     try {
       const loadListings = async () => {
         const listings = new Map<string, TreeNode[]>();
         const dirs = [...loadedFolders.current];
-        // The API accepts at most 32 directories per request.
         for (let index = 0; index < dirs.length; index += 32) {
           const chunk = dirs.slice(index, index + 32);
           const result = await listFileDirectories(chunk);
@@ -490,7 +445,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       };
       let listings = await loadListings();
       let files = listings.get("") ?? [];
-      // Seed when the project is not initialized yet, and never overwrite a learner's existing file.
       if (seedIfEmpty && !(await workspaceFileExists(`${DEMO_DIRECTORY}/package.json`))) {
         await Promise.all(DEMO_PROJECT_FILES.map(async ({ path, content }) => {
           if (!(await workspaceFileExists(path))) await putWorkspaceFile(path, content);
@@ -513,14 +467,11 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       setTree(nextTree);
       if (isInitial) setFolders(initialOpen(nextTree));
       const paths = workspaceFiles(nextTree);
-      // A file renamed or removed in the terminal keeps its unsaved buffer; the next save recreates it.
       const keepDirtyBuffer = dirty.current && activePath.current !== "";
       const selected = keepDirtyBuffer || paths.includes(activePath.current) ? activePath.current : paths.includes(DEMO_ENTRY_FILE) ? DEMO_ENTRY_FILE : (paths[0] ?? "");
-      // The first refresh also reads the open file, so the bundled copy shown at first paint is replaced by the sandbox's.
       if (selected && (selected !== activePath.current || !openConfirmed.current)) {
         const request = ++openRequest.current;
         const result = await getWorkspaceFile(selected);
-        // Skip the switch if the learner typed while the file loaded: replacing the buffer would drop those edits.
         if (request === openRequest.current && !dirty.current) {
           activePath.current = selected;
           activeContent.current = result.content;
@@ -534,7 +485,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       }
       const unsavedGone = dirty.current && activePath.current !== "" && !paths.includes(activePath.current);
       const unsavedNote = unsavedGone ? `${activePath.current} was moved or removed. Your unsaved edits stay here and are saved to that path on the next save.` : undefined;
-      // A successful refresh must not hide a "Could not save" error the learner has not seen yet.
       setShellNote((current) => (current?.startsWith("Could not save") ? current : unsavedNote));
     } catch (error) {
       setShellNote(error instanceof Error ? error.message : "Could not read the sandbox workspace");
@@ -575,8 +525,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   }, [refreshWorkspace, shellState]);
 
   useEffect(() => {
-    // Pause while a file is opening, so the folder poll does not queue ahead of that read.
-    // Every poll is a sandbox round trip per folder, so it runs every 30 s and only while the tab is visible.
     if (shellState.kind !== "open" || !shellState.ready || fileLoading) return;
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") void refreshWorkspace(false);
@@ -584,14 +532,12 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     return () => clearInterval(timer);
   }, [fileLoading, folders, refreshWorkspace, shellState]);
 
-  // Save pending edits when the page unmounts, and warn before a reload can drop them.
-  // Unmount and pagehide saves use keepalive, so an interrupted navigation does not drop the last edit.
   useEffect(() => () => { void flushSave({ keepalive: true }); }, [flushSave]);
   useEffect(() => {
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
       if (!dirty.current) return;
       event.preventDefault();
-      event.returnValue = ""; // Older browsers show the prompt only when returnValue is set.
+      event.returnValue = "";
     };
     const saveOnPageHide = () => { void flushSave({ keepalive: true }); };
     window.addEventListener("beforeunload", warnBeforeLeaving);
@@ -602,7 +548,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     };
   }, [flushSave]);
 
-  // Sets the ref the loaders read and the state the editor renders from, together.
   const confirmBuffer = (confirmed: boolean) => {
     openConfirmed.current = confirmed;
     setBufferConfirmed(confirmed);
@@ -620,15 +565,11 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   };
 
   const openFile = async (path: string) => {
-    // Reopening the open file has nothing to load. Replacing the buffer here would drop edits typed while the fetch was pending.
     if (path === activePath.current) return;
     setShellNote(undefined);
     const cached = fileCache.current.get(path);
-    // With no unsaved edits, a cached file shows at once. The sandbox copy is re-read behind it and only replaces the view if it changed.
     if (cached !== undefined && !dirty.current) {
       const request = ++openRequest.current;
-      // Read-only until the sandbox copy matches, so the cached text cannot be saved over a newer sandbox copy.
-      // With no sandbox connected there is no newer copy to protect, so the cached text is editable at once.
       showFile(path, cached, !(shellState.kind === "open" && shellState.ready));
       try {
         const result = await getWorkspaceFile(path);
@@ -638,21 +579,17 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
           else confirmBuffer(true);
         }
       } catch {
-        // The sandbox cannot be read (signed out or offline), so the cached text is the best copy: let it be edited.
-        // The next open or refresh still reads the sandbox, and a save error shows if the sandbox is unavailable.
         if (request === openRequest.current && !dirty.current && activePath.current === path) confirmBuffer(true);
       }
       return;
     }
     setFileLoading(true);
     try {
-      // A failed save keeps the current buffer open, so its unsaved edits are not replaced.
       if (!(await flushSave())) return;
       const request = ++openRequest.current;
       const result = await getWorkspaceFile(path);
       fileCache.current.set(path, result.content);
       if (request !== openRequest.current) return;
-      // Save edits typed while the file loaded, so the new content does not replace them.
       while (dirty.current) {
         if (!(await flushSave()) || request !== openRequest.current) return;
       }
@@ -665,8 +602,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   };
 
   const toggleWorkspaceFolder = async (path: string) => {
-    // Open or close at once, from the children the tree already shows. The listing refreshes them behind it, and a failed
-    // listing (for example, when the learner is signed out) leaves the folder open.
     const wasOpen = folders.has(path);
     setFolders((current) => toggleFolder(current, path));
     if (!wasOpen && !loadedFolders.current.has(path)) {
@@ -726,13 +661,11 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     });
   };
 
-  // Full screen is a zoom, as on macOS: the window keeps its remembered box, and dragging an edge leaves full screen.
   const togglePreviewMaximized = () => {
     setPreviewMaximized((value) => !value);
     setPreviewMinimized(false);
   };
 
-  // The browser window is active while the last click landed inside it.
   const [previewActive, setPreviewActive] = useState(true);
   const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number } | null>(null);
   const [frontWindow, setFrontWindow] = useState<"editor" | "preview">("preview");
@@ -740,13 +673,12 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       setPreviewActive(previewWindowRef.current?.contains(target) ?? false);
-      // The window that was pressed comes to the front, as on macOS.
       if (previewWindowRef.current?.contains(target)) setFrontWindow("preview");
       else if (document.querySelector(".wb-win")?.contains(target)) setFrontWindow("editor");
       if (!(target as Element).closest?.(".wb-preview-menu")) setPreviewMenu(null);
     };
     const onBlur = () => {
-      setPreviewActive(false); // another app or the desktop took focus
+      setPreviewActive(false);
       setPreviewMenu(null);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -757,10 +689,7 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     };
   }, []);
 
-  // The code editor window: dragged by its title bar and resized from its edges, like the preview window.
-  // Until it is moved or resized, it keeps the default inset on the desk.
   const [editorRect, setEditorRect] = useState<PreviewRect | null>(readStoredCodeWindow);
-  // The default keeps the window clear of the dock at the bottom (72px).
   const editorFrame: PreviewRect = editorRect ?? { left: 32, top: 32, width: window.innerWidth - 64, height: window.innerHeight - 104 };
   const editorDragStart = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
   const editorResizeStart = useRef<{ edge: ResizeEdge; pointerX: number; pointerY: number; rect: PreviewRect } | null>(null);
@@ -779,7 +708,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     const start = editorDragStart.current;
     if (!start) return;
     const { width, height } = editorFrame;
-    // Keep at least 80px of the window on screen, so it can slide partly off the edge but never vanish.
     const KEEP = 80;
     setEditorRect({
       left: Math.min(Math.max(start.left + event.clientX - start.pointerX, KEEP - width), window.innerWidth - KEEP),
@@ -804,7 +732,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     lockSelectionUntilRelease();
     const rect = previewWindowRef.current?.getBoundingClientRect();
     if (!rect) return;
-    // Read the box before leaving full screen: the first move then continues from the full-screen box without a jump.
     previewResizeStart.current = { edge, pointerX: event.clientX, pointerY: event.clientY, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
     setPreviewMaximized(false);
   };
@@ -824,13 +751,11 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const startPreview = useCallback(async () => {
     if (previewStarting.current) return;
     previewStarting.current = true;
-    // Open the window straight away: it morphs in and shows the build stage while the workspace starts.
     setBrowserPreview({ state: "starting", stage: "Preparing the workspace…" });
     setPreviewOpen(true);
     setShellNote(undefined);
     try {
       await flushSave();
-      // Preview the saved workspace. With no sandbox yet, fall back to the bundled demo.
       let sources: PreviewFile[] = [];
       try {
         const saved = await savedProjectFiles();
@@ -838,7 +763,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
         for (const file of sources) fileCache.current.set(file.path, file.content);
         if (saved.binarySkipped) setShellNote("Preview skips binary files such as images and fonts.");
       } catch (error) {
-        // Say so when the demo stands in for the saved project, so edits are not silently hidden.
         setShellNote(error instanceof Error ? `Previewing the bundled demo. The saved project could not be read: ${error.message}` : "Previewing the bundled demo. The saved project could not be read.");
       }
       if (!sources.length) sources = DEMO_PROJECT_FILES.map((file) => ({ path: file.path, content: file.content }));
@@ -849,14 +773,12 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       const { url } = await startWebPreview(sources, {
         onStage: (stage) => setBrowserPreview((current) => (current.state === "starting" ? { ...current, stage } : current)),
       });
-      // Edits typed while the preview booted were skipped by changeContent, so push the current buffer now.
       if (activePath.current) {
         void syncWebPreviewFile(activePath.current, activeContent.current).catch((error: unknown) => {
           setShellNote(error instanceof Error ? `Preview file sync failed: ${error.message}` : "Preview file sync failed");
         });
       }
       setBrowserPreview({ state: "ready", url });
-      // Reload the frame so a rebuild shows the new files, not the previous page.
       setPreviewRefresh((value) => value + 1);
     } catch (error) {
       setPreviewOpen(true);
@@ -870,14 +792,12 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     if (previewAutoStarted.current) return;
     previewAutoStarted.current = true;
     void (async () => {
-      // Only the workspace loads on open. The preview starts when the learner clicks Run or Preview, not by itself.
       await refreshWorkspace(true);
     })();
   }, [refreshWorkspace]);
 
   const run = async () => {
     if (open && isWebProjectPath(open)) {
-      // Run builds the web app and opens the browser window; the terminal stays as it was.
       void startPreview();
       return;
     }
@@ -905,7 +825,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
         return;
       }
       if (open.startsWith(`${DEMO_DIRECTORY}/`)) {
-        // Run the saved file where it lives, so its relative imports resolve.
         await runShellCommand({
           command: `${runLanguage === "python" ? "python3" : "node"} "$HOME/${open}"`,
           panel: { open: () => panel.dispatch({ type: "open" }) },
@@ -939,7 +858,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   const createWorkspaceFile = () => setDraftEntry("file");
   const createWorkspaceFolder = () => setDraftEntry("folder");
 
-  // Runs when the name field is submitted: Enter creates, Escape or leaving the field cancels.
   const commitDraftEntry = async (kind: "file" | "folder", rawName: string) => {
     setDraftEntry(null);
     const name = rawName.trim().replace(/^\/+/, "");
@@ -953,7 +871,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       const parts = path.split("/");
       for (let index = 1; index < parts.length; index++) loadedFolders.current.add(parts.slice(0, index).join("/"));
       if (kind === "file") {
-        // Create only: an existing file keeps its contents.
         if (await workspaceFileExists(path)) {
           toast.error(`${path} already exists. Open it from the file list instead.`);
           return;
@@ -964,7 +881,6 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
         toast.success(`Created ${path}`);
         return;
       }
-      // Workspace writes create parent directories. A hidden marker keeps a newly created folder visible to the file listing.
       await putWorkspaceFile(`${path}/.learnquest-folder`, "");
       loadedFolders.current.add(path);
       setFolders((current) => new Set([...current, DEMO_DIRECTORY, path]));
@@ -982,11 +898,9 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       const destination = `${targetDir}/${source.split("/").at(-1)}`;
       await moveWorkspaceFile(source, targetDir);
       const wasOpen = activePath.current === source;
-      // Read now, before the awaits below, so a file opened meanwhile cannot leak its content into this path.
       const movedContent = wasOpen ? activeContent.current : undefined;
       if (wasOpen) {
         activePath.current = destination;
-        // openFile skips the reopen of the active path, so set the visible path here; Run and the title must follow the move.
         setOpen(destination);
       }
       const parent = targetDir;
@@ -1032,8 +946,8 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
           onSelect={(p) => void openFile(p)}
           onMoveFile={(source, target) => void moveWorkspaceEntry(source, target)}
           rootActions={<span className="flex flex-none items-center gap-0.5 pr-2">
-            <button type="button" className="wb-tb wb-n34" aria-label="New folder" title="New folder" onClick={() => void createWorkspaceFolder()}><FolderPlus size={14} aria-hidden="true" /></button>
-            <button type="button" className="wb-tb wb-n34" aria-label="New file" title="New file" onClick={() => void createWorkspaceFile()}><FilePlus2 size={14} aria-hidden="true" /></button>
+            <button type="button" className="wb-tb wb-n34" aria-label="New folder" title="New folder" onClick={() =>  createWorkspaceFolder()}><FolderPlus size={14} aria-hidden="true" /></button>
+            <button type="button" className="wb-tb wb-n34" aria-label="New file" title="New file" onClick={() =>  createWorkspaceFile()}><FilePlus2 size={14} aria-hidden="true" /></button>
             <button type="button" className="wb-tb wb-n34" aria-label="Refresh files" title="Refresh files" onClick={() => void refreshWorkspace(false)}><RefreshCw size={14} aria-hidden="true" /></button>
           </span>}
         />
@@ -1280,9 +1194,7 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       </section>,
       previewHost,
     )}
-    {/* The Notepad shows the lesson's instructions as its pinned Instructions tab. Keep this prop when moving the notepad. */}
     {notepadOpen && previewHost && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={liveLesson?.instructions ?? pickTestLesson(openLang).instructions} />, previewHost)}
-    {/* Always mounted, so a screen reader announces the note when its text appears. Clicks pass through to the toolbar. */}
     <p role="status" aria-live="polite" className={lessonNote ? "fixed bottom-16 left-3 z-50 pointer-events-none rounded-lg border border-[var(--line)] bg-[var(--glass)] px-3 py-1.5 text-sm font-semibold text-[var(--tx)] backdrop-blur-xl" : "sr-only"}>{lessonNote ? `${lessonNote} Showing the fixture lesson.` : ""}</p>
     {dock && <EditorDock items={dockItems} />}
     <Toaster position="bottom-right" richColors closeButton />

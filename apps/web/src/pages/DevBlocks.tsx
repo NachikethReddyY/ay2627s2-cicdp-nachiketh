@@ -9,7 +9,6 @@ const examples = [
   "a quiz on the planets",
 ];
 
-/** "blocks.1.props.timeline.steps.2.set.0.value" -> "Block 2, step 3, set 1, value". Falls back to the raw path. */
 function plainIssue({ path, message }: { path: string; message: string }): string {
   const m = /^blocks\.(\d+)(?:\.props)?\.?(.*)$/.exec(path);
   if (!m) return `${path}: ${message}`;
@@ -17,7 +16,6 @@ function plainIssue({ path, message }: { path: string; message: string }): strin
   return `Block ${+m[1] + 1}${rest ? `, ${rest.replace(/^step (\d+), ,/, "step $1,")}` : ""}: ${message}`;
 }
 
-/** Dev-only gallery: generate, edit, parse, and preview visual block specs. */
 export default function DevBlocks() {
   const [src, setSrc] = useState("");
   const [prompt, setPrompt] = useState("");

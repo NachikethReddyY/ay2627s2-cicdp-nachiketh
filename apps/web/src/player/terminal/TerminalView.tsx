@@ -32,22 +32,18 @@ const parseColor = (value: string): number | null => {
 
 const luma = (c: number) => (0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255)) / 255;
 
-/** matchMedia is missing in jsdom and some embeds: treat that as light and skip the change listener. */
 const colorScheme = () => (typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : undefined);
 
-/** Outside .wb the terminal follows the page tokens (--code, --tx, --ac) on the root, in light and dark. */
 function rootTheme(): TerminalThemeColors {
   const css = getComputedStyle(document.documentElement);
   const token = (name: string) => parseColor(css.getPropertyValue(name));
   const dark = colorScheme()?.matches ?? false;
   const background = token("--code") ?? (dark ? DARK_COLORS : LIGHT_COLORS).background;
   const base = luma(background) < 0.5 ? DARK_COLORS : LIGHT_COLORS;
-  // --acT is the readable accent on dark surfaces; --ac is too dim there.
   const cursor = token(base === DARK_COLORS ? "--acT" : "--ac") ?? base.cursor;
   return { foreground: token("--tx") ?? base.foreground, background, cursor, palette: base.palette };
 }
 
-// wterm paints the DOM from these; var() keeps them in step with the root tokens without a re-read.
 const ROOT_TERM_VARS = {
   "--term-app-bg": "var(--code)",
   "--term-app-fg": "var(--tx)",
@@ -57,8 +53,6 @@ const ROOT_TERM_VARS = {
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 
-// Wterm renders the terminal in the DOM and Ghostty supplies full VT emulation.
-// The existing shell socket continues to carry input, output, and PTY resize events.
 export default function TerminalView({ shell, active = true, fitKey }: TerminalViewProps) {
   const { ref, write, focus } = useTerminal();
   const [core, setCore] = useState<GhosttyCore | null>(null);
@@ -82,8 +76,6 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
     terminal.setThemeColors(dark ? DARK_COLORS : LIGHT_COLORS);
   }, []);
 
-  // The first size connects the shell. It runs once, whether it comes from the initial
-  // measurement in onReady or from the first resize event.
   const connectOnce = useCallback((cols: number, rows: number) => {
     if (connectedRef.current) return false;
     connectedRef.current = true;
@@ -109,10 +101,6 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
 
   useEffect(() => shell.onOutput(write), [shell, write]);
 
-  // wterm forwards keydown from its textarea to the shell (Kitty-encoded when the app asks),
-  // and it ignores preventDefault for Ctrl+`. The workbench's window capture listener has
-  // already toggled the panel by the time this element capture listener runs, so stopping
-  // propagation here keeps the toggle key out of the shell without blocking the toggle.
   useEffect(() => {
     const element = ref.current?.instance?.element;
     if (!element) return;
@@ -144,7 +132,6 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
     let loaded: GhosttyCore | null = null;
     void GhosttyCore.load({ backgroundColor: hex(rootTheme().background), foregroundColor: hex(rootTheme().foreground) }).then((next) => {
       loaded = next;
-      // Record focus before the terminal mounts, because wterm focuses its textarea during init.
       priorFocusRef.current = document.activeElement;
       if (live) setCore(next);
       else next.dispose();
@@ -174,15 +161,11 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
       onResize={onResize}
       onReady={(terminal) => {
         terminalRef.current = terminal;
-        // A grid that already matches the default size fires no resize event, so connect here
-        // with the size the emulator measured at init. Later resizes still go through onResize.
         connectOnce(terminal.cols, terminal.rows);
         applyWorkbenchTheme();
         if (activeRef.current) {
           focus();
         } else {
-          // Undo the focus that init took for the hidden terminal, then return focus to the
-          // element the page had before the terminal mounted.
           terminal.element.querySelector("textarea")?.blur();
           const prior = priorFocusRef.current;
           if (prior?.isConnected && prior !== document.body) (prior as HTMLElement).focus?.();

@@ -1,6 +1,3 @@
-// Live check of the media path against a real bucket (LQ-47). Skipped unless S3_LIVE=1, so CI never calls out.
-// Run against staging: S3_LIVE=1 S3_ENDPOINT=... S3_BUCKET=lq-media-staging S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=... \
-//   node --test test/media.live.test.ts
 import { out, signUp, trpc } from "./helpers.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +14,6 @@ import { eq } from "drizzle-orm";
 const live = process.env.S3_LIVE === "1" && !!env.S3_BUCKET;
 const skip = live ? false : "set S3_LIVE=1 and the S3_* variables to run";
 
-// 1x1 PNG, and one silent MPEG-1 Layer III frame (128 kbps, 44.1 kHz).
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 const MP3 = new Uint8Array(417).fill(0);
 MP3.set([0xff, 0xfb, 0x90, 0x64]);
@@ -43,8 +39,6 @@ test("real bucket: objects carry their type and cache headers, signed URLs work,
   const versionId = lesson!.currentVersionId!;
   const [first] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
 
-  // Narration through the import command, an image straight through saveMedia.
-  // Each key is recorded for cleanup as soon as its object exists, before any check that could fail.
   const r = await importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }]);
   const [narration] = await db.select({ key: lessonMedia.key }).from(lessonMedia).where(eq(lessonMedia.kind, "narration"));
   const mp3Key = narration!.key!;

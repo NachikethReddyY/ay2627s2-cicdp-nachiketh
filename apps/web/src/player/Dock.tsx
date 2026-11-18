@@ -3,7 +3,6 @@ import { FOCUS } from "./ui";
 
 export type DockItem = { id: string; label: string; icon: ReactNode; tone: string; running?: boolean; pressed?: boolean; onClick(): void };
 
-/** macOS-style dock: icon-only buttons, name shown as a tooltip on hover and keyboard focus. */
 export default function Dock({ items, hidden }: { items: DockItem[]; hidden: boolean }) {
   return (
     <div

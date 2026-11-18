@@ -8,22 +8,19 @@ import { resolveLearnerId } from "../auth/guards.ts";
 import { practiceCheck, type PracticeCheck } from "../parts/practice.ts";
 import { getBackend, type RunHandle } from "./backend.ts";
 
-// Live Python runs for practice lessons. Each run is a fresh, locked-down container, removed when the program ends or is stopped.
 export const MAX_CODE = 4000;
 const MAX_OUT = 8000;
 const MAX_LINE = 200;
-const LIMIT_S = 60; // wall-clock limit, long enough for a learner to type answers
-const MAX_ACTIVE = 2; // live runs per learner
-let rmTimeoutMs = 10_000; // bound on `docker rm -f`
-/** Tests shorten the bound instead of waiting on it. */
+const LIMIT_S = 60;
+const MAX_ACTIVE = 2;
+let rmTimeoutMs = 10_000;
 export function setRmTimeoutForTests(ms: number): void {
   rmTimeoutMs = ms;
 }
-const SETUP_S = 120; // extra time a remote sandbox gets to be created before the program starts
-const KEEP_S = 60; // a finished run stays readable this long
+const SETUP_S = 120;
+const KEEP_S = 60;
 
 type Spawn = typeof nodeSpawn;
-/** The slice of a child process this file uses, so a Daytona run can stand in for `docker run`. */
 type RunChild = {
   stdout: { on(ev: "data", cb: (d: Buffer) => void): unknown } | null;
   stderr: { on(ev: "data", cb: (d: Buffer) => void): unknown } | null;
@@ -37,17 +34,16 @@ type Run = {
   learner: string;
   child: RunChild;
   spawn: Spawn;
-  /** Set for a run that does not live in a local `docker run` container: removes whatever it holds, then resolves. */
   remove?: () => Promise<void>;
   out: string;
   done: boolean;
   stopping: boolean;
-  saving: boolean; // a checked run's completion is being saved; the program has already exited
-  overflow: boolean; // stdout went past MAX_OUT and the rest was dropped
+  saving: boolean;
+  overflow: boolean;
   error?: string;
   timer: NodeJS.Timeout;
-  check?: PracticeCheck; // set for a Check run of a practice lesson
-  passed?: boolean; // true once a checked run matched and its completion was saved
+  check?: PracticeCheck;
+  passed?: boolean;
 };
 const runs = new Map<string, Run>();
 const STOPPED = `Stopped: the code ran longer than ${LIMIT_S} seconds.`;
@@ -60,12 +56,9 @@ function finish(run: Run, error?: string) {
   setTimeout(() => runs.delete(run.id), KEEP_S * 1000).unref();
 }
 
-// Killing the local `docker run` client leaves the container running, so stopping removes it by name.
 const containerName = (id: string) => `lq-run-${id}`;
 
-/** Removes the run's container, then ends the run, so the learner's slot is freed only once it is gone. */
 function terminate(run: Run, error?: string) {
-  // A run that is saving its completion already exited cleanly; stopping it now must not change its verdict.
   if (run.stopping || run.saving) return;
   run.stopping = true;
   run.child.kill("SIGKILL");
@@ -77,7 +70,6 @@ function terminate(run: Run, error?: string) {
   }
   const rm = run.spawn("docker", ["rm", "-f", containerName(run.id)], { stdio: "ignore" });
   const end = () => finish(run, error);
-  // A hung docker CLI would never close; give up after RM_TIMEOUT_MS so the slot is not held forever.
   const giveUp = setTimeout(() => { rm.kill("SIGKILL"); end(); }, rmTimeoutMs);
   giveUp.unref();
   const done = () => { clearTimeout(giveUp); end(); };
@@ -89,10 +81,10 @@ export type Language = "python" | "javascript" | "typescript";
 const INTERPRETER: Record<Language, string[]> = {
   python: ["python3", "-I", "-u", "-c"],
   javascript: ["node", "-e"],
-  typescript: ["node", "--input-type=commonjs-typescript", "-e"], // Node strips the types; same semantics as the javascript run
+  typescript: ["node", "--input-type=commonjs-typescript", "-e"],
 };
 
-let checkSlots = 0; // live multi-test checks, which share SANDBOX_MAX_RUNS with ordinary runs
+let checkSlots = 0;
 
 function liveCount(): number {
   let live = checkSlots;
@@ -100,12 +92,10 @@ function liveCount(): number {
   return live;
 }
 
-/** True when live runs plus live checks already fill env.SANDBOX_MAX_RUNS across all learners. */
 export function atCapacity(): boolean {
   return liveCount() >= env.SANDBOX_MAX_RUNS;
 }
 
-/** Reserves one of the shared slots for a check, or returns null when the server is full. Call the result once to release it. */
 export function reserveCheckSlot(): (() => void) | null {
   if (atCapacity()) return null;
   checkSlots++;
@@ -113,7 +103,6 @@ export function reserveCheckSlot(): (() => void) | null {
   return () => { if (!released) { released = true; checkSlots--; } };
 }
 
-/** Adapts a backend's RunHandle to the child-process shape startRun reads. The backend loads asynchronously, so early input and kills wait for it. */
 function backendChild(learner: string, language: Language, code: string, onStarted: () => void): { child: RunChild; remove: () => Promise<void> } {
   const ee = new EventEmitter();
   const stdout = new EventEmitter();
@@ -132,7 +121,6 @@ function backendChild(learner: string, language: Language, code: string, onStart
     handle.onStdout((d) => stdout.emit("data", Buffer.from(d)));
     handle.onStderr((d) => stderr.emit("data", Buffer.from(d)));
     handle.onExit((exit, error) => {
-      // A failed start carries its message; a real exit code is handled like docker's.
       if (exit === null && error) { ee.emit("error", new Error(error)); return; }
       ee.emit("close", exit);
     });
@@ -146,11 +134,6 @@ function backendChild(learner: string, language: Language, code: string, onStart
   return { child, remove: async () => { await ready; await handle?.kill(); } };
 }
 
-/**
- * Starts a program and returns its run id, or null when the learner already has too many live runs
- * or the server is at its global limit (check atCapacity() first to tell the two apart).
- * With `check`, a clean exit whose output matches is saved as the lesson's completion before the run ends.
- */
 export function startRun(code: string, learner: string, language: Language, spawn: Spawn = nodeSpawn, check?: PracticeCheck): string | null {
   let active = 0;
   for (const r of runs.values()) if (r.learner === learner && !r.done) active++;
@@ -163,12 +146,8 @@ export function startRun(code: string, learner: string, language: Language, spaw
     "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "1001:1001",
     env.SANDBOX_IMAGE, "timeout", "-s", "KILL", String(LIMIT_S), ...INTERPRETER[language], code,
   ];
-  // A custom `spawn` (tests) always means the Docker path; otherwise the configured backend decides.
   const viaBackend = env.SANDBOX_BACKEND === "daytona" && spawn === nodeSpawn ? backendChild(learner, language, code, () => armBackstop(LIMIT_S + 5)) : null;
-  const child: RunChild = viaBackend?.child ?? (spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }) as unknown as RunChild);
-  // Backstop in case the container hangs past the program's own limit. A backend run gets setup time on top,
-  // and the limit restarts once the program really starts, so a slow sandbox create never eats into the learner's 60 s.
-  // unref: a live child keeps the process up on its own, so this timer must not hold a process that has nothing else to do.
+  const child: RunChild = viaBackend?.child ?? (spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }));
   const backstop = (s: number) => setTimeout(() => terminate(run, STOPPED), s * 1000).unref();
   const armBackstop = (s: number) => { clearTimeout(run.timer); run.timer = backstop(s); };
   const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: backstop(LIMIT_S + (viaBackend ? SETUP_S : 0) + 5), check };
@@ -179,10 +158,10 @@ export function startRun(code: string, learner: string, language: Language, spaw
     else run.overflow = true;
   });
   child.stderr?.on("data", (d: Buffer) => { if (err.length < MAX_OUT) err += d.toString(); });
-  child.stdin?.on("error", () => {}); // the program may exit before a late answer arrives
+  child.stdin?.on("error", () => {});
   child.on("error", () => finish(run, "Could not run the code"));
   child.on("close", (exit) => {
-    if (run.stopping) return; // the container's removal ends the run
+    if (run.stopping) return;
     if (exit === 0 && run.check) void judge(run, run.check);
     else if (exit === 0) finish(run);
     else if (exit === 124 || exit === 137) finish(run, STOPPED);
@@ -191,13 +170,11 @@ export function startRun(code: string, learner: string, language: Language, spaw
   return id;
 }
 
-// Same rule the player used before: the program's output, without the typed answers, matches once trimmed.
 async function judge(run: Run, check: PracticeCheck) {
   run.passed = false;
-  // Output cut off at MAX_OUT was not seen in full, so it cannot be judged a match.
   if (run.overflow || run.out.trim() !== check.expected.trim()) return finish(run);
   run.saving = true;
-  clearTimeout(run.timer); // the program has exited, so the backstop has nothing left to stop
+  clearTimeout(run.timer);
   try {
     await check.record();
     run.passed = true;
@@ -212,11 +189,9 @@ const own = (id: string, learner: string) => {
   return r && r.learner === learner ? r : undefined;
 };
 
-/** Output from `from` on, so the client only ever gets new text. */
 export function runStatus(id: string, learner: string, from: number) {
   const r = own(id, learner);
   if (!r) return null;
-  // `passed` is only sent for a checked run, once it has ended.
   const passed = r.check && r.done ? r.passed === true && !r.error : undefined;
   return { output: r.out.slice(from), next: r.out.length, done: r.done, error: r.error, ...(passed !== undefined && { passed }) };
 }
@@ -239,14 +214,13 @@ export async function sandboxRunRoute(app: FastifyInstance) {
   const Start = z.object({
     code: z.string().max(MAX_CODE),
     language: z.enum(["python", "javascript", "typescript"]).default("python"),
-    lessonId: z.string().regex(/^[\w-]{1,64}$/).optional(), // a Check run: the server judges it against this lesson
+    lessonId: z.string().regex(/^[\w-]{1,64}$/).optional(),
   });
   const Line = z.object({ line: z.string().max(MAX_LINE) });
   const Id = z.uuid();
   const From = z.object({ from: z.coerce.number().int().min(0).default(0) });
   const fail = (code: string, message: string) => ({ error: { code, message } });
 
-  // Every route answers the same way for a disabled sandbox or a signed-out learner.
   const learnerFor = async (req: FastifyRequest, reply: FastifyReply) => {
     if (!env.SANDBOX_ENABLED) { reply.status(503).send(fail("unavailable", "Sandbox is disabled")); return null; }
     const learner = await resolveLearnerId(req.headers);

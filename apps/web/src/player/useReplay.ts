@@ -4,7 +4,6 @@ import { seek, type SeekResult, type Timeline } from "@learnquest/player-core";
 export const SPEEDS = [0.5, 1, 2, 4, "instant"] as const;
 export type Speed = (typeof SPEEDS)[number];
 
-/** Index of the step whose span contains t (last step that has started). */
 export function stepIndexAt(tl: Timeline, t: number) {
   let i = 0;
   tl.steps.forEach((s, n) => {
@@ -18,7 +17,7 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
   const [speed, setSpeedState] = useState<Speed>(() =>
     matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : 1,
   );
-  const [t, setT] = useState(0); // throttled during play; exact otherwise
+  const [t, setT] = useState(0);
   const tRef = useRef(0);
   const speedRef = useRef(speed);
   const playingRef = useRef(false);
@@ -32,7 +31,6 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
     setPlayingState(p);
   };
 
-  // Moves the playhead and pushes the frame to the editor straight away.
   const go = useCallback(
     (nt: number) => {
       nt = Math.max(0, Math.min(timeline.duration, nt));

@@ -52,7 +52,6 @@ def test_game_doc_semantic_failure_gets_one_repair_then_422(
 
     calls = fake_llm("part_game_practice_1")
     monkeypatch.setattr(visual, "ts_issues", lambda doc: ["grid: unsolvable"])
-    # The fixture has one reply; a second call must fail the test loudly if the repair is skipped.
     with pytest.raises(AssertionError, match="no recorded reply"):
         pipeline.lesson(ctx("game-practice"))
     assert len(calls) == 2
@@ -83,7 +82,6 @@ def test_game_doc_without_a_game_block_gets_repaired(fake_llm: FakeLLM, monkeypa
     monkeypatch.setattr(visual, "all_issues", lambda doc: [])
     text_only = {"v": 1, "blocks": [{"type": "text", "id": "t"}]}
     monkeypatch.setattr(visual, "unwrap", lambda doc: text_only)
-    # A valid but game-less doc must still trigger the repair call, not pass to the API gate.
     with pytest.raises(AssertionError, match="no recorded reply"):
         pipeline.lesson(ctx("game-practice"))
     assert len(calls) == 2

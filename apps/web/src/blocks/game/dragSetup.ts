@@ -4,18 +4,12 @@ import type { Submission } from "./api.ts";
 export type DragKind = PublicOrder | PublicMatch | PublicSort;
 export type Item = { id: string; label: string };
 export type Zone = { id: string; label: string };
-/** Where each item sits: a zone id, or null while it waits in the pool. */
 export type Placed = Record<string, string | null>;
 export type Setup = {
   items: Item[]; zones: Zone[]; start: Placed; capacity: number; title: string;
-  /** The board as a games.check submission. Only call it once every item is placed. */
   submit: (placed: Placed) => Submission;
 };
 
-/**
- * Builds the items, zones and submission for one drag kind. The browser knows no answer key: the server sends the
- * items already shuffled (an order game never arrives solved) and grades what `submit` returns.
- */
 export function setupFor(kind: DragKind): Setup {
   if (kind.kind === "order") {
     const items = kind.items.map((t, i) => ({ id: `i${i}`, label: t }));

@@ -1,4 +1,3 @@
-// Icon art. Colours come from the home.css tokens so the icons follow light and dark.
 export function Flame({ w, h, cls = "" }: { w: number; h: number; cls?: string }) {
   return (
     <svg className={cls} width={w} height={h} viewBox="0 0 32 40" aria-hidden="true">
@@ -15,7 +14,6 @@ export function Bolt({ w, h }: { w: number; h: number }) {
     </svg>
   );
 }
-
 
 export function Arrow() {
   return (

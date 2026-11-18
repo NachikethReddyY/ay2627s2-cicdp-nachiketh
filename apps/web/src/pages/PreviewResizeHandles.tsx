@@ -10,7 +10,6 @@ type Props = {
   onResizeEnd(edge: ResizeEdge, event: ReactPointerEvent<HTMLElement>): void;
 };
 
-/** Eight drag zones inside the preview window. Render them as children of `.wb-preview-float`, which must be position: fixed. */
 export function PreviewResizeHandles({ onResizeStart, onResizeMove, onResizeEnd }: Props) {
   return (
     <>

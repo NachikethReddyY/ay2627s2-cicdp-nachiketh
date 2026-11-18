@@ -12,7 +12,6 @@ export type EditorHandle = { show(r: SeekResult): void; focus(): void };
 
 const DARK = "(prefers-color-scheme: dark)";
 
-// The system colour scheme; light where matchMedia is missing (jsdom, tests).
 function usePrefersDark(): boolean {
   return useSyncExternalStore(
     (cb) => {
@@ -31,17 +30,17 @@ const langOf = (p: string) => (/\.tsx?$/.test(p) ? "typescript" : /\.jsx?$/.test
 type Props = {
   ref?: Ref<EditorHandle>;
   transportRef: RefObject<HTMLButtonElement | null>;
-  viewPath?: string; // file the user picked; falls back to the replay's active file
+  viewPath?: string;
   overlay?: ReactNode;
-  edit?: { value: string; language: string; onChange(v: string): void; readOnly?: boolean }; // practice: the learner types here; readOnly holds the text until it is confirmed
-  theme?: string; // workbench themes ("learnslop-light" / "learnslop-dark"); default follows the system colour scheme
+  edit?: { value: string; language: string; onChange(v: string): void; readOnly?: boolean };
+  theme?: string;
   fontFamily?: string;
-  onCursor?(line: number, column: number): void; // caret moves, for a status bar
+  onCursor?(line: number, column: number): void;
   onSelection?(selection: { startLine: number; endLine: number; text: string } | null): void;
   onProblems?(problems: WorkbenchProblem[]): void;
   problemFileName?: string;
   wordWrap?: boolean;
-  help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable; // practice: hovers, completion docs, squiggles
+  help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable;
 };
 
 export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, onSelection, onProblems, problemFileName, wordWrap = false, help }: Props) {
@@ -66,7 +65,6 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
   const systemTheme = usePrefersDark() ? "learnslop-dark" : "learnslop-light";
   const [mounted, setMounted] = useState<{ ed: Parameters<OnMount>[0]; monaco: Parameters<OnMount>[1] } | null>(null);
 
-  // Diagnostics on while a help editor is mounted; the replay defaults come back on unmount.
   useEffect(() => {
     if (!helpOn) return;
     setPracticeDiagnostics(true);
@@ -202,7 +200,6 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
           fontSize: 14,
           fontFamily: CODE_FONT,
           ...(fontFamily && {
-            // Main.dc.html: 13 px code on 22 px rows, 8 px above the first line, scrollbars hidden, scrolling kept.
             fontFamily,
             fontSize: 13,
             lineHeight: 22,
@@ -211,11 +208,11 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
             folding: false,
             glyphMargin: false,
             renderLineHighlight: "all" as const,
-            scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const }, // the board hides the scrollbar (nosb)
+            scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const },
           }),
-          padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 }, // room for the replay's floating controls
+          padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 },
           hover: { enabled: help ? "on" : "off" },
-          lightbulb: { enabled: "off" as never }, // no quick fixes: errors are explained, not rewritten
+          lightbulb: { enabled: "off" as never },
           occurrencesHighlight: "off",
         }}
       />

@@ -1,15 +1,8 @@
-// Safe expression grammar for `chart` function plots. Hand-written recursive descent; no eval, no Function.
-//   expr  = term (("+" | "-") term)*
-//   term  = unary (("*" | "/") unary)*
-//   unary = "-" unary | power
-//   power = atom ("^" unary)?            right-associative; binds tighter than unary minus, so -x^2 = -(x^2)
-//   atom  = number | name | fn "(" expr ("," expr)* ")" | "(" expr ")"
 
 export const MAX_EXPR_LEN = 80;
 export const MAX_EXPR_DEPTH = 20;
 export const MAX_EXPR_NODES = 200;
 
-/** Allowed functions and their fixed arity. */
 export const FUNCTIONS = { sin: 1, cos: 1, tan: 1, sqrt: 1, abs: 1, exp: 1, log: 1, min: 2, max: 2 } as const;
 type Fn = keyof typeof FUNCTIONS;
 
@@ -32,7 +25,6 @@ class Fail extends Error {
 
 const isFn = (s: string): s is Fn => Object.hasOwn(FUNCTIONS, s);
 
-/** `vars` is the allow-list of variable names (e.g. "x" plus the slider ids). Never throws. */
 export function parseExpr(src: string, vars: readonly string[]): ParseExprResult {
   try {
     if (typeof src !== "string") throw new Fail("expression must be text", 0);
@@ -106,12 +98,10 @@ export function parseExpr(src: string, vars: readonly string[]): ParseExprResult
     if (depth(ast) > MAX_EXPR_DEPTH) throw new Fail(`expression is nested deeper than ${MAX_EXPR_DEPTH}`, 0);
     return { ok: true, ast };
   } catch (e) {
-    // shortcut: a RangeError from absurd nesting is also reported as a parse error, with position 0
     return e instanceof Fail ? { ok: false, error: e.message, pos: e.pos } : { ok: false, error: "expression is too complex", pos: 0 };
   }
 }
 
-/** Evaluates with `vars`; an unknown variable or any non-finite result (divide by zero, log(0), sqrt(-1)) is NaN. Never throws. */
 export function evalExpr(ast: Ast, vars: Readonly<Record<string, number>>): number {
   const go = (a: Ast): number => {
     switch (a.t) {

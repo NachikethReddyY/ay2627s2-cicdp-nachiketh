@@ -45,7 +45,6 @@ def test_advance_when_all_mastered() -> None:
 
 
 def test_locked_unmastered_concept_blocks_advance() -> None:
-    # vars mastered, loops below mastered but locked behind an unmet prerequisite.
     m = [Mastery("vars", 0.97), Mastery("loops", 0.5)]
     edges = [("prep", "loops")]
     r = recommend(m, edges, [L1, L3])
@@ -67,7 +66,6 @@ def test_advance_reason_lists_only_mastered_and_uses_titles() -> None:
 
 
 def test_weak_concept_with_no_lesson_left_is_not_claimed_as_mastered() -> None:
-    # "vars" is at 60% but its only lesson is done. Advancing must not say it was mastered.
     done = Lesson("l1", ["vars"], "learn", True, 1, "Variables")
     nxt = Lesson("l2", ["loops"], "learn", False, 2, "Loops")
     r = recommend([Mastery("vars", 0.6)], [], [done, nxt])
@@ -116,8 +114,6 @@ def test_falls_back_to_any_covering_lesson() -> None:
 
 
 def test_unfinished_concept_with_no_remaining_lesson_is_not_practised() -> None:
-    # "vars" is below mastery, but its only lesson is done.
-    # The open lesson teaches "loops" and must be chosen.
     vars_done = Lesson("l1", ["vars"], "learn", True, 1)
     loops = Lesson("l3", ["loops"], "learn", False, 2)
     rec = recommend([Mastery("vars", 0.1), Mastery("loops", 0.9)], [], [vars_done, loops])

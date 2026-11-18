@@ -5,8 +5,6 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { lessonRef, meUser, visibleWorld } from "../access.ts";
 
-// Marks a learn/watch lesson complete. Predict lessons count steps, so they are a no-op here.
-// Practice and game-practice need server evidence: a checked sandbox run records practice, games.complete records game wins.
 const complete = protectedProcedure
   .input(z.object({ lessonId: z.string().regex(/^[\w-]{1,64}$/) }))
   .output(z.object({ ok: z.literal(true) }))

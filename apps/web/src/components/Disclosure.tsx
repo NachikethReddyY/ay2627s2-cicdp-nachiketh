@@ -1,11 +1,6 @@
 import { useId, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
-/**
- * A button that opens a panel with an animated height. The panel stays mounted when closed so the
- * close animation can run; `inert` keeps its content out of the tab order and the accessibility tree.
- * Styled by `.disc` in pages/changelog.css, and the transition is switched off by the reduced-motion rule there.
- */
 export function Disclosure({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();

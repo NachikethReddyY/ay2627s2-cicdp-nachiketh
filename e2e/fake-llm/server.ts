@@ -1,7 +1,3 @@
-// Stands in for the model provider behind the engine's LLM_API_BASE during e2e runs.
-// It replays the recorded `responses` from services/engine/tests/fixtures, in the order given by
-// FAKE_LLM_FIXTURES (comma-separated fixture names). Any request with no reply left, or any route other
-// than the chat endpoint, gets HTTP 500, so a call nobody recorded fails the run loudly.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +16,6 @@ for (const name of names) {
 }
 
 let served = 0;
-// Counted on /healthz so ci.sh can fail the run: the API logs a failed background call and carries on.
 let unexpected = 0;
 
 function send(res: ServerResponse, status: number, body: unknown) {
@@ -31,10 +26,8 @@ function send(res: ServerResponse, status: number, body: unknown) {
 async function drain(req: IncomingMessage) {
   try {
     for await (const _chunk of req) {
-      // The request is not checked: replies are played back in order.
     }
   } catch {
-    // The engine aborted the request (for example on a client timeout). Nothing to read, and the server must stay up.
   }
 }
 
@@ -57,4 +50,4 @@ const server = createServer(async (req, res) => {
   return send(res, 200, { id: `fake-${served}`, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: "fake-llm", ...reply });
 });
 
-server.listen(port, "0.0.0.0", () => console.log(`fake-llm: listening on ${port} with ${queue.length} replies`));
+server.listen(port, process.env.HOST ?? "0.0.0.0", () => console.log(`fake-llm: listening on ${port} with ${queue.length} replies`));

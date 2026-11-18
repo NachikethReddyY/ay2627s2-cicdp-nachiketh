@@ -8,23 +8,16 @@ type Toggle = { pressed: boolean; onClick(): void; label: string; ref?: Ref<HTML
 type Props = {
   title: string;
   fileName: string;
-  /** Folders above the file, root first. */
   crumbs?: string[];
-  /** Symbol under the caret, shown last. */
   symbol?: string;
-  /** Leave the breadcrumb row out; the caller draws it (desktop layout). */
   split?: boolean;
   nav: Toggle;
   terminal: Toggle;
   util: Toggle;
   onRun(): void;
-  /** Run / Stop / Check / Next. */
   actions: ReactNode;
-  /** Drawn before the layout toggles, for example a link home. */
   trailing?: ReactNode;
-  /** Draw the window's traffic lights at the start (the navigator that normally holds them is hidden). */
   lights?: boolean;
-  /** Draw the design's planned Back/Forward as inert controls. */
   planned?: boolean;
 };
 
@@ -36,7 +29,6 @@ function ToggleButton({ t, icon: Icon }: { t: Toggle; icon: LucideIcon }) {
   );
 }
 
-/** The macOS window controls. Decoration only: not buttons, hidden from assistive tech. */
 export function TrafficLights() {
   return (
     <span aria-hidden="true" className="wb-lights">
@@ -47,7 +39,6 @@ export function TrafficLights() {
   );
 }
 
-// The project mark from the design: a rounded square with a sprout.
 export const Mark = ({ size, className = "" }: { size: number; className?: string }) => (
   <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true" className={`flex-none ${className}`}>
     <rect x="1" y="1" width="14" height="14" rx="4" fill="#3d79e0" />
@@ -63,7 +54,6 @@ export const Mark = ({ size, className = "" }: { size: number; className?: strin
   </svg>
 );
 
-// The purple function mark that starts the symbol crumb.
 const SymbolMark = () => (
   <svg viewBox="0 0 16 16" width={15} height={15} aria-hidden="true" className="flex-none">
     <rect x="1.5" y="1.5" width="13" height="13" rx="3.5" fill="#a56bd6" />
@@ -71,8 +61,6 @@ const SymbolMark = () => (
   </svg>
 );
 
-/** The file path row. In the stacked layout it sits under the toolbar (border on top); in the desktop layout it
- *  heads the editor column beside the Docs header, sharing one bottom line (`edge="bottom"`). */
 export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: string; fileName: string; crumbs?: string[]; symbol?: string; edge: "top" | "bottom" }) {
   if (!fileName) return null;
   return (
@@ -144,7 +132,6 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
             <span className="max-sm:hidden">LearnSlop</span>
           </a>
           <span aria-hidden="true" className="text-[var(--mu)] max-sm:hidden lg:hidden">/</span>
-          {/* The design has no lesson title in the toolbar; it stays for screen readers and the narrow layout. */}
           <h1 className="min-w-0 truncate text-[13px] font-normal text-[var(--mu)] lg:sr-only">{title}</h1>
         </div>
         <div

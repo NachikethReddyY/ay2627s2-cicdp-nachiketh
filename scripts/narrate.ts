@@ -1,7 +1,3 @@
-// Renders one MP3 per lesson step from the step's narration text, so `media:narration` can store them.
-// Run locally with your own keys: node scripts/narrate.ts --lesson <slug> [--provider elevenlabs|openai]
-// Reads worlds/codequest/lessons/<slug>.json and writes .narration/<slug>/ (gitignored). No other paths are taken from the CLI.
-// Keys come only from environment variables. They are never printed, logged or written to disk.
 import { createHash } from "node:crypto";
 import { access, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, dirname, resolve } from "node:path";
@@ -17,36 +13,29 @@ export type TtsConfig =
   | { provider: "elevenlabs"; apiKey: string; voiceId: string; modelId: string }
   | { provider: "openai"; baseUrl: string; model: string; voice: string };
 
-/** Where lessons are read from and audio is written to. Tests inject their own; the CLI always uses the defaults. */
 export type RunOptions = { lessonsDir?: string; narrationRoot?: string; timeoutMs?: number };
 
-// Usage problems exit 2; missing configuration, a held lock and other failures exit 1.
 class UsageError extends Error {}
 class ConfigError extends Error {}
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULT_LESSONS_DIR = join(repoRoot, "worlds", "codequest", "lessons");
 export const DEFAULT_NARRATION_ROOT = join(repoRoot, ".narration");
-/** Each provider request, including reading its body, gives up after this long. */
 const DEFAULT_TIMEOUT_MS = 120_000;
-/** The importer's narration size limit (apps/api/src/media/service.ts). Larger files would be refused later. */
 const MAX_MP3_BYTES = 10 * 1024 * 1024;
 const LOCK_NAME = ".narration.lock";
 
-/** A lesson slug: lowercase letters, digits and hyphens. It is the only thing that names a path. */
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 const nonEmpty = (v: string | undefined): v is string => v !== undefined && v.trim() !== "";
 const hashText = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 
-/** Same check as the importer: an ID3 tag or an MPEG frame sync. */
 export function isMp3(bytes: Uint8Array): boolean {
   const id3 = bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
   const frame = bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0;
   return id3 || frame;
 }
 
-/** Picks the provider: the --provider flag, else ElevenLabs when its key is set, else the OpenAI-compatible server. */
 export function chooseProvider(flag: string | undefined, env: Env): Provider {
   if (flag !== undefined) {
     if (flag === "elevenlabs" || flag === "openai") return flag;
@@ -59,7 +48,6 @@ export function chooseProvider(flag: string | undefined, env: Env): Provider {
   );
 }
 
-/** Reads the provider's settings from the environment. Error messages name variables, never their values. */
 export function providerConfig(provider: Provider, env: Env): TtsConfig {
   if (provider === "elevenlabs") {
     const missing = ["ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"].filter((k) => !nonEmpty(env[k]));
@@ -81,7 +69,6 @@ export function providerConfig(provider: Provider, env: Env): TtsConfig {
   };
 }
 
-/** The HTTP request for one step's text. */
 export function ttsRequest(cfg: TtsConfig, text: string): { url: string; init: RequestInit } {
   if (cfg.provider === "elevenlabs") {
     return {
@@ -94,7 +81,7 @@ export function ttsRequest(cfg: TtsConfig, text: string): { url: string; init: R
     };
   }
   let base = cfg.baseUrl;
-  while (base.endsWith("/")) base = base.slice(0, -1); // a loop, not /\/+$/, which is super-linear on long runs of slashes
+  while (base.endsWith("/")) base = base.slice(0, -1);
   return {
     url: `${base}/v1/audio/speech`,
     init: {
@@ -129,18 +116,16 @@ async function readManifest(path: string): Promise<Record<string, string>> {
   try {
     return JSON.parse(await readFile(path, "utf8")) as Record<string, string>;
   } catch {
-    return {}; // Missing or unreadable: every step renders again.
+    return {};
   }
 }
 
-/** Writes the manifest to a temp file, then renames it over the old one, so a reader never sees a half-written file. */
 async function writeManifest(path: string, manifest: Record<string, string>) {
   const tmp = `${path}.tmp`;
   await writeFile(tmp, `${JSON.stringify(manifest, null, 2)}\n`);
   await rename(tmp, path);
 }
 
-/** Whether a process with this pid exists. EPERM means it exists but belongs to someone else. */
 function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -150,10 +135,6 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/**
- * Takes an exclusive lock on the output folder, recording this process's pid. Returns the release function.
- * A lock whose owner is gone (a run that was killed) is stale and is taken over. A live owner gets a ConfigError.
- */
 async function acquireLock(dir: string): Promise<() => Promise<void>> {
   const path = join(dir, LOCK_NAME);
   const create = () => writeFile(path, String(process.pid), { flag: "wx" });
@@ -165,7 +146,7 @@ async function acquireLock(dir: string): Promise<() => Promise<void>> {
     if (Number.isInteger(owner) && owner > 0 && processAlive(owner)) {
       throw new ConfigError(`another narrate run is writing ${dir} (pid ${owner}). If none is running, delete ${LOCK_NAME} and rerun.`);
     }
-    await rm(path, { force: true }); // stale: its owner was killed before it could release the lock
+    await rm(path, { force: true });
     await create();
   }
   return () => rm(path, { force: true });
@@ -181,10 +162,8 @@ type RenderArgs = {
   timeoutMs: number;
 };
 
-/** Renders the steps that changed and clears what no longer belongs. Returns the exit code. */
 async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeoutMs }: RenderArgs): Promise<number> {
   const manifestPath = join(outDir, "narration.json");
-  // `state` is the manifest on disk, updated and written at every step, so it never claims audio that is not there.
   const state = await readManifest(manifestPath);
 
   let rendered = 0;
@@ -196,7 +175,7 @@ async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeo
     const mp3 = join(outDir, `${key}.mp3`);
     if (step.text === undefined) {
       missing++;
-      await rm(mp3, { force: true }); // Delete the audio first, then drop the hash.
+      await rm(mp3, { force: true });
       delete state[key];
       await writeManifest(manifestPath, state);
       continue;
@@ -206,14 +185,11 @@ async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeo
       skipped++;
       continue;
     }
-    // Drop the old audio and its hash before rendering. If the run is killed mid-render, the step has
-    // no entry to match, so the next run renders it instead of keeping stale audio.
     await rm(mp3, { force: true });
     delete state[key];
     await writeManifest(manifestPath, state);
     try {
       const req = ttsRequest(cfg, step.text);
-      // One signal covers the request and the body read, so a hung provider fails this step only.
       const res = await fetchImpl(req.url, { ...req.init, signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) throw new Error(`provider returned HTTP ${res.status}`);
       const bytes = new Uint8Array(await res.arrayBuffer());
@@ -227,11 +203,10 @@ async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeo
     } catch (e) {
       failed++;
       io.error(`step ${step.idx}: ${e instanceof Error ? e.message : String(e)}`);
-      await rm(mp3, { force: true }); // A failed step has no audio, so the next run renders it again.
+      await rm(mp3, { force: true });
     }
   }
 
-  // Steps no longer in the lesson lose their audio first, then their hash.
   const current = new Set(steps.map((s) => String(s.idx)));
   for (const name of await readdir(outDir)) {
     const m = /^(\d+)\.mp3$/.exec(name);
@@ -245,7 +220,6 @@ async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeo
   return failed > 0 ? 1 : 0;
 }
 
-/** Runs the script. Returns the exit code. */
 export async function run(argv: string[], env: Env, fetchImpl: Fetch, io: Io, options: RunOptions = {}): Promise<number> {
   try {
     let values: { lesson?: string; provider?: string };

@@ -1,18 +1,14 @@
-// shortcut: hand-written until packages/lesson-schema (WP2) exists; replace with its Zod types then.
 
-/** Path → full file text. */
 export type Files = Record<string, string>;
 
-/** One unified-diff hunk. `lines` carry a ' ', '-' or '+' prefix; `oldStart` is 1-based in the step's beforeFiles. */
 export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
 
-/** What the client has for one revealed (or skipped) step: GET /steps/:id beforeFiles + GET /steps/:id/reveal hunks. */
 export type StepInput = { beforeFiles: Files; hunks: Hunk[] };
 
 export type TypingConfig = {
-  msPerChar: number; // 60 WPM at 5 chars/word = 200
-  lineEndPauseMs: number; // 300
-  blockThresholdLines: number; // hunks with more changed lines than this insert as one block: 20
+  msPerChar: number;
+  lineEndPauseMs: number;
+  blockThresholdLines: number;
 };
 
 export type ReplayEvent =
@@ -29,13 +25,13 @@ export type Timeline = {
   events: ReplayEvent[];
   snapshots: Snapshot[];
   steps: StepSpan[];
-  duration: number; // ms at 1×
+  duration: number;
 };
 
 export type SeekResult = {
   files: Files;
   activePath: string;
-  eventIndex: number; // events applied so far (exclusive)
-  replayed: number; // events applied after the snapshot; must be ≤ K
-  lastEdit: { path: string; offset: number } | null; // for cursor/highlight in the editor
+  eventIndex: number;
+  replayed: number;
+  lastEdit: { path: string; offset: number } | null;
 };

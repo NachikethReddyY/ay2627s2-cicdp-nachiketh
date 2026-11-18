@@ -2,11 +2,6 @@ import type { ReactNode } from "react";
 import { Check, CircleHelp, Lock } from "lucide-react";
 import { Code } from "./Code";
 
-// Product art for the feature rows. Each row has its own composition on purpose: a framed card with an
-// action, an editor window, a stack of cards, a chart and a roadmap. Everything is static and decorative;
-// the row's heading, paragraph and checklist carry the meaning. Numbers are illustrative, never learner data.
-
-/** Row 1 only: a card, a short connector line, then the action pill with its key hint. */
 function ActionCard({ children, action, keyHint }: { children: ReactNode; action: string; keyHint: string }) {
   return (
     <div className="lp-mock">
@@ -46,7 +41,6 @@ const DIFF: DiffRow[] = [
 ];
 const STEPS = ["Start", "Store", "Price", "Total", "Return", "Check"];
 
-/** Row 2: an editor window with a diff, and the six steps of the replay underneath. */
 export function ReplayMock() {
   return (
     <div className="lp-win">
@@ -73,7 +67,6 @@ export function ReplayMock() {
   );
 }
 
-/** Row 3: hint cards stacked one behind the other, then the help chat declining to write the answer. */
 export function HintMock() {
   return (
     <div className="lp-stack">
@@ -94,7 +87,6 @@ export function HintMock() {
 const TREND = "0,104 70,98 140,88 210,70 280,50 350,36 420,24";
 const OTHERS: [string, number][] = [["Loops", 45], ["Arrays", 31], ["Conditionals", 18], ["Functions", 12]];
 
-/** Row 4: one concept as a big number and a trend, with the others beside it. */
 export function MasteryMock() {
   return (
     <div className="lp-chart">
@@ -127,7 +119,6 @@ const PATH: [string, string][] = [
   ["Share logic with a custom hook", "Reuse the same behaviour in two places."],
 ];
 
-/** Row 5: you ask for any topic and get a path built around it. No fixed curriculum. */
 export function TopicMock() {
   return (
     <div className="lp-topic">

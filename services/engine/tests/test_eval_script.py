@@ -38,14 +38,12 @@ def test_replay_dry_run_reports_pass_rate_block_mix_and_cost() -> None:
     report = eval_visuals.evaluate(eval_visuals.TOPICS, client)
 
     assert report.total == 30
-    # One of the three recorded fixtures carries a schema-valid doc.
     assert report.passed == 10
     assert report.first_try == 10
     assert report.pass_rate == pytest.approx(1 / 3)
     assert report.block_mix["text"] == 10
     assert report.block_mix["chart"] == 10
     assert report.cost_per_part > 0
-    # The invalid-doc fixture keeps its part but loses the doc.
     dropped = [r for r in report.results if r.attempt.part is not None and not r.passed]
     assert dropped and all(r.attempt.part is not None for r in dropped)
 
@@ -65,7 +63,6 @@ def test_threshold_and_cost_are_computed_from_results() -> None:
     assert (report.passed, report.total) == (1, 2)
     assert report.pass_rate == 0.5
     assert report.meets_threshold is False
-    # (1000 * 0.15 + 500 * 0.60) / 1e6, the same for both parts.
     assert report.cost_per_part == pytest.approx(0.00045)
     assert report.cost_per_tier()["free"] == pytest.approx(0.00045)
 

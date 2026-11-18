@@ -6,9 +6,8 @@ import { lintCode, LintUnavailableError } from "./index.ts";
 
 const MAX_PER_MINUTE = 30;
 const WINDOW_MS = 60_000;
-const hits = new Map<string, number[]>(); // learner -> request times inside the window
+const hits = new Map<string, number[]>();
 
-/** Sliding window per learner; returns false once the learner is over the limit. */
 function allow(learner: string, now = Date.now()): boolean {
   const recent = (hits.get(learner) ?? []).filter((t) => now - t < WINDOW_MS);
   if (recent.length >= MAX_PER_MINUTE) {

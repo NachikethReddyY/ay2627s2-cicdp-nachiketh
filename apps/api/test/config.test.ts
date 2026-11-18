@@ -64,7 +64,7 @@ test("reserveAiSpend serializes parallel reservations so only what fits succeeds
     env.AI_MONTHLY_BUDGET_USD = 0;
     const { rows: [{ daily }] } = await db.execute<{ daily: string }>(
       sql`SELECT COALESCE(sum(amount_usd) FILTER (WHERE created_at >= date_trunc('day', now())), 0)::text AS daily FROM spend_ledger`);
-    env.AI_DAILY_BUDGET_USD = Number(daily) + 3.5; // room for exactly 3 one-dollar reservations
+    env.AI_DAILY_BUDGET_USD = Number(daily) + 3.5;
     const results = await Promise.allSettled(Array.from({ length: 10 }, () => reserveAiSpend(1)));
     assert.equal(results.filter((r) => r.status === "fulfilled").length, 3);
     for (const r of results) if (r.status === "rejected") assert.equal(r.reason.code, "TOO_MANY_REQUESTS");

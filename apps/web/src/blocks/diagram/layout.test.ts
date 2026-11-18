@@ -12,7 +12,6 @@ test("wrap keeps every line within the cap, even for one long word", () => {
 const wide = (n: number, shape?: DiagramProps["shape"], kind = "graph"): DiagramProps => ({
   kind, shape,
   nodes: Array.from({ length: n }, (_, i) => ({ id: `n${i}`, label: `Node number ${i} with a long label ${"w".repeat(30)}`.slice(0, 60) })),
-  // a fan-out from n0 puts the other nodes in one rank (the widest case), plus a cycle edge
   edges: [...Array.from({ length: n - 1 }, (_, i) => ({ from: "n0", to: `n${i + 1}`, label: "edge label" })), { from: `n${n - 1}`, to: "n0" }],
 });
 
@@ -38,10 +37,10 @@ test("clipToShape: circle, diamond and rect boundaries", () => {
   const n = { x: 100, y: 100, w: 80, h: 40 };
   const c = clipToShape({ ...n, h: 80 }, { x: 100, y: 0 }, "circle");
   assert.ok(Math.abs(c.x - 100) < 1e-9 && Math.abs(c.y - 60) < 1e-9);
-  const d = clipToShape(n, { x: 200, y: 200 }, "diamond"); // on |dx|/40 + |dy|/20 = 1
+  const d = clipToShape(n, { x: 200, y: 200 }, "diamond");
   assert.ok(Math.abs(Math.abs(d.x - 100) / 40 + Math.abs(d.y - 100) / 20 - 1) < 1e-9);
   assert.deepEqual(clipToShape(n, { x: 100, y: 0 }, "diamond"), { x: 100, y: 80 });
-  assert.deepEqual(clipToShape(n, { x: 300, y: 100 }), { x: 140, y: 100 }); // rect: already on the box edge
+  assert.deepEqual(clipToShape(n, { x: 300, y: 100 }), { x: 140, y: 100 });
 });
 
 test("long labels are widened to at most 3 lines where possible; edge labels reserve room", () => {
@@ -56,7 +55,7 @@ test("short label gets the minimum width; long label wraps at spaces within the 
   assert.equal(short.w, MIN_W);
   const label = "Server segments video (adaptive bitrate) for playback";
   const { lines, w } = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label }], edges: [] }).nodes[0];
-  assert.equal(lines.join(" "), label); // only spaces were break points
+  assert.equal(lines.join(" "), label);
   assert.ok(lines.every((l) => l.length <= NODE_WRAP));
   assert.ok(w >= MIN_W);
   const long = layoutDiagram(dagre, { kind: "flow", nodes: [{ id: "a", label: "supercalifragilisticexpialidocious" }], edges: [] }).nodes[0];

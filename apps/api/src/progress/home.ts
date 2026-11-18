@@ -7,11 +7,10 @@ import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
 
-// The first fenced code block in a prompt, at most six lines. Only public prompt text is read here, so no answer can leak.
 function firstCodeBlock(prompt: string): string[] | null {
   const match = /```[^\n]*\n([\s\S]*?)```/.exec(prompt);
   if (!match) return null;
-  const lines = match[1]!.replace(/\n+$/, "").split("\n").slice(0, 6);
+  const lines = match[1].replace(/\n+$/, "").split("\n").slice(0, 6);
   return lines.length > 0 ? lines : null;
 }
 const Home = z.object({
@@ -20,7 +19,6 @@ const Home = z.object({
     todayXp: z.number(),
     dailyGoalXp: z.number(),
     streak: z.number(),
-    // The zone the stats above are counted in, so the client can tell when its own zone differs.
     timezone: z.string(),
     week: z.array(z.object({ day: z.string(), solved: z.number(), state: z.enum(["past", "today", "future"]) })),
   }),
@@ -29,13 +27,10 @@ const Home = z.object({
       path: z.object({ slug: z.string(), title: z.string() }),
       course: z.object({ slug: z.string(), title: z.string(), index: z.number(), count: z.number() }),
       lesson: z.object({ slug: z.string(), title: z.string(), level: z.number(), done: z.number(), total: z.number() }),
-      // The code the lesson's first prompt shows, or null when the prompt has none.
       snippet: z.array(z.string()).nullable(),
     })
     .nullable(),
-  // The learner's strongest observed concepts, for the mastery card.
   mastery: z.array(z.object({ name: z.string(), pKnown: z.number() })),
-  // Weekly XP (last 7 days): the top five opted-in learners, and this learner's own standing.
   leaderboard: z.object({
     optedIn: z.boolean(),
     xp: z.number(),
@@ -49,8 +44,6 @@ const Home = z.object({
   community: z.array(PathCard),
 });
 
-
-// XP for a first (observed) correct answer, plus a bonus when no hints were used.
 const XP = sql`CASE WHEN correct THEN 10 + CASE WHEN hints_used = 0 THEN 5 ELSE 0 END ELSE 0 END`;
 
 type LessonRow = {
@@ -68,7 +61,6 @@ type LessonRow = {
   done: number;
   last_active: Date | null;
 };
-
 
 async function pathCards(learnerId: string, official: boolean) {
   const { rows } = await db.execute<z.infer<typeof PathCard>>(sql`
@@ -88,7 +80,6 @@ async function pathCards(learnerId: string, official: boolean) {
 const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const me = ctx.learnerId;
 
-    // created_at is timestamp without time zone, written by now() in the session zone, so read it back in that zone.
     const { rows: days } = await db.execute<{ day: string; solved: number; xp: number }>(sql`
       SELECT day, sum(solved)::int AS solved, sum(xp)::int AS xp FROM (
         SELECT to_char((a.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
@@ -104,7 +95,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const { rows: [clock] } = await db.execute<{ today: string; goal: number; timezone: string }>(sql`
       SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS today, daily_goal_xp AS goal, timezone
       FROM learners WHERE id = ${me}`);
-    const today = clock!.today;
+    const today = clock.today;
     const solved = new Map(days.map((d) => [d.day, d.solved]));
 
     const { rows } = await db.execute<LessonRow>(sql`
@@ -122,7 +113,6 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       WHERE e.learner_id = ${me} AND ${visibleCourse(me)}
       ORDER BY e.created_at DESC, p.id, pc.position, l.level, l.position, l.id`);
 
-    // Group rows into path -> course -> lessons, keeping query order.
     type Path = { slug: string; title: string; tagline: string; origin: LessonRow["origin"]; active: number; courses: Map<string, { slug: string; title: string; lessons: LessonRow[] }> };
     const byPath = new Map<string, Path>();
     for (const row of rows) {
@@ -137,13 +127,12 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       if (row.lesson_slug) c.lessons.push(row);
     }
 
-    // Continue = first unfinished lesson in the most recently active path that has one.
     let next: Omit<NonNullable<z.infer<typeof Home>["continue"]>, "snippet"> | null = null;
     for (const p of [...byPath.values()].sort((a, b) => b.active - a.active)) {
       const courses = [...p.courses.values()];
       const index = courses.findIndex((c) => c.lessons.some((l) => !complete(l)));
       if (index < 0) continue;
-      const c = courses[index]!;
+      const c = courses[index];
       const l = c.lessons.find((l) => !complete(l))!;
       next = {
         path: { slug: p.slug, title: p.title },
@@ -153,7 +142,6 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       break;
     }
 
-    // The continue card shows the code from the lesson's first prompt, so the learner sees what they are working on.
     let snippet: string[] | null = null;
     if (next) {
       const { rows: [first] } = await db.execute<{ prompt: string | null }>(sql`
@@ -164,7 +152,6 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       snippet = first?.prompt ? firstCodeBlock(first.prompt) : null;
     }
 
-    // Weekly XP per learner. Opted-in learners are ranked; this learner's own total is returned even when they are off the board.
     const weekly = sql`
       WITH x AS (
         SELECT a.learner_id, ${XP} AS xp, a.created_at FROM attempts a WHERE a.observed
@@ -197,9 +184,9 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       stats: {
         xp: days.reduce((n, d) => n + d.xp, 0),
         todayXp: days.find((d) => d.day === today)?.xp ?? 0,
-        dailyGoalXp: clock!.goal,
+        dailyGoalXp: clock.goal,
         streak: streak(solved, today),
-        timezone: clock!.timezone,
+        timezone: clock.timezone,
         week: week(solved, today),
       },
       continue: next && { ...next, snippet },
