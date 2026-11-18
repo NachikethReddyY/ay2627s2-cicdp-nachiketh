@@ -106,14 +106,14 @@ export function evalExpr(ast: Ast, vars: Readonly<Record<string, number>>): numb
   const go = (a: Ast): number => {
     switch (a.t) {
       case "num": return a.v;
-      case "var": return Object.hasOwn(vars, a.name) ? Number(vars[a.name]) : NaN;
+      case "var": return Object.hasOwn(vars, a.name) ? Number(vars[a.name]) : Number.NaN;
       case "neg": return -go(a.a);
       case "bin": {
         const x = go(a.a), y = go(a.b);
         return a.op === "+" ? x + y : a.op === "-" ? x - y : a.op === "*" ? x * y : a.op === "/" ? x / y : x ** y;
       }
       case "call": {
-        const [x = NaN, y = NaN] = a.args.map(go);
+        const [x = Number.NaN, y = Number.NaN] = a.args.map(go);
         switch (a.fn) {
           case "sin": return Math.sin(x);
           case "cos": return Math.cos(x);
@@ -129,5 +129,5 @@ export function evalExpr(ast: Ast, vars: Readonly<Record<string, number>>): numb
     }
   };
   const r = go(ast);
-  return Number.isFinite(r) ? r : NaN;
+  return Number.isFinite(r) ? r : Number.NaN;
 }

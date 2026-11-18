@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
 import { lessonVersions, lessons, learners, pathCourses, paths, stepProgress, user, worlds } from "../src/db/schema.ts";
 import { streak, week } from "../src/progress/streak.ts";
+import { firstCodeBlock } from "../src/progress/home.ts";
 
 const app = buildApp();
 after(() => app.close());
@@ -17,6 +18,15 @@ const q = (cookie: string, path: string, input?: unknown) => trpc(app, cookie).q
 const m = (cookie: string, path: string, input?: unknown) => trpc(app, cookie).m(path, input);
 const userId = async (email: string) => (await db.select({ id: user.id }).from(user).where(eq(user.email, email)))[0]!.id;
 const pathId = async (slug: string) => (await db.select({ id: paths.id }).from(paths).where(eq(paths.slug, slug)))[0]!.id;
+
+test("extracts the first complete fenced code block", () => {
+  assert.deepEqual(firstCodeBlock("intro\n```js\na\nb\n\n```\n```\nc\n```"), ["a", "b"]);
+  assert.deepEqual(firstCodeBlock("```\n```"), [""]);
+  assert.deepEqual(firstCodeBlock("```\n1\n2\n3\n4\n5\n6\n7\n```"), ["1", "2", "3", "4", "5", "6"]);
+  assert.equal(firstCodeBlock("```js\nunterminated"), null);
+  assert.equal(firstCodeBlock("no fence"), null);
+  assert.equal(firstCodeBlock("```" + "x".repeat(100_000)), null);
+});
 
 test("streak counts back from today, or yesterday while today is open", () => {
   const m = new Map([["2026-10-27", 3], ["2026-10-28", 5], ["2026-10-29", 1]]);

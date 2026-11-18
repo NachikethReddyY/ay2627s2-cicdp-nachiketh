@@ -35,7 +35,7 @@ export type Scene3dProps = {
 
 const vec3 = (lim: number) => z.tuple([z.number().min(-lim).max(lim), z.number().min(-lim).max(lim), z.number().min(-lim).max(lim)]);
 export const vec3Value = (v: unknown, lim: number): Vec3 | null => {
-  const n = typeof v === "string" ? v.split(",").map((x) => (x.trim() === "" ? NaN : Number(x))) : [];
+  const n = typeof v === "string" ? v.split(",").map((x) => (x.trim() === "" ? Number.NaN : Number(x))) : [];
   return n.length === 3 && n.every((x) => Number.isFinite(x) && Math.abs(x) <= lim) ? (n as Vec3) : null;
 };
 

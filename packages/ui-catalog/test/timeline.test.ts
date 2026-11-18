@@ -38,7 +38,7 @@ test("stateAt is deterministic, does not mutate input, and ids like __proto__ st
 });
 
 test("caption is sanitised, not rejected", () => {
-  const r = timelineSchema.parse({ steps: [step([], "Hi‮there​")] });
+  const r = timelineSchema.parse({ steps: [step([], "Hi\u202ethere\u200b")] });
   assert.equal(r.steps[0]!.caption, "Hithere");
 });
 
@@ -51,7 +51,7 @@ for (const [name, input] of [
   ["fractional durationMs", { steps: [{ ...step(), durationMs: 500.5 }] }],
   ["21 set items", { steps: [step(many(21, () => ({ id: "a", prop: "x", value: 1 })))] }],
   ["bad id", { steps: [step([{ id: "Bad-Id", prop: "x", value: 1 }])] }],
-  ["empty caption after sanitising", { steps: [step([], "‮")] }],
+  ["empty caption after sanitising", { steps: [step([], "\u202e")] }],
   ["unknown key on timeline", { steps: [step()], loop: true }],
   ["unknown key on step", { steps: [{ ...step(), easing: "in" }] }],
   ["unknown key on set item", { steps: [step([{ id: "a", prop: "x", value: 1, ease: 1 } as never])] }],

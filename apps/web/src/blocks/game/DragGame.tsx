@@ -19,7 +19,7 @@ function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected:
       onClick={onTap}
       disabled={disabled}
       style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, touchAction: "none" }}
-      className={`${btn} max-w-full break-words text-left text-sm ${selected ? "!border-[var(--ac)] !bg-[color-mix(in_srgb,var(--ac)_16%,transparent)]" : ""} ${isDragging ? "opacity-60" : ""}`}
+      className={`${btn} relative z-10 max-w-full break-words text-left text-sm ${selected ? "!border-[var(--ac)] !bg-[color-mix(in_srgb,var(--ac)_16%,transparent)]" : ""} ${isDragging ? "opacity-60" : ""}`}
     >
       {selected && (
         <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" className="mr-1 inline-block shrink-0 align-[-2px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -33,23 +33,20 @@ function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected:
 
 function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: string; over: boolean; onTap: () => void; children: ReactNode }) {
   const { setNodeRef } = useDroppable({ id: zone.id });
-  const fromItem = (e: { target: EventTarget }) => e.target instanceof Element && e.target.closest("button") !== null;
   return (
     <div
       ref={setNodeRef}
       role="group"
-      aria-label={`${zone.label}${occupant ? `, holds ${occupant}` : ", empty"}. Select an item, then press Enter or Space to place it here.`}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if ((e.key === "Enter" || e.key === " ") && !e.repeat && !fromItem(e)) {
-          e.preventDefault();
-          onTap();
-        }
-      }}
-      onClick={(e) => { if (!fromItem(e)) onTap(); }}
-      className={`flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed p-2 ${over ? "border-[var(--ac)] bg-[color-mix(in_srgb,var(--ac)_12%,transparent)]" : "border-[var(--mu)] bg-[var(--code)]"}`}
+      aria-label={zone.label}
+      className={`relative flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed p-2 ${over ? "border-[var(--ac)] bg-[color-mix(in_srgb,var(--ac)_12%,transparent)]" : "border-[var(--mu)] bg-[var(--code)]"}`}
     >
-      <span className="text-xs font-semibold text-[var(--mu)]">{zone.label}</span>
+      <button
+        type="button"
+        aria-label={`${zone.label}${occupant ? `, holds ${occupant}` : ", empty"}. Select an item, then activate to place it here.`}
+        onClick={onTap}
+        className="absolute inset-0 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ac)]"
+      />
+      <span aria-hidden="true" className="pointer-events-none text-xs font-semibold text-[var(--mu)]">{zone.label}</span>
       {children}
     </div>
   );

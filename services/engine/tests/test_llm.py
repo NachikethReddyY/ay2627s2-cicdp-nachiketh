@@ -79,7 +79,8 @@ def test_invalid_twice(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fenced_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake(monkeypatch, reply(f"```json\n{GOOD}\n```"))
+    fake(monkeypatch, reply(f"```json\n{GOOD}\n```"), reply(f"```\n{GOOD}\n```"))
+    assert generate("sys", {}, Lesson).attempts == 1
     assert generate("sys", {}, Lesson).attempts == 1
 
 

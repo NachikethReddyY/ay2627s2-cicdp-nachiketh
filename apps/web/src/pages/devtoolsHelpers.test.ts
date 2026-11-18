@@ -105,6 +105,8 @@ test("parseDeclaration", () => {
   assert.deepEqual(parseDeclaration("color: red;"), { property: "color", value: "red", important: false });
   assert.deepEqual(parseDeclaration("margin : 0 auto !important"), { property: "margin", value: "0 auto", important: true });
   assert.deepEqual(parseDeclaration("background: url(a:b)"), { property: "background", value: "url(a:b)", important: false });
+  assert.deepEqual(parseDeclaration("color: red !  IMPORTANT;;;  "), { property: "color", value: "red", important: true });
+  assert.deepEqual(parseDeclaration(`x: ${";".repeat(100_000)}x`), { property: "x", value: `${";".repeat(100_000)}x`, important: false });
   assert.equal(parseDeclaration("nonsense"), null);
   assert.equal(parseDeclaration(": red"), null);
 });

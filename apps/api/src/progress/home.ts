@@ -7,10 +7,16 @@ import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
 
-function firstCodeBlock(prompt: string): string[] | null {
-  const match = /```[^\n]*\n([\s\S]*?)```/.exec(prompt);
-  if (!match) return null;
-  const lines = match[1].replace(/\n+$/, "").split("\n").slice(0, 6);
+export function firstCodeBlock(prompt: string): string[] | null {
+  const start = prompt.indexOf("```");
+  if (start < 0) return null;
+  const bodyStart = prompt.indexOf("\n", start + 3);
+  if (bodyStart < 0) return null;
+  const end = prompt.indexOf("```", bodyStart + 1);
+  if (end < 0) return null;
+  let bodyEnd = end;
+  while (bodyEnd > bodyStart + 1 && prompt[bodyEnd - 1] === "\n") bodyEnd--;
+  const lines = prompt.slice(bodyStart + 1, bodyEnd).split("\n").slice(0, 6);
   return lines.length > 0 ? lines : null;
 }
 const Home = z.object({
