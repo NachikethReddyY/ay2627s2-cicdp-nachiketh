@@ -27,7 +27,7 @@
     "@babel/parser": "^8.1.2",
     "oxlint": "^1.94.0",
     "oxlint-tsgolint": "^7.0.2007",
-    "turbo": "^2.11.10"
+    "turbo": "^2.11.11"
   },
   "dependencies": {
     "@neon/config": "^1.14.0",
