@@ -19,6 +19,7 @@ Routes marked dev or test only exist in non-production builds.
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
 | Editor / player fixtures (test) | `/editor`, `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
+| Studio prototype (flag, author only) | `/studio`, then `/play?studio=true` | `apps/web/src/pages/studio/`, API `apps/api/src/studio/` | `/studio` runs the plan, script, audio (OpenRouter Kokoro), speech-to-text (Whisper word timings) and code-edit stages from a docs.python.org page. "Open in the player" plays it in the practice workbench: the narration is a background track, the code is typed into the editor at each spoken cue, a floating glass control bar seeks, pauses for a prediction before a reveal, and a cursor clicks Run so the sandbox runs the code. The run lives in page memory, so a reload clears it. Needs `STUDIO_ENABLED=true` and `OPENROUTER_API_KEY`, and `VITE_STUDIO=true` outside dev. Not learner content. |
 
 ## Inside the lesson player
 

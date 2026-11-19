@@ -19,6 +19,8 @@ const Account = lazy(() => import("./pages/Account"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
 const TestPlayer = import.meta.env.DEV ? lazy(() => import("./pages/TestPlayer")) : null;
+const STUDIO = import.meta.env.DEV || import.meta.env.VITE_STUDIO === "true";
+const Studio = STUDIO ? lazy(() => import("./pages/studio/Studio")) : null;
 
 function Root() {
   return (
@@ -62,9 +64,10 @@ const routeTree = root.addChildren([
     path: "/play",
     component: () => <PlayerPage />,
     beforeLoad: guard,
-    validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string } => ({
+    validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string; studio?: boolean } => ({
       lesson: typeof s.lesson === "string" ? s.lesson : undefined,
       course: typeof s.course === "string" ? s.course : undefined,
+      studio: s.studio === true || s.studio === 1 || s.studio === "1" ? true : undefined,
     }),
   }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
@@ -74,6 +77,7 @@ const routeTree = root.addChildren([
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
   ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),
   ...(TestPlayer ? [createRoute({ ...r, path: "/test/player", component: () => <TestPlayer /> })] : []),
+  ...(Studio ? [createRoute({ ...r, path: "/studio", component: () => <Studio />, beforeLoad: guard })] : []),
   ...(TestEditor ? [createRoute({
     ...r,
     path: "/editor",

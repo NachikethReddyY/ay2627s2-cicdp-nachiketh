@@ -19,6 +19,7 @@ import { redactUrl, sandboxTicketRoute } from "./sandbox/ticket.ts";
 import { importRoutes } from "./imports/routes.ts";
 import { importsIdle } from "./imports/runner.ts";
 import { devRoutes, guideRoutes } from "./dev/route.ts";
+import { studioRoutes } from "./studio/route.ts";
 
 const CODES: Record<number, string> = {
   400: "bad_request",
@@ -123,6 +124,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(importRoutes);
       api.register(devRoutes);
       api.register(guideRoutes);
+      if (env.STUDIO_ENABLED) api.register(studioRoutes);
       api.get(
         "/healthz",
         { schema: { response: { 200: z.object({ ok: z.literal(true), sha: z.string() }) } } },

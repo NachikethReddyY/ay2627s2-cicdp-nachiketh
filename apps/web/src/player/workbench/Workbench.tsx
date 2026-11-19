@@ -40,7 +40,7 @@ type Props = {
     onToggleSplit(): void;
   };
   instructions?: ReactNode;
-  docs: ReactNode;
+  docs: ReactNode | null;
   actions: ReactNode;
   trailing?: ReactNode;
   paletteFiles: PaletteItem[];
@@ -329,7 +329,7 @@ export default function Workbench(p: Props) {
         onClick: () => panelDispatch({ type: "toggle" }),
         ref: termBtn,
       }}
-      util={{
+      util={p.docs === null ? undefined : {
         label: wide ? "Toggle docs panel" : "Show docs",
         pressed: wide ? layout.showUtil : openOverlay === "docs",
         onClick: toggleUtil,
@@ -458,7 +458,7 @@ export default function Workbench(p: Props) {
                   {bottomPanel}
                 </main>
                 </div>
-              {shown.showUtil && (
+              {shown.showUtil && p.docs !== null && (
                 <>
                   <Splitter
                     orientation="vertical"

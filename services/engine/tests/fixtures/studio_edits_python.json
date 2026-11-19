@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"edits\": [{\"segment\": 0, \"cue\": \"an empty list called words\", \"predict\": null, \"code\": \"words = []\", \"run\": false}, {\"segment\": 0, \"cue\": \"append the word apple\", \"predict\": \"What will words hold after this line runs?\", \"code\": \"words = []\\nwords.append(\\\"apple\\\")\", \"run\": false}, {\"segment\": 0, \"cue\": \"append the word pear\", \"predict\": null, \"code\": \"words = []\\nwords.append(\\\"apple\\\")\\nwords.append(\\\"pear\\\")\", \"run\": false}, {\"segment\": 1, \"cue\": \"print the length of words\", \"predict\": null, \"code\": \"words = []\\nwords.append(\\\"apple\\\")\\nwords.append(\\\"pear\\\")\\nprint(len(words))\", \"run\": true}]}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 300,
+        "completion_tokens": 160,
+        "total_tokens": 460
+      }
+    }
+  ]
+}

@@ -18,13 +18,13 @@ from litellm.exceptions import (
     ServiceUnavailableError,
     Timeout,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from learnquest_engine import guide, learner, llm, pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.guide import LintFinding
 from learnquest_engine.llm import GenerationError, Result
-from learnquest_engine.schemas import LessonContext
+from learnquest_engine.schemas import LessonContext, StudioPlan
 
 log = logging.getLogger(__name__)
 MAX_BODY_BYTES = 64 * 1024
@@ -38,6 +38,22 @@ class OutlineRequest(BaseModel):
 
 class VisualRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=500)
+
+
+class StudioPlanRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=200)
+    source: str = Field(min_length=1, max_length=12000)
+
+
+class StudioScriptRequest(BaseModel):
+    plan: StudioPlan
+
+
+class StudioEditsRequest(BaseModel):
+    plan: StudioPlan
+    segments: list[Annotated[str, StringConstraints(min_length=1, max_length=600)]] = Field(
+        min_length=1, max_length=12
+    )
 
 
 class GuideMessage(BaseModel):
@@ -132,6 +148,21 @@ def healthz() -> dict[str, Any]:
 @app.post("/v1/pipeline/outline", dependencies=[Depends(require_token)])
 def outline_route(body: OutlineRequest) -> dict[str, Any]:
     return _body("outline", pipeline.outline(body.topic))
+
+
+@app.post("/v1/studio/plan", dependencies=[Depends(require_token)])
+def studio_plan_route(body: StudioPlanRequest) -> dict[str, Any]:
+    return _body("plan", pipeline.studio_plan(body.topic, body.source))
+
+
+@app.post("/v1/studio/script", dependencies=[Depends(require_token)])
+def studio_script_route(body: StudioScriptRequest) -> dict[str, Any]:
+    return _body("script", pipeline.studio_script(body.plan))
+
+
+@app.post("/v1/studio/edits", dependencies=[Depends(require_token)])
+def studio_edits_route(body: StudioEditsRequest) -> dict[str, Any]:
+    return _body("edits", pipeline.studio_edits(body.plan, body.segments))
 
 
 @app.post("/v1/pipeline/lesson", dependencies=[Depends(require_token)])

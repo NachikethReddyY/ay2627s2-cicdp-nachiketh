@@ -7,7 +7,15 @@ from pydantic import BaseModel
 
 from learnquest_engine import visual
 from learnquest_engine.llm import GenerationError, Result, generate
-from learnquest_engine.schemas import PARTS, Lesson, LessonContext, Outline
+from learnquest_engine.schemas import (
+    PARTS,
+    Lesson,
+    LessonContext,
+    Outline,
+    StudioEdits,
+    StudioPlan,
+    StudioScript,
+)
 
 PROMPTS = Path(__file__).parent / "prompts"
 
@@ -19,6 +27,19 @@ def _prompt(name: str) -> str:
 
 def outline(topic: str) -> Result[Outline]:
     return generate(_prompt("outline"), {"topic": topic}, Outline)
+
+
+def studio_plan(topic: str, source: str) -> Result[StudioPlan]:
+    return generate(_prompt("studio_plan"), {"topic": topic, "source": source}, StudioPlan)
+
+
+def studio_script(plan: StudioPlan) -> Result[StudioScript]:
+    return generate(_prompt("studio_script"), {"plan": plan.model_dump()}, StudioScript)
+
+
+def studio_edits(plan: StudioPlan, segments: list[str]) -> Result[StudioEdits]:
+    data = {"plan": plan.model_dump(), "segments": segments}
+    return generate(_prompt("studio_edits"), data, StudioEdits, context={"segments": segments})
 
 
 def lesson(ctx: LessonContext) -> Result[BaseModel]:

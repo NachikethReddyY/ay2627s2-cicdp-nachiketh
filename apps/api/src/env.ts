@@ -51,6 +51,12 @@ const schema = z
     SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50),
     SANDBOX_MAX_RUNS: z.coerce.number().int().positive().default(20),
     PRACTICE_STRETCH_TESTS: z.coerce.number().int().min(0).max(10).default(0),
+    STUDIO_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+    OPENROUTER_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    STUDIO_TTS_MODEL: z.string().min(1).default("hexgrad/kokoro-82m"),
+    STUDIO_TTS_VOICE: z.string().min(1).default("af_heart"),
+    STUDIO_TTS_SAMPLE_RATE: z.coerce.number().int().positive().default(24_000),
+    STUDIO_STT_MODEL: z.string().min(1).default("openai/whisper-large-v3"),
   })
   .refine((e) => !e.SANDBOX_ENABLED || e.SANDBOX_BACKEND !== "daytona" || !!e.DAYTONA_API_KEY, {
     message: "SANDBOX_BACKEND=daytona needs DAYTONA_API_KEY",

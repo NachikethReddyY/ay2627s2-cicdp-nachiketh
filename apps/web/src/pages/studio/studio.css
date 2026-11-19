@@ -1,0 +1,73 @@
+@keyframes studio-cursor-move {
+  from { transform: translate(var(--x0), var(--y0)); }
+  to { transform: translate(var(--x1), var(--y1)); }
+}
+
+@keyframes studio-cursor-click {
+  0% { transform: translate(var(--x1), var(--y1)) scale(1); }
+  50% { transform: translate(var(--x1), var(--y1)) scale(0.78); }
+  100% { transform: translate(var(--x1), var(--y1)) scale(1); }
+}
+
+.studio-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 80;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.45));
+  animation: studio-cursor-move 950ms cubic-bezier(0.45, 0, 0.2, 1) forwards;
+}
+
+.studio-cursor[data-phase="click"] {
+  animation: studio-cursor-click 260ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-cursor { animation-duration: 1ms; }
+  .studio-cursor[data-phase="click"] { animation-duration: 1ms; }
+}
+
+.studio-range {
+  height: 4px;
+  accent-color: var(--ac);
+  cursor: pointer;
+}
+
+.studio-glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 14px 36px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.studio-glass[data-autohide="a"] {
+  animation: studio-autohide-a 3s ease forwards;
+}
+
+.studio-glass[data-autohide="b"] {
+  animation: studio-autohide-b 3s ease forwards;
+}
+
+.studio-glass[data-hidden] {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+@keyframes studio-autohide-a {
+  0%, 85% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(10px); }
+}
+
+@keyframes studio-autohide-b {
+  0%, 85% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(10px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-glass { transition: none; }
+}
