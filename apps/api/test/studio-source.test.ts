@@ -105,3 +105,18 @@ test("pcmToWav writes a 44-byte mono 16-bit header at the model's sample rate", 
   assert.equal(wav.readUInt32LE(40), 4);
   assert.deepEqual([...wav.subarray(44)], [1, 0, 2, 0]);
 });
+
+test("fetchSource refuses a page over 2 MB, whether or not it says its length", async () => {
+  const big = "x".repeat(2 * 1024 * 1024 + 1);
+  await assert.rejects(
+    fetchSource("https://docs.python.org/3/x.html", async () => new Response(big, { headers: { "content-length": String(big.length) } })),
+    /too large/,
+  );
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let i = 0; i < 3; i++) controller.enqueue(new Uint8Array(1024 * 1024).fill(120));
+      controller.close();
+    },
+  });
+  await assert.rejects(fetchSource("https://docs.python.org/3/x.html", async () => new Response(stream)), /too large/);
+});
