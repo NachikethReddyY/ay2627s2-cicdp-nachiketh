@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
-import { runCrossed, segmentAt } from "@learnquest/player-core";
+import { frameAt, runCrossed, segmentAt } from "@learnquest/player-core";
 import { monacoLanguage } from "../live/checkModel";
 import { lessonFile } from "../live/lessonWorkbenchModel";
 import RunBottom from "../live/RunBottom";
@@ -11,6 +11,7 @@ import { usePanel } from "../terminal/usePanel";
 import { createSpeaker, type Synth, type Utterance } from "../speech";
 import FileTreeView from "../workbench/FileTreeView";
 import Workbench from "../workbench/Workbench";
+import type { EditorHandle } from "../EditorPane";
 import WorkbenchEditor from "../workbench/WorkbenchEditor";
 import GatePanel from "./GatePanel";
 import { codeShown, finished, heldGate, initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, speechCue, speechView, type PlaybackAction, type SpeechCue } from "./scrimModel";
@@ -42,6 +43,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const [rate, setRate] = useState<number>(1);
   const audioRef = useRef<HTMLAudioElement>(null);
   const playRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<EditorHandle>(null);
   const pendingSeek = useRef<number | null>(null);
   const speaker = useMemo(
     () =>
@@ -110,6 +112,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       if (!next.playing && state.playing) audio.pause();
     }
     applyCue(speechCue(speechView(state), speechView(next), { texts, silent: silentAt(failedAudio), jumped: action.type === "seek" }));
+    editorRef.current?.show(frameAt(scrim, next.answered, next.t));
     dispatch(action);
     return next;
   };
@@ -171,7 +174,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
         }}
       />
       <div ref={stageRef} className="relative flex min-h-0 flex-1 flex-col scrim-stage" data-playing={state.playing ? "true" : "false"}>
-        <WorkbenchEditor transportRef={playRef} edit={{ value: code, language, onChange: () => {}, readOnly: true }} bottomPadding={EDITOR_BOTTOM_PADDING} />
+        <WorkbenchEditor ref={editorRef} transportRef={playRef} edit={{ value: "", language, onChange: () => {}, readOnly: true }} bottomPadding={EDITOR_BOTTOM_PADDING} />
         <div className="scrim-controls">
           <p aria-live="off" className="scrim-caption">{caption}</p>
           {gate && gateStep && (

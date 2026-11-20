@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildScrimTimeline, codeAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type TimedEdit } from "./scrim.ts";
+import { buildScrimTimeline, codeAt, frameAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type TimedEdit } from "./scrim.ts";
+import { editTimeline, SCRIM_FILE } from "./scrim-timeline.ts";
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -156,4 +157,33 @@ test("edits and runs stay within the clock even when an edit has an out-of-range
 test("a run near the end of the clock is still crossed by playing to the end", () => {
   const scrim = buildScrimTimeline([edit(0, 3.9, "print(1)", null, true)], [null], scrimClock([4]));
   assert.notEqual(runCrossed(scrim, 0, scrim.clock.total), null);
+});
+
+test("for any scrim, a frame shows the same code as codeAt, and typing at full speed with distinct edit times adds at most two characters per 16 ms", () => {
+  const rand = mulberry32(66);
+  for (let n = 0; n < 500; n++) {
+    const parts = 1 + Math.floor(rand() * 3);
+    const durations = Array.from({ length: parts }, () => 2 + rand() * 6);
+    const edits = Array.from({ length: 1 + Math.floor(rand() * 5) }, (_, i) =>
+      edit(Math.floor(rand() * parts), rand() * 8, Array.from({ length: i + 1 }, (_, k) => `x${k} = ${k}`).join("\n"), null, rand() < 0.5),
+    );
+    const scrim = buildScrimTimeline(edits, durations.map(() => null), scrimClock(durations));
+    const distinct = scrim.times.every((time, i) => i === 0 || time > scrim.times[i - 1]);
+    const answered = new Set<string>();
+    const squeezed = scrim.edits.map((e, i) => {
+      const before = i > 0 ? scrim.edits[i - 1].code : "";
+      return scrim.typing[i] + 1e-9 < editTimeline(before, e.code).duration / 1000;
+    });
+    for (let t = 0; t <= scrim.clock.total; t += 0.016) {
+      const frame = frameAt(scrim, answered, t);
+      assert.equal(frame.files[SCRIM_FILE] ?? "", codeAt(scrim, answered, t), `run ${n}: frame differs from codeAt at ${t}`);
+      assert.equal(frame.activePath, SCRIM_FILE);
+      if (!distinct) continue;
+      const from = shownEdits(scrim, answered, t);
+      const to = shownEdits(scrim, answered, t + 0.016);
+      if (squeezed.slice(Math.max(0, from - 1), to).some(Boolean)) continue;
+      const next = codeAt(scrim, answered, t + 0.016);
+      assert.ok(next.length - codeAt(scrim, answered, t).length <= 2, `run ${n}: 16 ms added more than two characters at ${t}`);
+    }
+  }
 });
