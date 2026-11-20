@@ -119,7 +119,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     setStarting(false);
     setSid(id);
   };
-  const actionsFor = (enabled: boolean) => practiceActions({ language, code, lessonId, sandboxEnabled: enabled });
+  const actionsFor = (enabled: boolean, source: string = code) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled });
 
   useEffect(() => {
     lintSeq.current++;
@@ -151,13 +151,13 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setCheckBusy(false);
   };
-  const run = async () => {
-    const a = actionsFor(sandboxEnabled).run;
+  const run = async (source: string = code) => {
+    const a = actionsFor(sandboxEnabled, source).run;
     if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
     if (skipShellWait(shellUnreachable.current, shell.state())) {
       setRunNote(undefined);
-      const fb = actionsFor(false).run;
+      const fb = actionsFor(false, source).run;
       if (fb.via === "oneshot") await oneShot(fb.args);
       return;
     }
@@ -168,7 +168,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     try {
       await runInShell({
         language: language === "python" ? "python" : "javascript",
-        code,
+        code: source,
         panel: { open: openTerminal },
         socket: shell,
         putFile,
@@ -180,7 +180,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
       if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state(), readyTimeouts.current)) {
         shellUnreachable.current = true;
         setShellRun(false);
-        const fb = actionsFor(false).run;
+        const fb = actionsFor(false, source).run;
         if (fb.via === "oneshot") await oneShot(fb.args);
         return;
       }

@@ -10,6 +10,7 @@ import WatchView from "./live/WatchView";
 import { lessonTitle } from "./live/courseProgress";
 
 const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
+const ScrimLesson = lazy(() => import("./scrim/ScrimLesson"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
   const { data, error, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
@@ -60,6 +61,8 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={next} /></Suspense>;
   if (data.kind === "practice" && part?.kind === "practice")
     return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
+  if (data.kind === "scrim" && part?.kind === "scrim")
+    return <Suspense fallback={fallback}><ScrimLesson lessonId={data.id} title={data.title} part={part} steps={data.steps} media={data.media} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
     return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} title={data.title} intro={part.intro} doc={part.doc} next={next} onComplete={courseState.reload} /></div>;
   if (data.kind === "predict" && data.steps.length > 0)
