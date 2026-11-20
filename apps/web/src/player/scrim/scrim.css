@@ -23,7 +23,24 @@
   pointer-events: auto;
 }
 
-.scrim-caption,
+.scrim-caption {
+  flex: none;
+  width: fit-content;
+  max-width: 100%;
+  max-height: 7.5rem;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--glass) 70%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--tx);
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .scrim-gate,
 .scrim-pill {
   box-sizing: border-box;
@@ -34,28 +51,6 @@
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   backdrop-filter: blur(20px) saturate(160%);
   color: var(--tx);
-}
-
-.scrim-caption {
-  flex: none;
-  width: 100%;
-  max-width: 32rem;
-  max-height: 7.5rem;
-  overflow: auto;
-  margin: 0;
-  padding: 8px 14px;
-  border-radius: 14px;
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.scrim-part {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--mu);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }
 
 .scrim-gate {
@@ -81,16 +76,19 @@
   gap: 6px;
   padding: 8px 12px;
   border-radius: 18px;
-  transition: opacity 240ms ease;
+  background: color-mix(in srgb, var(--glass) 55%, transparent);
+  transition: opacity 320ms ease;
 }
 
 .scrim-stage[data-playing="true"] .scrim-pill {
-  opacity: 0.2;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .scrim-stage[data-playing="true"]:hover .scrim-pill,
-.scrim-stage[data-playing="true"]:focus-within .scrim-pill {
+.scrim-stage[data-playing="true"] .scrim-pill:has(:focus-visible) {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .scrim-row {

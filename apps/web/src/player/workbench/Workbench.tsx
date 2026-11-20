@@ -40,7 +40,7 @@ type Props = {
     onToggleSplit(): void;
   };
   instructions?: ReactNode;
-  docs: ReactNode;
+  docs?: ReactNode;
   actions: ReactNode;
   trailing?: ReactNode;
   paletteFiles: PaletteItem[];
@@ -85,7 +85,9 @@ function useMedia(query: string): boolean {
 type Overlay = "nav" | "docs" | null;
 
 export default function Workbench(p: Props) {
-  const [layout, dispatch] = useLayout();
+  const [storedLayout, dispatch] = useLayout();
+  const hasDocs = p.docs !== undefined;
+  const layout = hasDocs ? storedLayout : { ...storedLayout, showUtil: false };
   const wide = useMedia(WIDE);
   const prefersDark = useMedia(DARK);
   const resolved = resolveTheme(layout.theme, prefersDark);
@@ -213,7 +215,7 @@ export default function Workbench(p: Props) {
   const viewCommands: PaletteCommand[] = [
     { id: "view.sidebar", title: "Toggle sidebar", run: toggleNav },
     { id: "view.terminal", title: "Toggle terminal panel", hint: "Ctrl+`", run: () => panelDispatch({ type: "toggle" }) },
-    { id: "view.docs", title: "Toggle docs panel", run: toggleUtil },
+    ...(hasDocs ? [{ id: "view.docs", title: "Toggle docs panel", run: toggleUtil }] : []),
     { id: "theme.light", title: "Color theme: Light", run: () => dispatch({ type: "theme", theme: "light" }) },
     { id: "theme.dark", title: "Color theme: Dark", run: () => dispatch({ type: "theme", theme: "dark" }) },
     { id: "theme.system", title: "Color theme: System", run: () => dispatch({ type: "theme", theme: "system" }) },
@@ -329,12 +331,12 @@ export default function Workbench(p: Props) {
         onClick: () => panelDispatch({ type: "toggle" }),
         ref: termBtn,
       }}
-      util={{
+      util={hasDocs ? {
         label: wide ? "Toggle docs panel" : "Show docs",
         pressed: wide ? layout.showUtil : openOverlay === "docs",
         onClick: toggleUtil,
         ref: utilBtn,
-      }}
+      } : undefined}
       actions={p.actions}
       trailing={p.trailing}
       lights={wide && !shown.showLeft}
@@ -458,7 +460,7 @@ export default function Workbench(p: Props) {
                   {bottomPanel}
                 </main>
                 </div>
-              {shown.showUtil && (
+              {hasDocs && shown.showUtil && (
                 <>
                   <Splitter
                     orientation="vertical"

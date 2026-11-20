@@ -122,10 +122,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       <div className="relative flex min-h-0 flex-1 flex-col scrim-stage" data-playing={state.playing ? "true" : "false"}>
         <WorkbenchEditor transportRef={playRef} edit={{ value: code, language, onChange: () => {}, readOnly: true }} />
         <div className="scrim-controls">
-          <p aria-live="off" className="scrim-caption">
-            <span className="scrim-part">{partLabel}</span>
-            {caption}
-          </p>
+          <p aria-live="off" className="scrim-caption">{caption}</p>
           {gate && gateStep && (
             <section role="region" aria-label="Predict" className="scrim-gate">
               <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => commit({ type: "answer", key: gate.key })} />
@@ -198,31 +195,11 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
     </div>
   );
 
-  const transcript = (
-    <ol aria-label="Transcript" className="wb-scroll m-0 min-h-0 flex-1 list-none overflow-auto p-2">
-      {part.segments.map((segment, i) => (
-        <li key={i}>
-          <button
-            type="button"
-            aria-current={i === current.index ? "true" : undefined}
-            className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${i === current.index ? "bg-[var(--sel)] font-medium" : "text-[var(--mu)]"}`}
-            onClick={() => commit({ type: "seek", t: clock.offsets[i] ?? 0 })}
-          >
-            {segment.text}
-          </button>
-        </li>
-      ))}
-    </ol>
-  );
-
   const actions = (
-    <>
-      <button type="button" className="wb-tb wb-primary" onClick={() => void runner.run()} disabled={runner.busy || code === ""}>
-        <Play size={15} strokeWidth={1.75} aria-hidden="true" />
-        {runner.busy ? "Running…" : "Run"}
-      </button>
-      <button type="button" className="wb-tb" onClick={onLab}>Go to the lab</button>
-    </>
+    <button type="button" className="wb-tb wb-primary" onClick={() => void runner.run()} disabled={runner.busy || code === ""}>
+      <Play size={15} strokeWidth={1.75} aria-hidden="true" />
+      {runner.busy ? "Running…" : "Run"}
+    </button>
   );
 
   return (
@@ -235,7 +212,6 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       editor={editor}
       bottom={<RunBottom runner={runner} terminalActive={panel.state.open} />}
       bottomTitle="Terminal"
-      docs={transcript}
       actions={actions}
       paletteFiles={[{ id: fileName, title: fileName }]}
       paletteCommands={[]}
