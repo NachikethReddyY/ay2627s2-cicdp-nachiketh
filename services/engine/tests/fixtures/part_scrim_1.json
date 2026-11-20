@@ -1,0 +1,21 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"kind\": \"scrim\", \"language\": \"javascript\", \"segments\": [{\"text\": \"Here is add. It takes two numbers and prints their sum. Before we run it, predict the value that add(2, 3) gives back.\", \"edit\": {\"code\": \"export function add(a, b) {\\n  console.log(a + b);\\n}\\n\", \"run\": false}}, {\"text\": \"Run it. The sum prints in the console. Now think about what the caller actually receives from add.\", \"edit\": {\"code\": \"export function add(a, b) {\\n  console.log(a + b);\\n}\\n\", \"run\": true}, \"gate\": 0}, {\"text\": \"Add a return statement. Now the caller receives the sum, and the function stops at that line.\", \"edit\": {\"code\": \"export function add(a, b) {\\n  return a + b;\\n}\\n\", \"run\": true}}, {\"text\": \"Next, the lab asks you to write a function that returns a value. Run your code and check the sample tests.\"}], \"steps\": [{\"kind\": \"mcq\", \"title\": \"What add gives back\", \"prompt\": \"add prints the sum. What value does the caller get from add(2, 3)?\", \"beforeFiles\": {\"src/add.js\": \"export function add(a, b) {\\n  console.log(a + b);\\n}\\n\"}, \"hunks\": [{\"id\": \"h1\", \"file\": \"src/add.js\", \"oldStart\": 1, \"lines\": [\" export function add(a, b) {\", \"-  console.log(a + b);\", \"+  return a + b;\", \" }\"]}], \"options\": [\"undefined, because nothing is returned\", \"5, because the sum is returned\", \"Nothing, because add throws an error\", \"3, because the last argument wins\"], \"answer\": 0, \"hints\": [{\"text\": \"add only calls console.log. Nothing in it can throw here.\", \"eliminate\": 2}, {\"text\": \"A function hands a value back only through a return statement. Look for one in add.\"}], \"explanations\": {\"workedExample\": \"console.log prints 5 but returns undefined. A function with no return statement hands undefined back to its caller.\", \"practice\": \"Write double(n) so it returns n * 2. The caller can then store the result.\"}, \"concepts\": [\"return values\"]}], \"lab\": {\"kind\": \"practice\", \"language\": \"javascript\", \"instructions\": \"Write double(n) so it returns n times 2. The program reads one number from stdin, passes it to double and prints the result.\", \"starterCode\": \"function double(n) {\\n  \\n}\\n\\nconst n = Number(require(\\\"fs\\\").readFileSync(0, \\\"utf8\\\"));\\nconsole.log(double(n));\\n\", \"tests\": [{\"id\": \"two\", \"name\": \"doubles a small number\", \"stdin\": \"2\", \"expectedStdout\": \"4\\n\", \"visibility\": \"sample\", \"stretch\": false}, {\"id\": \"five\", \"name\": \"doubles another number\", \"stdin\": \"5\", \"expectedStdout\": \"10\\n\", \"visibility\": \"sample\", \"stretch\": false}, {\"id\": \"zero\", \"name\": \"handles zero\", \"stdin\": \"0\", \"expectedStdout\": \"0\\n\", \"visibility\": \"hidden\", \"stretch\": false}, {\"id\": \"negative\", \"name\": \"handles a negative number\", \"stdin\": \"-7\", \"expectedStdout\": \"-14\\n\", \"visibility\": \"hidden\", \"stretch\": false}]}}"
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15
+      }
+    }
+  ]
+}

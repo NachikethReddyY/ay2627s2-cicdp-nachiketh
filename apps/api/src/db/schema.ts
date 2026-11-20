@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Spec } from "@learnquest/ui-catalog";
+import type { GeneratedMcqStep } from "../ai/step-schema.ts";
 import {
   boolean,
   check,
@@ -270,6 +271,8 @@ export type PartSecret =
   | { kind: "game-practice"; intro: string; doc: Spec }
   | { kind: "scrim"; language: "python" | "javascript" | "typescript"; segments: Array<{ text: string; durationMs: number; edit?: { code: string; run: boolean }; gate?: number }>; lab: Extract<PartSecret, { kind: "practice" }> };
 
+export type GeneratedPart = PartSecret | (Extract<PartSecret, { kind: "scrim" }> & { steps: GeneratedMcqStep[] });
+
 export const lessons = pgTable(
   "lessons",
   {
@@ -407,7 +410,7 @@ export const hintEvents = pgTable(
 export const generationCache = pgTable("generation_cache", {
   key: text("key").primaryKey(),
   kind: text("kind", { enum: ["learn", "watch", "practice", "game-practice", "scrim"] }).notNull(),
-  content: jsonb("content").$type<PartSecret>().notNull(),
+  content: jsonb("content").$type<GeneratedPart>().notNull(),
   createdAt: createdAt(),
 });
 

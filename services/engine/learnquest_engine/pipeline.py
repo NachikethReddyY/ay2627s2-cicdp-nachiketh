@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from learnquest_engine import visual
 from learnquest_engine.llm import GenerationError, Result, generate
-from learnquest_engine.schemas import PARTS, Lesson, LessonContext, Outline
+from learnquest_engine.schemas import PARTS, Lesson, LessonContext, Outline, ScrimDraft, timed
 
 PROMPTS = Path(__file__).parent / "prompts"
 
@@ -26,15 +26,18 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
     if kind == "predict":
         return generate(_prompt("lesson"), ctx.model_dump(), Lesson)
     system = _prompt(kind.replace("-", "_"))
-    if kind == "practice":
+    if kind in ("practice", "scrim"):
         system += _stretch_note(ctx.stretchTests)
     if kind not in ("learn", "game-practice"):
-        return generate(
+        res = generate(
             system,
             ctx.model_dump(),
             PARTS[kind],
             context={"stretchTests": ctx.stretchTests},
         )
+        if isinstance(res.value, ScrimDraft):
+            return Result(timed(res.value, ctx.stretchTests), res.usage, res.attempts)
+        return res
     ctx_data = ctx.model_dump()
     res = generate(system + "\n\n" + visual._system(embedded=True), ctx_data, PARTS[kind])
     if kind == "game-practice":

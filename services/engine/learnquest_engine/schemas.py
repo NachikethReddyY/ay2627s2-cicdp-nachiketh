@@ -1,5 +1,6 @@
 """Pydantic ports of the zod models in apps/api/src/ai/service.ts, plus the leak check."""
 
+from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, ValidationInfo, model_validator
@@ -25,7 +26,7 @@ class OutlineLesson(BaseModel):
     title: T80
     level: int = Field(ge=1, le=5)
     concepts: list[T60] = Field(min_length=1, max_length=6)
-    kind: Literal["learn", "watch", "practice", "game-practice"]
+    kind: Literal["learn", "watch", "practice", "game-practice", "scrim"]
 
 
 class Course(BaseModel):
@@ -55,7 +56,9 @@ class Outline(BaseModel):
         elif not full or self.subject is None:
             raise ValueError("outline needs title, tagline, courses and subject")
         elif self.subject == "other" and any(
-            lesson.kind in ("watch", "practice") for c in self.courses or [] for lesson in c.lessons
+            lesson.kind in ("watch", "practice", "scrim")
+            for c in self.courses or []
+            for lesson in c.lessons
         ):
             raise ValueError("non-coding outline may only use learn and game-practice lessons")
         return self
@@ -158,7 +161,7 @@ class _LessonRef(BaseModel):
     title: str = Field(max_length=200)
     level: int = Field(ge=1, le=5)
     concepts: list[_Loose200] = Field(max_length=12)
-    kind: Literal["predict", "learn", "watch", "practice", "game-practice"] = "predict"
+    kind: Literal["predict", "learn", "watch", "practice", "game-practice", "scrim"] = "predict"
 
 
 T4000 = Annotated[str, _c(4000)]
@@ -251,11 +254,117 @@ class GamePracticePart(BaseModel):
     doc: dict[str, Any] | None = None
 
 
+SCRIM_SEGMENTS = (4, 8)
+SCRIM_MAX_GATES = 3
+SCRIM_MS_PER_WORD = 420
+SCRIM_MIN_SEGMENT_MS = 3000
+SCRIM_MAX_SEGMENT_MS = 40000
+SCRIM_LEAK_MIN_CHARS = 3
+SCRIM_ADDED_LINE_MIN_CHARS = 4
+
+
+def segment_duration_ms(text: str) -> int:
+    """Narration length by word count; the model never writes timings."""
+    words = len(text.split())
+    return min(SCRIM_MAX_SEGMENT_MS, max(SCRIM_MIN_SEGMENT_MS, words * SCRIM_MS_PER_WORD))
+
+
+class ScrimEdit(BaseModel):
+    code: Annotated[str, StringConstraints(min_length=1, max_length=3000)]
+    run: bool
+
+
+class ScrimSegmentDraft(BaseModel):
+    text: T500
+    edit: ScrimEdit | None = None
+    gate: int | None = Field(default=None, ge=0, le=SCRIM_MAX_GATES - 1)
+
+
+class ScrimSegment(ScrimSegmentDraft):
+    durationMs: int = Field(ge=SCRIM_MIN_SEGMENT_MS, le=SCRIM_MAX_SEGMENT_MS)
+
+
+def _added_lines(step: McqStep) -> list[str]:
+    lines = [line[1:].strip() for h in step.hunks for line in h.lines if line.startswith("+")]
+    return [line for line in lines if len(line) >= SCRIM_ADDED_LINE_MIN_CHARS]
+
+
+def _check_scrim(
+    language: str,
+    segments: Sequence[ScrimSegmentDraft],
+    steps: Sequence[McqStep],
+    lab: PracticePart,
+) -> None:
+    if lab.language != language:
+        raise ValueError("the lab language must equal the scrim language")
+    if segments[0].edit is None:
+        raise ValueError("segment 0 must show code")
+    if segments[-1].gate is not None:
+        raise ValueError("the last segment cannot be a gate: nothing would reveal the answer")
+    gates = [s.gate for s in segments if s.gate is not None]
+    if gates != list(range(len(steps))):
+        raise ValueError("every step must be the gate of exactly one segment, in step order")
+    code = ""
+    for i, segment in enumerate(segments):
+        if segment.edit is not None:
+            code = segment.edit.code
+        if segment.gate is None:
+            continue
+        step = steps[segment.gate]
+        answer = _norm(step.options[step.answer])
+        spoken = [_norm(s.text) for s in segments[: i + 1]]
+        if len(answer) >= SCRIM_LEAK_MIN_CHARS and any(answer in text for text in spoken):
+            raise ValueError(f"step {step.title!r}: narration up to the gate leaks the answer")
+        added = _added_lines(step)
+        if added and all(line in code for line in added):
+            raise ValueError(f"step {step.title!r}: the code at the gate already shows the change")
+
+
+class ScrimDraft(BaseModel):
+    """What the model writes. `steps` are the mcq gates the segments point at by index."""
+
+    kind: Literal["scrim"]
+    language: Literal["python", "javascript", "typescript"]
+    segments: list[ScrimSegmentDraft] = Field(
+        min_length=SCRIM_SEGMENTS[0], max_length=SCRIM_SEGMENTS[1]
+    )
+    steps: list[McqStep] = Field(min_length=1, max_length=SCRIM_MAX_GATES)
+    lab: PracticePart
+
+    @model_validator(mode="after")
+    def _check(self) -> "ScrimDraft":
+        _check_scrim(self.language, self.segments, self.steps, self.lab)
+        return self
+
+
+class ScrimPart(BaseModel):
+    """The draft with a duration on every segment, as the API stores it."""
+
+    kind: Literal["scrim"]
+    language: Literal["python", "javascript", "typescript"]
+    segments: list[ScrimSegment] = Field(min_length=SCRIM_SEGMENTS[0], max_length=SCRIM_SEGMENTS[1])
+    steps: list[McqStep] = Field(min_length=1, max_length=SCRIM_MAX_GATES)
+    lab: PracticePart
+
+    @model_validator(mode="after")
+    def _check(self) -> "ScrimPart":
+        _check_scrim(self.language, self.segments, self.steps, self.lab)
+        return self
+
+
+def timed(draft: ScrimDraft, stretch_tests: int) -> ScrimPart:
+    data = draft.model_dump()
+    for segment in data["segments"]:
+        segment["durationMs"] = segment_duration_ms(segment["text"])
+    return ScrimPart.model_validate(data, context={"stretchTests": stretch_tests})
+
+
 PARTS: dict[str, type[BaseModel]] = {
     "learn": LearnPart,
     "watch": WatchPart,
     "practice": PracticePart,
     "game-practice": GamePracticePart,
+    "scrim": ScrimDraft,
 }
 
 
