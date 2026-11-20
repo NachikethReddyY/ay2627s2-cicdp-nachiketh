@@ -33,13 +33,13 @@ export function segmentAt(clock: ScrimClock, t: number): { index: number; local:
 
 export function buildScrimTimeline(edits: readonly TimedEdit[], predicts: readonly (string | null)[], clock: ScrimClock): ScrimTimeline {
   const ordered = edits.map((e) => ({ ...e, predict: e.predict?.trim() ? e.predict : null })).sort((a, b) => a.segment - b.segment || a.at - b.at);
-  const times = ordered.map((e) => (clock.offsets[e.segment] ?? 0) + Math.min(e.at, clock.durations[e.segment] ?? e.at));
+  const times = ordered.map((e) => Math.max(0, Math.min(clock.total, (clock.offsets[e.segment] ?? 0) + Math.min(e.at, clock.durations[e.segment] ?? e.at))));
   const typing = ordered.map((e, i) => {
     const before = i > 0 ? ordered[i - 1].code : "";
     const ms = editTimeline(before, e.code).duration;
     const next = times[i + 1];
     const gap = next === undefined ? Infinity : (next - times[i]) * GAP_SHARE;
-    return Math.min(ms / 1000, gap, clock.total - times[i]);
+    return Math.max(0, Math.min(ms / 1000, gap, clock.total - times[i]));
   });
   const gates: ScrimGate[] = [
     ...ordered.flatMap((e, i) => (e.predict ? [{ key: `edit-${i}`, t: times[i], question: e.predict }] : [])),

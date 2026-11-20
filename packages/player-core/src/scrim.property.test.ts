@@ -128,6 +128,30 @@ test("for any scrim, every run lands between its edit and the end of the clock",
   }
 });
 
+test("edits and runs stay within the clock even when an edit has an out-of-range segment", () => {
+  const rand = mulberry32(55);
+  for (let n = 0; n < 1000; n++) {
+    const parts = 1 + Math.floor(rand() * 3);
+    const durations = Array.from({ length: parts }, () => 1 + rand() * 5);
+    const clock = scrimClock(durations);
+    const edits = Array.from({ length: 1 + Math.floor(rand() * 5) }, (_, i) => {
+      const segment = Math.floor(rand() * parts);
+      return edit(segment, rand() * durations[segment], `x${i} = ${i}`, null, rand() < 0.7);
+    });
+    const fallbackTimes = [clock.total + 1 + rand() * 5, -1 - rand() * 5, rand() * clock.total];
+    edits.push(edit(parts, fallbackTimes[n % fallbackTimes.length], "print(x0)", null, true));
+    const scrim = buildScrimTimeline(edits, durations.map(() => null), clock);
+    for (const [i, at] of scrim.times.entries()) {
+      assert.ok(scrim.typing[i] >= 0, `case ${n}, edit ${i}: negative typing duration ${scrim.typing[i]}`);
+      assert.ok(at >= 0 && at <= clock.total, `case ${n}, edit ${i}: time ${at} outside [0, ${clock.total}]`);
+    }
+    for (const run of scrim.runs) {
+      const finished = scrim.times[run.edit] + scrim.typing[run.edit];
+      assert.ok(run.t >= finished && run.t <= clock.total, `case ${n}, edit ${run.edit}: run at ${run.t} outside [${finished}, ${clock.total}]`);
+    }
+  }
+});
+
 test("a run near the end of the clock is still crossed by playing to the end", () => {
   const scrim = buildScrimTimeline([edit(0, 3.9, "print(1)", null, true)], [null], scrimClock([4]));
   assert.notEqual(runCrossed(scrim, 0, scrim.clock.total), null);
