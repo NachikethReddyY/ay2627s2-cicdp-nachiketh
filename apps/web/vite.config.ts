@@ -23,7 +23,7 @@ export default defineConfig({
       name: "webcontainer-test-editor-isolation",
       configureServer(server) {
         server.middlewares.use((request, response, next) => {
-          if (["/test/editor", "/editor"].includes(request.url?.split("?", 1)[0] ?? "")) {
+          if (request.url?.split("?", 1)[0] === "/test/editor") {
             response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
             response.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
           }
