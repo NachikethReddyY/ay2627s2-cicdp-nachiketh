@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initPlayback, narrationBySegment, planScrim, playbackReducer, scrimTimeline, silentWav, heldGate, finished } from "./scrimModel.ts";
+import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, heldGate, finished } from "./scrimModel.ts";
 import type { Lesson, Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
@@ -22,6 +22,17 @@ test("narrationBySegment picks narration urls by segment", () => {
     { kind: "image", segment: 0, url: "/x" },
   ] as unknown as Lesson["media"];
   assert.deepEqual(narrationBySegment(media, 3), [null, "/b", null]);
+});
+
+test("part skips move between part starts and restart a part that is well underway", () => {
+  const { clock } = scrimTimeline([seg({ durationMs: 10000 }), seg({ durationMs: 20000 }), seg()]);
+  const [first, second, third] = clock.offsets;
+  assert.equal(partSkipTarget(clock, first, "back"), first);
+  assert.equal(partSkipTarget(clock, first + 1, "forward"), second);
+  assert.equal(partSkipTarget(clock, second + 1, "back"), first);
+  assert.equal(partSkipTarget(clock, second + 10, "back"), second);
+  assert.equal(partSkipTarget(clock, second + 10, "forward"), third);
+  assert.equal(partSkipTarget(clock, third + 1, "forward"), null);
 });
 
 test("a gate-only segment carries the previous code", () => {

@@ -1,5 +1,5 @@
 import { useMemo, useReducer, useRef, useState } from "react";
-import { Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { runCrossed, segmentAt } from "@learnquest/player-core";
 import { monacoLanguage } from "../live/checkModel";
 import { lessonFile } from "../live/lessonWorkbenchModel";
@@ -12,7 +12,7 @@ import FileTreeView from "../workbench/FileTreeView";
 import Workbench from "../workbench/Workbench";
 import WorkbenchEditor from "../workbench/WorkbenchEditor";
 import GatePanel from "./GatePanel";
-import { codeShown, finished, heldGate, initPlayback, narrationBySegment, planScrim, playbackReducer, scrimTimeline, silentWav, type PlaybackAction } from "./scrimModel";
+import { codeShown, finished, heldGate, initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, type PlaybackAction } from "./scrimModel";
 import "./scrim.css";
 
 type ScrimPart = Extract<Part, { kind: "scrim" }>;
@@ -93,6 +93,11 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const gateStep = gate ? plan.stepByKey[gate.key] : undefined;
   const caption = part.segments[current.index]?.text ?? "";
   const partLabel = `Part ${current.index + 1} of ${total}`;
+  const back = partSkipTarget(clock, state.t, "back");
+  const forward = partSkipTarget(clock, state.t, "forward");
+  const skip = (t: number | null) => {
+    if (t !== null) commit({ type: "seek", t });
+  };
 
   const editor = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -114,59 +119,80 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
         onEnded={endSegment}
         onError={() => setFailedAudio((s) => new Set(s).add(current.index))}
       />
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col scrim-stage" data-playing={state.playing ? "true" : "false"}>
         <WorkbenchEditor transportRef={playRef} edit={{ value: code, language, onChange: () => {}, readOnly: true }} />
-      </div>
-      <div className="scrim-controls flex flex-col gap-2 px-3 py-2.5">
-        <p aria-live="off" className="text-sm">{caption}</p>
-        {gate && gateStep && (
-          <section role="region" aria-label="Predict" className="rounded-lg border border-[var(--line)] px-3 py-2.5">
-            <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => commit({ type: "answer", key: gate.key })} />
-          </section>
-        )}
-        {done && (
-          <div>
-            <button type="button" className="wb-tb wb-primary" onClick={onLab}>Start the lab</button>
+        <div className="scrim-controls">
+          <p aria-live="off" className="scrim-caption">
+            <span className="scrim-part">{partLabel}</span>
+            {caption}
+          </p>
+          {gate && gateStep && (
+            <section role="region" aria-label="Predict" className="scrim-gate">
+              <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => commit({ type: "answer", key: gate.key })} />
+            </section>
+          )}
+          {done && (
+            <div className="scrim-done">
+              <button type="button" className="wb-tb wb-primary" onClick={onLab}>Start the lab</button>
+            </div>
+          )}
+          <div className="scrim-pill">
+            <div className="scrim-row">
+              <button type="button" className="scrim-icon" aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)}>
+                {muted ? <VolumeX size={16} aria-hidden="true" /> : <Volume2 size={16} aria-hidden="true" />}
+              </button>
+              <div className="scrim-transport">
+                <button
+                  type="button"
+                  className="scrim-icon"
+                  aria-label="Previous part"
+                  onClick={() => skip(back)}
+                  disabled={gate !== null || back === null || back === state.t}
+                >
+                  <SkipBack size={16} aria-hidden="true" />
+                </button>
+                <button
+                  ref={playRef}
+                  type="button"
+                  onClick={toggle}
+                  disabled={gate !== null}
+                  aria-label={state.playing ? "Pause" : done ? "Watch again" : "Play"}
+                  className="scrim-play"
+                >
+                  {state.playing ? <Pause size={18} aria-hidden="true" /> : <Play size={18} aria-hidden="true" />}
+                </button>
+                <button type="button" className="scrim-icon" aria-label="Next part" onClick={() => skip(forward)} disabled={gate !== null || forward === null}>
+                  <SkipForward size={16} aria-hidden="true" />
+                </button>
+              </div>
+              <select
+                aria-label="Speed"
+                className="scrim-speed"
+                value={rate}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setRate(next);
+                  if (audioRef.current) audioRef.current.playbackRate = next;
+                }}
+              >
+                {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
+              </select>
+            </div>
+            <div className="scrim-row">
+              <span className="wb-mono scrim-time">{formatTime(state.t)}</span>
+              <input
+                className="scrim-range"
+                type="range"
+                aria-label="Seek"
+                min={0}
+                max={clock.total}
+                step={0.1}
+                value={state.t}
+                onChange={(e) => commit({ type: "seek", t: Number(e.target.value) })}
+              />
+              <span className="wb-mono scrim-time">{formatTime(clock.total)}</span>
+            </div>
           </div>
-        )}
-        <input
-          className="scrim-range w-full"
-          type="range"
-          aria-label="Seek"
-          min={0}
-          max={clock.total}
-          step={0.1}
-          value={state.t}
-          onChange={(e) => commit({ type: "seek", t: Number(e.target.value) })}
-        />
-        <div className="flex items-center gap-2">
-          <button
-            ref={playRef}
-            type="button"
-            onClick={toggle}
-            disabled={gate !== null}
-            aria-label={state.playing ? "Pause" : done ? "Watch again" : "Play"}
-            className="grid size-8 flex-none place-items-center rounded-full bg-[var(--ac)] text-white disabled:opacity-40"
-          >
-            {state.playing ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
-          </button>
-          <span className="wb-mono flex-none text-xs tabular-nums">{formatTime(state.t)} / {formatTime(clock.total)}</span>
-          <span className="min-w-0 flex-1 truncate text-xs text-[var(--mu)]">{partLabel}</span>
-          <button type="button" className="wb-tb flex-none" aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)}>
-            {muted ? <VolumeX size={15} aria-hidden="true" /> : <Volume2 size={15} aria-hidden="true" />}
-          </button>
-          <select
-            aria-label="Speed"
-            className="wb-tb flex-none"
-            value={rate}
-            onChange={(e) => {
-              const next = Number(e.target.value);
-              setRate(next);
-              if (audioRef.current) audioRef.current.playbackRate = next;
-            }}
-          >
-            {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
-          </select>
         </div>
       </div>
     </div>

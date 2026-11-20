@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { codeAt, reachable, openGate } from "@learnquest/player-core";
-import { codeShown, heldGate, initPlayback, planScrim, playbackReducer, scrimTimeline, type Playback, type PlaybackAction } from "./scrimModel.ts";
+import { codeShown, heldGate, initPlayback, partSkipTarget, planScrim, playbackReducer, scrimTimeline, type Playback, type PlaybackAction } from "./scrimModel.ts";
 import type { Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
@@ -92,6 +92,20 @@ test("planScrim puts every gate at its segment start and maps it to its step", (
       assert.ok(gate, `seed ${seed} segment ${i}`);
       assert.equal(gate.t, scrim.clock.offsets[i], `seed ${seed} segment ${i}`);
       assert.equal(plan.stepByKey[gate.key], s.gate, `seed ${seed} segment ${i}`);
+    }
+  }
+});
+
+test("part skips land on part starts: forward moves ahead, back never passes the playhead", () => {
+  for (let seed = 1; seed <= CASES; seed++) {
+    const rand = mulberry32(seed);
+    const { clock } = scrimTimeline(randomSegments(rand));
+    for (let i = 0; i < 40; i++) {
+      const t = rand() * clock.total;
+      const forward = partSkipTarget(clock, t, "forward");
+      const back = partSkipTarget(clock, t, "back");
+      if (forward !== null) assert.ok(clock.offsets.includes(forward) && forward > t, `seed ${seed}, t ${t}`);
+      assert.ok(back !== null && clock.offsets.includes(back) && back <= t, `seed ${seed}, t ${t}`);
     }
   }
 });

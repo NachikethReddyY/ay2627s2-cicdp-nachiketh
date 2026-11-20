@@ -1,13 +1,184 @@
 .scrim-range {
+  flex: 1;
+  min-width: 0;
   height: 4px;
   accent-color: var(--ac);
   cursor: pointer;
 }
 
 .scrim-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.scrim-controls > * {
+  pointer-events: auto;
+}
+
+.scrim-caption,
+.scrim-gate,
+.scrim-pill {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--lift);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  color: var(--tx);
+}
+
+.scrim-caption {
   flex: none;
-  max-height: 55%;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 7.5rem;
   overflow: auto;
-  border-top: 1px solid var(--line);
-  background: var(--tbar);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.scrim-part {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--mu);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.scrim-gate {
+  flex: none;
+  max-width: 32rem;
+  max-height: 12rem;
+  overflow: auto;
+  padding: 10px 14px;
+  border-radius: 14px;
+}
+
+.scrim-done {
+  display: flex;
+  flex: none;
+  justify-content: center;
+}
+
+.scrim-pill {
+  flex: none;
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  transition: opacity 240ms ease;
+}
+
+.scrim-stage[data-playing="true"] .scrim-pill {
+  opacity: 0.2;
+}
+
+.scrim-stage[data-playing="true"]:hover .scrim-pill,
+.scrim-stage[data-playing="true"]:focus-within .scrim-pill {
+  opacity: 1;
+}
+
+.scrim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scrim-transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scrim-time {
+  flex: none;
+  min-width: 2.75em;
+  color: var(--mu);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scrim-time:last-child {
+  text-align: right;
+}
+
+.scrim-icon,
+.scrim-play {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tx);
+  cursor: pointer;
+  font: inherit;
+}
+
+.scrim-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.scrim-play {
+  width: 40px;
+  height: 40px;
+  background: var(--ac);
+  color: var(--on-ac);
+}
+
+.scrim-icon:hover:not(:disabled) {
+  background: var(--hov);
+}
+
+.scrim-play:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.scrim-icon:disabled,
+.scrim-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.scrim-speed {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tx);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.scrim-controls button:focus-visible,
+.scrim-controls select:focus-visible,
+.scrim-controls input:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim-pill {
+    transition: none;
+  }
 }
