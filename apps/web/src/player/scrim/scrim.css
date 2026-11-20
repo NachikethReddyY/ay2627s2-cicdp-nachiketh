@@ -1,0 +1,13 @@
+.scrim-range {
+  height: 4px;
+  accent-color: var(--ac);
+  cursor: pointer;
+}
+
+.scrim-controls {
+  flex: none;
+  max-height: 55%;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: var(--tbar);
+}

@@ -45,9 +45,9 @@ A lesson's `kind` decides which parts the player shows. The kind is stored on `l
 
 | Name | Kind | What the learner does | Code |
 |---|---|---|---|
-| Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** is meant to hold a segment until the step at that index is answered, so the prediction comes first. The player does not enforce it yet. The lesson ends with a practice lab. | Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Seeded demo `worlds/scrim-demo/`. |
+| Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** holds playback at the start of its segment until the gate step is answered or skipped, so the prediction comes first. The lesson ends with a practice lab. | Player `apps/web/src/player/scrim/` (`ScrimWatch`, `GatePanel`, model in `scrimModel.ts`). Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Seeded demo `worlds/scrim-demo/`. |
 
-The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. Playing the segments in the lesson player (`/play`) is later web work.
+The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. The lesson player (`/play`) plays the segments, holds at gates, and opens the lab in the practice workbench after **Start the lab**.
 
 ## Server pieces a feature depends on
 
