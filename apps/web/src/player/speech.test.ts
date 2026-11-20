@@ -137,3 +137,31 @@ test("a volume change while paused stays paused until resume, then re-speaks", (
   sp.resume();
   assert.deepEqual(calls.slice(-3), ["cancel", "speak:One.@0.3", "resume"]);
 });
+
+test("rate is applied and onDone waits for the last sentence", () => {
+  const { spoken, sp } = fake();
+  let done = 0;
+  sp.speak("One. Two.", { volume: 1, muted: false, rate: 1.25, onDone: () => (done += 1) });
+  assert.equal(spoken[0]!.rate, 1.25);
+  spoken[0]!.onend!();
+  assert.equal(done, 0);
+  spoken[1]!.onend!();
+  assert.equal(done, 1);
+});
+
+test("cancel drops onDone", () => {
+  const { spoken, sp } = fake();
+  let done = 0;
+  sp.speak("One. Two.", { volume: 1, muted: false, onDone: () => (done += 1) });
+  sp.cancel();
+  spoken[0]!.onend!();
+  assert.equal(done, 0);
+});
+
+test("a fatal error still calls onDone so the caller is not left waiting", () => {
+  const { spoken, sp } = fake();
+  let done = 0;
+  sp.speak("One.", { volume: 1, muted: false, onDone: () => (done += 1) });
+  spoken[0]!.onerror!({ error: "not-allowed" });
+  assert.equal(done, 1);
+});

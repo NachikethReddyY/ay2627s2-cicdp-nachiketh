@@ -95,6 +95,19 @@ function moveTo(state: Playback, t: number): Playback {
   return stopped ? { ...next, playing: false } : next;
 }
 
+export type SpeechView = { playing: boolean; segment: number; held: boolean };
+export type SpeechCue = { type: "none" } | { type: "cancel" } | { type: "speak"; text: string };
+
+export function speechView(state: Playback): SpeechView {
+  return { playing: state.playing, segment: segmentAt(state.scrim.clock, state.t).index, held: heldGate(state) !== null };
+}
+
+export function speechCue(prev: SpeechView, next: SpeechView, cues: { texts: readonly string[]; silent: readonly boolean[]; jumped: boolean }): SpeechCue {
+  if (next.held || !next.playing) return { type: "cancel" };
+  if (!cues.jumped && prev.playing && prev.segment === next.segment) return { type: "none" };
+  return cues.silent[next.segment] ? { type: "speak", text: cues.texts[next.segment] ?? "" } : { type: "cancel" };
+}
+
 export type SkipDirection = "back" | "forward";
 
 const RESTART_WITHIN_SECONDS = 3;

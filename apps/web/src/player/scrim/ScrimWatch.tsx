@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { runCrossed, segmentAt } from "@learnquest/player-core";
 import { monacoLanguage } from "../live/checkModel";
@@ -8,11 +8,12 @@ import type { Lesson, Part } from "../live/types";
 import { usePracticeRunner } from "../live/usePracticeRunner";
 import { formatTime } from "../live/videoModel";
 import { usePanel } from "../terminal/usePanel";
+import { createSpeaker, type Synth, type Utterance } from "../speech";
 import FileTreeView from "../workbench/FileTreeView";
 import Workbench from "../workbench/Workbench";
 import WorkbenchEditor from "../workbench/WorkbenchEditor";
 import GatePanel from "./GatePanel";
-import { codeShown, finished, heldGate, initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, type PlaybackAction } from "./scrimModel";
+import { codeShown, finished, heldGate, initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, speechCue, speechView, type PlaybackAction, type SpeechCue } from "./scrimModel";
 import "./scrim.css";
 
 type ScrimPart = Extract<Part, { kind: "scrim" }>;
@@ -42,6 +43,19 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const audioRef = useRef<HTMLAudioElement>(null);
   const playRef = useRef<HTMLButtonElement>(null);
   const pendingSeek = useRef<number | null>(null);
+  const speaker = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? null
+        : createSpeaker(window.speechSynthesis as Synth | undefined, (text) => new SpeechSynthesisUtterance(text) as Utterance),
+    [],
+  );
+  const speaking = useRef(false);
+  const clockDone = useRef(false);
+  const endRef = useRef<() => void>(() => {});
+  const stageRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) speaker?.cancel();
+  }, [speaker]);
   const panel = usePanel();
   const { dispatch: panelDispatch } = panel;
 
@@ -59,6 +73,30 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const duration = clock.durations[current.index] ?? 0;
   const silentSrc = useMemo(() => (silent ? URL.createObjectURL(new Blob([silentWav(duration)], { type: "audio/wav" })) : null), [silent, duration]);
   const src = silent ? silentSrc : narration;
+  const texts = useMemo(() => part.segments.map((segment) => segment.text), [part.segments]);
+  const silentAt = (failed: ReadonlySet<number>) => part.segments.map((_, i) => (urls[i] ?? null) === null || failed.has(i));
+
+  const applyCue = (cue: SpeechCue) => {
+    if (!speaker || cue.type === "none") return;
+    speaking.current = cue.type === "speak";
+    clockDone.current = false;
+    if (cue.type === "cancel") {
+      speaker.cancel();
+      return;
+    }
+    speaker.speak(cue.text, {
+      volume: 1,
+      muted,
+      rate,
+      onDone: () => {
+        speaking.current = false;
+        if (clockDone.current) {
+          clockDone.current = false;
+          endRef.current();
+        }
+      },
+    });
+  };
 
   const commit = (action: PlaybackAction) => {
     const next = playbackReducer(state, action);
@@ -71,6 +109,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       if (next.playing && !state.playing) audio.play().catch(() => dispatch({ type: "pause" }));
       if (!next.playing && state.playing) audio.pause();
     }
+    applyCue(speechCue(speechView(state), speechView(next), { texts, silent: silentAt(failedAudio), jumped: action.type === "seek" }));
     dispatch(action);
     return next;
   };
@@ -81,7 +120,14 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
     if (edit) void runner.run(edit.code);
   };
 
-  const endSegment = () => tickTo(current.index + 1 < total ? (clock.offsets[current.index + 1] ?? clock.total) : clock.total);
+  const endSegment = () => {
+    if (speaking.current) {
+      clockDone.current = true;
+      return;
+    }
+    tickTo(current.index + 1 < total ? (clock.offsets[current.index + 1] ?? clock.total) : clock.total);
+  };
+  endRef.current = endSegment;
 
   const onTime = (audio: HTMLAudioElement) => {
     if (audio.currentTime >= duration) endSegment();
@@ -118,9 +164,13 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
         }}
         onTimeUpdate={(e) => onTime(e.currentTarget)}
         onEnded={endSegment}
-        onError={() => setFailedAudio((s) => new Set(s).add(current.index))}
+        onError={() => {
+          const failed = new Set(failedAudio).add(current.index);
+          setFailedAudio(failed);
+          applyCue(speechCue(speechView(state), speechView(state), { texts, silent: silentAt(failed), jumped: true }));
+        }}
       />
-      <div className="relative flex min-h-0 flex-1 flex-col scrim-stage" data-playing={state.playing ? "true" : "false"}>
+      <div ref={stageRef} className="relative flex min-h-0 flex-1 flex-col scrim-stage" data-playing={state.playing ? "true" : "false"}>
         <WorkbenchEditor transportRef={playRef} edit={{ value: code, language, onChange: () => {}, readOnly: true }} bottomPadding={EDITOR_BOTTOM_PADDING} />
         <div className="scrim-controls">
           <p aria-live="off" className="scrim-caption">{caption}</p>
@@ -136,7 +186,15 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
           )}
           <div className="scrim-pill">
             <div className="scrim-row">
-              <button type="button" className="scrim-icon" aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted(!muted)}>
+              <button
+                type="button"
+                className="scrim-icon"
+                aria-label={muted ? "Unmute" : "Mute"}
+                onClick={() => {
+                  setMuted(!muted);
+                  speaker?.setVolume(muted ? 1 : 0);
+                }}
+              >
                 {muted ? <VolumeX size={16} aria-hidden="true" /> : <Volume2 size={16} aria-hidden="true" />}
               </button>
               <div className="scrim-transport">

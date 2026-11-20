@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, heldGate, finished } from "./scrimModel.ts";
+import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
 import type { Lesson, Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
@@ -22,6 +22,19 @@ test("narrationBySegment picks narration urls by segment", () => {
     { kind: "image", segment: 0, url: "/x" },
   ] as unknown as Lesson["media"];
   assert.deepEqual(narrationBySegment(media, 3), [null, "/b", null]);
+});
+
+test("speech starts at a silent segment, and stops at a pause, a gate or the end", () => {
+  const cues = { texts: ["a", "b", "c"], silent: [true, false, true], jumped: false };
+  const playing = (segment: number) => ({ playing: true, segment, held: false });
+  const paused = { playing: false, segment: 0, held: false };
+  assert.deepEqual(speechCue(paused, playing(0), cues), { type: "speak", text: "a" });
+  assert.deepEqual(speechCue(playing(0), playing(0), cues), { type: "none" });
+  assert.deepEqual(speechCue(playing(0), playing(1), cues), { type: "cancel" });
+  assert.deepEqual(speechCue(playing(1), playing(2), cues), { type: "speak", text: "c" });
+  assert.deepEqual(speechCue(playing(2), { playing: false, segment: 2, held: false }, cues), { type: "cancel" });
+  assert.deepEqual(speechCue(playing(2), { playing: true, segment: 2, held: true }, cues), { type: "cancel" });
+  assert.deepEqual(speechCue(playing(0), playing(0), { ...cues, jumped: true }), { type: "speak", text: "a" });
 });
 
 test("part skips move between part starts and restart a part that is well underway", () => {

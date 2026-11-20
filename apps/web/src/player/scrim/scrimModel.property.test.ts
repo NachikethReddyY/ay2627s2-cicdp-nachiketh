@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { codeAt, reachable, openGate } from "@learnquest/player-core";
-import { codeShown, heldGate, initPlayback, partSkipTarget, planScrim, playbackReducer, scrimTimeline, type Playback, type PlaybackAction } from "./scrimModel.ts";
+import { codeShown, heldGate, initPlayback, partSkipTarget, planScrim, playbackReducer, scrimTimeline, speechCue, speechView, type Playback, type PlaybackAction } from "./scrimModel.ts";
 import type { Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
@@ -106,6 +106,28 @@ test("part skips land on part starts: forward moves ahead, back never passes the
       const back = partSkipTarget(clock, t, "back");
       if (forward !== null) assert.ok(clock.offsets.includes(forward) && forward > t, `seed ${seed}, t ${t}`);
       assert.ok(back !== null && clock.offsets.includes(back) && back <= t, `seed ${seed}, t ${t}`);
+    }
+  }
+});
+
+test("speech never starts past an unanswered gate, and only speaks the segment that is playing", () => {
+  for (let seed = 1; seed <= CASES; seed++) {
+    const rand = mulberry32(seed);
+    const segments = randomSegments(rand);
+    const scrim = scrimTimeline(segments);
+    const texts = segments.map((s) => s.text);
+    const silent = segments.map(() => rand() < 0.5);
+    let state = initPlayback(scrim, []);
+    for (let step = 0; step < 40; step++) {
+      const action = randomAction(rand, state);
+      const next = playbackReducer(state, action);
+      const cue = speechCue(speechView(state), speechView(next), { texts, silent, jumped: action.type === "seek" });
+      if (heldGate(next) !== null) assert.notEqual(cue.type, "speak", `seed ${seed}, step ${step}`);
+      if (cue.type === "speak") {
+        assert.ok(next.playing, `seed ${seed}, step ${step}`);
+        assert.equal(cue.text, texts[speechView(next).segment], `seed ${seed}, step ${step}`);
+      }
+      state = next;
     }
   }
 });
