@@ -89,12 +89,15 @@ export async function generatePath(learnerId: string, topic: string) {
   }
   if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
 
+  let path;
   try {
-    return await persistPath(me.userId, learnerId, outline);
+    path = await persistPath(me.userId, learnerId, outline);
   } catch (e) {
     await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
     throw e;
   }
+  if (env.AI_WRITE_COURSE_ON_GENERATE) writeLessons(path.lessonIds, learnerId);
+  return { slug: path.slug, firstCourseSlug: path.firstCourseSlug };
 }
 
 async function persistPath(ownerId: string, learnerId: string, outline: Exclude<z.infer<typeof Outline>, { refused: true }>) {
@@ -105,6 +108,7 @@ async function persistPath(ownerId: string, learnerId: string, outline: Exclude<
       .values({ slug: slugify(outline.title, 40), title: outline.title, tagline: outline.tagline, ...owned })
       .returning();
     const courseSlugs: string[] = [];
+    const lessonIds: string[] = [];
     for (const [position, c] of outline.courses.entries()) {
       const [world] = await tx
         .insert(worlds)
@@ -112,22 +116,26 @@ async function persistPath(ownerId: string, learnerId: string, outline: Exclude<
         .returning();
       courseSlugs.push(world.slug);
       await tx.insert(pathCourses).values({ pathId: path.id, worldId: world.id, position });
-      await tx.insert(lessons).values(
-        c.lessons.map((l, i) => ({
-          slug: slugify(l.title, 40),
-          worldId: world.id,
-          title: l.title,
-          level: 1,
-          position: i,
-          concepts: l.concepts,
-          kind: l.kind,
-          sourceKind: "ai" as const,
-          status: "draft" as const,
-        })),
-      );
+      const rows = await tx
+        .insert(lessons)
+        .values(
+          c.lessons.map((l, i) => ({
+            slug: slugify(l.title, 40),
+            worldId: world.id,
+            title: l.title,
+            level: 1,
+            position: i,
+            concepts: l.concepts,
+            kind: l.kind,
+            sourceKind: "ai" as const,
+            status: "draft" as const,
+          })),
+        )
+        .returning({ id: lessons.id });
+      lessonIds.push(...rows.map((r) => r.id));
     }
     await tx.insert(enrollments).values({ learnerId, pathId: path.id });
-    return { slug: path.slug, firstCourseSlug: courseSlugs[0] };
+    return { slug: path.slug, firstCourseSlug: courseSlugs[0], lessonIds };
   });
 }
 
@@ -234,13 +242,52 @@ async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, ge
 }
 
 const inflight = new Map<string, Promise<boolean>>();
+const queued = new Set<string>();
+const failed = new Set<string>();
+
+export type WriteState = "ready" | "writing" | "failed" | "pending";
+
+export function lessonWriteState(lessonId: string, written: boolean): WriteState {
+  if (written) return "ready";
+  if (queued.has(lessonId) || inflight.has(lessonId)) return "writing";
+  return failed.has(lessonId) ? "failed" : "pending";
+}
 
 export function ensureLesson(lessonId: string, learnerId: string): Promise<boolean> {
   const running = inflight.get(lessonId);
   if (running) return running;
-  const p = writeLesson(lessonId, learnerId).finally(() => inflight.delete(lessonId));
+  const p = writeLesson(lessonId, learnerId)
+    .then(
+      (ok) => {
+        failed.delete(lessonId);
+        return ok;
+      },
+      (e: unknown) => {
+        failed.add(lessonId);
+        throw e;
+      },
+    )
+    .finally(() => inflight.delete(lessonId));
   inflight.set(lessonId, p);
   return p;
+}
+
+export const LESSON_WRITE_CONCURRENCY = 3;
+
+export function writeLessons(lessonIds: readonly string[], learnerId: string): void {
+  for (const id of lessonIds) queued.add(id);
+  let next = 0;
+  const worker = async () => {
+    while (next < lessonIds.length) {
+      const id = lessonIds[next++]!;
+      await ensureLesson(id, learnerId)
+        .catch((e) => console.error("background lesson write failed", e))
+        .finally(() => queued.delete(id));
+    }
+  };
+  const workers = Math.min(LESSON_WRITE_CONCURRENCY, lessonIds.length);
+  const p: Promise<unknown> = Promise.all(Array.from({ length: workers }, worker)).finally(() => background.delete(p));
+  background.add(p);
 }
 
 async function writeLesson(lessonId: string, learnerId: string): Promise<boolean> {

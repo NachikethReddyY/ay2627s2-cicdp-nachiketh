@@ -81,6 +81,7 @@ const scrimDraft = {
 const withSegments = (segments: unknown[]) => ({ ...scrimDraft, segments });
 
 beforeEach(() => {
+  env.AI_WRITE_COURSE_ON_GENERATE = false;
   env.ENGINE_TOKEN = "t".repeat(32);
   generator.outline = async () => outline;
   engineParts.lesson = async () => structuredClone(scrimDraft);

@@ -21,6 +21,7 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PRACTICE_STRETCH_TESTS` | `0` | Number of bonus hacker-edition tests (0 to 10) the engine adds to each practice part. They give bonus points only. |
+| `AI_WRITE_COURSE_ON_GENERATE` | `true` | When `true`, generating a course writes all its lessons in the background, three at a time, so they are ready when opened. Set `false` to keep the old write-on-open behaviour, for example to hold AI spend down or in tests that count engine calls. |
 
 ### How the Daytona backend works
 
