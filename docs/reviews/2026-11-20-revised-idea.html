@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LearnSlop revised idea and fix plan</title>
+<style>
+:root{--bg:#000;--fg:#fff;--mute:#a3a3a3;--line:#262626;--panel:#111;--crit:#ff5c5c;--warn:#f5b84a;--sug:#7cb7ff;--ok:#5fd38d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:18px;margin:40px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:15px;margin:22px 0 8px}
+.m{color:var(--mute)}
+code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:1px 5px;border-radius:4px;word-break:break-word}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-weight:600}
+.wrap{overflow-x:auto}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid currentColor;white-space:nowrap}
+.c{color:var(--crit)}.w{color:var(--warn)}.s{color:var(--sug)}.ok{color:var(--ok)}
+.note{background:var(--panel);border-left:3px solid var(--warn);padding:10px 12px;margin:14px 0}
+.phase{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin:12px 0}
+.phase h3{margin-top:0}
+ol,ul{padding-left:20px}
+li{margin:4px 0}
+.sens{color:var(--warn);font-size:12px}
+svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>LearnSlop revised idea and fix plan</h1>
+<p class="m">2026-11-20. This follows the codebase review (ten reviewers) and the owner's answers to its open questions. It does two things: it restates what LearnSlop is, so the learning loop holds together, and it plans a fix for every problem the review found. No product code changes in this commit.</p>
+</header>
+
+<div class="note"><strong>Baseline.</strong> Checked against <code>main</code> at <code>24b618a</code>, which is after #84–#89. Since the review, #86 made scrim lessons playable, so the "scrim dead-ends" findings are closed. Every other finding below was rechecked on this commit and still holds.</div>
+
+<h2>Jira</h2>
+<p>Every item below is tracked in Jira project <strong>LQ</strong> with the label <code>review-2026-11-20</code>. Each phase is an epic, and every ticket cites file:line evidence and a "done when" check.</p>
+<div class="wrap"><table>
+<thead><tr><th>Epic</th><th>Tickets</th></tr></thead>
+<tbody>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-96" target="_blank" rel="noopener noreferrer">LQ-96</a> P1 merge-gate holes</td><td>LQ-103 self-run gate and <code>--skip-local</code> · LQ-104 forged review result · LQ-105 SENSITIVE list · LQ-106 guardrail escapes</td></tr>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-97" target="_blank" rel="noopener noreferrer">LQ-97</a> P2 scope and decisions</td><td>LQ-107 programming-only outline · LQ-108 tiers removed and Landing · LQ-109 leaderboard handle · LQ-110 AI drafts · LQ-111 docs</td></tr>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-98" target="_blank" rel="noopener noreferrer">LQ-98</a> P3 predict before reveal</td><td>LQ-112 scrim server gating · LQ-113 player-core scrim · LQ-114 learn and watch checks · LQ-115 completion loopholes · LQ-116 leak check</td></tr>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-99" target="_blank" rel="noopener noreferrer">LQ-99</a> P4 learning loop</td><td>LQ-117 catalogue and edges · LQ-118 evidence from every kind · LQ-119 remediation · LQ-120 <code>me.next</code> on Home · LQ-121 transaction · LQ-122 XP, streak and measurement</td></tr>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-100" target="_blank" rel="noopener noreferrer">LQ-100</a> P5 Sloppy and AI safety</td><td>LQ-123 kill switch, spend cap and moderation · LQ-124 output check and context · LQ-125 moderation, timeouts and GET</td></tr>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-101" target="_blank" rel="noopener noreferrer">LQ-101</a> P6 flows and sandbox</td><td>LQ-126 <code>/sandbox/check</code> on Daytona · LQ-127 practice workbench · LQ-128 games</td></tr>
+<tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-102" target="_blank" rel="noopener noreferrer">LQ-102</a> P7 reliability and dead code</td><td>LQ-129 seed and schema · LQ-130 bundle and build · LQ-131 Pip and dead code · LQ-132 write-only data · LQ-133 test gaps · LQ-134 verification</td></tr>
+</tbody></table></div>
+<p class="m">Overlap with existing tickets: LQ-93 (workbench into lesson practice) is related to LQ-127. LQ-94 and LQ-95 (scrim play and generation) are related to LQ-112 and LQ-113. LQ-91 (game answers on the client) is related to LQ-128.</p>
+
+<h2>1. Decisions</h2>
+<div class="wrap"><table>
+<thead><tr><th>Question</th><th>Decision</th><th>Who decided</th></tr></thead>
+<tbody>
+<tr><td>Scope</td><td><strong>Programming only.</strong> Cut the "school and practical subjects" outline prompt, <code>subject: "other"</code> and the "Learn anything" copy.</td><td>Owner</td></tr>
+<tr><td>Leaderboard</td><td><strong>Keep it.</strong> Show a generated handle, never the email local part or display name.</td><td>Owner (handle rule is the review's privacy fix)</td></tr>
+<tr><td>Paid tiers</td><td><strong>Remove for the MVP.</strong> Every learner gets one generous limit. The landing page shows "Pro, coming soon".</td><td>Owner</td></tr>
+<tr><td>Real-commit lessons</td><td><strong>An advanced capstone track, "coming soon".</strong> Beginners start from concepts, not diffs. Landing stops claiming lessons are built from real commits until ingest ships.</td><td>Owner delegated; recommended</td></tr>
+<tr><td>Hinted correct answer</td><td><strong>No partial credit.</strong> It counts as incorrect evidence for BKT, as it does now. XP follows the same rule.</td><td>Owner</td></tr>
+<tr><td>Age gate</td><td><strong>None.</strong> Drop NFR1's age gate from <code>docs/plan.md</code> so docs match.</td><td>Owner</td></tr>
+<tr><td>Adaptivity</td><td><strong>Finish it</strong>, don't delete it. The owner asked for the core logic to be fixed.</td><td>Owner ("fix the core logic")</td></tr>
+<tr><td>AI publish review</td><td>A generated path is a <strong>private draft for its creator</strong>, who can play it straight away. Sharing it with the community needs author approval in a review queue. This keeps "generated content is reviewed" true for anything other people see.</td><td>Recommended; confirm</td></tr>
+<tr><td>Learn and watch completion</td><td>Complete on the closing check, not on open (see §3).</td><td>Recommended; confirm</td></tr>
+<tr><td>Moderation provider</td><td>Route it through the LiteLLM interface, as the rest of the AI calls are.</td><td>Recommended; confirm</td></tr>
+<tr><td>Pip the mascot</td><td><strong>Remove entirely.</strong> No code uses Pip. Delete <code>apps/web/public/img/pip-*.png</code> (5 files), the <code>## Pip</code> section and the mention in DESIGN.md's description, and the AGENTS.md repo-map mention. The old release note in <code>changelog-releases.generated.ts</code> stays as history.</td><td>Owner</td></tr>
+</tbody></table></div>
+
+<h2>2. The idea, restated</h2>
+<p><strong>LearnSlop teaches programming concepts to beginners through short lessons that always make you predict before you see.</strong> Each answer is evidence about one concept. A learner model (BKT, per learner and concept) turns that evidence into the next thing to do, and the app says why.</p>
+
+<h3>The loop</h3>
+<svg viewBox="0 0 960 170" width="100%" role="img" aria-label="Learning loop: concept catalogue, lesson with prediction, evidence, BKT update, policy decision, Continue card with reason, back to lesson">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a3a3a3"/></marker></defs>
+<g fill="#111" stroke="#404040">
+<rect x="4" y="20" width="140" height="56" rx="6"/><rect x="166" y="20" width="140" height="56" rx="6"/><rect x="328" y="20" width="140" height="56" rx="6"/><rect x="490" y="20" width="140" height="56" rx="6"/><rect x="652" y="20" width="140" height="56" rx="6"/><rect x="814" y="20" width="140" height="56" rx="6"/>
+</g>
+<text x="74" y="44" text-anchor="middle">Concept catalogue</text><text x="74" y="62" text-anchor="middle" style="fill:#a3a3a3">with prerequisites</text>
+<text x="236" y="44" text-anchor="middle">Lesson (any kind)</text><text x="236" y="62" text-anchor="middle" style="fill:#a3a3a3">opens with predict</text>
+<text x="398" y="44" text-anchor="middle">Evidence</text><text x="398" y="62" text-anchor="middle" style="fill:#a3a3a3">first try, per concept</text>
+<text x="560" y="44" text-anchor="middle">BKT update</text><text x="560" y="62" text-anchor="middle" style="fill:#a3a3a3">p_known per concept</text>
+<text x="722" y="44" text-anchor="middle">Policy</text><text x="722" y="62" text-anchor="middle" style="fill:#a3a3a3">next / review / practice</text>
+<text x="884" y="44" text-anchor="middle">Continue card</text><text x="884" y="62" text-anchor="middle" style="fill:#a3a3a3">shows the reason</text>
+<g stroke="#a3a3a3" fill="none" marker-end="url(#a)"><path d="M144 48 H164"/><path d="M306 48 H326"/><path d="M468 48 H488"/><path d="M630 48 H650"/><path d="M792 48 H812"/><path d="M884 76 V130 H236 V80"/></g>
+<text x="560" y="150" text-anchor="middle" style="fill:#a3a3a3">The learner starts the recommended lesson; weak concepts from finished lessons come back as review</text>
+</svg>
+
+<h3>What changes from today</h3>
+<div class="wrap"><table>
+<thead><tr><th>Today</th><th>Revised</th></tr></thead>
+<tbody>
+<tr><td>AI paths produce learn, watch, practice, game and scrim, never predict, so most learners never generate evidence</td><td>Every kind opens with a prediction step, so every lesson produces evidence</td></tr>
+<tr><td>Learn and watch lessons complete on open; predict lessons complete when every step is skipped; one game completes a game lesson; the scrim lab skips its gate</td><td>A lesson completes only after an observed attempt on each of its checks</td></tr>
+<tr><td>Continue is the next lesson in course order; <code>me.next</code> has no caller</td><td>Continue is <code>me.next</code>, with its reason ("Loops at 42%, so review first")</td></tr>
+<tr><td>Weak concepts from "done" lessons drop out, and ADVANCE can falsely say "mastered everything"</td><td>The policy includes weak concepts from finished lessons, and every reason it gives is true (property test)</td></tr>
+<tr><td>Concepts are per world, steps fall back to every lesson concept, and edges are always <code>[]</code></td><td>One JS/TS catalogue with prerequisite edges; each step names its own concepts</td></tr>
+<tr><td>Sloppy has a fixed "Tiny Task Tracker" prompt and no lesson context</td><td>Sloppy gets the lesson, task, concept and hint rung, and an output check blocks full solutions</td></tr>
+<tr><td>The outline prompt covers any school subject</td><td>Programming only, JS/TS first</td></tr>
+<tr><td>Free, pro and max tiers</td><td>One MVP limit; "Pro, coming soon" on Landing</td></tr>
+</tbody></table></div>
+
+<h3>The first catalogue (JS/TS track)</h3>
+<p class="m">Concept slugs are global across worlds. An arrow means "is a prerequisite of". A concept unlocks when every prerequisite has <code>p_known ≥ 0.8</code>.</p>
+<div class="wrap"><table>
+<thead><tr><th>Concept</th><th>Prerequisites</th><th>Seeded lessons that cover it today</th></tr></thead>
+<tbody>
+<tr><td><code>js.values-types</code></td><td>none</td><td><code>variables-1</code></td></tr>
+<tr><td><code>js.variables</code></td><td>values-types</td><td><code>variables-1</code></td></tr>
+<tr><td><code>js.conditionals</code></td><td>variables</td><td>none yet; needs one</td></tr>
+<tr><td><code>js.loops</code></td><td>conditionals</td><td><code>loops-1</code></td></tr>
+<tr><td><code>js.functions</code></td><td>variables</td><td><code>codequest/lesson-1</code>, <code>scrim-return-values</code></td></tr>
+<tr><td><code>js.return-values</code></td><td>functions</td><td><code>scrim-return-values</code></td></tr>
+<tr><td><code>js.arrays</code></td><td>loops</td><td><code>codequest/lesson-2</code></td></tr>
+<tr><td><code>js.array-reduce</code></td><td>arrays, functions</td><td><code>codequest/lesson-1</code></td></tr>
+</tbody></table></div>
+
+<h2>3. Rules for each lesson kind</h2>
+<p class="m">Every kind follows one rule: <em>predict first, observe the first try, complete on evidence.</em> The table says how each kind meets it.</p>
+<div class="wrap"><table>
+<thead><tr><th>Kind</th><th>Prediction</th><th>Evidence to BKT (first try only)</th><th>Completes when</th><th>p_guess</th></tr></thead>
+<tbody>
+<tr><td>predict</td><td>Each step (mcq or cloze)</td><td>Each step's first attempt; a hint before it counts as incorrect</td><td>Every step has an observed attempt and is revealed. Skip-only is <em>not</em> complete.</td><td>1/options; cloze 0.10</td></tr>
+<tr><td>learn</td><td>An opening mcq on the doc's idea, before the doc shows</td><td>The opening step, plus a closing check step</td><td>The closing check is attempted</td><td>1/options</td></tr>
+<tr><td>watch</td><td>"What will this change do?" before playback</td><td>The opening step, plus the closing check</td><td>The closing check is attempted</td><td>1/options</td></tr>
+<tr><td>practice</td><td>"Which output do you expect?" before Run</td><td>The first <code>/sandbox/check</code> result per concept</td><td>Hidden tests pass</td><td>0.05</td></tr>
+<tr><td>game-practice</td><td>Built into each game round</td><td>Each block's first check</td><td><em>Every</em> game block is complete</td><td>per game kind</td></tr>
+<tr><td>scrim</td><td>Gate mcq before the segment after it</td><td>Each gate's first attempt, plus the first lab check</td><td>Every gate is revealed <em>and</em> the lab passes</td><td>1/options</td></tr>
+</tbody></table></div>
+<p class="m"><strong>XP:</strong> XP is awarded for an observed correct first try with no hint, and for a lab or game that passes. <strong>Streak:</strong> a day counts once the learner has 3 observed attempts of any kind, so learners on generated paths can build streaks. <strong>Server side:</strong> the server never sends a segment, hunk or doc section that comes after an unanswered gate.</p>
+
+<h2>4. Learner model changes</h2>
+<p class="m">These change the learner model, which AGENTS.md says needs the owner. The owner asked for this work, but each PR is still sensitive and goes through review.</p>
+<ol>
+<li><strong>Concepts per step are required.</strong> The seed validator and the AI outline reject a step with no concepts, and the lesson-wide fallback in <code>mastery.ts</code> is removed. This stops three correct MCQs mastering two concepts at once.</li>
+<li><strong>Edges are real.</strong> Manifests declare edges from the catalogue, and <code>mastery.ts</code> sends them in place of <code>edges: []</code>, so <code>unlocked()</code> and the PRACTICE branch do work.</li>
+<li><strong>Remediation.</strong> <code>policy.py</code> candidates include concepts from finished lessons with <code>p_known &lt; 0.8</code>, which get REVIEW (re-serve, or generate a short predict lesson). Add a property test: an ADVANCE reason never names a concept below the mastered threshold.</li>
+<li><strong>p_guess = 1/options</strong> for mcq, set per step. It is currently 0.25 for 3-option questions.</li>
+<li><strong>No lost evidence.</strong> A non-transient engine error leaves <code>masteryAppliedAt</code> null and records the error, and the next read retries.</li>
+<li><strong>The engine call happens outside the transaction:</strong> read inside it, call the engine, then write in a short transaction, so a slow engine can't hold the 10-connection pool.</li>
+<li><strong>The recommendation is used.</strong> <code>me.next</code> drives Continue, and course locks use <code>p_known</code>. <code>POLICY_VERSION</code> parity then protects something real.</li>
+<li><strong>Sloppy feeds the model.</strong> A Sloppy request while a step is open is recorded like a hint rung on that step, so a correct answer after it is not observed as correct.</li>
+</ol>
+
+<h2>5. Fix plan</h2>
+<p class="m">One concern per PR. <span class="sens">◆</span> marks a sensitive path, which needs a clean <code>pnpm review --json</code> from a different model before <code>agent:merge</code>. Each fix starts with a failing test (a property test for an invariant) and adds a check before any prose rule. Every PR also runs <code>agent:verify</code> against a test Postgres.</p>
+
+<div class="phase">
+<h3>Phase 1: merge-gate holes <span class="sens">◆</span></h3>
+<p class="m">First, because every later PR goes through the gate.</p>
+<ol>
+<li>Run the gate from <code>origin/main</code> code, not the PR head's. Remove <code>--skip-local</code>, or allow it only with <code>--dry-run</code>.</li>
+<li>The review result must show reviewer ≠ author. Make <code>--author</code> required. A truncated diff returns <code>incomplete</code>. Fix the example in <code>docs/agents/review-pipeline.md</code>.</li>
+<li>Widen SENSITIVE to cover:
+  <ul>
+  <li>all of <code>scripts/</code></li>
+  <li><code>games/grade.ts</code> and <code>attempts/machine.ts</code></li>
+  <li><code>dev/route.ts</code>, <code>guide.py</code> and <code>app.ts</code></li>
+  <li><code>bkt.py</code>, <code>policy.py</code>, <code>learner.py</code> and <code>mastery.ts</code></li>
+  <li><code>**/package.json</code>, <code>e2e/scripts/</code>, <code>pnpm-lock.yaml</code> and <code>apps/api/test/helpers*</code></li>
+  </ul></li>
+<li>Close the guardrail escapes:
+  <ul>
+  <li>Allowlist the one exact <code>.generated.ts</code> path instead of the pattern.</li>
+  <li>The boundary check scans <code>.js</code> and <code>.mjs</code> and rejects template-literal imports.</li>
+  <li><code>scripts/tsconfig.json</code> is added to <code>lint:types</code>.</li>
+  </ul></li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 2: scope and decisions</h3>
+<ol>
+<li><span class="sens">◆</span> Programming-only outline:
+  <ul>
+  <li>Rewrite <code>prompts/outline.md</code> and remove <code>subject</code> from the schema.</li>
+  <li>Add <code>predict</code> to the outline kinds; every generated lesson names concepts from the catalogue.</li>
+  <li>Change "Learn anything" to "Learn a programming concept".</li>
+  </ul></li>
+<li>Remove tiers:
+  <ul>
+  <li>Collapse <code>config/tiers.ts</code> to one MVP limit, keeping the spend cap.</li>
+  <li>Remove tier UI.</li>
+  <li>Landing gets "Pro, coming soon" and "Real code changes: advanced track, coming soon".</li>
+  <li>Remove Landing's adaptivity claim until Phase 4 ships it.</li>
+  </ul></li>
+<li><span class="sens">◆</span> Leaderboard handle: a migration adds a generated <code>handle</code>, the leaderboard shows only that, and a test checks that no email-derived string reaches <code>home.get</code>.</li>
+<li><span class="sens">◆</span> AI drafts:
+  <ul>
+  <li>Generated lessons are <code>draft</code>, visible only to their creator.</li>
+  <li><code>paths.publish</code> moves them into an author review queue instead of making them public.</li>
+  <li>Listings show other learners only published lessons (plan §9).</li>
+  </ul></li>
+<li>Docs in the same PRs:
+  <ul>
+  <li><code>docs/idea.md</code> and <code>docs/plan.md</code> (scope, tiers, no age gate, capstone track, sandbox is core)</li>
+  <li><code>AGENTS.md</code> open work</li>
+  <li><code>docs/feature-map.md</code></li>
+  <li>the data rule (handle, timezone, daily goal)</li>
+  </ul></li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 3: predict before reveal, everywhere <span class="sens">◆</span></h3>
+<ol>
+<li>Scrim on the server:
+  <ul>
+  <li><code>lessons.get</code> returns segments only up to the first gate that isn't revealed; a new <code>lessons.scrimMore</code> serves the rest.</li>
+  <li>Scrim completion needs every gate revealed and the lab passed.</li>
+  <li>Property test: no segment after an unrevealed gate is ever serialized.</li>
+  </ul></li>
+<li>player-core scrim:
+  <ul>
+  <li>Reject non-finite or out-of-range <code>at</code>, durations and segments.</li>
+  <li><code>runCrossed</code> returns an array.</li>
+  <li>Gate keys come from the step id.</li>
+  <li>The file name comes from the language.</li>
+  <li>Widen the generators and add a "part gate blocks later edits" invariant.</li>
+  </ul></li>
+<li>Opening and closing checks for learn and watch:
+  <ul>
+  <li>The engine prompts emit them as mcq steps.</li>
+  <li><code>writeOnce</code> stores the steps for every kind.</li>
+  <li><code>LiveLesson</code> drops complete-on-open and completes on the closing attempt.</li>
+  </ul></li>
+<li>Completion rules from §3:
+  <ul>
+  <li>Skip-only predict lessons are not done.</li>
+  <li>Game lessons need every block.</li>
+  <li>Add a property test that no lesson completes without an observed attempt.</li>
+  </ul></li>
+<li>Leak checks: the engine checks <code>prompt</code> and <code>explanations.practice</code> for the answer, and the API zod schema mirrors the check.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 4: make the learning loop real <span class="sens">◆</span></h3>
+<ol>
+<li>Catalogue (§2) with edges, global concept slugs, and the seed validator requiring concepts on every step. Add a <code>js.conditionals</code> seeded lesson.</li>
+<li>Evidence from every kind: games, sandbox checks and scrim gates call <code>observationOf</code> with the right <code>p_guess</code>. Failed observations are retried.</li>
+<li>Policy remediation, a true ADVANCE reason, and <code>p_guess = 1/options</code> (§4.3, §4.4), all with property tests.</li>
+<li>The engine call moves out of the transaction (§4.6).</li>
+<li>Show it:
+  <ul>
+  <li><code>me.next</code> is the Continue card and the lesson-end screen, with its reason.</li>
+  <li>Course locks use <code>p_known</code>.</li>
+  <li>The mastery list is on Home.</li>
+  <li>Real <code>missedConcepts</code> go into generation.</li>
+  </ul></li>
+<li>XP and streak follow §3.</li>
+<li>Measurement: a pre-test and post-test per concept on the seeded demo set, recorded as attempts with no new data. A small spaced-review queue (<code>review_schedule</code>, plan §7).</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 5: Sloppy and AI safety <span class="sens">◆</span></h3>
+<ol>
+<li>The guide route calls <code>assertAiEnabled</code>, <code>reserveAiSpend</code> and <code>isSafeText</code>, and gets a short timeout.</li>
+<li>A deterministic output check rejects code fences and code-like lines, then repairs or refuses. The reply returns only <code>guide</code> (no <code>usage.model</code>).</li>
+<li>Lesson context: the request carries the lesson id, task, concept and hint rung, and the fixed "Tiny Task Tracker" prompt is removed. Each use is recorded as a hint rung (§4.8).</li>
+<li>The web app keeps one <code>AIGuide</code> instance, which receives the selection, lint and video prompts.</li>
+<li>Moderation goes through a LiteLLM-compatible interface.</li>
+<li>The outline deadline is sent to the engine, and the engine adds one retry on 429 or 5xx.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 6: broken flows and sandbox <span class="sens">◆</span></h3>
+<ol>
+<li>Add <code>runChecks</code> to the sandbox backend for Docker and Daytona. <code>/sandbox/check</code> uses the configured backend and the lesson's language. Daytona shell sandboxes get <code>networkBlockAll</code>, limits and timeouts. Output is truncated after appending.</li>
+<li>Practice workbench:
+  <ul>
+  <li>Visible Run and Lint buttons, with copy that matches.</li>
+  <li>Remove <code>showPlanned</code> (the fake git and debug panes).</li>
+  <li>Hide Watch unless media exists.</li>
+  <li>Reset the result when the code changes.</li>
+  </ul>
+  Check it in the validator, and add an e2e test.</li>
+<li>Games: an attempt limit and a hint ladder on <code>games.check</code> and <code>games.hint</code>. Learn-doc games are read-only.</li>
+<li>Account error and retry state. <code>Notice</code> uses a router link.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 7: reliability, performance and dead code</h3>
+<ol>
+<li><span class="sens">◆</span> Seed:
+  <ul>
+  <li>The upsert includes <code>status</code>.</li>
+  <li>Steps are keyed by <code>(version, idx)</code>, and removed steps are deleted.</li>
+  <li>Seeding narration becomes explicit.</li>
+  </ul></li>
+<li><span class="sens">◆</span> Learner-owned FKs get <code>ON DELETE CASCADE</code>. Add a Postgres healthcheck in compose.</li>
+<li>Bundle size:
+  <ul>
+  <li>Lazy-load blocks and views.</li>
+  <li>Limit Monaco to JS, TS and Python.</li>
+  <li>Don't mount hidden AIGuides.</li>
+  </ul></li>
+<li><span class="sens">◆</span> Reproducible build: move the changelog fetch out of <code>prebuild</code>.</li>
+<li>Dead code:
+  <ul>
+  <li>Remove Pip: the 5 <code>pip-*.png</code> files, the DESIGN.md section and description, and the AGENTS.md mention. Decide on the other unused <code>public/img</code> files (predict, hint, reveal, adapt, mastery, finale, desktop-imac; about 3 MB), and delete them unless Landing will use them.</li>
+<li>Delete <code>DitherField</code>, <code>TopNav</code>, <code>FileTree</code> and their allowlist entries.</li>
+  <li>Delete 7 unused exports, the AIGuide image-attach code, the <code>cn</code> and <code>radix-ui</code> deps, the engine's <code>BktParams</code> and <code>Settings.PORT</code>, and the empty folders.</li>
+  <li>Merge the three <code>bin.ts</code> files into one.</li>
+  <li>Remove the stale <code>REVIEW.md:31</code> line.</li>
+  <li>Trim the unused ui-catalog exports.</li>
+  </ul>
+  The allowlist test should also fail when an allowlisted file has no importer.</li>
+<li>Tests: scrim negative tests (unauthenticated, another learner, a draft, the old lab shape). Derive the seed counts. Cover the engine repair, fail-closed and truncation paths.</li>
+</ol>
+</div>
+
+<h2>6. Demo-day order</h2>
+<p>For the presentation, the shortest path to a demo that shows adaptivity:</p>
+<ol>
+<li>Phase 4.1: catalogue and edges for the seeded JS/TS lessons.</li>
+<li>Phase 3.3 and 3.4: every kind predicts first and completes on evidence.</li>
+<li>Phase 4.3 and 4.5: remediation, and <code>me.next</code> with its reason on Home.</li>
+<li>Phase 2.1 and 2.2: programming-only scope, honest Landing copy, tiers removed.</li>
+</ol>
+<p class="m">The demo then reads: a learner gets a loop question wrong, Continue says "Loops at 42%, so review first", and the review lesson brings the score up.</p>
+
+<h2>7. Still to check and sort out</h2>
+<p class="m">This section covers things the review could not verify, things it found that have no phase yet, and housekeeping. Each item names its check, or the phase it belongs to.</p>
+
+<h3>Not verified yet</h3>
+<div class="wrap"><table>
+<thead><tr><th>Item</th><th>Why it matters</th><th>How to check</th></tr></thead>
+<tbody>
+<tr><td>Database-backed API tests, <code>agent:verify</code>, e2e</td><td>The review read the attempt, mastery, sandbox-check and scrim tests but didn't run them</td><td><code>TEST_DATABASE_URL=…/learnquest_test pnpm exec turbo run lint test build</code>, then <code>pnpm agent:verify</code> and the e2e suite</td></tr>
+<tr><td>A browser pass</td><td>The web findings (no Run button, fake panes, two Sloppys, the Watch tab) come from reading code</td><td><code>pnpm validator:up</code>, then walk Home, Course, <code>/play</code> for each kind, Practice and Account</td></tr>
+<tr><td>Which sandbox backend production uses</td><td>If production is on Daytona, every practice check returns 503 today, which makes it the top live bug</td><td>Check the production env (<code>SANDBOX_BACKEND</code> or equivalent) on Render; try one practice lesson in production</td></tr>
+<tr><td>Daytona's default network for shell sandboxes</td><td>Decides whether learner shells can reach internal or metadata addresses</td><td>Use a Daytona key to start a shell and <code>curl</code> 169.254.169.254 and an internal host</td></tr>
+<tr><td>Commits #84–#89 (lesson lab, scrim player, up-front course generation)</td><td>They landed after the review. #89 generates every lesson in a course up front, so check its cost, the spend cap and partial failures.</td><td>Not reviewed yet: the reviewer stopped on a session rate limit. Run it again (LQ-134)</td></tr>
+<tr><td>The 30-day revert rate</td><td>Agents may only merge while it is ≤ 5%</td><td><code>pnpm revert-rate</code> before the first fix PR</td></tr>
+</tbody></table></div>
+
+<h3>Found but not planned yet</h3>
+<ul>
+<li><span class="tag w">FIX</span> <strong>Paid generation on a GET.</strong> <code>lessons.get</code> starts generation and image work, and the origin check skips GET requests. Move generation behind a mutation (Phase 5).</li>
+<li><span class="tag w">FIX</span> <strong>Names already exposed.</strong> Existing leaderboard rows have shown email local parts. The handle migration covers new reads, but also check that nothing cached the old names (Phase 2.3).</li>
+<li><span class="tag w">FIX</span> <strong>Single instance only.</strong> Runs, shell tickets, rate limits and in-flight maps live in memory. Either document "one API instance" in the deploy runbook, or move them to Postgres (Phase 7).</li>
+<li><span class="tag w">FIX</span> <strong>Image work on shutdown.</strong> <code>idleImages</code> is never awaited when the app closes, so it can be dropped mid-write (Phase 7).</li>
+<li><span class="tag s">TIDY</span> <strong>Write-only data:</strong> <code>hint_events</code>, <code>attempts.response</code>, <code>.feedback</code> and <code>.missed_concepts</code>, <code>recommendations.reason_code</code>, <code>learners.kind</code>, and <code>game_completions.part_idx</code> (always 0). Phase 4 reads <code>missed_concepts</code> and <code>reason_code</code>; drop the rest, or start reading them (Phase 7).</li>
+<li><span class="tag s">TIDY</span> <strong>Unused API procedures:</strong> <code>collections.*</code> and <code>paths.get</code>. The changelog advertises collections, but nothing calls them. Defer and hide them, or delete them (Phase 7).</li>
+<li><span class="tag s">TIDY</span> <strong>Leftover AI predict path:</strong> <code>validate</code>, <code>generator.lesson</code> and <code>prefetchNext</code> come back into use once the outline allows <code>predict</code> again (Phase 2.1). Remove the duplicate <code>engineParts.lesson</code>.</li>
+<li><span class="tag s">TIDY</span> <strong>Engine inconsistencies:</strong> learn docs and game docs are checked differently (only games get <code>parseSpec</code> and a repair pass). <code>INSTRUCTIONS.md</code> is re-read on every request. Normal timings are logged at warning (Phase 5).</li>
+<li><span class="tag s">TIDY</span> <strong>Web performance:</strong> every keystroke re-renders the 556-line Workbench. The <code>Notepad</code>, <code>EditorDock</code> and dock files sit in <code>pages/</code>, and the top bar is copied across four pages (Phase 7).</li>
+<li><span class="tag s">TIDY</span> <strong>Docker compose:</strong> the API starts before Postgres is ready. Add a healthcheck (Phase 7.2).</li>
+</ul>
+
+<h3>Docs to bring in line</h3>
+<ul>
+<li><code>docs/plan.md</code>:
+  <ul>
+  <li>NFR1 age gate (remove)</li>
+  <li>NFR2 "code runs only in the browser" (the server sandbox is core)</li>
+  <li>sandbox listed as stretch</li>
+  <li>payments as a non-goal (keep, and note "Pro, coming soon")</li>
+  <li>"explanation style, hint depth, skip" adaptivity (replace with §4)</li>
+  </ul></li>
+<li><code>docs/idea.md</code> and Landing: lead with concepts and predict-first; real commits become the capstone track.</li>
+<li><code>AGENTS.md</code>:
+  <ul>
+  <li>Open work #2 (game parts "not verified") is stale.</li>
+  <li>Add the catalogue and the demo order.</li>
+  <li>The data rule must match what is stored: handle, timezone, daily goal and leaderboard flag.</li>
+  </ul></li>
+<li><code>docs/sdlc/threat-model.md</code>: add the Daytona shell sandboxes and Sloppy's output check.</li>
+<li><code>REVIEW.md:31</code>: remove the stale <code>registry.gen.ts</code> reference.</li>
+<li><code>docs/feature-map.md</code>: update after each phase that changes a screen.</li>
+</ul>
+
+<h3>Decisions still open</h3>
+<ul>
+<li>Confirm the three recommended decisions in §1: AI drafts, learn and watch completion, moderation.</li>
+<li>Is the leaderboard opt-in by default (on today) or opt-out? With a generated handle it carries no personal data either way, so it stays on unless you say otherwise.</li>
+<li>Pushing this commit: <code>main</code> deploys to production after CI, so it stays local until you approve.</li>
+</ul>
+</main>
+</body>
+</html>
