@@ -267,7 +267,8 @@ export type PartSecret =
       tests?: Array<{ id: string; name: string; stdin?: string; expectedStdout: string; visibility: "sample" | "hidden"; stretch?: boolean }>;
       expectedOutput?: string;
     }
-  | { kind: "game-practice"; intro: string; doc: Spec };
+  | { kind: "game-practice"; intro: string; doc: Spec }
+  | { kind: "scrim"; language: "python" | "javascript" | "typescript"; segments: Array<{ text: string; durationMs: number; edit?: { code: string; run: boolean }; gate?: number }>; lab: Extract<PartSecret, { kind: "practice" }> };
 
 export const lessons = pgTable(
   "lessons",
@@ -281,7 +282,7 @@ export const lessons = pgTable(
   level: integer("level").notNull().default(1),
   position: integer("position").notNull().default(0),
   sourceKind: text("source_kind", { enum: ["repo", "authored", "ai"] }).notNull(),
-  kind: text("kind", { enum: ["predict", "learn", "watch", "practice", "game-practice"] })
+  kind: text("kind", { enum: ["predict", "learn", "watch", "practice", "game-practice", "scrim"] })
     .notNull()
     .default("predict"),
   source: jsonb("source").$type<LessonSource>(),
@@ -405,7 +406,7 @@ export const hintEvents = pgTable(
 
 export const generationCache = pgTable("generation_cache", {
   key: text("key").primaryKey(),
-  kind: text("kind", { enum: ["learn", "watch", "practice", "game-practice"] }).notNull(),
+  kind: text("kind", { enum: ["learn", "watch", "practice", "game-practice", "scrim"] }).notNull(),
   content: jsonb("content").$type<PartSecret>().notNull(),
   createdAt: createdAt(),
 });
@@ -461,6 +462,7 @@ export const lessonMedia = pgTable(
       .notNull()
       .references(() => lessonVersions.id),
     stepId: text("step_id").references(() => steps.id),
+    segment: integer("segment"),
     kind: text("kind", { enum: ["narration", "image"] }).notNull(),
     status: text("status", { enum: ["pending", "ready", "failed"] }).notNull().default("ready"),
     promptHash: text("prompt_hash").unique(),
@@ -471,7 +473,7 @@ export const lessonMedia = pgTable(
   },
   (t) => [
     index("lesson_media_version").on(t.lessonVersionId),
-    uniqueIndex("lesson_media_one_narration").on(t.lessonVersionId, sql`coalesce(${t.stepId}, '')`).where(sql`${t.kind} = 'narration' AND ${t.status} = 'ready'`),
+    uniqueIndex("lesson_media_one_narration").on(t.lessonVersionId, sql`coalesce(${t.stepId}, '')`, sql`coalesce(${t.segment}, -1)`).where(sql`${t.kind} = 'narration' AND ${t.status} = 'ready'`),
   ],
 );
 

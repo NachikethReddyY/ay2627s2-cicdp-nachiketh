@@ -6,7 +6,7 @@ import type { CourseData } from "../../lib/api";
 
 type Lesson = CourseData["lessons"][number];
 
-const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game" };
+const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game", scrim: "🎬 Scrim" };
 
 function Pill({ kind }: { kind: Lesson["kind"] }) {
   if (kind === "predict") return null;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ScrimContent } from "../parts/scrim-schema.ts";
 
 const Hunk = z.object({ id: z.string(), file: z.string(), oldStart: z.number().int(), lines: z.array(z.string()) });
 
@@ -36,15 +37,26 @@ const LessonStepFile = z
     }
   });
 
-export const LessonFile = z.object({
-  slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
-  title: z.string().min(1),
-  concepts: z.array(z.string()),
-  position: z.number().int().min(0),
-  status: z.enum(["draft", "published"]).default("published"),
-  source: z.object({ repo: z.string(), sha: z.string(), path: z.string() }).optional(),
-  steps: z.array(LessonStepFile).min(1),
-});
+export const LessonFile = z
+  .object({
+    slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
+    title: z.string().min(1),
+    concepts: z.array(z.string()),
+    position: z.number().int().min(0),
+    status: z.enum(["draft", "published"]).default("published"),
+    source: z.object({ repo: z.string(), sha: z.string(), path: z.string() }).optional(),
+    steps: z.array(LessonStepFile).min(1),
+    scrim: ScrimContent.optional(),
+  })
+  .superRefine((file, ctx) => {
+    if (!file.scrim) return;
+    file.scrim.segments.forEach((segment, idx) => {
+      if (segment.gate === undefined) return;
+      const step = file.steps[segment.gate];
+      if (!step) ctx.addIssue({ code: "custom", path: ["scrim", "segments", idx, "gate"], message: `gate ${segment.gate} has no step in this lesson` });
+      else if (step.public.kind !== "mcq") ctx.addIssue({ code: "custom", path: ["scrim", "segments", idx, "gate"], message: `gate ${segment.gate} must be a multiple-choice step` });
+    });
+  });
 export type LessonFile = z.infer<typeof LessonFile>;
 
 export const Manifest = z.object({

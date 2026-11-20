@@ -1,8 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, Square } from "lucide-react";
+import { Check } from "lucide-react";
 import { usePanel } from "../terminal/usePanel";
-import TerminalView from "../terminal/TerminalView";
 import DocsPanel from "../workbench/DocsPanel";
 import { DOCS } from "../workbench/docs";
 import FileTreeView from "../workbench/FileTreeView";
@@ -20,7 +19,8 @@ import LessonResults from "./LessonResults";
 import LessonVideo from "./LessonVideo";
 import { monacoLanguage, type PracticeLanguage, type PracticeTest } from "./checkModel";
 import { findingPointer } from "./lintModel";
-import { actionGuards, lessonFile, shellLine } from "./lessonWorkbenchModel";
+import { actionGuards, lessonFile } from "./lessonWorkbenchModel";
+import RunBottom from "./RunBottom";
 import { usePracticeRunner } from "./usePracticeRunner";
 import type { Part } from "./types";
 
@@ -35,11 +35,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "sloppy", label: "Sloppy" },
   { id: "docs", label: "Docs" },
 ];
+const WATCHLESS_TABS = TABS.filter((t) => t.id !== "video");
 const ROOT = "Lesson";
 
 const BUSY = "Running…";
 
-export default function LessonWorkbench({ lessonId, title, part, next }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode }) {
+export default function LessonWorkbench({ lessonId, title, part, next, video = true }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode; video?: boolean }) {
   const practice = part as PracticePart;
   const language = monacoLanguage(practice.language);
   const { fileName, languageLabel } = lessonFile(language);
@@ -112,27 +113,29 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="wb-scroll flex h-[43px] flex-none items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-[var(--line)] px-2.5">
         <Segmented className="wb-pill gap-1" role="group" aria-label="Side panel view">
-          {TABS.map((t) => (
+          {(video ? TABS : WATCHLESS_TABS).map((t) => (
             <button key={t.id} type="button" className="wb-ptab" aria-pressed={tab === t.id} onClick={() => show(t.id)}>{t.label}</button>
           ))}
         </Segmented>
       </div>
       <div hidden={tab !== "instructions"} className="wb-prose wb-scroll min-h-0 flex-1 overflow-auto px-3 py-2.5">{instructions}</div>
-      <div hidden={tab !== "video"} className="wb-scroll min-h-0 flex-1 overflow-auto">
-        <LessonVideo
-          title={title}
-          captionsSrc={`/video/${lessonId}.vtt`}
-          chaptersSrc={`/video/${lessonId}.chapters.vtt`}
-          onExplain={(text) => {
-            setPendingPrompt({ text });
-            show("sloppy");
-          }}
-          sources={[
-            { src: `/video/${lessonId}.mp4`, type: "video/mp4" },
-            { src: `/audio/${lessonId}.mp3`, type: "audio/mpeg" },
-          ]}
-        />
-      </div>
+      {video && (
+        <div hidden={tab !== "video"} className="wb-scroll min-h-0 flex-1 overflow-auto">
+          <LessonVideo
+            title={title}
+            captionsSrc={`/video/${lessonId}.vtt`}
+            chaptersSrc={`/video/${lessonId}.chapters.vtt`}
+            onExplain={(text) => {
+              setPendingPrompt({ text });
+              show("sloppy");
+            }}
+            sources={[
+              { src: `/video/${lessonId}.mp4`, type: "video/mp4" },
+              { src: `/audio/${lessonId}.mp3`, type: "audio/mpeg" },
+            ]}
+          />
+        </div>
+      )}
       <div hidden={tab !== "results"} className="flex min-h-0 flex-1 flex-col">
         <LessonResults result={r.result} tests={practice.tests} checkError={r.checkError} findings={r.findings} lintError={r.lintError} onAsk={askAbout} />
       </div>
@@ -149,49 +152,7 @@ export default function LessonWorkbench({ lessonId, title, part, next }: { lesso
     </div>
   );
 
-  const line = shellLine(r.shellState);
-  const bottom = (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--code)] text-[var(--tx)]">
-      {r.showOutput && (
-        <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-24 flex-none flex-col border-b border-[var(--line)]">
-          <div className="flex flex-none items-center gap-2 px-3 py-1">
-            <h3 id="out-h" className="text-xs font-semibold">Output</h3>
-            {r.sid && (
-              <button type="button" onClick={r.stop} className="wb-tb wb-outline ml-auto h-6 px-2 text-xs">
-                <Square size={11} fill="currentColor" aria-hidden="true" /> Stop
-              </button>
-            )}
-          </div>
-          <pre aria-label="Output" tabIndex={0} className="wb-mono m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-3 pb-2 text-xs">{r.term}</pre>
-          {r.sid && (
-            <form onSubmit={r.answer} className="flex flex-none items-center gap-2 border-t border-[var(--line)] px-3 py-1.5 text-xs">
-              <span aria-hidden="true" className="font-semibold">{">"}</span>
-              <input
-                autoFocus
-                value={r.typed}
-                onChange={(e) => r.setTyped(e.target.value)}
-                aria-label="Type your answer and press Enter"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="type your answer, then Enter"
-                className="min-w-0 flex-1 border-0 bg-transparent text-[var(--tx)] outline-none placeholder:text-[var(--mu)]"
-              />
-            </form>
-          )}
-        </section>
-      )}
-      {(line || r.runNote) && (
-        <div role="status" aria-live="polite" className="flex flex-none items-center gap-2 px-3 py-1 font-sans text-xs text-[var(--mu)]">
-          {line && <span>{line.text}</span>}
-          {line?.retry && r.shell && <button type="button" onClick={() => r.shell?.connect()} className="underline">Try again</button>}
-          {r.runNote && <span>{r.runNote}</span>}
-        </div>
-      )}
-      <div className="relative min-h-0 flex-1 p-1">
-        {r.shell && <TerminalView shell={r.shell} active={panel.state.open && interacted} />}
-      </div>
-    </div>
-  );
+  const bottom = <RunBottom runner={r} terminalActive={panel.state.open && interacted} />;
 
   const status: WorkbenchStatus = r.checkBusy ? { text: "Checking…", tone: "busy" }
     : r.lintBusy ? { text: "Linting…", tone: "busy" }

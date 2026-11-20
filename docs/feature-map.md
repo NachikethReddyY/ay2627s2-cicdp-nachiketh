@@ -14,11 +14,12 @@ Routes marked dev or test only exist in non-production builds.
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses collections and paths. |
 | Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. |
 | Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
+| Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the practice lab of a practice lesson, or the lab a scrim ends with, in the **Workbench**. Same Run, Submit, Lint and Sloppy as `/play`. A lesson with no lab shows a notice. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Manages the account. |
 | Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads release notes. |
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
-| Editor / player fixtures (test) | `/editor`, `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
+| Editor / player fixtures (test) | `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
 
 ## Inside the lesson player
 
@@ -38,6 +39,16 @@ Routes marked dev or test only exist in non-production builds.
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
 | Transport bar | `player/TransportBar.tsx` | Replay controls for code replay. |
 
+## Lesson kinds
+
+A lesson's `kind` decides which parts the player shows. The kind is stored on `lessons.kind`.
+
+| Name | Kind | What the learner does | Code |
+|---|---|---|---|
+| Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** holds playback at the start of its segment until the gate step is answered or skipped, so the prediction comes first. The lesson ends with a practice lab. | Player `apps/web/src/player/scrim/` (`ScrimWatch`, `GatePanel`, model in `scrimModel.ts`). Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Seeded demo `worlds/scrim-demo/`. |
+
+The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. The lesson player (`/play`) plays the segments, holds at gates, and opens the lab in the practice workbench after **Start the lab**.
+
 ## Server pieces a feature depends on
 
 | Name | Code |
@@ -46,7 +57,7 @@ Routes marked dev or test only exist in non-production builds.
 | Attempts and mastery (BKT) | `apps/api/src/attempts/`, `apps/api/src/progress/` |
 | Practice grading and sandbox | `apps/api/src/grading/`, `apps/api/src/sandbox/`, `services/sandbox` |
 | Lesson generation | `apps/api/src/ai/`, `services/engine` |
-| Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` |
+| Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS` lists the sample courses; `worlds/scrim-demo` seeds one scrim, and its narration is silent placeholder audio) |
 
 ## Driving the app
 

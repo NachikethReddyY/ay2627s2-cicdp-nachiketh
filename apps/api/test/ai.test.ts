@@ -176,6 +176,7 @@ test("a parallel burst cannot exceed the daily limit", async () => {
 test("two concurrent plays write the part once", async () => {
   const { t, lessons: ls } = await setup();
   const last = ls[2]!.slug;
+  const initialStepCount = (await db.select().from(steps)).length;
   const [a, b] = await Promise.all([t.q("lessons.get", { id: last }), t.q("lessons.get", { id: last })]);
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
@@ -186,7 +187,7 @@ test("two concurrent plays write the part once", async () => {
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
   assert.equal(row!.status, "published");
-  assert.equal((await db.select().from(steps)).length, 10);
+  assert.equal((await db.select().from(steps)).length, initialStepCount);
 });
 
 test("playing a part writes only that part, not the next one", async () => {
