@@ -6,30 +6,27 @@
   cursor: pointer;
 }
 
-.scrim-controls {
+.scrim-overlay {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
-  right: 16px;
-  z-index: 2;
+  inset: 88px 16px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  pointer-events: none;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.scrim-controls > * {
+.scrim-caption,
+.scrim-gate,
+.scrim-lab,
+.scrim-pill {
   pointer-events: auto;
 }
 
-.scrim-controls > * + * {
-  margin-top: 8px;
-}
-
 .scrim-caption {
-  flex: none;
+  min-height: 0;
   width: fit-content;
-  max-width: 100%;
+  max-width: min(100%, 32rem);
   max-height: 7.5rem;
   overflow: auto;
   margin: 0;
@@ -55,7 +52,7 @@
 }
 
 .scrim-gate {
-  flex: none;
+  min-height: 0;
   max-width: 32rem;
   max-height: 12rem;
   overflow: auto;
@@ -63,10 +60,8 @@
   border-radius: 14px;
 }
 
-.scrim-done {
-  display: flex;
+.scrim-lab {
   flex: none;
-  justify-content: center;
 }
 
 .scrim-pill {
@@ -78,40 +73,20 @@
   padding: 8px 12px;
   border-radius: 18px;
   background: color-mix(in srgb, var(--glass) 55%, transparent);
-  transition: opacity 320ms ease, max-height 320ms ease, margin-top 320ms ease, padding 320ms ease;
-  overflow: hidden;
+  transition: opacity 320ms ease;
 }
 
-.scrim-stage[data-playing="true"] .scrim-pill {
-  opacity: 0;
-  pointer-events: none;
-  max-height: 0;
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-width: 0;
-}
+@media (hover: hover) {
+  .scrim-overlay[data-playing="true"] .scrim-pill {
+    opacity: 0;
+    pointer-events: none;
+  }
 
-.scrim-stage[data-playing="true"]:hover .scrim-pill,
-.scrim-stage[data-playing="true"] .scrim-pill:has(:focus-visible) {
-  opacity: 1;
-  pointer-events: auto;
-  max-height: 240px;
-  margin-top: 8px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  border-width: 1px;
-}
-
-@media (hover: none) {
-  .scrim-stage[data-playing="true"] .scrim-pill {
+  .wb:has(> .wb-player-window:hover) .scrim-overlay[data-playing="true"] .scrim-pill,
+  .scrim-overlay[data-playing="true"]:hover .scrim-pill,
+  .scrim-overlay[data-playing="true"] .scrim-pill:has(:focus-visible) {
     opacity: 1;
     pointer-events: auto;
-    max-height: 240px;
-    margin-top: 8px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    border-width: 1px;
   }
 }
 
@@ -192,9 +167,9 @@
   font-size: 13px;
 }
 
-.scrim-controls button:focus-visible,
-.scrim-controls select:focus-visible,
-.scrim-controls input:focus-visible {
+.scrim-overlay button:focus-visible,
+.scrim-overlay select:focus-visible,
+.scrim-overlay input:focus-visible {
   outline: 2px solid var(--ac);
   outline-offset: 2px;
 }

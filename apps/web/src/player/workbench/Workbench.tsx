@@ -29,6 +29,7 @@ type Props = {
   language: WorkbenchLanguage;
   navigator: ReactNode;
   editor: ReactNode;
+  playerOverlay?: ReactNode;
   bottom: ReactNode;
   bottomTitle?: string;
   terminalSessions?: {
@@ -89,6 +90,8 @@ export default function Workbench(p: Props) {
   const hasDocs = p.docs !== undefined;
   const layout = hasDocs ? storedLayout : { ...storedLayout, showUtil: false };
   const wide = useMedia(WIDE);
+  const hasPlayerOverlay = p.playerOverlay != null;
+  const measurePlayer = wide || hasPlayerOverlay;
   const prefersDark = useMedia(DARK);
   const resolved = resolveTheme(layout.theme, prefersDark);
   const [wordWrap, setWordWrap] = useState(() => {
@@ -158,17 +161,17 @@ export default function Workbench(p: Props) {
   useLayoutEffect(() => {
     const row = rowRef.current;
     const center = centerRef.current;
-    if (!wide || !row || !center) return;
+    if (!measurePlayer || !center) return;
     const measure = () => {
-      setRowW(row.clientWidth);
+      setRowW(row?.clientWidth ?? Infinity);
       setCenterH(center.clientHeight);
     };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(row);
+    if (row) ro.observe(row);
     ro.observe(center);
     return () => ro.disconnect();
-  }, [wide]);
+  }, [measurePlayer, wide]);
 
   const avail = rowW - (layout.showLeft ? SPLIT : 0) - (layout.showUtil ? SPLIT : 0);
   const panelAvail = Number.isFinite(avail) ? avail : Math.max(0, window.innerWidth - 64 - (layout.showLeft ? SPLIT : 0) - (layout.showUtil ? SPLIT : 0));
@@ -178,7 +181,7 @@ export default function Workbench(p: Props) {
   const leftResizeContainer = shown.showUtil ? resizeContainerForPanel(avail, layout.utilW, shown.utilW) : avail;
   const utilResizeContainer = shown.showLeft ? resizeContainerForPanel(avail, layout.leftW, shown.leftW) : avail;
 
-  const panelH = wide && centerH > 0 ? clampHeight(panel.height, centerH) : panel.height;
+  const panelH = measurePlayer && centerH > 0 ? clampHeight(panel.height, centerH) : panel.height;
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -355,7 +358,7 @@ export default function Workbench(p: Props) {
     <WorkbenchContext value={ctx}>
       <div
         ref={wbRef}
-        className={`wb flex flex-col ${wide ? "wb-desk h-dvh overflow-hidden" : "min-h-dvh bg-[var(--code)]"}`}
+        className={`wb flex flex-col ${wide ? "wb-desk h-dvh overflow-hidden" : hasPlayerOverlay ? "relative h-dvh overflow-hidden bg-[var(--code)]" : "min-h-dvh bg-[var(--code)]"}`}
         data-theme={layout.theme}
         data-resolved={resolved}
         data-ready={ready || undefined}
@@ -366,7 +369,7 @@ export default function Workbench(p: Props) {
           ref={windowRef}
           data-palette-open={palette.open || undefined}
           data-inactive={floating && !windowActive ? "" : undefined}
-          className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""} ${floating ? "wb-win-floating" : ""}`}
+          className={`flex min-h-0 flex-1 flex-col ${wide ? "wb-win" : ""} ${hasPlayerOverlay ? "wb-player-window isolate" : ""} ${floating ? "wb-win-floating" : ""}`}
           style={floating?.style}
           onDragStart={floating && ((event) => event.preventDefault())}
           onPointerDown={floating && ((event) => {
@@ -480,9 +483,9 @@ export default function Workbench(p: Props) {
               </div>
             </div>
           ) : (
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className={`flex min-w-0 flex-1 flex-col ${hasPlayerOverlay ? "min-h-0" : ""}`}>
               {toolbar(false)}
-              <main className="flex min-w-0 flex-col bg-[var(--code)]">
+              <main ref={hasPlayerOverlay ? centerRef : undefined} className={`flex min-w-0 flex-col bg-[var(--code)] ${hasPlayerOverlay ? "min-h-0 flex-1" : ""}`}>
                 {p.editor}
                 {p.instructions && (
                   <section aria-label="Instructions" className="border-t border-[var(--line)] bg-[var(--tbar)] px-4 py-4">
@@ -490,12 +493,17 @@ export default function Workbench(p: Props) {
                     <div className="wb-prose">{p.instructions}</div>
                   </section>
                 )}
-                {bottomPanel && <div className="border-t border-[var(--line)]">{bottomPanel}</div>}
+                {hasPlayerOverlay ? bottomPanel : bottomPanel && <div className="border-t border-[var(--line)]">{bottomPanel}</div>}
               </main>
             </div>
           )}
           {status}
         </div>
+        {hasPlayerOverlay && (
+          <div inert={openOverlay != null} className="wb-player-overlay">
+            {p.playerOverlay}
+          </div>
+        )}
         <CommandPalette
           open={palette.open}
           initial={palette.mode}

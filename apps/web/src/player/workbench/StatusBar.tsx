@@ -23,7 +23,7 @@ type Props = {
 const DOT = { ready: "var(--ok)", busy: "var(--acT)", error: "var(--bad)" } as const;
 export default function StatusBar({ status, errors = 0, warnings = 0, wordWrap = false, cursor, language, onProblems, onWordWrap, branch, planned = false }: Props) {
   return (
-    <footer className="flex h-[25px] flex-none items-center gap-4 overflow-hidden whitespace-nowrap border-t border-[var(--line)] bg-[var(--side)] px-3 text-[11.5px] text-[var(--mu)]">
+    <footer className="flex h-[var(--wb-status-height)] flex-none items-center gap-4 overflow-hidden whitespace-nowrap border-t border-[var(--line)] bg-[var(--side)] px-3 text-[11.5px] text-[var(--mu)]">
       {planned && (
         <>
           {branch && (

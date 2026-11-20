@@ -40,11 +40,11 @@ type Props = {
   onProblems?(problems: WorkbenchProblem[]): void;
   problemFileName?: string;
   wordWrap?: boolean;
-  bottomPadding?: number;
+  fill?: boolean;
   help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable;
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, onSelection, onProblems, problemFileName, wordWrap = false, bottomPadding, help }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, onSelection, onProblems, problemFileName, wordWrap = false, fill = false, help }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -180,7 +180,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
   };
 
   return (
-    <div className="relative h-[65dvh] min-w-0 flex-none lg:h-auto lg:min-h-0 lg:flex-1">
+    <div className={`relative min-w-0 ${fill ? "min-h-0 flex-1" : "h-[65dvh] flex-none lg:h-auto lg:min-h-0 lg:flex-1"}`}>
       <Editor
         path={edit && problemFileName ? `file:///workspace/${problemFileName}` : undefined}
         loading={<div className="grid h-full place-items-center"><Loader label="Opening the editor" /></div>}
@@ -211,7 +211,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
             renderLineHighlight: "all" as const,
             scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const },
           }),
-          padding: { top: fontFamily ? 8 : 0, bottom: edit ? (bottomPadding ?? 16) : 140 },
+          padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 },
           hover: { enabled: help ? "on" : "off" },
           lightbulb: { enabled: "off" as never },
           occurrencesHighlight: "off",
