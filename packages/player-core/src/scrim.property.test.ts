@@ -104,7 +104,8 @@ test("for any scrim, an empty or blank question makes no gate and never stalls i
     const duration = 3 + rand() * 6;
     const at = rand() * duration * 0.5;
     const blank = blanks[Math.floor(rand() * blanks.length)];
-    const scrim = buildScrimTimeline([edit(0, at, "a = 1", blank)], [null], scrimClock([duration]));
+    const blankPart = blanks[Math.floor(rand() * blanks.length)];
+    const scrim = buildScrimTimeline([edit(0, at, "a = 1", blank)], [blankPart], scrimClock([duration]));
     assert.equal(scrim.gates.length, 0, `run ${n}: blank question made a gate`);
     assert.equal(reachable(scrim, new Set(), duration), duration);
     assert.equal(shownEdits(scrim, new Set(), duration), 1, `run ${n}: blank question left the edit hidden`);

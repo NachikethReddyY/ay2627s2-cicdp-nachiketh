@@ -44,7 +44,7 @@ export function buildScrimTimeline(edits: readonly TimedEdit[], predicts: readon
   const gates: ScrimGate[] = [
     ...ordered.flatMap((e, i) => (e.predict ? [{ key: `edit-${i}`, t: times[i], question: e.predict }] : [])),
     ...predicts.flatMap((q, s) =>
-      q && s < clock.durations.length ? [{ key: `part-${s}`, t: (clock.offsets[s] ?? 0) + (clock.durations[s] ?? 0) - END_GATE_LEAD, question: q }] : [],
+      q?.trim() && s < clock.durations.length ? [{ key: `part-${s}`, t: (clock.offsets[s] ?? 0) + (clock.durations[s] ?? 0) - END_GATE_LEAD, question: q }] : [],
     ),
   ].sort((a, b) => a.t - b.t);
   const runs = ordered.flatMap((e, i) => (e.run ? [{ edit: i, t: Math.min(times[i] + typing[i] + RUN_DELAY, clock.total) }] : []));
