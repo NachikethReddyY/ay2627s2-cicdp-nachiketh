@@ -32,14 +32,14 @@ export function segmentAt(clock: ScrimClock, t: number): { index: number; local:
 }
 
 export function buildScrimTimeline(edits: readonly TimedEdit[], predicts: readonly (string | null)[], clock: ScrimClock): ScrimTimeline {
-  const ordered = [...edits].sort((a, b) => a.segment - b.segment || a.at - b.at);
+  const ordered = edits.map((e) => ({ ...e, predict: e.predict?.trim() ? e.predict : null })).sort((a, b) => a.segment - b.segment || a.at - b.at);
   const times = ordered.map((e) => (clock.offsets[e.segment] ?? 0) + Math.min(e.at, clock.durations[e.segment] ?? e.at));
   const typing = ordered.map((e, i) => {
     const before = i > 0 ? ordered[i - 1].code : "";
     const ms = editTimeline(before, e.code).duration;
     const next = times[i + 1];
     const gap = next === undefined ? Infinity : (next - times[i]) * GAP_SHARE;
-    return Math.min(ms / 1000, gap);
+    return Math.min(ms / 1000, gap, clock.total - times[i]);
   });
   const gates: ScrimGate[] = [
     ...ordered.flatMap((e, i) => (e.predict ? [{ key: `edit-${i}`, t: times[i], question: e.predict }] : [])),
@@ -47,7 +47,7 @@ export function buildScrimTimeline(edits: readonly TimedEdit[], predicts: readon
       q && s < clock.durations.length ? [{ key: `part-${s}`, t: (clock.offsets[s] ?? 0) + (clock.durations[s] ?? 0) - END_GATE_LEAD, question: q }] : [],
     ),
   ].sort((a, b) => a.t - b.t);
-  const runs = ordered.flatMap((e, i) => (e.run ? [{ edit: i, t: times[i] + typing[i] + RUN_DELAY }] : []));
+  const runs = ordered.flatMap((e, i) => (e.run ? [{ edit: i, t: Math.min(times[i] + typing[i] + RUN_DELAY, clock.total) }] : []));
   return { edits: ordered, times, typing, gates, runs, clock };
 }
 

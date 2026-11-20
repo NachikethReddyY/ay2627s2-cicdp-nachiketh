@@ -96,3 +96,39 @@ test("for any scrim and any seek, no edit behind an open question ever shows, an
     }
   }
 });
+
+test("for any scrim, an empty or blank question makes no gate and never stalls its edit", () => {
+  const rand = mulberry32(33);
+  const blanks = ["", " ", "\n\t "];
+  for (let n = 0; n < 500; n++) {
+    const duration = 3 + rand() * 6;
+    const at = rand() * duration * 0.5;
+    const blank = blanks[Math.floor(rand() * blanks.length)];
+    const scrim = buildScrimTimeline([edit(0, at, "a = 1", blank)], [null], scrimClock([duration]));
+    assert.equal(scrim.gates.length, 0, `run ${n}: blank question made a gate`);
+    assert.equal(reachable(scrim, new Set(), duration), duration);
+    assert.equal(shownEdits(scrim, new Set(), duration), 1, `run ${n}: blank question left the edit hidden`);
+    assert.equal(codeAt(scrim, new Set(), duration), "a = 1");
+  }
+});
+
+test("for any scrim, every run lands between its edit and the end of the clock", () => {
+  const rand = mulberry32(44);
+  for (let n = 0; n < 1000; n++) {
+    const parts = 1 + Math.floor(rand() * 3);
+    const durations = Array.from({ length: parts }, () => 1 + rand() * 5);
+    const edits = Array.from({ length: 1 + Math.floor(rand() * 5) }, (_, i) =>
+      edit(Math.floor(rand() * parts), rand() * 6, `x${i} = ${"y".repeat(Math.floor(rand() * 40))}`, null, rand() < 0.7),
+    );
+    const scrim = buildScrimTimeline(edits, durations.map(() => null), scrimClock(durations));
+    for (const run of scrim.runs) {
+      assert.ok(run.t >= scrim.times[run.edit] + scrim.typing[run.edit], `run ${n}: run before its edit finished typing`);
+      assert.ok(run.t <= scrim.clock.total, `run ${n}: run at ${run.t} after the clock ends at ${scrim.clock.total}`);
+    }
+  }
+});
+
+test("a run near the end of the clock is still crossed by playing to the end", () => {
+  const scrim = buildScrimTimeline([edit(0, 3.9, "print(1)", null, true)], [null], scrimClock([4]));
+  assert.notEqual(runCrossed(scrim, 0, scrim.clock.total), null);
+});
