@@ -72,12 +72,30 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
   }
 });
 
+test("opens a scrim's lab at /editor with its starter code and no hidden answers", async ({ page }) => {
+  await signUp(page, newEmail(), "/");
+  const lesson = page.waitForResponse((res) => res.url().includes("lessons.get") && res.ok());
+  await page.goto("/editor?lesson=scrim-return-values");
+  const body = await (await lesson).text();
+  expect(body).toContain("hidden case 1");
+  expect(body).not.toContain("-14");
+  await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
+  await expect(page.locator(".view-lines").first()).toContainText("function double(n)");
+});
+
+test("a lesson with no lab says so at /editor", async ({ page }) => {
+  await signUp(page, newEmail(), `/editor?lesson=${LESSON}`);
+  await expect(page.getByText("so it has no lab", { exact: false })).toBeVisible();
+});
+
 const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
   ["/", (page) => page.getByRole("heading", { level: 1, name: /Guess the next line/ })],
   ["/login", (page) => page.getByRole("heading", { name: "Sign in", exact: true })],
 ];
 const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
   ["/play", (page) => page.getByText("Pick a lesson to start.")],
+  ["/editor", (page) => page.getByText("Pick a lesson to open its lab.")],
   [`/courses/${COURSE}`, (page) => page.getByRole("heading", { name: "Shopping Cart Basics" })],
   ["/explore", (page) => page.locator("ul.explore-list h2").first()],
 ];

@@ -14,11 +14,12 @@ Routes marked dev or test only exist in non-production builds.
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses collections and paths. |
 | Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. |
 | Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
+| Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the practice lab of a practice lesson, or the lab a scrim ends with, in the **Workbench**. Same Run, Submit, Lint and Sloppy as `/play`. A lesson with no lab shows a notice. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Manages the account. |
 | Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads release notes. |
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
-| Editor / player fixtures (test) | `/editor`, `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
+| Editor / player fixtures (test) | `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
 
 ## Inside the lesson player
 
@@ -46,7 +47,7 @@ A lesson's `kind` decides which parts the player shows. The kind is stored on `l
 |---|---|---|---|
 | Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** is meant to hold a segment until the step at that index is answered, so the prediction comes first. The player does not enforce it yet. The lesson ends with a practice lab. | Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Seeded demo `worlds/scrim-demo/`. |
 
-The scrim is backend only so far. Later web work plays the segments in the lesson player (`/play`) and opens the lab in the practice editor. `/editor` is still a test fixture route today, so do not name it as the lab's route.
+The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. Playing the segments in the lesson player (`/play`) is later web work.
 
 ## Server pieces a feature depends on
 
