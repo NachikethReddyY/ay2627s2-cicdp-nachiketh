@@ -18,6 +18,7 @@ import "./scrim.css";
 type ScrimPart = Extract<Part, { kind: "scrim" }>;
 
 const SPEEDS = [0.75, 1, 1.25, 1.5] as const;
+const EDITOR_BOTTOM_PADDING = 160;
 
 type Props = { lessonId: string; title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; onLab: () => void };
 
@@ -120,7 +121,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
         onError={() => setFailedAudio((s) => new Set(s).add(current.index))}
       />
       <div className="relative flex min-h-0 flex-1 flex-col scrim-stage" data-playing={state.playing ? "true" : "false"}>
-        <WorkbenchEditor transportRef={playRef} edit={{ value: code, language, onChange: () => {}, readOnly: true }} />
+        <WorkbenchEditor transportRef={playRef} edit={{ value: code, language, onChange: () => {}, readOnly: true }} bottomPadding={EDITOR_BOTTOM_PADDING} />
         <div className="scrim-controls">
           <p aria-live="off" className="scrim-caption">{caption}</p>
           {gate && gateStep && (

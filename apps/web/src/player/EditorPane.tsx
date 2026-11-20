@@ -40,10 +40,11 @@ type Props = {
   onProblems?(problems: WorkbenchProblem[]): void;
   problemFileName?: string;
   wordWrap?: boolean;
+  bottomPadding?: number;
   help?: (monaco: Parameters<OnMount>[1], editor: Parameters<OnMount>[0]) => IDisposable;
 };
 
-export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, onSelection, onProblems, problemFileName, wordWrap = false, help }: Props) {
+export default function EditorPane({ ref, transportRef, viewPath, overlay, edit, theme, fontFamily, onCursor, onSelection, onProblems, problemFileName, wordWrap = false, bottomPadding, help }: Props) {
   const [active, setActive] = useState("");
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -210,7 +211,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
             renderLineHighlight: "all" as const,
             scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const },
           }),
-          padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 },
+          padding: { top: fontFamily ? 8 : 0, bottom: edit ? (bottomPadding ?? 16) : 140 },
           hover: { enabled: help ? "on" : "off" },
           lightbulb: { enabled: "off" as never },
           occurrencesHighlight: "off",
