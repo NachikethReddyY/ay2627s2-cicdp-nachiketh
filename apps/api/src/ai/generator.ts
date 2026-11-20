@@ -4,7 +4,7 @@ import { callEngine } from "../engine-client/client.ts";
 export type LessonContext = {
   path: { title: string; tagline: string };
   course: { title: string; description: string };
-  lesson: { title: string; level: number; concepts: string[]; kind: "predict" | "learn" | "watch" | "practice" | "game-practice" };
+  lesson: { title: string; level: number; concepts: string[]; kind: "predict" | "learn" | "watch" | "practice" | "game-practice" | "scrim" };
   missedConcepts: string[];
   stretchTests?: number;
 };

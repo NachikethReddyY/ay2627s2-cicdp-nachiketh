@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseSpec } from "@learnquest/ui-catalog";
 import { buildTimeline, seek } from "@learnquest/player-core";
+import { ScrimContent } from "../parts/scrim-schema.ts";
 import { PracticeContent } from "../parts/practice-schema.ts";
 import type { PartSecret } from "../db/schema.ts";
 
@@ -14,6 +15,7 @@ const Part = z.discriminatedUnion("kind", [
     hunks: z.array(Hunk).min(1).max(6),
   }),
   PracticeContent,
+  ScrimContent,
   z.object({ kind: z.literal("game-practice"), intro: text(500), doc: z.unknown() }),
 ]);
 
@@ -45,6 +47,7 @@ export function validatePart(raw: unknown): PartSecret {
       return { kind: "watch", beforeFiles: part.beforeFiles, hunks: part.hunks };
     }
     case "practice":
+    case "scrim":
       return part;
     case "game-practice": {
       const parsed = parseSpec(part.doc);

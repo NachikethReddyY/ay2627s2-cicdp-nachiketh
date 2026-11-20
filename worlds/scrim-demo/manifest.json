@@ -1,0 +1,16 @@
+{
+  "slug": "scrim-demo",
+  "title": "Scrim demo",
+  "description": "One short scrim: narrated code, a prediction gate and a practice lab.",
+  "path": "worlds/scrim-demo",
+  "concepts": [
+    {
+      "slug": "functions",
+      "name": "functions"
+    },
+    {
+      "slug": "return values",
+      "name": "return values"
+    }
+  ]
+}
