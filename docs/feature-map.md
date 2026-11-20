@@ -12,7 +12,7 @@ Routes marked dev or test only exist in non-production builds.
 | Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your path** and the **Generator**, which turns a concept into a lesson. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses collections and paths. |
-| Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. |
+| Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. A generated course writes all its lessons in the background, three at a time. While some are still writing the page shows how many are ready, with **Check again**. A lesson tagged **Writing…** is still being written; **Couldn't write** or **Not written yet** lessons offer **Write now** (`lessons.write`). Write states come from `courses.get` (`writeState`) and live in process memory (`apps/api/src/ai/service.ts`). |
 | Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
 | Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the practice lab of a practice lesson, or the lab a scrim ends with, in the **Workbench**. Same Run, Submit, Lint and Sloppy as `/play`. A lesson with no lab shows a notice. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Manages the account. |

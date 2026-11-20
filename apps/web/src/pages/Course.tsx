@@ -8,6 +8,7 @@ import { Spinner } from "../components/Bits";
 import { Logo } from "./landing/Logo";
 import LessonNode from "./course/LessonNode";
 import PathTrack from "./course/PathTrack";
+import { writeProgress } from "./course/writeProgress";
 import "./home.css";
 import "./course/course.css";
 
@@ -28,7 +29,7 @@ function useWide() {
 
 export default function Course() {
   const { slug } = useParams({ from: "/courses/$slug" });
-  const { data, error } = useApi(`course:${slug}`, () => trpc.courses.get.query({ slug }));
+  const { data, error, reload } = useApi(`course:${slug}`, () => trpc.courses.get.query({ slug }));
   const { data: session } = authClient.useSession();
   const wide = useWide();
   const [open, setOpen] = useState<string | null>(null);
@@ -54,6 +55,7 @@ export default function Course() {
     const inLv = data.lessons.filter((l) => l.level === lvNow);
     const doneInLv = inLv.filter(done).length;
     const pct = inLv.length ? Math.round((doneInLv / inLv.length) * 100) : 0;
+    const writing = writeProgress(data.lessons);
     const amp = wide ? 72 : 40;
     let n = 0;
     body = (
@@ -67,7 +69,15 @@ export default function Course() {
           </p>
           <h1>{data.title}</h1>
           <p className="course-desc">{data.description}</p>
-          <p className="course-note">Each part is written when you open it, so no AI is wasted.</p>
+          {writing.ready < writing.total && (
+            <div className="course-writing" role="status">
+              <p>
+                {writing.ready} of {writing.total} {writing.total === 1 ? "lesson" : "lessons"} written
+                {writing.failed > 0 && `, ${writing.failed} didn't finish. Open one to try it again.`}
+              </p>
+              <button type="button" className="pill px-3 py-1 text-sm" onClick={reload}>Check again</button>
+            </div>
+          )}
           {lvNow !== undefined && (
             <div className="course-prog">
               <p className="course-prog-label">{doneInLv} of {inLv.length} {inLv.length === 1 ? "lesson" : "lessons"} done in Level {lvNow}</p>
@@ -119,7 +129,7 @@ export default function Course() {
                       {ls.map((l, i) => {
                         const state = done(l) ? "done" : l === current ? "cur" : "locked";
                         const cta = state === "done" ? "Review" : l.done > 0 ? "Continue" : "Start";
-                        return <LessonNode key={l.slug} l={l} slug={slug} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} />;
+                        return <LessonNode key={l.slug} l={l} slug={slug} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} onWritten={reload} />;
                       })}
                     </ol>
                   </div>
