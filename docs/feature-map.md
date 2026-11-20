@@ -38,6 +38,16 @@ Routes marked dev or test only exist in non-production builds.
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
 | Transport bar | `player/TransportBar.tsx` | Replay controls for code replay. |
 
+## Lesson kinds
+
+A lesson's `kind` decides which parts the player shows. The kind is stored on `lessons.kind`.
+
+| Name | Kind | What the learner does | Code |
+|---|---|---|---|
+| Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** is meant to hold a segment until the step at that index is answered, so the prediction comes first. The player does not enforce it yet. The lesson ends with a practice lab. | Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Seeded demo `worlds/scrim-demo/`. |
+
+The scrim is backend only so far. Later web work plays the segments in the lesson player (`/play`) and opens the lab in the practice editor. `/editor` is still a test fixture route today, so do not name it as the lab's route.
+
 ## Server pieces a feature depends on
 
 | Name | Code |
@@ -46,7 +56,7 @@ Routes marked dev or test only exist in non-production builds.
 | Attempts and mastery (BKT) | `apps/api/src/attempts/`, `apps/api/src/progress/` |
 | Practice grading and sandbox | `apps/api/src/grading/`, `apps/api/src/sandbox/`, `services/sandbox` |
 | Lesson generation | `apps/api/src/ai/`, `services/engine` |
-| Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` |
+| Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS` lists the sample courses; `worlds/scrim-demo` seeds one scrim, and its narration is silent placeholder audio) |
 
 ## Driving the app
 

@@ -162,6 +162,13 @@
       "when": 1794837416240,
       "tag": "0022_loud_silk_fever",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795142484571,
+      "tag": "0023_blushing_marten_broadcloak",
+      "breakpoints": true
     }
   ]
 }

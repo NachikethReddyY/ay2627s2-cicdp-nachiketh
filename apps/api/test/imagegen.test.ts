@@ -68,9 +68,11 @@ for (const style of ["images", "chat"] as const) {
     const f = await fake(style);
     configure(f.url, style);
     setModerationClient(clean);
+    const lessonVersionId = await versionId();
+    const learnerId = await learnerId_();
     const mem = memoryStorage();
     setStorage(mem);
-    const r = await generateImage({ ...base, lessonVersionId: await versionId(), learnerId: await learnerId_() });
+    const r = await generateImage({ ...base, lessonVersionId, learnerId });
     assert.equal(r.status, "ready");
     assert.equal(f.calls.length, 1);
     assert.equal(f.calls[0]!.url, style === "images" ? "/images/generations" : "/chat/completions");
@@ -177,9 +179,11 @@ test("a prompt with a recent failed row does not call moderation", async () => {
 test("an oversized provider response is rejected as a failure", async () => {
   const f = await fake("images", { body: JSON.stringify({ data: [{ b64_json: "A".repeat(4 * 1024 * 1024 + 1) }] }) });
   configure(f.url, "images");
+  const lessonVersionId = await versionId();
+  const learnerId = await learnerId_();
   const mem = memoryStorage();
   setStorage(mem);
-  const r = await generateImage({ ...base, lessonVersionId: await versionId(), learnerId: await learnerId_() });
+  const r = await generateImage({ ...base, lessonVersionId, learnerId });
   assert.equal(r.status, "fallback");
   assert.equal(mem.objects.size, 0);
 });
@@ -188,9 +192,11 @@ for (const [name, b64, type] of [["PNG", PNG, "image/png"], ["JPEG", JPEG, "imag
   test(`${name} magic bytes are accepted and stored with a matching content type`, async () => {
     const f = await fake("chat", { body: { choices: [{ message: { content: `data:${type};base64,${b64}` } }] } });
     configure(f.url, "chat");
+    const lessonVersionId = await versionId();
+    const learnerId = await learnerId_();
     const mem = memoryStorage();
     setStorage(mem);
-    const r = await generateImage({ ...base, lessonVersionId: await versionId(), learnerId: await learnerId_() });
+    const r = await generateImage({ ...base, lessonVersionId, learnerId });
     assert.equal(r.status, "ready");
     assert.equal([...mem.objects.values()][0]!.contentType, type);
   });
@@ -205,9 +211,11 @@ for (const [name, body] of chatShapes) {
   test(`chat reply with ${name} is read as the picture`, async () => {
     const f = await fake("chat", { body });
     configure(f.url, "chat");
+    const lessonVersionId = await versionId();
+    const learnerId = await learnerId_();
     const mem = memoryStorage();
     setStorage(mem);
-    const r = await generateImage({ ...base, lessonVersionId: await versionId(), learnerId: await learnerId_() });
+    const r = await generateImage({ ...base, lessonVersionId, learnerId });
     assert.equal(r.status, "ready");
     assert.equal([...mem.objects.values()][0]!.contentType, "image/png");
   });

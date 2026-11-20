@@ -1,0 +1,103 @@
+{
+  "slug": "scrim-return-values",
+  "title": "What a function gives back",
+  "concepts": [
+    "functions",
+    "return values"
+  ],
+  "position": 0,
+  "status": "published",
+  "steps": [
+    {
+      "public": {
+        "title": "What does add(2, 3) give back?",
+        "prompt": "add prints the sum. What value does the caller get from add(2, 3)?",
+        "kind": "mcq",
+        "options": [
+          "undefined, because nothing is returned",
+          "5, because the sum is returned",
+          "Nothing, because add throws an error"
+        ]
+      },
+      "secret": {
+        "beforeFiles": {
+          "src/add.js": "export function add(a, b) {\n  console.log(a + b);\n}\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/add.js",
+            "oldStart": 1,
+            "lines": [
+              " export function add(a, b) {",
+              "-  console.log(a + b);",
+              "+  return a + b;",
+              " }"
+            ]
+          }
+        ],
+        "answer": 0,
+        "hints": [
+          {
+            "text": "add only calls console.log. Nothing in it can throw here.",
+            "eliminate": 2
+          },
+          {
+            "text": "A function hands a value back only through a return statement. Look for one in add."
+          }
+        ],
+        "explanations": {
+          "workedExample": "console.log prints 5 but returns undefined. A function with no return statement hands undefined back to its caller.",
+          "practice": "Write double(n) so it returns n * 2. The caller can then store the result."
+        }
+      }
+    }
+  ],
+  "scrim": {
+    "kind": "scrim",
+    "language": "javascript",
+    "segments": [
+      {
+        "text": "Here is add. It takes two numbers and prints their sum. Before we run it, predict the value that add(2, 3) gives back.",
+        "durationMs": 3000,
+        "edit": {
+          "code": "export function add(a, b) {\n  console.log(a + b);\n}\n",
+          "run": false
+        }
+      },
+      {
+        "text": "Run it. The sum prints in the console. Now think about what the caller actually receives from add.",
+        "durationMs": 3000,
+        "edit": {
+          "code": "export function add(a, b) {\n  console.log(a + b);\n}\n",
+          "run": true
+        },
+        "gate": 0
+      },
+      {
+        "text": "Add a return statement. Now the caller receives 5, and the function stops at that line.",
+        "durationMs": 3000,
+        "edit": {
+          "code": "export function add(a, b) {\n  return a + b;\n}\n",
+          "run": true
+        }
+      },
+      {
+        "text": "Next, the lab asks you to write a function that returns a value. Run your code and check the sample tests.",
+        "durationMs": 3000
+      }
+    ],
+    "lab": {
+      "kind": "practice",
+      "instructions": "Write double(n) so it returns n times 2. The program reads one number from stdin, passes it to double and prints the result.",
+      "language": "javascript",
+      "starterCode": "function double(n) {\n  \n}\n\nconst n = Number(require(\"fs\").readFileSync(0, \"utf8\"));\nconsole.log(double(n));\n",
+      "tests": [
+        { "id": "two", "name": "double 2", "stdin": "2", "expectedStdout": "4", "visibility": "sample" },
+        { "id": "five", "name": "double 5", "stdin": "5", "expectedStdout": "10", "visibility": "sample" },
+        { "id": "hidden-1", "name": "hidden case 1", "stdin": "0", "expectedStdout": "0", "visibility": "hidden" },
+        { "id": "hidden-2", "name": "hidden case 2", "stdin": "-7", "expectedStdout": "-14", "visibility": "hidden" }
+      ]
+    }
+  }
+}
