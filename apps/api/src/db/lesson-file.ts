@@ -51,8 +51,10 @@ export const LessonFile = z
   .superRefine((file, ctx) => {
     if (!file.scrim) return;
     file.scrim.segments.forEach((segment, idx) => {
-      if (segment.gate !== undefined && segment.gate >= file.steps.length)
-        ctx.addIssue({ code: "custom", path: ["scrim", "segments", idx, "gate"], message: `gate ${segment.gate} has no step in this lesson` });
+      if (segment.gate === undefined) return;
+      const step = file.steps[segment.gate];
+      if (!step) ctx.addIssue({ code: "custom", path: ["scrim", "segments", idx, "gate"], message: `gate ${segment.gate} has no step in this lesson` });
+      else if (step.public.kind !== "mcq") ctx.addIssue({ code: "custom", path: ["scrim", "segments", idx, "gate"], message: `gate ${segment.gate} must be a multiple-choice step` });
     });
   });
 export type LessonFile = z.infer<typeof LessonFile>;

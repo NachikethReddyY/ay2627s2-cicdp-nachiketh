@@ -11,7 +11,7 @@ import { collectionPaths, collections, concepts, lessonMedia, lessons, lessonVer
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
 
-const SAMPLE_WORLDS = ["variables", "loops", "scrim-demo"];
+const SAMPLE_WORLDS = ["variables", "loops"];
 const SCRIM_PLACEHOLDER_MS = 300;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -71,7 +71,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
       sourceKind: file.source ? ("repo" as const) : ("authored" as const),
       source: file.source ?? null,
       concepts: file.concepts,
-      ...(file.scrim ? { kind: "scrim" as const } : {}),
+      kind: file.scrim ? ("scrim" as const) : ("predict" as const),
     };
     await tx
       .insert(lessons)
@@ -88,7 +88,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
       .onConflictDoNothing();
     const [version] = await tx.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id));
     await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
-    if (file.scrim) await tx.update(lessonVersions).set({ content: file.scrim }).where(eq(lessonVersions.id, version.id));
+    await tx.update(lessonVersions).set({ content: file.scrim ?? null }).where(eq(lessonVersions.id, version.id));
 
     for (const [idx, s] of file.steps.entries()) {
       const row = {
@@ -124,8 +124,10 @@ async function seedNarration(file: LessonFile) {
 export async function seed() {
   const main = await loadWorld("codequest");
   const samples = await Promise.all(SAMPLE_WORLDS.map(loadWorld));
+  const scrimDemo = await loadWorld("scrim-demo");
   await db.transaction(async (tx) => {
     const codeQuestId = await seedWorld(tx, main);
+    await seedWorld(tx, scrimDemo);
 
     const path = { title: "JavaScript Foundations", tagline: "Read real code and predict what it does" };
     await tx
@@ -156,7 +158,7 @@ export async function seed() {
       await tx.insert(pathCourses).values({ pathId: sample.id, worldId, position }).onConflictDoNothing();
     }
   });
-  for (const file of [main, ...samples].flatMap((world) => world.files)) await seedNarration(file);
+  for (const file of [main, scrimDemo, ...samples].flatMap((world) => world.files)) await seedNarration(file);
 }
 
 if (import.meta.main) {

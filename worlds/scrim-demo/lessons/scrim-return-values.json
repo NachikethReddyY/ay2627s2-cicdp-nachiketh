@@ -95,8 +95,8 @@
       "tests": [
         { "id": "two", "name": "double 2", "stdin": "2", "expectedStdout": "4", "visibility": "sample" },
         { "id": "five", "name": "double 5", "stdin": "5", "expectedStdout": "10", "visibility": "sample" },
-        { "id": "zero", "name": "hidden case 1", "stdin": "0", "expectedStdout": "0", "visibility": "hidden" },
-        { "id": "negative", "name": "hidden case 2", "stdin": "-7", "expectedStdout": "-14", "visibility": "hidden" }
+        { "id": "hidden-1", "name": "hidden case 1", "stdin": "0", "expectedStdout": "0", "visibility": "hidden" },
+        { "id": "hidden-2", "name": "hidden case 2", "stdin": "-7", "expectedStdout": "-14", "visibility": "hidden" }
       ]
     }
   }

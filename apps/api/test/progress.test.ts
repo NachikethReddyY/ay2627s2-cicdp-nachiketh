@@ -69,7 +69,7 @@ test("enrolled learner gets continue, progress and XP", async () => {
   assert.deepEqual(body.continue.lesson, { slug: "lesson-1", title: body.continue.lesson.title, level: 1, done: 0, total: 3 });
   assert.equal(body.continue.course.slug, "codequest");
   assert.deepEqual(body.official, [
-    { slug: "sample-courses", title: "Sample courses", tagline: "Short courses to try LearnSlop", origin: "official", courseCount: 3, learners: 0 },
+    { slug: "sample-courses", title: "Sample courses", tagline: "Short courses to try LearnSlop", origin: "official", courseCount: 2, learners: 0 },
   ]);
 
   assert.equal((await answer(cookie, "s1", { kind: "mcq", choice: 1 })).statusCode, 200);
