@@ -63,6 +63,15 @@
   font: 400 14px var(--sans);
   color: var(--mu);
 }
+.course .course-writing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  font: 400 14px/1.4 var(--sans);
+  color: var(--mu);
+}
 .course .course-prog { margin-top: 20px; }
 .course .course-prog-label {
   margin-bottom: 8px;
@@ -301,6 +310,19 @@
 }
 .course .lesson-state.done { color: var(--okT); }
 .course .lesson-state.cur { padding: 2px 7px; border-radius: 999px; color: var(--on-ac); background: var(--ac); }
+.course .lesson-write {
+  display: inline-block;
+  font: 600 10px/1 var(--sans);
+  letter-spacing: 0.04em;
+  color: var(--mu);
+}
+.course .lesson-write.failed,
+.course .lesson-write.pending { color: var(--warn); }
+.course .lesson-pop-error {
+  margin-top: 10px;
+  color: var(--bad);
+  font: 400 14px/1.4 var(--sans);
+}
 .course .lesson-kind {
   display: inline-block;
   padding: 2px 8px;

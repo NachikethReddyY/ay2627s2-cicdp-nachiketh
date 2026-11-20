@@ -1,8 +1,10 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, Lock, Play, Star } from "lucide-react";
 import type { CourseData } from "../../lib/api";
+import { trpc } from "../../lib/trpc";
+import { writeLabel } from "./writeProgress";
 
 type Lesson = CourseData["lessons"][number];
 
@@ -13,12 +15,38 @@ function Pill({ kind }: { kind: Lesson["kind"] }) {
   return <span className="lesson-kind">{kinds[kind]}</span>;
 }
 
-type Props = { l: Lesson; slug: string; state: "done" | "cur" | "locked"; x: number; cta: string; open: boolean; setOpen: (s: string | null) => void };
+type Props = {
+  l: Lesson;
+  slug: string;
+  state: "done" | "cur" | "locked";
+  x: number;
+  cta: string;
+  open: boolean;
+  setOpen: (s: string | null) => void;
+  onWritten: () => void;
+};
 
 const stateText = { done: "Done", cur: "Now", locked: "Locked" };
 
-export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Props) {
+export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWritten }: Props) {
   const reduce = useReducedMotion();
+  const [writing, setWriting] = useState(false);
+  const [writeError, setWriteError] = useState(false);
+  const needsWrite = state !== "locked" && (l.writeState === "failed" || l.writeState === "pending");
+  const write = () => {
+    setWriting(true);
+    setWriteError(false);
+    void trpc.lessons.write.mutate({ id: l.slug }).then(
+      () => {
+        setWriting(false);
+        onWritten();
+      },
+      () => {
+        setWriting(false);
+        setWriteError(true);
+      },
+    );
+  };
   const li = useRef<HTMLLIElement>(null);
   const node = useRef<HTMLAnchorElement>(null);
   const lock = useRef<HTMLButtonElement>(null);
@@ -81,6 +109,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
           <div className="lesson-tag-top">
             <span className={`lesson-state ${state}`}>{stateText[state]}</span>
             <Pill kind={l.kind} />
+            {writeLabel[l.writeState] && <span className={`lesson-write ${l.writeState}`}>{writeLabel[l.writeState]}</span>}
           </div>
           <p className="lesson-tag-title">{l.title}</p>
         </div>
@@ -103,6 +132,14 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen }: Pr
           <div className="lesson-pop-kind"><Pill kind={l.kind} /></div>
           {state === "locked" ? (
             <p className="lesson-pop-note">Finish the lessons before this one to unlock it.</p>
+          ) : needsWrite ? (
+            <>
+              <p className="lesson-pop-note">{l.writeState === "failed" ? "Writing this lesson failed." : "This lesson isn't written yet."}</p>
+              <button type="button" className="btn lesson-pop-btn" disabled={writing} onClick={write}>
+                {writing ? "Writing…" : "Write now"}
+              </button>
+              {writeError && <p role="alert" className="lesson-pop-error">Couldn't write this lesson. Try again.</p>}
+            </>
           ) : (
             <Link
               to="/play"

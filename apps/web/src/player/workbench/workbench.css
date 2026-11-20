@@ -2,6 +2,7 @@
 /* In the components layer so Tailwind utilities (gap-1, h-[22px]) can override these rules. */
 @layer components {
   .wb {
+    --wb-status-height: 25px;
     --tx: #1c1c1e; --mu: #555a66; --line: #D7D6D6; --side: #EDECEC; --code: #FFFFFF; --tbar: #FFFFFF;
     --selrow: #D7D6D6; --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
     --ac: #2f5fd6; --acT: #2f5fd6; --cur: #fff6cf; --numdim: #b4b8c0;
@@ -49,8 +50,13 @@
 
   /* >=1024 px: the desktop. Wallpaper behind a floating window (Main.dc.html: 32 px inset, 16 px radius). */
   .wb-desk {
-    position: relative; isolation: isolate; padding: 32px; box-sizing: border-box;
+    --wb-inset: 32px;
+    position: relative; isolation: isolate; padding: var(--wb-inset); box-sizing: border-box;
     background: #a9c7f7;
+  }
+  .wb-player-overlay {
+    position: absolute; z-index: 20; pointer-events: none;
+    inset: var(--wb-inset, 0px) var(--wb-inset, 0px) calc(var(--wb-inset, 0px) + var(--wb-status-height));
   }
   .wb-desk::before, .wb-desk::after {
     position: absolute; z-index: -1; inset: 0; content: ""; pointer-events: none;

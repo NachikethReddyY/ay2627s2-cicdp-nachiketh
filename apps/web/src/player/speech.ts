@@ -1,9 +1,9 @@
 
 export type SpeechError = { error?: string };
-export type Utterance = { text: string; volume: number; onend: (() => void) | null; onerror: ((e?: SpeechError) => void) | null };
+export type Utterance = { text: string; volume: number; rate?: number; onend: (() => void) | null; onerror: ((e?: SpeechError) => void) | null };
 export type Synth = { speak(u: Utterance): void; cancel(): void; pause(): void; resume(): void };
 export type Speaker = {
-  speak(text: string, o: { volume: number; muted: boolean }): void;
+  speak(text: string, o: { volume: number; muted: boolean; rate?: number; onDone?: () => void }): void;
   pause(): void;
   resume(): void;
   cancel(): void;
@@ -41,12 +41,24 @@ export function createSpeaker(synth: Synth | null | undefined, makeUtterance: (t
   let paused = false;
   let halted = false;
   let respeak = false;
+  let rate = 1;
+  let done: (() => void) | null = null;
+
+  const finish = () => {
+    const d = done;
+    done = null;
+    d?.();
+  };
 
   const say = () => {
-    if (i >= sentences.length) return;
+    if (i >= sentences.length) {
+      finish();
+      return;
+    }
     const g = gen;
     const u = makeUtterance(sentences[i]);
     u.volume = volume;
+    u.rate = rate;
     u.onend = () => {
       if (g !== gen) return;
       i += 1;
@@ -57,6 +69,7 @@ export function createSpeaker(synth: Synth | null | undefined, makeUtterance: (t
       if (e?.error && FATAL.has(e.error)) {
         halted = true;
         paused = true;
+        finish();
         return;
       }
       i += 1;
@@ -81,6 +94,8 @@ export function createSpeaker(synth: Synth | null | undefined, makeUtterance: (t
       sentences = splitSentences(text);
       i = 0;
       volume = o.muted ? 0 : o.volume;
+      rate = o.rate ?? 1;
+      done = o.onDone ?? null;
       say();
     },
     pause() {
@@ -98,6 +113,7 @@ export function createSpeaker(synth: Synth | null | undefined, makeUtterance: (t
     cancel() {
       gen += 1;
       sentences = [];
+      done = null;
       paused = false;
       halted = false;
       respeak = false;

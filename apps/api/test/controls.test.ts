@@ -24,6 +24,7 @@ const outline = {
 let outlineCalls = 0;
 let lessonCalls = 0;
 beforeEach(() => {
+  env.AI_WRITE_COURSE_ON_GENERATE = false;
   env.ENGINE_TOKEN = "t".repeat(32);
   env.AI_KILL_SWITCH = false;
   outlineCalls = 0;

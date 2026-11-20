@@ -30,6 +30,7 @@ const outline = {
 };
 const saved = { est: env.AI_CALL_ESTIMATE_USD, d: env.AI_DAILY_BUDGET_USD, m: env.AI_MONTHLY_BUDGET_USD };
 beforeEach(() => {
+  env.AI_WRITE_COURSE_ON_GENERATE = false;
   env.ENGINE_TOKEN = "t".repeat(32);
   generator.outline = async () => outline;
 });

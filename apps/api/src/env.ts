@@ -24,6 +24,7 @@ const schema = z
     AI_CALL_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0.01)),
     AI_BUDGET_UNLIMITED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
     AI_KILL_SWITCH: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+    AI_WRITE_COURSE_ON_GENERATE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
     S3_ENDPOINT: z.url().optional(),
     S3_BUCKET: z.string().min(1).optional(),
     S3_ACCESS_KEY_ID: z.string().min(1).optional(),

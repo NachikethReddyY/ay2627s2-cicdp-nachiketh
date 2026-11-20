@@ -41,7 +41,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     const title = courseState.data ? lessonTitle(courseState.data.lessons, slug) : undefined;
     return (
       <Notice>
-        <p>{slow ? "Writing your next lesson…" : "Loading lesson…"}</p>
+        <p>{slow ? "Writing this lesson…" : "Loading lesson…"}</p>
         {title && <p className="mt-1 text-sm font-normal">Up next: {title}</p>}
         <div className="mt-3 h-3 w-64 max-w-full overflow-hidden track" aria-hidden="true">
           <div className="sketch h-full w-1/3 rounded-full bg-blue" />

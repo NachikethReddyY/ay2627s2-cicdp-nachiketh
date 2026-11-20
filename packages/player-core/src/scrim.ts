@@ -1,5 +1,6 @@
 import { seek } from "./seek.ts";
 import { editTimeline, SCRIM_FILE } from "./scrim-timeline.ts";
+import type { SeekResult } from "./types.ts";
 
 const GAP_SHARE = 0.85;
 const RUN_DELAY = 0.4;
@@ -69,17 +70,22 @@ export function shownEdits(scrim: ScrimTimeline, answered: ReadonlySet<string>, 
   return shown;
 }
 
-export function codeAt(scrim: ScrimTimeline, answered: ReadonlySet<string>, t: number): string {
+export function frameAt(scrim: ScrimTimeline, answered: ReadonlySet<string>, t: number): SeekResult {
   const shown = shownEdits(scrim, answered, t);
-  if (shown === 0) return "";
+  if (shown === 0) return { files: { [SCRIM_FILE]: "" }, activePath: SCRIM_FILE, eventIndex: 0, replayed: 0, lastEdit: null };
   const i = shown - 1;
   const after = scrim.edits[i].code;
   const elapsed = t - scrim.times[i];
-  if (elapsed >= scrim.typing[i]) return after;
+  if (elapsed >= scrim.typing[i]) return { files: { [SCRIM_FILE]: after }, activePath: SCRIM_FILE, eventIndex: shown, replayed: 0, lastEdit: null };
   const before = i > 0 ? scrim.edits[i - 1].code : "";
   const timeline = editTimeline(before, after);
   const progress = scrim.typing[i] > 0 ? elapsed / scrim.typing[i] : 1;
-  return seek(timeline, Math.max(0, progress) * timeline.duration).files[SCRIM_FILE] ?? after;
+  const result = seek(timeline, Math.max(0, progress) * timeline.duration);
+  return { ...result, activePath: SCRIM_FILE, files: { [SCRIM_FILE]: result.files[SCRIM_FILE] ?? after } };
+}
+
+export function codeAt(scrim: ScrimTimeline, answered: ReadonlySet<string>, t: number): string {
+  return frameAt(scrim, answered, t).files[SCRIM_FILE] ?? "";
 }
 
 export function runCrossed(scrim: ScrimTimeline, from: number, to: number): { edit: number; t: number } | null {

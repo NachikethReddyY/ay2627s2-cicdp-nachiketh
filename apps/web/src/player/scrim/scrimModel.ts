@@ -4,6 +4,7 @@ import {
   openGate,
   reachable,
   scrimClock,
+  segmentAt,
   type ScrimGate,
   type ScrimTimeline,
   type TimedEdit,
@@ -92,6 +93,30 @@ function moveTo(state: Playback, t: number): Playback {
   const next = { ...state, t: reachable(state.scrim, state.answered, t) };
   const stopped = heldGate(next) !== null || next.t >= next.scrim.clock.total;
   return stopped ? { ...next, playing: false } : next;
+}
+
+export type SpeechView = { playing: boolean; segment: number; held: boolean };
+export type SpeechCue = { type: "none" } | { type: "cancel" } | { type: "speak"; text: string };
+
+export function speechView(state: Playback): SpeechView {
+  return { playing: state.playing, segment: segmentAt(state.scrim.clock, state.t).index, held: heldGate(state) !== null };
+}
+
+export function speechCue(prev: SpeechView, next: SpeechView, cues: { texts: readonly string[]; silent: readonly boolean[]; jumped: boolean }): SpeechCue {
+  if (next.held || !next.playing) return { type: "cancel" };
+  if (!cues.jumped && prev.playing && prev.segment === next.segment) return { type: "none" };
+  return cues.silent[next.segment] ? { type: "speak", text: cues.texts[next.segment] ?? "" } : { type: "cancel" };
+}
+
+export type SkipDirection = "back" | "forward";
+
+const RESTART_WITHIN_SECONDS = 3;
+
+export function partSkipTarget(clock: ScrimTimeline["clock"], t: number, direction: SkipDirection): number | null {
+  const current = segmentAt(clock, t);
+  if (direction === "forward") return clock.offsets[current.index + 1] ?? null;
+  if (current.index === 0 || current.local >= RESTART_WITHIN_SECONDS) return clock.offsets[current.index] ?? null;
+  return clock.offsets[current.index - 1] ?? null;
 }
 
 export function playbackReducer(state: Playback, action: PlaybackAction): Playback {

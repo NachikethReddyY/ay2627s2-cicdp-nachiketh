@@ -13,7 +13,7 @@ type Props = {
   split?: boolean;
   nav: Toggle;
   terminal: Toggle;
-  util: Toggle;
+  util?: Toggle;
   onRun(): void;
   actions: ReactNode;
   trailing?: ReactNode;
@@ -145,7 +145,7 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
           {trailing}
           <ToggleButton t={nav} icon={PanelLeft} />
           <ToggleButton t={terminal} icon={PanelBottom} />
-          <ToggleButton t={util} icon={PanelRight} />
+          {util && <ToggleButton t={util} icon={PanelRight} />}
         </span>
       </div>
       {!split && <Breadcrumbs title={title} fileName={fileName} crumbs={crumbs} symbol={symbol} edge="top" />}

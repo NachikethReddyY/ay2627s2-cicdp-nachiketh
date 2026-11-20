@@ -81,7 +81,23 @@ const Lesson = z.object({
   media: z.array(z.object({ stepId: z.string().nullable(), segment: z.number().nullable(), kind: z.literal("narration"), url: z.string() })),
 });
 
+const write = protectedProcedure
+  .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/) }))
+  .output(z.object({ ok: z.literal(true) }))
+  .mutation(async ({ ctx, input }) => {
+    const [found] = await db
+      .select({ id: lessons.id })
+      .from(lessons)
+      .innerJoin(worlds, eq(worlds.id, lessons.worldId))
+      .innerJoin(learners, eq(learners.id, ctx.learnerId))
+      .where(and(lessonRef(input.id, lessons), eq(lessons.sourceKind, "ai"), visibleWorld(learners.userId, worlds)));
+    if (!found) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+    await ensureLesson(found.id, ctx.learnerId);
+    return { ok: true as const };
+  });
+
 export const lessonsRouter = router({
+  write,
   get: protectedProcedure
     .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/) }))
     .output(Lesson)

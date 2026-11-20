@@ -44,6 +44,7 @@ const realEngineLesson = engineParts.lesson;
 let lessonCalls = 0;
 let lessonOut: (kind: string) => unknown;
 beforeEach(() => {
+  env.AI_WRITE_COURSE_ON_GENERATE = false;
   env.ENGINE_TOKEN = "t".repeat(32);
   lessonCalls = 0;
   lessonOut = (kind) => parts[kind as keyof typeof parts];

@@ -12,7 +12,7 @@ Routes marked dev or test only exist in non-production builds.
 | Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your path** and the **Generator**, which turns a concept into a lesson. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses collections and paths. |
-| Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. |
+| Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. A generated course writes all its lessons in the background, three at a time. While some are still writing the page shows how many are ready, with **Check again**. A lesson tagged **Writing…** is still being written; **Couldn't write** or **Not written yet** lessons offer **Write now** (`lessons.write`). Write states come from `courses.get` (`writeState`) and live in process memory (`apps/api/src/ai/service.ts`). |
 | Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
 | Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the practice lab of a practice lesson, or the lab a scrim ends with, in the **Workbench**. Same Run, Submit, Lint and Sloppy as `/play`. A lesson with no lab shows a notice. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Manages the account. |
@@ -45,7 +45,7 @@ A lesson's `kind` decides which parts the player shows. The kind is stored on `l
 
 | Name | Kind | What the learner does | Code |
 |---|---|---|---|
-| Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** holds playback at the start of its segment until the gate step is answered or skipped, so the prediction comes first. The lesson ends with a practice lab. | Player `apps/web/src/player/scrim/` (`ScrimWatch`, `GatePanel`, model in `scrimModel.ts`). Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Seeded demo `worlds/scrim-demo/`. |
+| Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** holds playback at the start of its segment until the gate step is answered or skipped, so the prediction comes first. Captions and playback controls float above the workbench and stay in place when the terminal opens. The lesson ends with a practice lab. | Player `apps/web/src/player/scrim/` (`ScrimWatch`, `GatePanel`, model in `scrimModel.ts`). Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Generated scrims: the engine drafts one for a code course, and the API stores its gate steps as ordinary mcq `steps` rows, so `lessons.get` never sends the answers or hints. Seeded demo `worlds/scrim-demo/`. |
 
 The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. The lesson player (`/play`) plays the segments, holds at gates, and opens the lab in the practice workbench after **Start the lab**.
 

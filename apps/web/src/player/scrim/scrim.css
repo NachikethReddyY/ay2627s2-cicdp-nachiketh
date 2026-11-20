@@ -1,13 +1,181 @@
 .scrim-range {
+  flex: 1;
+  min-width: 0;
   height: 4px;
   accent-color: var(--ac);
   cursor: pointer;
 }
 
-.scrim-controls {
-  flex: none;
-  max-height: 55%;
+.scrim-overlay {
+  position: absolute;
+  inset: 88px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.scrim-caption,
+.scrim-gate,
+.scrim-lab,
+.scrim-pill {
+  pointer-events: auto;
+}
+
+.scrim-caption {
+  min-height: 0;
+  width: fit-content;
+  max-width: min(100%, 32rem);
+  max-height: 7.5rem;
   overflow: auto;
-  border-top: 1px solid var(--line);
-  background: var(--tbar);
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.72);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.scrim-gate,
+.scrim-pill {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--lift);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  color: var(--tx);
+}
+
+.scrim-gate {
+  min-height: 0;
+  max-width: 32rem;
+  max-height: 12rem;
+  overflow: auto;
+  padding: 10px 14px;
+  border-radius: 14px;
+}
+
+.scrim-lab {
+  flex: none;
+}
+
+.scrim-pill {
+  flex: none;
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--glass) 55%, transparent);
+  transition: opacity 320ms ease;
+}
+
+@media (hover: hover) {
+  .scrim-overlay[data-playing="true"] .scrim-pill {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .wb:has(> .wb-player-window:hover) .scrim-overlay[data-playing="true"] .scrim-pill,
+  .scrim-overlay[data-playing="true"]:hover .scrim-pill,
+  .scrim-overlay[data-playing="true"] .scrim-pill:has(:focus-visible) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.scrim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scrim-transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scrim-time {
+  flex: none;
+  min-width: 2.75em;
+  color: var(--mu);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scrim-time:last-child {
+  text-align: right;
+}
+
+.scrim-icon,
+.scrim-play {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--tx);
+  cursor: pointer;
+  font: inherit;
+}
+
+.scrim-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.scrim-play {
+  width: 40px;
+  height: 40px;
+  background: var(--ac);
+  color: var(--on-ac);
+}
+
+.scrim-icon:hover:not(:disabled) {
+  background: var(--hov);
+}
+
+.scrim-play:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.scrim-icon:disabled,
+.scrim-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.scrim-speed {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tx);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.scrim-overlay button:focus-visible,
+.scrim-overlay select:focus-visible,
+.scrim-overlay input:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim-pill {
+    transition: none;
+  }
 }

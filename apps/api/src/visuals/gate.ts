@@ -1,12 +1,11 @@
 import { z } from "zod";
 import { parseSpec } from "@learnquest/ui-catalog";
 import { buildTimeline, seek } from "@learnquest/player-core";
-import { ScrimContent } from "../parts/scrim-schema.ts";
+import { checkStep, Hunk, text } from "../ai/step-schema.ts";
+import { GeneratedScrim } from "../parts/scrim-schema.ts";
 import { PracticeContent } from "../parts/practice-schema.ts";
-import type { PartSecret } from "../db/schema.ts";
+import type { GeneratedPart } from "../db/schema.ts";
 
-const text = (max: number) => z.string().trim().min(1).max(max);
-const Hunk = z.object({ id: text(40), file: text(200), oldStart: z.number().int().min(1), lines: z.array(z.string().max(300)).min(1).max(60) });
 const Part = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("learn"), body: text(4000), doc: z.unknown().optional() }),
   z.object({
@@ -15,7 +14,7 @@ const Part = z.discriminatedUnion("kind", [
     hunks: z.array(Hunk).min(1).max(6),
   }),
   PracticeContent,
-  ScrimContent,
+  GeneratedScrim,
   z.object({ kind: z.literal("game-practice"), intro: text(500), doc: z.unknown() }),
 ]);
 
@@ -32,7 +31,7 @@ const dropClientImages = <T extends { blocks: Array<{ type: string; props?: unkn
   blocks: spec.blocks.filter((b) => !(b.type === "image" && ["generated", "generated-pending"].includes((b.props as { source?: string } | undefined)?.source ?? ""))),
 });
 
-export function validatePart(raw: unknown): PartSecret {
+export function validatePart(raw: unknown): GeneratedPart {
   const part = Part.parse(raw);
   switch (part.kind) {
     case "learn": {
@@ -47,7 +46,9 @@ export function validatePart(raw: unknown): PartSecret {
       return { kind: "watch", beforeFiles: part.beforeFiles, hunks: part.hunks };
     }
     case "practice":
+      return part;
     case "scrim":
+      for (const step of part.steps) checkStep(step);
       return part;
     case "game-practice": {
       const parsed = parseSpec(part.doc);

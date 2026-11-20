@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
-import { generatePath } from "../ai/service.ts";
+import { generatePath, lessonWriteState } from "../ai/service.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { TRPCError } from "@trpc/server";
 import { complete, lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
@@ -14,6 +14,7 @@ const Lesson = z.object({
   done: z.number(),
   total: z.number(),
   kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]),
+  writeState: z.enum(["ready", "writing", "failed", "pending"]),
 });
 const CourseDetail = z.object({
   slug: z.string(),
@@ -62,12 +63,14 @@ const courseGet = protectedProcedure.input(Slug).output(CourseDetail).query(asyn
         WHERE w.slug = ${input.slug} AND ${visibleCourse(me)}`);
       if (!course) throw notFound("Course not found");
 
-      const { rows: lessonRows } = await db.execute<z.infer<typeof Lesson>>(sql`
-        SELECT l.slug, l.title, l.level, l.kind, ${lessonDone(me)} AS done, ${lessonTotal} AS total
+      const { rows: lessonRows } = await db.execute<Omit<z.infer<typeof Lesson>, "writeState"> & { id: string; written: boolean }>(sql`
+        SELECT l.id, l.slug, l.title, l.level, l.kind, ${lessonDone(me)} AS done, ${lessonTotal} AS total,
+          (l.current_version_id IS NOT NULL) AS written
         FROM lessons l
         WHERE l.world_id = ${course.id} AND ${listed}
         ORDER BY l.level, l.position, l.id`);
-      return { slug: course.slug, title: course.title, description: course.description, origin: course.origin, lessons: lessonRows };
+      const lessons = lessonRows.map(({ id, written, ...lesson }) => ({ ...lesson, writeState: lessonWriteState(id, written) }));
+      return { slug: course.slug, title: course.title, description: course.description, origin: course.origin, lessons };
   });
 
 const pathList = protectedProcedure
