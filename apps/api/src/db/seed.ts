@@ -1,14 +1,18 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { saveMedia } from "../media/service.ts";
+import { silentWav } from "../media/silent-wav.ts";
+import { storage } from "../media/storage.ts";
 import { slugOf } from "../progress/mastery.ts";
 import { db, pool } from "./client.ts";
 import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
-import { collectionPaths, collections, concepts, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
+import { collectionPaths, collections, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
 
 const SAMPLE_WORLDS = ["variables", "loops"];
+const SCRIM_PLACEHOLDER_MS = 300;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -67,6 +71,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
       sourceKind: file.source ? ("repo" as const) : ("authored" as const),
       source: file.source ?? null,
       concepts: file.concepts,
+      kind: file.scrim ? ("scrim" as const) : ("predict" as const),
     };
     await tx
       .insert(lessons)
@@ -83,6 +88,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
       .onConflictDoNothing();
     const [version] = await tx.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id));
     await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
+    await tx.update(lessonVersions).set({ content: file.scrim ?? null }).where(eq(lessonVersions.id, version.id));
 
     for (const [idx, s] of file.steps.entries()) {
       const row = {
@@ -98,11 +104,30 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
   return worldId;
 }
 
+async function seedNarration(file: LessonFile) {
+  const scrim = file.scrim;
+  if (!scrim || !storage) return;
+  const [lesson] = await db.select({ versionId: lessons.currentVersionId }).from(lessons).where(eq(lessons.slug, file.slug));
+  const versionId = lesson?.versionId;
+  if (!versionId) throw new Error(`${file.slug}: no current version to attach narration to`);
+  const ready = await db
+    .select({ segment: lessonMedia.segment })
+    .from(lessonMedia)
+    .where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.kind, "narration"), eq(lessonMedia.status, "ready")));
+  const have = new Set(ready.map((r) => r.segment));
+  for (const segment of scrim.segments.keys()) {
+    if (have.has(segment)) continue;
+    await saveMedia({ lessonVersionId: versionId, segment, kind: "narration", body: silentWav(SCRIM_PLACEHOLDER_MS), contentType: "audio/wav" });
+  }
+}
+
 export async function seed() {
   const main = await loadWorld("codequest");
   const samples = await Promise.all(SAMPLE_WORLDS.map(loadWorld));
+  const scrimDemo = await loadWorld("scrim-demo");
   await db.transaction(async (tx) => {
     const codeQuestId = await seedWorld(tx, main);
+    await seedWorld(tx, scrimDemo);
 
     const path = { title: "JavaScript Foundations", tagline: "Read real code and predict what it does" };
     await tx
@@ -133,6 +158,7 @@ export async function seed() {
       await tx.insert(pathCourses).values({ pathId: sample.id, worldId, position }).onConflictDoNothing();
     }
   });
+  for (const file of [main, scrimDemo, ...samples].flatMap((world) => world.files)) await seedNarration(file);
 }
 
 if (import.meta.main) {

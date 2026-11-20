@@ -14,6 +14,7 @@ const KINDS: Record<MediaKind, { maxBytes: number; types: Record<string, { ext: 
   narration: {
     maxBytes: 10 * MiB,
     types: {
+      "audio/wav": { ext: "wav", magic: (b) => starts(b, [0x52, 0x49, 0x46, 0x46]) && starts(b, [0x57, 0x41, 0x56, 0x45], 8) },
       "audio/mpeg": {
         ext: "mp3",
         magic: (b) => starts(b, [0x49, 0x44, 0x33]) || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0),
@@ -33,6 +34,7 @@ const KINDS: Record<MediaKind, { maxBytes: number; types: Record<string, { ext: 
 export type MediaInput = {
   lessonVersionId: string;
   stepId?: string;
+  segment?: number;
   kind: MediaKind;
   body: Uint8Array;
   contentType: string;
@@ -56,6 +58,7 @@ export function mediaRow(input: MediaInput, key: string) {
   return {
     lessonVersionId: input.lessonVersionId,
     stepId: input.stepId ?? null,
+    segment: input.segment ?? null,
     kind: input.kind,
     promptHash: input.promptHash,
     key,
@@ -74,9 +77,9 @@ export async function listMedia(lessonVersionId: string) {
   const s = storage;
   if (!s) return [];
   const rows = await db
-    .select({ stepId: lessonMedia.stepId, key: lessonMedia.key, status: lessonMedia.status })
+    .select({ stepId: lessonMedia.stepId, segment: lessonMedia.segment, key: lessonMedia.key, status: lessonMedia.status })
     .from(lessonMedia)
     .where(and(eq(lessonMedia.lessonVersionId, lessonVersionId), eq(lessonMedia.kind, "narration")))
     .orderBy(asc(lessonMedia.createdAt));
-  return Promise.all(rows.filter((r): r is typeof r & { key: string } => r.key !== null && r.status === "ready").map(async (r) => ({ stepId: r.stepId, kind: "narration" as const, url: await s.signGet(r.key) })));
+  return Promise.all(rows.filter((r): r is typeof r & { key: string } => r.key !== null && r.status === "ready").map(async (r) => ({ stepId: r.stepId, segment: r.segment, kind: "narration" as const, url: await s.signGet(r.key) })));
 }

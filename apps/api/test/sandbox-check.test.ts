@@ -22,7 +22,7 @@ const tests: Test[] = [
 ];
 const part = (t: Test[] = tests): PartSecret => ({ kind: "practice", instructions: "Add two numbers.", language: "python", starterCode: "# code", tests: t });
 
-async function addLesson(slug: string, kind: "practice" | "learn", content: PartSecret, status: "published" | "draft" = "published") {
+async function addLesson(slug: string, kind: "practice" | "learn" | "scrim", content: PartSecret, status: "published" | "draft" = "published") {
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
   const [lesson] = await db.insert(lessons).values({ slug, title: slug, worldId: world!.id, sourceKind: "authored", kind, status }).returning();
   const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, content }).returning();
@@ -283,4 +283,17 @@ test("a live check and a live run share SANDBOX_MAX_RUNS: with 2, the next check
     env.SANDBOX_MAX_RUNS = max;
   }
   assert.equal(atCapacity(), false, "the check released its slot");
+});
+
+
+test("scrim lab is checked as practice and cannot be completed directly", async () => {
+  const { practiceCheck, practiceTests } = await import("../src/parts/practice.ts");
+  const cookie = await signUp(app);
+  const lab = { kind: "practice" as const, instructions: "Print 42.", starterCode: "", expectedOutput: "42" };
+  await addLesson("scrim-lab", "scrim", { kind: "scrim", language: "python", segments: [{ text: "Predict", durationMs: 500 }], lab });
+  await trpc(app, cookie).q("home.get");
+  const me = (await db.execute<{ id: string }>(sql`SELECT id FROM learners`)).rows[0]!.id;
+  assert.equal((await practiceCheck(me, "scrim-lab"))?.expected, "42");
+  assert.equal((await practiceTests(me, "scrim-lab"))?.practice.tests[0]?.expectedStdout, "42");
+  assert.equal((await trpc(app, cookie).m("parts.complete", { lessonId: "scrim-lab" })).statusCode, 403);
 });

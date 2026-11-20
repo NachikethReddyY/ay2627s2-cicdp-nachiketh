@@ -137,3 +137,22 @@ test("CONFLICT notice survives the re-sync LOADED, clears on the next HINT", () 
   a.send({ type: "HINT", hint: hint(1) });
   assert.equal(a.getSnapshot().context.notice, null);
 });
+
+for (const s of ["predicting", "hinting", "revealed", "skipped"] as const) {
+  test(`a machine started with a ${s} step opens in ${s}`, () => {
+    const loaded = step({ state: s, hints: [hint(1)], attemptAllowed: false });
+    const a = createActor(stepMachine, { input: { lessonSteps: 2, idx: 1, step: loaded } }).start();
+    const c = a.getSnapshot().context;
+    assert.equal(val(a), s);
+    assert.deepEqual([c.idx, c.step, c.hints.length, c.attemptAllowed], [1, loaded, 1, false]);
+  });
+}
+
+test("a machine started with a step still needs a submitted prediction to reveal", () => {
+  const a = createActor(stepMachine, { input: { lessonSteps: 1, step: step() } }).start();
+  a.send({ type: "REVEAL_LOADED", reveal });
+  a.send({ type: "NEXT" });
+  assert.equal(val(a), "predicting");
+  a.send({ type: "RESULT", r: result({ correct: true, state: "revealed" }) });
+  assert.equal(val(a), "revealed");
+});

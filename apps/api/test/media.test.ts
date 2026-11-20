@@ -7,7 +7,7 @@ import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
 import { lessonMedia, lessons, steps, worlds } from "../src/db/schema.ts";
 import { memoryStorage, s3Storage, setStorage } from "../src/media/storage.ts";
-import { saveMedia } from "../src/media/service.ts";
+import { listMedia, saveMedia } from "../src/media/service.ts";
 import { importNarration } from "../src/media/import-narration.ts";
 
 const app = buildApp();
@@ -67,7 +67,7 @@ test("saveMedia writes the object, then the row, under a server-built key", asyn
 
   assert.match(key, new RegExp(`^v/${versionId}/[0-9a-f-]{36}\\.mp3$`));
   assert.equal(mem.objects.get(key)?.contentType, "audio/mpeg");
-  const [row] = await db.select().from(lessonMedia);
+  const [row] = await db.select().from(lessonMedia).where(eq(lessonMedia.lessonVersionId, versionId));
   assert.deepEqual(
     { lessonVersionId: row!.lessonVersionId, stepId: row!.stepId, kind: row!.kind, key: row!.key, bytes: row!.bytes },
     { lessonVersionId: versionId, stepId, kind: "narration", key, bytes: MP3.byteLength },
@@ -82,7 +82,7 @@ test("lessons.get returns signed narration, and no images, for a visible lesson"
   await saveMedia({ lessonVersionId: versionId, stepId, kind: "image", body: PNG, contentType: "image/png" });
 
   const body = out(await trpc(app, cookie).q("lessons.get", { id: "lesson-1" }));
-  assert.deepEqual(body.media, [{ stepId, kind: "narration", url: `memory://${key}` }]);
+  assert.deepEqual(body.media, [{ stepId, segment: null, kind: "narration", url: `memory://${key}` }]);
 });
 
 test("importNarration stores one MP3 per step and skips steps already stored", async () => {
@@ -96,7 +96,7 @@ test("importNarration stores one MP3 per step and skips steps already stored", a
   assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }]), { saved: [a!.idx], skipped: [] });
   assert.deepEqual(await importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }, { idx: b!.idx, body: MP3 }]), { saved: [b!.idx], skipped: [a!.idx] });
 
-  const rows = await db.select().from(lessonMedia).orderBy(asc(lessonMedia.createdAt));
+  const rows = await db.select().from(lessonMedia).where(eq(lessonMedia.lessonVersionId, versionId)).orderBy(asc(lessonMedia.createdAt));
   assert.deepEqual(rows.map((r) => [r.stepId, r.kind, r.contentType]), [[a!.id, "narration", "audio/mpeg"], [b!.id, "narration", "audio/mpeg"]]);
   assert.equal(mem.objects.size, 2);
 });
@@ -109,16 +109,17 @@ test("the database allows only one ready narration per step, and the import trea
   await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" });
   await assert.rejects(saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "narration", body: MP3, contentType: "audio/mpeg" }));
   await saveMedia({ lessonVersionId: versionId, stepId: first!.id, kind: "image", body: PNG, contentType: "image/png" });
-  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 1);
+  assert.equal((await db.select().from(lessonMedia).where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.kind, "narration")))).length, 1);
 
   const [, second] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
   const runs = await Promise.all([1, 2].map(() => importNarration("lesson-1", [{ idx: second!.idx, body: MP3 }])));
   assert.equal(runs.flatMap((r) => r.saved).length, 1);
-  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.kind, "narration"))).length, 2);
+  assert.equal((await db.select().from(lessonMedia).where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.kind, "narration")))).length, 2);
 });
 
 test("importNarration refuses unknown steps, bad bytes and missing storage before writing", async () => {
   await signUp(app);
+  const { versionId } = await lessonVersion();
   const mem = memoryStorage();
   setStorage(mem);
   await assert.rejects(importNarration("lesson-1", [{ idx: 999, body: MP3 }]), /no step with idx 999/);
@@ -129,7 +130,7 @@ test("importNarration refuses unknown steps, bad bytes and missing storage befor
   setStorage(null);
   await rejects(importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }]), "Media storage is not configured");
   assert.equal(mem.objects.size, 0);
-  assert.equal((await db.select().from(lessonMedia)).length, 0);
+  assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.lessonVersionId, versionId))).length, 0);
 });
 
 test("importNarration with replace retires the old ready narration and stores the new one", async () => {
@@ -208,4 +209,21 @@ test("s3 signing is local, 2h, and pinned to the start of the hour", async () =>
   } finally {
     Date.now = realNow;
   }
+});
+
+
+test("segment narration accepts WAV and stays distinct from step narration", async () => {
+  await signUp(app);
+  const { versionId } = await lessonVersion();
+  const [step] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).orderBy(asc(steps.idx));
+  setStorage(memoryStorage());
+  const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]);
+  const input = { lessonVersionId: versionId, stepId: step!.id, segment: 0, kind: "narration" as const, body: wav, contentType: "audio/wav" };
+  const key = await saveMedia(input);
+  assert.match(key, /\.wav$/);
+  await assert.rejects(saveMedia(input));
+  await rejects(saveMedia({ ...input, segment: 1, body: MP3 }), "Media bytes do not match type");
+  assert.deepEqual(await importNarration("lesson-1", [{ idx: step!.idx, body: MP3 }]), { saved: [step!.idx], skipped: [] });
+  await importNarration("lesson-1", [{ idx: step!.idx, body: MP3 }], { replace: true });
+  assert.ok((await listMedia(versionId)).some((row) => row.segment === 0 && row.url === `memory://${key}`));
 });

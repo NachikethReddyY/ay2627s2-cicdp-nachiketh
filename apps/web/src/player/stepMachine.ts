@@ -93,10 +93,12 @@ export const stepMachine = setup({
   types: {
     context: {} as Context,
     events: {} as Event,
-    input: {} as { lessonSteps: number; idx?: number },
+    input: {} as { lessonSteps: number; idx?: number; step?: StepPublic },
   },
   guards: {
     hasNext: ({ context }) => context.idx + 1 < context.lessonSteps,
+    hasNoStep: ({ context }) => context.step === null,
+    startsIn: ({ context }, p: { s: StepState }) => context.step?.state === p.s,
     isState: ({ event }, p: { s: StepState }) => event.type === "LOADED" && event.step.state === p.s,
   },
   actions: {
@@ -119,9 +121,23 @@ export const stepMachine = setup({
   },
 }).createMachine({
   id: "step",
-  context: ({ input }) => ({ ...stepReset, lessonSteps: input.lessonSteps, idx: input.idx ?? 0 }),
-  initial: "browse",
+  context: ({ input }) => ({
+    ...stepReset,
+    lessonSteps: input.lessonSteps,
+    idx: input.idx ?? 0,
+    ...(input.step && { step: input.step, hints: input.step.hints, attemptAllowed: input.step.attemptAllowed }),
+  }),
+  initial: "start",
   states: {
+    start: {
+      always: [
+        { guard: "hasNoStep", target: "browse" },
+        { guard: { type: "startsIn", params: { s: "hinting" } }, target: "hinting" },
+        { guard: { type: "startsIn", params: { s: "revealed" } }, target: "revealed" },
+        { guard: { type: "startsIn", params: { s: "skipped" } }, target: "skipped" },
+        { target: "predicting" },
+      ],
+    },
     browse: {
       on: {
         LOADED: [

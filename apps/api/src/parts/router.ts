@@ -19,7 +19,7 @@ const complete = protectedProcedure
         AND l.status = 'published'
         AND ${visibleWorld(meUser)}`);
     if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
-    if (lesson.kind === "practice" || lesson.kind === "game-practice")
+    if (lesson.kind === "practice" || lesson.kind === "scrim" || lesson.kind === "game-practice")
       throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is completed by playing it" });
     if (lesson.kind !== "predict") {
       await db.execute(sql`

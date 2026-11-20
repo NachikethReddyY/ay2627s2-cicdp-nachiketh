@@ -13,7 +13,7 @@ const Lesson = z.object({
   level: z.number(),
   done: z.number(),
   total: z.number(),
-  kind: z.enum(["predict", "learn", "watch", "practice", "game-practice"]),
+  kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]),
 });
 const CourseDetail = z.object({
   slug: z.string(),

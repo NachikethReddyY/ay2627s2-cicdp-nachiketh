@@ -2,17 +2,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { trpc } from "../../lib/trpc";
 import { dismissJob, getJob, getQueue, startGeneration, subscribeJob } from "./generationJob";
+import { generatorError } from "./generatorErrors";
 import { Flame } from "lucide-react";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
-
-const aiErrors: Record<string, string> = {
-  PRECONDITION_FAILED: "Path generation isn't switched on here yet.",
-  TOO_MANY_REQUESTS: "You've generated 5 paths today. Try again tomorrow.",
-  BAD_REQUEST: "We only generate coding paths. Try a language, a tool or a project idea.",
-  TIMEOUT: "That path took too long to generate. Try again in a moment.",
-};
-const genericError = "We couldn't generate that path. Check your connection and try again.";
 
 export default function Generator() {
   const job = useSyncExternalStore(subscribeJob, getJob);
@@ -22,7 +15,7 @@ export default function Generator() {
   const navigate = useNavigate();
   const waiting = useRef(job.status === "running");
   const busy = job.status === "running";
-  const err = job.status === "failed" ? (aiErrors[job.code ?? ""] ?? genericError) : null;
+  const err = job.status === "failed" ? generatorError(job.code) : null;
 
   useEffect(() => {
     if (job.status === "done" && waiting.current) {

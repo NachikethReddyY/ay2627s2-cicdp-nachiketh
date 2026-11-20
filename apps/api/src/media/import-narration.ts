@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { db, pool } from "../db/client.ts";
 import { lessonMedia, lessons, steps } from "../db/schema.ts";
@@ -26,7 +26,7 @@ export async function importNarration(slug: string, files: NarrationFile[], { re
   const done = await db
     .select({ stepId: lessonMedia.stepId })
     .from(lessonMedia)
-    .where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.kind, "narration"), eq(lessonMedia.status, "ready")));
+    .where(and(eq(lessonMedia.lessonVersionId, versionId), eq(lessonMedia.kind, "narration"), isNull(lessonMedia.segment), eq(lessonMedia.status, "ready")));
   const have = new Set(done.map((d) => d.stepId));
 
   const saved: number[] = [];
@@ -59,7 +59,7 @@ async function replaceNarration(input: MediaInput) {
     await tx
       .update(lessonMedia)
       .set({ status: "failed" })
-      .where(and(eq(lessonMedia.lessonVersionId, input.lessonVersionId), eq(lessonMedia.stepId, input.stepId!), eq(lessonMedia.kind, "narration"), eq(lessonMedia.status, "ready")));
+      .where(and(eq(lessonMedia.lessonVersionId, input.lessonVersionId), eq(lessonMedia.stepId, input.stepId!), eq(lessonMedia.kind, "narration"), isNull(lessonMedia.segment), eq(lessonMedia.status, "ready")));
     await tx.insert(lessonMedia).values(mediaRow(input, key));
   });
 }

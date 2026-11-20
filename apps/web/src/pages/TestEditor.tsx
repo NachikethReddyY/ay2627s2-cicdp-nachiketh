@@ -15,10 +15,6 @@ import Workbench from "../player/workbench/Workbench";
 import WorkbenchEditor from "../player/workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../player/workbench/StatusBar";
 import { languageOf, pickTestLesson } from "./testEditorFixture";
-import { testEditorLesson } from "./testEditorLesson";
-import { useSearch } from "@tanstack/react-router";
-import { trpc } from "../lib/trpc";
-import { useApi } from "../lib/api";
 import { DEMO_DIRECTORY, DEMO_ENTRY_FILE, DEMO_PROJECT_FILES } from "./testEditorDemo";
 import { Toaster, toast } from "sonner";
 import { removeWebPreviewFile, startWebPreview, syncWebPreviewFile, type PreviewFile } from "./webContainerPreview";
@@ -178,13 +174,6 @@ async function savedProjectFiles(): Promise<{ files: PreviewFile[]; binarySkippe
 }
 
 export default function TestEditor({ replay, dock = true }: { replay?: Ref<EditorHandle>; dock?: boolean } = {}) {
-  const { lesson: rawSlug } = useSearch({ strict: false }) as { lesson?: unknown };
-  const slug = rawSlug === undefined || rawSlug === "" ? undefined : typeof rawSlug === "string" ? rawSlug : JSON.stringify(rawSlug);
-  const lessonState = useApi(`test-editor-lesson:${slug ?? ""}`, () => (slug ? trpc.lessons.get.query({ id: slug }) : Promise.resolve(null)));
-  const lessonError = slug && !lessonState.loading && lessonState.error ? "Could not load the lesson." : undefined;
-  const loaded = slug && lessonState.data ? testEditorLesson(lessonState.data) : undefined;
-  const liveLesson = loaded && "instructions" in loaded ? loaded : undefined;
-  const lessonNote = lessonError ?? (loaded && "error" in loaded ? loaded.error : undefined);
   const [tree, setTree] = useState<TreeNode[]>(demoTree);
   const [open, setOpen] = useState(DEMO_ENTRY_FILE);
   const [content, setContent] = useState(DEMO_ENTRY_TEXT);
@@ -1041,7 +1030,7 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     },
   };
 
-  const openLang = languageOf(open, liveLesson?.language ?? "javascript");
+  const openLang = languageOf(open, "javascript");
   const previewLive = browserPreview.state === "ready" || browserPreview.state === "starting";
   const previewVisible = previewLive && previewOpen;
   const dockItems: EditorDockItem[] = [
@@ -1194,8 +1183,7 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       </section>,
       previewHost,
     )}
-    {notepadOpen && previewHost && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={liveLesson?.instructions ?? pickTestLesson(openLang).instructions} />, previewHost)}
-    <p role="status" aria-live="polite" className={lessonNote ? "fixed bottom-16 left-3 z-50 pointer-events-none rounded-lg border border-[var(--line)] bg-[var(--glass)] px-3 py-1.5 text-sm font-semibold text-[var(--tx)] backdrop-blur-xl" : "sr-only"}>{lessonNote ? `${lessonNote} Showing the fixture lesson.` : ""}</p>
+    {notepadOpen && previewHost && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={pickTestLesson(openLang).instructions} />, previewHost)}
     {dock && <EditorDock items={dockItems} />}
     <Toaster position="bottom-right" richColors closeButton />
     </>

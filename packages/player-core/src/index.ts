@@ -1,6 +1,8 @@
 export * from "./types.ts";
 export { K, buildTimeline } from "./events.ts";
 export { seek } from "./seek.ts";
+export * from "./scrim.ts";
+export * from "./scrim-timeline.ts";
 import { seek } from "./seek.ts";
 import type { Files, Timeline } from "./types.ts";
 
