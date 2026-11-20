@@ -141,6 +141,19 @@ def test_the_code_at_the_gate_cannot_already_hold_the_change() -> None:
     rejects(data, "already shows the change")
 
 
+def test_the_code_at_the_gate_cannot_already_hold_part_of_the_change() -> None:
+    data = raw()
+    data["steps"][0]["hunks"][0]["lines"] = [
+        " export function add(a, b) {",
+        "-  console.log(a + b);",
+        "+  const sum = a + b;",
+        "+  console.log(a + b);",
+        "+  return sum;",
+        " }",
+    ]
+    rejects(data, "already shows the change")
+
+
 def test_the_lab_stretch_count_comes_from_the_request() -> None:
     with pytest.raises(ValidationError, match="stretch"):
         build(raw(), stretch=1)

@@ -316,7 +316,7 @@ def _check_scrim(
         if len(answer) >= SCRIM_LEAK_MIN_CHARS and any(answer in text for text in spoken):
             raise ValueError(f"step {step.title!r}: narration up to the gate leaks the answer")
         added = _added_lines(step)
-        if added and all(line in code for line in added):
+        if any(line in code for line in added):
             raise ValueError(f"step {step.title!r}: the code at the gate already shows the change")
 
 
