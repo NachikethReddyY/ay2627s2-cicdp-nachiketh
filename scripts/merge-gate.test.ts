@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { CHANGED_FILES_JQ, evaluateGate, parseChangedFiles, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -91,6 +91,86 @@ test("a PR that does not target main is refused, since the review is pinned to m
   assert.equal(reasons.length, 1);
   assert.match(reasons[0] ?? "", /targets LQ-103-gate-from-base.*retarget.*main/s);
   assert.deepEqual(evaluateGate(green, open), []);
+});
+
+test("sensitive paths cover grading, learner models, configuration and all scripts", () => {
+  const paths = [
+    "scripts/narrate.ts",
+    "scripts/nested/new-tool.ts",
+    "apps/api/src/games/grade.ts",
+    "apps/api/src/attempts/machine.ts",
+    "apps/api/src/dev/route.ts",
+    "services/engine/learnquest_engine/guide.py",
+    "services/engine/learnquest_engine/bkt.py",
+    "services/engine/learnquest_engine/policy.py",
+    "services/engine/learnquest_engine/learner.py",
+    "apps/api/src/progress/mastery.ts",
+    "apps/api/src/app.ts",
+    "package.json",
+    "apps/api/package.json",
+    "packages/player-core/package.json",
+    "e2e/scripts/ci.sh",
+    "pnpm-lock.yaml",
+    "apps/api/test/helpers.ts",
+    "apps/api/test/helpers/database.ts",
+    "apps/api/src/progress/games.ts",
+    "packages/ui-catalog/src/blocks/game/public.ts",
+    "services/engine/learnquest_engine/server.py",
+    "apps/api/src/progress/collections.ts",
+    "apps/api/src/progress/paths.ts",
+    "apps/api/src/lint/route.ts",
+    "apps/api/src/ai/service.ts",
+    "apps/api/src/engine-client/learner.ts",
+    "apps/api/src/engine-client/client.ts",
+    "apps/api/src/progress/me.ts",
+    "services/engine/learnquest_engine/schemas.py",
+    "services/engine/learnquest_engine/config.py",
+    "services/engine/learnquest_engine/new_module.py",
+    "apps/api/src/db/migrate-cli.ts",
+    "apps/api/src/db/schema.ts",
+    "apps/api/src/db/seed.ts",
+    "apps/api/src/imports/runner.ts",
+    "apps/api/src/media/service.ts",
+    "apps/api/src/media/storage.ts",
+    "packages/player-core/src/scrim.ts",
+    "packages/ui-catalog/src/index.ts",
+    "apps/web/src/player/live/Steps.tsx",
+    "services/engine/Dockerfile",
+    "services/engine/uv.lock",
+    ".dockerignore",
+    "apps/web/vite.config.ts",
+    "neon.ts",
+    "docker-compose.ci.yml",
+    "e2e/playwright.config.ts",
+    "e2e/tests/smoke.spec.ts",
+    "INSTRUCTIONS.md",
+    "apps/api/src/imports/routes.ts",
+    ".agents/skills/verify/SKILL.md",
+    ".claude/skills/verify/SKILL.md",
+  ];
+  for (const path of paths) {
+    assert.equal(sensitivePaths([path]).length, 1, `${path} must require sensitive review`);
+  }
+});
+
+test("a rename reports its old path too, so moving a sensitive file out of its directory is still caught", () => {
+  const files = parseChangedFiles("docs/moved.md\tscripts/merge-gate.ts\napps/web/src/a.ts\t\n");
+  assert.deepEqual(files.map((f) => f.path).sort(), ["apps/web/src/a.ts", "docs/moved.md", "scripts/merge-gate.ts"]);
+  assert.equal(sensitivePaths(files.map((f) => f.path)).length, 1);
+});
+
+test("the changed-files query asks GitHub for the old name of a renamed file", () => {
+  assert.match(CHANGED_FILES_JQ, /previous_filename/);
+});
+
+test("a changed-file list one under GitHub's cap is accepted", () => {
+  const rows = Array.from({ length: 2999 }, (_, i) => `f${i}.ts\t`).join("\n");
+  assert.equal(parseChangedFiles(rows).length, 2999);
+});
+
+test("a changed-file list at GitHub's 3000 file cap is refused because it may be truncated", () => {
+  const rows = Array.from({ length: 3000 }, (_, i) => `f${i}.ts\t`).join("\n");
+  assert.throws(() => parseChangedFiles(rows), /3000.*smaller|split/i);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {

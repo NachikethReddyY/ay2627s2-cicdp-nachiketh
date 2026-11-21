@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
 
@@ -33,7 +33,10 @@ function analyze(code: string, file: string) {
   const jsxEmpty: Range[] = [];
   const walk = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) return void node.forEach(walk);
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
     const n = node as { type?: string; start?: number; end?: number; expression?: { type?: string } } & Record<string, unknown>;
     if (n.type === "JSXExpressionContainer" && n.expression?.type === "JSXEmptyExpression" && n.start !== undefined && n.end !== undefined) {
       jsxEmpty.push({ start: n.start, end: n.end });
@@ -81,24 +84,24 @@ export function stripComments(file: string, code: string): string {
 }
 
 const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo", ".git", "drizzle", ".agents", "spikes", "coverage"]);
-const SOURCE = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
+const SOURCE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 function* walk(dir: string): Generator<string> {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (SKIP_DIRS.has(e.name)) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) yield* walk(p);
-    else if (SOURCE.test(e.name) && !/\.(d|gen|generated)\.[cm]?[jt]s$/.test(e.name) && !/\.(gen|generated)\.[cm]?[jt]s$/.test(e.name)) yield p;
+    else if (SOURCE.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) yield p;
   }
 }
 
 export function sourceFiles(root: string): string[] {
-  return ["apps", "packages", "e2e", "scripts", "tools"].flatMap((top) => [...walk(join(root, top))]);
+  return ["apps", "packages", "e2e", "scripts", "tools"].flatMap((top) => [...walk(join(root, top))]).filter((file) => relative(root, file).split(sep).join("/") !== "apps/web/src/pages/changelog-releases.generated.ts");
 }
 
 export function checkRepoComments(root: string): CommentViolation[] {
   return sourceFiles(root).flatMap((abs) => {
-    const file = relative(root, abs).split("\\").join("/");
+    const file = relative(root, abs).split(sep).join("/");
     return findBannedComments(file, readFileSync(abs, "utf8"));
   });
 }

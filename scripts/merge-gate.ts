@@ -39,6 +39,15 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/api\/src\/config\//, "config and limits"],
   [/^apps\/api\/src\/(sandbox|parts|grading|safety)\//, "practice run or answer handling"],
   [/^apps\/api\/src\/(attempts|lessons)\/router\.ts$/, "answer and hint exposure"],
+  [/^apps\/api\/src\/(games\/grade|attempts\/machine|dev\/route)\.ts$/, "grading or help guardrails"],
+  [/^apps\/api\/src\/progress\/mastery\.ts$/, "learner model"],
+  [/^apps\/api\/src\/app\.ts$/, "API configuration"],
+  [/^apps\/api\/src\/imports\/routes\.ts$/, "import access guards"],
+  [/^apps\/api\/src\/(progress|lint|ai|engine-client|db|imports|media)\//, "learner scoping, authorization, answer exposure or engine credentials"],
+  [/^packages\/ui-catalog\/src\/blocks\/game\/public\.ts$/, "answer stripping for games"],
+  [/^INSTRUCTIONS\.md$/, "Sloppy system prompt"],
+  [/^\.(agents|claude)\//, "agent skills and settings"],
+  [/^apps\/api\/test\/helpers/, "API test helpers"],
   [/^apps\/api\/drizzle\//, "database migration"],
   [/^apps\/api\/drizzle\.config\.ts$/, "database migration"],
   [/^\.github\//, "workflow or repo policy"],
@@ -48,12 +57,19 @@ const SENSITIVE: [RegExp, string][] = [
   [/(^|\/)vercel\.json$/, "deploy config"],
   [/^services\/sandbox\//, "sandbox boundary"],
   [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
+  [/^services\/engine\/learnquest_engine\//, "engine: learner model, answers, credentials"],
   [/^services\/engine\/(pyproject\.toml|scripts\/check_comments\.py)$/, "engine guardrail config"],
-  [/^scripts\/(merge-gate|agent-|check-|revert-rate|deploy|render|assert-main|smoke)/, "merge, check or deploy tooling"],
+  [/^scripts\//, "repo tooling"],
+  [/^e2e\//, "required e2e check"],
+  [/^packages\/player-core\/src\//, "predict-before-reveal replay"],
+  [/^packages\/ui-catalog\/src\/index\.ts$/, "public catalogue entry point"],
+  [/^apps\/web\/src\/player\//, "client reveal timing"],
+  [/(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker-compose[\w.-]*\.yml|uv\.lock|vite\.config\.ts|neon\.ts)$/, "build inputs and deploy config"],
+  [/(^|\/)package\.json$/, "package configuration"],
+  [/^pnpm-lock\.yaml$/, "dependency lockfile"],
   [/^tools\/(validator|repo-index)\//, "agent tooling"],
-  [/^(\.oxlintrc\.json|package\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
+  [/^(\.oxlintrc\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
   [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
-  [/^\.claude\//, "agent skills"],
 ];
 
 export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
@@ -123,9 +139,24 @@ function git(args: string[], cwd: string): string {
   return execFileSync(bin("git"), args, { encoding: "utf8", cwd });
 }
 
+const GITHUB_FILE_LIST_CAP = 3000;
+
+export function parseChangedFiles(tsv: string): { path: string }[] {
+  const rows = tsv.split("\n").filter(Boolean);
+  if (rows.length >= GITHUB_FILE_LIST_CAP) {
+    throw new Error(
+      `GitHub lists at most ${GITHUB_FILE_LIST_CAP} changed files, so this PR may be truncated; split it into smaller PRs`,
+    );
+  }
+  const paths = rows.flatMap((row) => row.split("\t").filter(Boolean));
+  return paths.map((path) => ({ path }));
+}
+
+export const CHANGED_FILES_JQ = '.[] | [.filename, (.previous_filename // "")] | @tsv';
+
 function changedFiles(number: string): { path: string }[] {
-  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", ".[].filename"]);
-  return out.split("\n").filter(Boolean).map((path) => ({ path }));
+  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", CHANGED_FILES_JQ]);
+  return parseChangedFiles(out);
 }
 
 function unresolvedThreadCount(number: string): number {

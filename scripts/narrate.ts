@@ -210,7 +210,7 @@ async function renderLesson({ steps, cfg, provider, outDir, fetchImpl, io, timeo
   const current = new Set(steps.map((s) => String(s.idx)));
   for (const name of await readdir(outDir)) {
     const m = /^(\d+)\.mp3$/.exec(name);
-    if (m && !current.has(m[1]!)) await rm(join(outDir, name), { force: true });
+    if (m && !current.has(m[1])) await rm(join(outDir, name), { force: true });
   }
   for (const key of Object.keys(state)) {
     if (!current.has(key)) delete state[key];
