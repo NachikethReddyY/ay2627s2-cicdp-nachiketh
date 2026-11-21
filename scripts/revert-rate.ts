@@ -60,8 +60,8 @@ function refExists(repoDir: string, ref: string): boolean {
   return spawnSync(bin("git"), ["-C", repoDir, "rev-parse", "--verify", "--quiet", ref], { encoding: "utf8" }).status === 0;
 }
 
-export function readFirstParentLog(repoDir: string): string {
-  const ref = refExists(repoDir, "refs/remotes/origin/main") ? "refs/remotes/origin/main" : "refs/heads/main";
+export function readFirstParentLog(repoDir: string, pinnedRef?: string): string {
+  const ref = pinnedRef ?? (refExists(repoDir, "refs/remotes/origin/main") ? "refs/remotes/origin/main" : "refs/heads/main");
   return execFileSync(
     bin("git"),
     ["-C", repoDir, "log", "--first-parent", "--format=%H%x1f%ct%x1f%s", ref],
