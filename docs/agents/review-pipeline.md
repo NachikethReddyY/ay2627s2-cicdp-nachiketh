@@ -63,6 +63,7 @@ The script adds no attribution line. The agent that posts the comment adds it.
 - `REVIEW.md` and the `AGENTS.md` principles are read from the base ref, never from the branch under review, so a branch cannot change what is skipped or trusted.
 - Text posted to GitHub is sanitized: `@` mentions are defused, URLs are removed and token-like values are redacted.
 - Every comment ends with a line saying bot output is advisory and does not replace CI or the merge gate.
+- The injection scan runs before the screener, reviewer and verifier. It covers added, unchanged and removed lines, and a phrase split across lines. A flagged run makes no model call, so flagged text never reaches a model.
 
 ## What "incomplete" means
 

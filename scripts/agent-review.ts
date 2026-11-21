@@ -824,7 +824,10 @@ export function diffTextForScreening(files: DiffFile[], revision: "old" | "new" 
   for (const file of files) {
     let inHunk = false;
     for (const line of file.patch.split("\n")) {
-      if (line.startsWith("@@ ")) inHunk = true;
+      if (line.startsWith("@@ ")) {
+        if (lines.length > 0) lines.push("\0");
+        inHunk = true;
+      }
       if (!inHunk) continue;
       const marker = line[0];
       if (marker === " " || (marker === "+" && revision !== "old") || (marker === "-" && revision !== "new")) {
@@ -837,7 +840,13 @@ export function diffTextForScreening(files: DiffFile[], revision: "old" | "new" 
 
 export function scanForInjection(files: DiffFile[], context: ContextBlock[]): string[] {
   const hits: string[] = [];
-  for (const f of files) for (const why of [...detectInjection(f.patch), ...detectInjection(f.path)]) if (!hits.includes(`${visiblePath(f.path)}: ${why}`)) hits.push(`${visiblePath(f.path)}: ${why}`);
+  for (const f of files) {
+    const whys = new Set([...detectInjection(f.patch), ...detectInjection(f.path)]);
+    for (const revision of ["old", "new", "both"] as const) {
+      for (const why of detectInjection(diffTextForScreening([f], revision))) whys.add(why);
+    }
+    for (const why of whys) hits.push(`${visiblePath(f.path)}: ${why}`);
+  }
   for (const c of context) for (const why of detectInjection(c.text)) hits.push(`${c.label}: ${why}`);
   return hits;
 }
@@ -986,7 +995,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const reviewMdForPrompt = input.strict ? withoutSection(reviewMd, "Skip") : reviewMd;
 
   const injection = scanForInjection(diff.files, []);
-  if (input.strict) {
+  {
     for (const revision of ["old", "new", "both"] as const) {
       for (const why of detectInjection(diffTextForScreening(diff.files, revision))) {
         const flag = `diff text: ${why}`;
@@ -994,18 +1003,23 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
       }
     }
   }
-  if (input.strict && injection.length > 0) {
+  if (injection.length > 0) {
     notes.push(`flagged-injection: ${injection.join(" | ")}`);
     return finish(incomplete("text in the diff tried to steer the reviewer; a human must read this change, and it was not sent to a model", notes, injection));
   }
+  const gatheredChunks = chunks.map((files) => gatherContext(files, deps.exec, input.root, input.useIndex && !input.strict));
+  for (const gathered of gatheredChunks) {
+    for (const note of gathered.notes) if (!notes.includes(note)) notes.push(note);
+    for (const flag of scanForInjection([], gathered.blocks)) if (!injection.includes(flag)) injection.push(flag);
+  }
+  if (injection.length > 0) return finish(incomplete("text in the context tried to steer the reviewer; a human must read this change, and it was not sent to a model", notes, injection));
   const candidates: { finding: Finding; files: DiffFile[] }[] = [];
   const seen = new Set<string>();
   const where = (at: number) => (chunks.length > 1 ? ` on chunk ${at + 1} of ${chunks.length}` : "");
 
   for (const [at, files] of chunks.entries()) {
     if (remainingMs() <= 0) return finish(timedOut(notes, injection));
-    const gathered = gatherContext(files, deps.exec, input.root, input.useIndex && !input.strict);
-    for (const note of gathered.notes) if (!notes.includes(note)) notes.push(note);
+    const gathered = gatheredChunks[at];
     let contextBlocks = gathered.blocks;
     if (!input.strict && deps.screener) {
       const screened = await screenContext(contextBlocks, deps.screener.runner, optionsFor(deps.screener.model));
