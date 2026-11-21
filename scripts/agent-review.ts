@@ -21,7 +21,7 @@ export type Finding = {
 
 export type RunnerOptions = { model?: string; timeoutMs?: number; cwd?: string };
 export type Runner = (prompt: string, options: RunnerOptions) => Promise<string>;
-export type Exec = (file: string, args: string[], cwd: string) => string;
+export type Exec = (file: string, args: string[], cwd: string, strictUtf8?: boolean) => string;
 
 export type ReviewStatus = "clean" | "findings" | "incomplete";
 
@@ -247,8 +247,15 @@ export function splitDiff(rawDiff: string): DiffFile[] {
   return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n", 1)[0] ?? ""), patch }));
 }
 
-export const defaultExec: Exec = (file, args, cwd) =>
-  execFileSync(file, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: EXEC_TIMEOUT_MS });
+export const defaultExec: Exec = (file, args, cwd, strictUtf8) => {
+  const output = execFileSync(file, args, { cwd, maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: EXEC_TIMEOUT_MS });
+  if (!strictUtf8) return output.toString("utf8");
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(output);
+  } catch {
+    throw new Error("Git output is not valid UTF-8; use a UTF-8 diff or ask for human review");
+  }
+};
 
 export function collectDiff(source: { pr: string | null; base: string; head?: string; strict?: boolean }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
   if (source.strict && source.pr !== null) throw new Error("strict reviews local commits only");
@@ -256,7 +263,7 @@ export function collectDiff(source: { pr: string | null; base: string; head?: st
   const format = source.strict ? ["--full-index", "--src-prefix=a/", "--dst-prefix=b/", "--no-color"] : [];
   const raw = source.pr !== null
     ? exec("gh", ["pr", "diff", source.pr], cwd)
-    : exec("git", ["-c", "core.quotepath=false", ...config, "diff", ...format, "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${source.base}...${source.head ?? "HEAD"}`], cwd);
+    : exec("git", ["-c", "core.quotepath=false", ...config, "diff", ...format, "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${source.base}...${source.head ?? "HEAD"}`], cwd, source.strict);
   if (source.strict && raw && (!raw.startsWith("diff --git ") || !raw.endsWith("\n"))) throw new Error("incomplete Git patch records");
   const all = splitDiff(raw);
   return {
@@ -836,12 +843,12 @@ export function scanForInjection(files: DiffFile[], context: ContextBlock[]): st
 }
 
 export function readOnlyExec(exec: Exec): Exec {
-  return (file, args, cwd) => {
+  return (file, args, cwd, strictUtf8) => {
     const writeVerbs = ["comment", "merge", "review", "close", "edit", "reopen", "ready", "create", "delete"];
     const apiWrites = args.includes("api") && args.some((a) => /^(-X|--method|-f|-F|--field|--raw-field|--input)(=|$)/.test(a));
     const writes = file === "gh" && (apiWrites || args.some((a) => writeVerbs.includes(a)));
     if (writes) throw new Error("readers cannot write to GitHub");
-    return exec(file, args, cwd);
+    return exec(file, args, cwd, strictUtf8);
   };
 }
 
@@ -956,8 +963,8 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     try {
       const range = `${baseSha}...${headSha}`;
       const options = ["-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", range];
-      const numstat = deps.exec("git", ["diff", "--numstat", ...options], input.root);
-      const raw = deps.exec("git", ["diff", "--raw", "--no-abbrev", ...options], input.root);
+      const numstat = deps.exec("git", ["diff", "--numstat", ...options], input.root, true);
+      const raw = deps.exec("git", ["diff", "--raw", "--no-abbrev", ...options], input.root, true);
       validateStrictDiff(diff.files, raw, numstat);
     } catch (error) {
       return finish(incomplete(`could not validate the pinned diff: ${(error as Error).message}`, notes));

@@ -51,7 +51,7 @@ const realStrict = (root: string) => ({ ...strictInput, root });
 test("a real binary file change is incomplete and names the path", async () => {
   const root = binaryRepo();
   try {
-    writeFileSync(join(root, "image.bin"), Buffer.from([0, 9, 9, 9, 0, 255]));
+    writeFileSync(join(root, "image.bin"), Buffer.from([0, 9, 9, 9, 0, 127]));
     commitAll(root);
     const { prompts, runner } = recording();
     const result = await runReview(realStrict(root), depsWith(runner, failing("unused")));
@@ -90,6 +90,21 @@ test("an ordinary text change in a real repo is reviewed normally", async () => 
     assert.equal(result.status, "clean");
     assert.equal(prompts.length, 1);
     assert.ok(prompts[0]?.includes("export const a = 2;"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("strict review refuses non-UTF-8 text before sending a patch", async () => {
+  const root = binaryRepo();
+  try {
+    writeFileSync(join(root, "menu.txt"), Buffer.from("caf\u00e9\n", "latin1"));
+    commitAll(root);
+    const { prompts, runner } = recording();
+    const result = await runReview(realStrict(root), depsWith(runner, failing("unused")));
+    assert.equal(result.status, "incomplete");
+    assert.match(result.reason ?? "", /valid UTF-8/);
+    assert.equal(prompts.length, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
