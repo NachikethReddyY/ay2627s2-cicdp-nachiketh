@@ -10,6 +10,7 @@ export type PullRequest = {
   state: string;
   isDraft: boolean;
   headRefOid: string;
+  baseRefName: string;
   reviewDecision: string | null;
   mergeable: string;
   files: { path: string }[];
@@ -76,6 +77,7 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
   const reasons: string[] = [];
   if (pr.state !== "OPEN") reasons.push(`PR is ${pr.state}, not OPEN`);
   if (pr.isDraft) reasons.push("PR is a draft");
+  if (pr.baseRefName !== "main") reasons.push(`PR targets ${pr.baseRefName}, not main; retarget it to main and re-run the gate, so the review covers the diff that will merge`);
   if (pr.mergeable !== "MERGEABLE") reasons.push(`GitHub reports the PR as ${pr.mergeable.toLowerCase()}, not mergeable`);
   if (pr.reviewDecision === "CHANGES_REQUESTED") reasons.push("a reviewer requested changes");
   if (options.unresolvedThreads > 0) reasons.push(`${options.unresolvedThreads} unresolved review thread(s)`);
@@ -154,7 +156,7 @@ export function runTrustedReview(script: string, root: string, number: string, a
     }
   };
   try {
-    return asResult(runner(process.execPath, [script, "--pr", number, "--author", author, "--json", "--no-index", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
+    return asResult(runner(process.execPath, [script, "--pr", number, "--author", author, "--json", "--no-index", "--strict", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
   } catch (error) {
     const stdout = (error as { stdout?: unknown }).stdout;
     return typeof stdout === "string" ? asResult(stdout) : null;
@@ -201,7 +203,7 @@ function main(argv: string[]): number {
   const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
   const pr = JSON.parse(
-    gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
+    gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,baseRefName,reviewDecision,mergeable,statusCheckRollup"]),
   ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
   const files = changedFiles(number);

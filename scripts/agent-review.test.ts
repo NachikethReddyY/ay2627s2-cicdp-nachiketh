@@ -634,3 +634,28 @@ test("a diff beyond the review limit is incomplete", async () => {
   assert.equal(result.status, "incomplete");
   assert.match(result.reason ?? "", /diff.*(large|truncat)/i);
 });
+
+test("strict review reads every changed file and keeps the model CLIs out of the checkout", async () => {
+  const root = makeRepo();
+  try {
+    const prompts: string[] = [];
+    const cwds: (string | undefined)[] = [];
+    const reviewer: Runner = async (prompt, options) => {
+      prompts.push(prompt);
+      cwds.push(options.cwd);
+      return '{"bugs":[]}';
+    };
+    const result = await runReview({ ...input(root), strict: true, runnerCwd: "/isolated" }, depsWith(reviewer, failing("never called")));
+    assert.equal(result.status, "clean");
+    assert.ok(prompts[0]?.includes("a: 2"));
+    assert.deepEqual(cwds, ["/isolated"]);
+    assert.ok(!result.notes.some((n) => n.startsWith("skipped")));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("strict is an explicit flag", () => {
+  assert.equal(parseArgs(["--author", "claude", "--strict"]).strict, true);
+  assert.equal(parseArgs(["--author", "claude"]).strict, false);
+});
