@@ -91,7 +91,7 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI. The gate stops agent merges while the 30-day revert rate exceeds 5%.
 
-All changed paths require a clean strict review except the named ordinary documents in `ORDINARY_DOCUMENTS` when they are regular non-executable files. Sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Once this policy lands on main, run the bootstrap from your PR checkout using your PR number and author family.
+All changed paths require a clean strict review except the named ordinary documents in `ORDINARY_DOCUMENTS` when they are regular non-executable files. Sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Run the bootstrap from your PR checkout using your PR number and author family.
 
 ```bash
 git fetch origin +refs/heads/main:refs/remotes/origin/main &&
@@ -99,7 +99,7 @@ git fetch origin +refs/heads/main:refs/remotes/origin/main &&
   git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- 123 --author codex
 ```
 
-The current policy on main applies until then. The operator declares the author family with `--author`, and the gate checks the returned review against that declaration. Authorship depends on the operator’s accuracy. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
+The operator declares the author family with `--author`, and the gate checks the returned review against that declaration. Authorship depends on the operator’s accuracy. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 
