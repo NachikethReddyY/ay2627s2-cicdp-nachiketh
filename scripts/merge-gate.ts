@@ -72,6 +72,9 @@ const SENSITIVE: [RegExp, string][] = [
   [/^tools\/(validator|repo-index)\//, "agent tooling"],
   [/^(\.oxlintrc\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
   [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
+  [/^apps\/web\/(index\.html|src\/main\.tsx)$/, "web entry point"],
+  [/^apps\/web\/([^/]*\.config\.[^/]*|tsconfig[^/]*\.json|\.env.*)$/, "web build config and env"],
+  [/^\.gitmodules$/, "submodule sources"],
 ];
 
 const NOT_SENSITIVE: RegExp[] = [
@@ -171,13 +174,21 @@ export function parseNameStatusZ(out: string): { path: string }[] {
   return files;
 }
 
+export function assertBaseIsCurrent(localSha: string, remoteSha: string): void {
+  const fix = "run `git fetch origin +refs/heads/main:refs/remotes/origin/main` and re-run the gate";
+  if (!localSha.trim() || !remoteSha.trim()) throw new Error(`could not read both the local and GitHub main commits; ${fix}`);
+  if (localSha.trim() !== remoteSha.trim()) {
+    throw new Error(`local origin/main (${localSha.trim().slice(0, 8)}) is not GitHub main (${remoteSha.trim().slice(0, 8)}), so the diff could hide a revert; ${fix}`);
+  }
+}
+
 export function changedFilesFromGit(root: string, headRefOid: string): { path: string }[] {
   try {
     git(["cat-file", "-e", `${headRefOid}^{commit}`], root);
   } catch {
     throw new Error(`the PR head ${headRefOid.slice(0, 8)} is not in the local repository; run \`git fetch origin\` and check out the PR head`);
   }
-  return parseNameStatusZ(git(["diff", "--name-status", "-z", "-M", `${BASE_REF}...${headRefOid}`], root));
+  return parseNameStatusZ(git(["diff", "--name-status", "-z", "-M", "--ignore-submodules=none", `${BASE_REF}...${headRefOid}`], root));
 }
 
 function unresolvedThreadCount(number: string): number {
@@ -238,6 +249,10 @@ function main(argv: string[]): number {
   const pr = JSON.parse(
     gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
   ) as Omit<PullRequest, "files">;
+  assertBaseIsCurrent(
+    git(["rev-parse", BASE_REF], root),
+    gh(["api", "repos/{owner}/{repo}/branches/main", "--jq", ".commit.sha"]),
+  );
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
   const reasons = evaluateGate(
     { ...pr, files: changedFilesFromGit(root, pr.headRefOid) },

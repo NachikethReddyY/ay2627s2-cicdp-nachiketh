@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changedFilesFromGit, evaluateGate, parseNameStatusZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { assertBaseIsCurrent, changedFilesFromGit, evaluateGate, parseNameStatusZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -82,7 +82,7 @@ test("sensitive path classes include auth guards, guardrails and repo rules", ()
     "tools/validator/src/db.ts",
   ];
   assert.equal(sensitivePaths(paths).length, paths.length);
-  assert.deepEqual(sensitivePaths(["docs/plan.md", "apps/web/src/main.tsx", "apps/web/src/pages/Home.tsx"]), []);
+  assert.deepEqual(sensitivePaths(["docs/plan.md", "apps/web/src/pages/Home.tsx"]), []);
 });
 
 test("sensitive paths cover grading, learner models, configuration and all scripts", () => {
@@ -181,6 +181,15 @@ const EXPECTED_SENSITIVE = [
   "worlds/codequest/manifest.json",
   "worlds/loops/lessons/loops-1.json",
   "worlds/new-world/lessons/x.json",
+  "apps/web/src/main.tsx",
+  "apps/web/index.html",
+  "apps/web/postcss.config.mjs",
+  "apps/web/tailwind.config.ts",
+  "apps/web/tsconfig.json",
+  "apps/web/tsconfig.app.json",
+  "apps/web/.env.production",
+  "apps/web/.env.example",
+  ".gitmodules",
   "apps/web/scripts/build-assets.mjs",
   "spikes/litellm-advisory/check.py",
   "apps/web/src/blocks/game/api.ts",
@@ -194,8 +203,6 @@ const EXPECTED_SENSITIVE = [
 const EXPECTED_NOT_SENSITIVE = [
   "apps/web/src/pages/Home.tsx",
   "apps/web/src/components/Button.tsx",
-  "apps/web/src/main.tsx",
-  "apps/web/index.html",
   "docs/plan.md",
   "docs/adr/0001-record.md",
   "docs/feature-map.md",
@@ -424,4 +431,28 @@ test("base bootstrap executes the base gate even when the checkout changes it", 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a changed gitlink is reported even when .gitmodules says to ignore the submodule", () => {
+  const dir = tempRepo();
+  try {
+    writeFileSync(join(dir, ".gitmodules"), '[submodule "sub"]\n\tpath = sub\n\turl = ../sub\n\tignore = all\n');
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "update-index", "--add", "--cacheinfo", "160000,1111111111111111111111111111111111111111,sub");
+    gitIn(dir, "commit", "-q", "-m", "gitlink");
+    const files = changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD")).map((f) => f.path);
+    assert.ok(files.includes("sub"), "the gitlink must be listed");
+    assert.ok(files.includes(".gitmodules"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a stale local origin/main is refused with the fetch command in the message", () => {
+  const sha = "a".repeat(40);
+  assert.doesNotThrow(() => assertBaseIsCurrent(sha, sha));
+  assert.throws(() => assertBaseIsCurrent(sha, "b".repeat(40)), /git fetch origin \+refs\/heads\/main:refs\/remotes\/origin\/main/);
+  assert.throws(() => assertBaseIsCurrent("", sha), /git fetch origin/);
+  assert.throws(() => assertBaseIsCurrent(sha, ""), /git fetch origin/);
+  assert.throws(() => assertBaseIsCurrent("", ""), /git fetch origin/);
 });
