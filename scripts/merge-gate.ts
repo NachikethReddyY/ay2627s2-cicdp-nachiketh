@@ -190,7 +190,7 @@ export function runTrustedReview(script: string, root: string, number: string, a
   const asResult = (output: string): ReviewResultFile | null => {
     try {
       const value: unknown = JSON.parse(output);
-      return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as ReviewResultFile) : null;
+      return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
     } catch {
       return null;
     }
