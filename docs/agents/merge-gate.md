@@ -13,7 +13,7 @@ Add `--dry-run` to run every check without merging. The command starts from the 
 1. `scripts/merge-gate-bootstrap.sh` is read from `origin/main`. It extracts `merge-gate.ts`, `revert-rate.ts`, `bin.ts`, `agent-review.ts` and `agent-verify.sh` from base into a temporary directory and runs the base gate against your checkout (`MERGE_GATE_CHECKOUT_ROOT`).
 2. The gate refuses to run without the base verify script, refuses `--skip-local` and `--review-result`, and requires `--author claude|codex` exactly once.
 3. It checks the PR: open, not a draft, base is `main`, mergeable, no requested changes, no unresolved threads, every CI job green, the 30-day revert rate at or below 5%, and the checkout is the PR head with a clean tree.
-4. When the changed files (including the old path of a renamed file) match `SENSITIVE`, the gate runs the base `agent-review.ts --strict` on the PR head. It needs status `clean` for the exact head, and a reviewer of a different family than the author. A file list at GitHub's 3000 file cap is refused as possibly truncated.
+4. When the changed files (including the old path of a renamed file) match `SENSITIVE`, the gate runs the base `agent-review.ts --strict` on the PR head. It needs status `clean` for the exact head, and a reviewer of a different family than the author. The gate re-reads the PR head and base after the review and refuses if either moved. A file list at GitHub's 3000 file cap is refused as possibly truncated.
 5. It runs the base `agent-verify.sh` with the GitHub token variables removed and an empty `GH_CONFIG_DIR`, then squash-merges with `--match-head-commit`.
 
 ## Trust boundary
@@ -21,6 +21,7 @@ Add `--dry-run` to run every check without merging. The command starts from the 
 - The first rollout of the bootstrap needs a merge by the owner, because nothing on `origin/main` checks it yet. After that, whoever can push to `main` or bypass branch protection controls the gate.
 - Verification still runs the PR's own `pnpm` tasks and test code on your machine. Removing token variables is not isolation from the keychain or the git credential helper. That is why `scripts/` and every `package.json` are sensitive: a PR that changes how checks run needs a clean cross-family review.
 - The author family is declared by the caller; the gate cannot establish it independently.
+- The reviewer CLIs start in an empty directory but keep read tools, so a model can still read files by absolute path. The review prompt stays untrusted input.
 - The file list and head SHA are read in separate requests. A required CI check that runs the policy from base is the follow-up.
 
 ## SENSITIVE list
