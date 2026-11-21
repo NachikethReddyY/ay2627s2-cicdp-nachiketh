@@ -89,9 +89,17 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 ## Merging
 
-Agents merge their own PRs. The gate is `pnpm agent:merge <pr>` (`scripts/merge-gate.ts`): the PR must be open and not a draft, CI green on the head commit, no conflicts, no requested changes, no unresolved review threads, and `agent:verify` must pass locally. It then squash-merges at the exact head commit. A merge to main deploys to production after CI, so the gate is the only door. It also stops agents from merging while the 30-day revert rate is above 5%; a human merges until it falls.
+Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI. The gate stops agent merges while the 30-day revert rate exceeds 5%.
 
-PRs that touch sensitive paths (see `SENSITIVE` in `scripts/merge-gate.ts`: auth and tRPC guards, access and env config, the sandbox and practice code, answer and hint routers, migrations, workflows and `.github`, infra, engine prompts, the lint and comment guardrails, the merge, check and review tooling, agent tooling, and the repo rules in AGENTS.md and REVIEW.md) need `--review-result <file>`: the `--json` output of `pnpm review` on the exact PR head commit, with status `clean`. Use a reviewer on a different model than the author (`--author`). The gate also requires every CI job (`lint`, `unit`, `engine`, `deploy-scripts`, `e2e`) to have succeeded, GitHub to report the PR as mergeable, and the local checkout to be the PR head with a clean tree, because `agent:verify` runs on it. Product scope, audience and learner-model changes still need the owner (see Ask first).
+All changed paths require a clean strict review except the named ordinary documents in `ORDINARY_DOCUMENTS` when they are regular non-executable files. Sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Once this policy lands on main, run the bootstrap from your PR checkout using your PR number and author family.
+
+```bash
+git fetch origin +refs/heads/main:refs/remotes/origin/main &&
+  git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh &&
+  git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- 123 --author codex
+```
+
+The current policy on main applies until then. The operator declares the author family with `--author`, and the gate checks the returned review against that declaration. Authorship depends on the operator’s accuracy. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 

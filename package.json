@@ -11,10 +11,10 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:scripts": "node --test scripts/*.test.ts",
-    "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e",
+    "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e scripts && tsc -p scripts/tsconfig.json",
     "lint:comments": "node scripts/check-comments.ts",
     "agent:verify": "scripts/agent-verify.sh",
-    "agent:merge": "echo \"agent:merge is retired. Run: git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>\" && exit 2",
+    "agent:merge": "echo \"agent:merge is retired. Run: git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>\" && exit 2",
     "revert-rate": "node scripts/revert-rate.ts",
     "validator": "node tools/validator/src/cli.ts",
     "validator:up": "node tools/validator/src/cli.ts up",
@@ -25,9 +25,13 @@
   },
   "devDependencies": {
     "@babel/parser": "^8.1.2",
+    "@babel/traverse": "^8.1.2",
+    "@babel/types": "^8.1.2",
+    "@types/node": "^26.6.6",
     "oxlint": "^1.94.0",
     "oxlint-tsgolint": "^7.0.2007",
-    "turbo": "^2.11.11"
+    "turbo": "^2.11.11",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@neon/config": "^1.14.1",

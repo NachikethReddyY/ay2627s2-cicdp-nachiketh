@@ -21,9 +21,9 @@ Fix the foundations before building on top. A strong inner loop (types, lint, bo
 
 1. Work on a branch. Use `docs/feature-map.md` names for screens and features.
 2. `pnpm agent:verify`. Fix every failure at its cause.
-3. Review with another model: `node scripts/agent-review.ts --author <claude|codex>`.
+3. Review with another model using `node scripts/agent-review.ts --author codex`. Set the value to the family that authored the changes.
 4. Open the PR. A PR for a technical change carries a Mermaid diagram (see the `file-pr` skill).
-5. `pnpm agent:merge <pr>` merges when CI is green and nothing is unresolved. A PR touching sensitive paths also needs `--review-result <file>` from a clean `pnpm review --json` run on the PR head commit.
+5. Once the trusted bootstrap policy lands on main, use the command in [AGENTS.md](../../AGENTS.md#merging), including `--author`, for every PR. Sensitive paths require its clean strict review. Until then, current main’s gate and policy apply.
 
 ## Where things live
 
