@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeArgs, defaultExec, runReview, splitDiff, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
+import { claudeArgs, defaultExec, runReview, spawnRunner, splitDiff, unquoteGitPath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
 
 const bug = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   file: "src/a.ts",
@@ -225,4 +225,91 @@ test("distinct findings with the same file, line and summary are not collapsed",
   const { runner } = recording(JSON.stringify({ bugs }));
   const result: { findings: Finding[] } = await runReview(strictInput, { ...depsWith(runner, failing("unused")), exec: execDiff(sizedPatch("src/a.ts", 500)) });
   assert.equal(result.findings.length, 2);
+});
+
+test("both git diff commands report submodule changes", async () => {
+  const calls: string[][] = [];
+  const { runner } = recording();
+  await runReview(strictInput, { ...depsWith(runner, failing("unused")), exec: execDiff(sizedPatch("src/a.ts", 500), calls) });
+  const diffs = calls.filter((c) => c.includes("diff"));
+  assert.equal(diffs.length, 2);
+  for (const call of diffs) assert.ok(call.includes("--ignore-submodules=none"));
+});
+
+test("strict review sends a submodule bump to a human", async () => {
+  const patch = "diff --git a/vendor/lib b/vendor/lib\nindex 1..2 160000\n--- a/vendor/lib\n+++ b/vendor/lib\n@@ -1 +1 @@\n-Subproject commit 1111111\n+Subproject commit 2222222\n";
+  const { prompts, runner } = recording();
+  const result = await runReview(strictInput, { ...depsWith(runner, failing("unused")), exec: execDiff(patch) });
+  assert.equal(result.status, "incomplete");
+  assert.match(result.reason ?? "", /submodule/);
+  assert.equal(prompts.length, 0);
+});
+
+test("strict review treats a malformed finding as incomplete, the default flow drops it with a note", async () => {
+  const answer = JSON.stringify({ bugs: [{ file: "src/a.ts", line: 1, summary: "no scenario or evidence" }] });
+  const patch = sizedPatch("src/a.ts", 500);
+  const strict = await runReview(strictInput, { ...depsWith(recording(answer).runner, failing("unused")), exec: execDiff(patch) });
+  assert.equal(strict.status, "incomplete");
+  assert.match(strict.reason ?? "", /malformed finding; a human must read this change/);
+  const lenient = await runReview(lenientInput, { ...depsWith(recording(answer).runner, confirmAll), exec: execDiff(patch) });
+  assert.equal(lenient.status, "clean");
+  assert.ok(lenient.notes.some((n) => n.startsWith("dropped 1 finding")));
+});
+
+test("every chunk of a strict multi-chunk review sees all changed paths with status, inside the untrusted block", async () => {
+  const added = `diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1 @@\n+${"x".repeat(100_000)}\n`;
+  const patch = added + sizedPatch("src/old.ts", 100_000);
+  const { prompts, runner } = recording();
+  const result = await runReview(strictInput, { ...depsWith(runner, failing("unused")), exec: execDiff(patch) });
+  assert.equal(prompts.length, 2);
+  for (const prompt of prompts) {
+    assert.ok(prompt.indexOf("A src/new.ts") > prompt.indexOf("<untrusted-diff>"));
+    assert.ok(prompt.includes("M src/old.ts"));
+    assert.ok(prompt.includes("part of a larger change"));
+  }
+  assert.ok(result.notes.includes("reviewed in 2 chunks; cross-chunk interactions may be missed"));
+});
+
+test("a strict review that runs out of time while the last runner works is not clean", async () => {
+  let elapsed = false;
+  const reviewer: Runner = async () => {
+    elapsed = true;
+    return '{"bugs":[]}';
+  };
+  const result = await runReview(strictInput, { ...depsWith(reviewer, failing("unused")), exec: execDiff(sizedPatch("src/a.ts", 500)), deadlineMs: 1000, now: () => (elapsed ? 10_000 : 0) });
+  assert.equal(result.status, "incomplete");
+  assert.match(result.reason ?? "", /timed out/);
+});
+
+test("spawnRunner rejects at the timeout even when a grandchild keeps the pipes open", async () => {
+  const runner = spawnRunner("sh", ["-c", "sleep 30 & wait"]);
+  const started = Date.now();
+  await assert.rejects(runner("x", { timeoutMs: 200 }), /timed out/);
+  assert.ok(Date.now() - started < 5000);
+});
+
+test("findings that differ only in severity or category are not collapsed", async () => {
+  const bugs = [bug({ severity: "nit", category: "security" }), bug({ severity: "nit", category: "correctness" })];
+  const { runner } = recording(JSON.stringify({ bugs }));
+  const result = await runReview(strictInput, { ...depsWith(runner, failing("unused")), exec: execDiff(sizedPatch("src/a.ts", 500)) });
+  assert.equal(result.findings.length, 2);
+});
+
+test("more candidates than three times the cap is incomplete, and a refuted early candidate does not hide a later one", async () => {
+  const many = (count: number) => Array.from({ length: count }, (_, n) => bug({ summary: `distinct problem ${n}`, category: `cat-${n}` }));
+  const patch = sizedPatch("src/a.ts", 500);
+  const tooMany = await runReview(lenientInput, { ...depsWith(recording(JSON.stringify({ bugs: many(7) })).runner, confirmAll), exec: execDiff(patch), maxFindings: 2 });
+  assert.equal(tooMany.status, "incomplete");
+  assert.match(tooMany.reason ?? "", /too many findings to verify/);
+  let calls = 0;
+  const refuteFirstTwo: Runner = async () => (++calls <= 2 ? '{"verdict":"refuted","reason":"no"}' : '{"verdict":"confirmed","reason":"yes"}');
+  const later = await runReview(lenientInput, { ...depsWith(recording(JSON.stringify({ bugs: many(4) })).runner, refuteFirstTwo), exec: execDiff(patch), maxFindings: 2 });
+  assert.equal(later.status, "findings");
+  assert.equal(later.findings.length, 2);
+});
+
+test("git-quoted paths with an emoji and an octal escape decode as UTF-8", () => {
+  const raw = 'diff --git "a/\u{1F600}caf\\303\\251.ts" "b/\u{1F600}caf\\303\\251.ts"\n@@ -0,0 +1 @@\n+x\n';
+  assert.equal(splitDiff(raw)[0]?.path, "\u{1F600}café.ts");
+  assert.equal(unquoteGitPath('"\\360\\237\\230\\200.ts"'), "\u{1F600}.ts");
 });

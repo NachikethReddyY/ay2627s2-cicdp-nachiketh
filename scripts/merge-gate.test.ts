@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changedDuringReview, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { baseStillCurrent, changedDuringReview, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -19,6 +19,15 @@ const green: PullRequest = {
 };
 const open: GateOptions = { reviewResult: null, author: "claude", unresolvedThreads: 0, localHead: "abc123", worktreeClean: true, currentBase: "base111" };
 const cleanReview = { status: "clean", head: "abc123", base: "base111", author: "claude", reviewer: "codex" };
+
+test("the reviewed base must equal both the local and the remote main tip", () => {
+  assert.deepEqual(baseStillCurrent("b1", "b1", "b1"), []);
+  for (const [review, local, remote] of [["b1", "b2", "b1"], ["b1", "b1", "b2"], ["", "", ""], ["b1", "", "b1"], ["b1", "b1", ""]] as const) {
+    const reasons = baseStillCurrent(review, local, remote);
+    assert.equal(reasons.length, 1);
+    assert.match(reasons[0] ?? "", /fetch main and re-run the gate/);
+  }
+});
 
 test("a sensitive review must be pinned to the base commit the PR will merge into", () => {
   const pr = { ...green, files: [{ path: ".github/workflows/ci.yml" }] };

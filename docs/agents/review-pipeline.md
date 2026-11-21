@@ -30,7 +30,7 @@ Model inversion: the family that wrote the diff does not review it.
 
 Strict mode also pins the base and head commits once at the start and returns them as `base` and `head` (the gate requires both to match), diffs as text with no external diff drivers or renames, returns `incomplete` for any binary change or any finding that cites a file outside the diff, keeps every schema-valid finding because the verifier has no repo access, runs Claude with `--strict-mcp-config`, and stops with `incomplete` after a 40 minute wall-clock deadline.
 
-A diff over 180,000 patch characters is reviewed in chunks: whole files are packed greedily, a larger file is split at hunk boundaries, and each chunk gets the full reviewer and verifier pass. Findings merge across chunks. The result is `clean` only if every chunk is clean. A single hunk over the limit, or more than 12 chunks, is `incomplete`; split the PR.
+A diff over 180,000 patch characters is reviewed in chunks: whole files are packed greedily, a larger file is split at hunk boundaries, and each chunk gets the full reviewer and verifier pass. Findings merge across chunks. The result is `clean` only if every chunk is clean. A single hunk over the limit, or more than 12 chunks, is `incomplete`; split the PR. Known residual: chunks are reviewed separately, so a bug that only shows across two chunks can be missed (each chunk prompt lists every changed path, and the result notes it).
 
 ## What it does
 

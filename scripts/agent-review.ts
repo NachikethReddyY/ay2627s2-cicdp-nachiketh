@@ -67,6 +67,8 @@ export const LEDGER_PATH = ".agent-review/ledger.jsonl";
 export const APPROVAL_DISCLAIMER = "Bot output is advisory. It does not replace CI or the merge gate.";
 export const MAX_DIFF_CHARS = 180_000;
 export const MAX_CHUNKS = 12;
+export const VERIFY_FACTOR = 3;
+export const EXEC_TIMEOUT_MS = 2 * 60 * 1000;
 export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
 
@@ -169,20 +171,21 @@ const SIMPLE_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11,
 export function unquoteGitPath(quoted: string): string {
   const inner = quoted.startsWith('"') && quoted.endsWith('"') && quoted.length >= 2 ? quoted.slice(1, -1) : quoted;
   const bytes: number[] = [];
-  for (let at = 0; at < inner.length; at += 1) {
-    const ch = inner[at] as string;
+  const chars = Array.from(inner);
+  for (let at = 0; at < chars.length; at += 1) {
+    const ch = chars[at] as string;
     if (ch !== "\\") {
       bytes.push(...Buffer.from(ch, "utf8"));
       continue;
     }
-    const octal = /^[0-7]{1,3}/.exec(inner.slice(at + 1, at + 4));
+    const octal = /^[0-7]{1,3}/.exec(chars.slice(at + 1, at + 4).join(""));
     if (octal) {
       bytes.push(Number.parseInt(octal[0], 8));
       at += octal[0].length;
       continue;
     }
-    const next = inner[at + 1] ?? "";
-    bytes.push(SIMPLE_ESCAPES[next] ?? next.charCodeAt(0));
+    const next = chars[at + 1] ?? "";
+    bytes.push(...(SIMPLE_ESCAPES[next] !== undefined ? [SIMPLE_ESCAPES[next]] : [...Buffer.from(next, "utf8")]));
     at += 1;
   }
   return Buffer.from(bytes).toString("utf8");
@@ -225,13 +228,13 @@ export function splitDiff(rawDiff: string): DiffFile[] {
 }
 
 export const defaultExec: Exec = (file, args, cwd) =>
-  execFileSync(file, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync(file, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: EXEC_TIMEOUT_MS });
 
 export function collectDiff(source: { pr: string | null; base: string; head?: string }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
   const raw =
     source.pr !== null
       ? exec("gh", ["pr", "diff", source.pr], cwd)
-      : exec("git", ["-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", `${source.base}...${source.head ?? "HEAD"}`], cwd);
+      : exec("git", ["-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", `${source.base}...${source.head ?? "HEAD"}`], cwd);
   const all = splitDiff(raw);
   return {
     files: all.filter((f) => !isSkipped(f.path, skipList)),
@@ -333,12 +336,19 @@ export const FINDING_SHAPE =
 
 export type ChunkLabel = { index: number; total: number };
 
+export function changedPathOverview(files: DiffFile[]): string[] {
+  const status = (patch: string): string => (/^new file mode /m.test(patch) ? "A" : /^deleted file mode /m.test(patch) ? "D" : "M");
+  const byPath = new Map<string, string>();
+  for (const f of files) if (!byPath.has(f.path)) byPath.set(f.path, status(f.patch));
+  return [...byPath.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, code]) => `${code} ${path}`);
+}
+
 function describeParts(files: DiffFile[]): string {
   return files.map((f) => (f.part ? `${f.path} (${f.part})` : f.path)).join(", ");
 }
 
-export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string; chunk?: ChunkLabel; readTools?: boolean }): string {
-  const chunkLabel = input.chunk && input.chunk.total > 1 ? `[chunk ${input.chunk.index} of ${input.chunk.total}: ${describeParts(input.files)}]\n` : "";
+export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string; chunk?: ChunkLabel; overview?: string[]; readTools?: boolean }): string {
+  const chunkLabel = input.chunk && input.chunk.total > 1 ? `[chunk ${input.chunk.index} of ${input.chunk.total}: ${describeParts(input.files)}]\n${input.overview ? `[all changed paths in this change]\n${input.overview.join("\n")}\n` : ""}` : "";
   let diff = input.files.map((f) => f.patch).join("\n");
   let truncated = false;
   if (diff.length > MAX_DIFF_CHARS) {
@@ -363,7 +373,7 @@ export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBl
     `- Every finding needs file, line, failure_scenario and evidence. Omit a finding you cannot prove from the code.`,
     `- Report at most ${MAX_NITS} nits, and none if you have an important finding.`,
     input.readTools === false ? "- You cannot read files; judge only what the diff and context show, and omit any claim you cannot prove from them." : "- You may read files in the repository to check a claim.",
-    chunkLabel ? "- The diff below is one chunk of a larger change; other chunks are reviewed separately. The chunk label is the first line inside the diff block." : "",
+    chunkLabel ? "- This chunk is part of a larger change. Other chunks are reviewed separately, so consider how this chunk interacts with the other changed paths listed at the top of the diff block. The chunk label is the first line inside the diff block." : "",
     truncated ? "- The diff below was truncated, so say nothing about files you cannot see." : "",
     "",
     "<untrusted-diff>",
@@ -787,19 +797,22 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   if (input.strict) {
     let numstat: string;
     try {
-      numstat = deps.exec("git", ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", `${baseSha}...${headSha}`], input.root);
+      numstat = deps.exec("git", ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", `${baseSha}...${headSha}`], input.root);
     } catch (error) {
       return finish(incomplete(`could not check for binary changes: ${(error as Error).message}`, notes));
     }
     const opaque = new Set(binaryPaths(numstat));
     for (const f of diff.files) if (/^(Binary files .* differ|GIT binary patch)$/m.test(f.patch)) opaque.add(f.path);
     if (opaque.size > 0) return finish(incomplete(`binary or attribute-marked change; a human must review: ${[...opaque].slice(0, 5).join(", ")}`, notes));
+    const submodules = diff.files.filter((f) => /^[-+]Subproject commit /m.test(f.patch) || /^(new file mode|deleted file mode|old mode|new mode|index .* ) ?160000/m.test(f.patch)).map((f) => f.path);
+    if (submodules.length > 0) return finish(incomplete(`submodule change; a human must review: ${submodules.slice(0, 5).join(", ")}`, notes));
   }
   const chunked = chunkDiff(diff.files);
   if ("error" in chunked) return finish(incomplete(`diff is too large to review completely: ${chunked.error}`, notes));
   const chunks = chunked.chunks;
   if (chunks.length > MAX_CHUNKS) return finish(incomplete(`diff needs ${chunks.length} review chunks, above the limit of ${MAX_CHUNKS}; split the PR into smaller changes`, notes));
-  if (chunks.length > 1) notes.push(`reviewed in ${chunks.length} chunks`);
+  if (chunks.length > 1) notes.push(`reviewed in ${chunks.length} chunks; cross-chunk interactions may be missed`);
+  const overview = chunks.length > 1 ? changedPathOverview(diff.files) : undefined;
 
   if (deps.ledger && deps.onAddressed) {
     const addressed = markAddressed(deps.ledger, diff.files, deps.headSha ?? "unknown", new Date().toISOString());
@@ -828,7 +841,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     }
     for (const flag of scanForInjection([], contextBlocks)) if (!injection.includes(flag)) injection.push(flag);
 
-    const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, readTools: !input.strict });
+    const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, overview, readTools: !input.strict });
     let output: string;
     try {
       output = await deps.reviewerRunner(prompt, optionsFor(deps.reviewerModel));
@@ -839,9 +852,10 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     const parsed = parseFindings(output, files.map((f) => f.path));
     if (!parsed.ok) return finish(incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection));
     if (input.strict && parsed.outside.length > 0) return finish(incomplete(`reviewer cited a file outside the diff${where(at)}: ${[...new Set(parsed.outside)].slice(0, 5).join(", ")}`, notes, injection));
+    if (input.strict && parsed.dropped - parsed.outside.length > 0) return finish(incomplete(`reviewer returned a malformed finding; a human must read this change${where(at)}`, notes, injection));
     if (parsed.dropped > 0) notes.push(`dropped ${parsed.dropped} finding(s) missing file, line, failure scenario or evidence`);
     for (const finding of parsed.findings) {
-      const key = [finding.file, finding.line, finding.summary, finding.failure_scenario, finding.evidence].join("\u0000");
+      const key = [finding.file, finding.line, finding.severity, finding.category, finding.summary, finding.failure_scenario, finding.evidence].join("\u0000");
       if (seen.has(key)) continue;
       seen.add(key);
       candidates.push({ finding, files });
@@ -852,25 +866,33 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const maxFindings = deps.maxFindings ?? DEFAULT_MAX_FINDINGS;
   const filteredEarly = filterDismissed(candidates.map((c) => c.finding), deps.ledger ?? [], deps.similarity ?? jaccard);
   if (filteredEarly.dropped > 0) notes.push(`comment filter dropped ${filteredEarly.dropped} finding(s) similar to dismissed ones`);
-  const shortlist = capFindings(filteredEarly.kept, maxFindings);
-  if (shortlist.dropped > 0) notes.push(`capped at ${maxFindings} finding(s) before verification, dropped ${shortlist.dropped}`);
+  const ordered = capFindings(filteredEarly.kept, Number.POSITIVE_INFINITY).kept;
 
-  let confirmed: Finding[] = shortlist.kept;
+  let confirmed: Finding[];
   if (input.strict) {
+    const shortlist = capFindings(ordered, maxFindings);
+    if (shortlist.dropped > 0) notes.push(`capped at ${maxFindings} finding(s), dropped ${shortlist.dropped}`);
+    confirmed = shortlist.kept;
     if (confirmed.length > 0) notes.push("kept: verifier had no repo access");
   } else {
+    if (ordered.length > maxFindings * VERIFY_FACTOR) return finish(incomplete(`too many findings to verify (${ordered.length}); fix the obvious ones and re-run`, notes, injection));
     confirmed = [];
-    for (const finding of shortlist.kept) {
+    let verified = 0;
+    for (const finding of ordered) {
+      if (confirmed.length >= maxFindings) break;
       if (remainingMs() <= 0) return finish(timedOut(notes, injection));
       const files = candidates.find((c) => c.finding === finding)?.files ?? [];
-      const verified = await verifyFindings([finding], files, deps.verifierRunner, optionsFor(deps.verifierModel));
-      if (!verified.ok) return finish(incomplete(verified.reason, notes, injection));
-      if (verified.refuted > 0) notes.push(`verifier refuted ${verified.refuted} finding(s)`);
-      if (verified.styleDropped > 0) notes.push(`verifier dropped ${verified.styleDropped} style, naming or cleanup finding(s)`);
-      confirmed.push(...verified.confirmed);
+      const outcome = await verifyFindings([finding], files, deps.verifierRunner, optionsFor(deps.verifierModel));
+      if (!outcome.ok) return finish(incomplete(outcome.reason, notes, injection));
+      verified += 1;
+      if (outcome.refuted > 0) notes.push(`verifier refuted ${outcome.refuted} finding(s)`);
+      if (outcome.styleDropped > 0) notes.push(`verifier dropped ${outcome.styleDropped} style, naming or cleanup finding(s)`);
+      confirmed.push(...outcome.confirmed);
     }
+    if (ordered.length - verified > 0) notes.push(`capped at ${maxFindings} finding(s), dropped ${ordered.length - verified}`);
   }
 
+  if (remainingMs() <= 0) return finish(timedOut(notes, injection));
   const findings = capFindings(limitNits(confirmed), maxFindings).kept;
   if (injection.length > 0) {
     return finish({ status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base });
@@ -908,25 +930,32 @@ export function renderMarkdown(result: ReviewResult): string {
 export function spawnRunner(command: string, args: string[]): Runner {
   return (prompt, options) =>
     new Promise<string>((resolvePromise, reject) => {
-      const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], shell: false });
+      const limit = options.timeoutMs ?? TIMEOUT_MS;
+      const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], shell: false, detached: true });
       let stdout = "";
       let stderr = "";
-      let timedOut = false;
+      let settled = false;
+      const settle = (finish: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        finish();
+      };
       const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGKILL");
-      }, options.timeoutMs ?? TIMEOUT_MS);
+        try {
+          if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+          else child.kill("SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+        settle(() => reject(new Error(`${command} timed out after ${limit}ms`)));
+      }, limit);
       child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
       child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-      child.on("error", (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
+      child.on("error", (error) => settle(() => reject(error)));
       child.on("close", (code) => {
-        clearTimeout(timer);
-        if (timedOut) reject(new Error(`${command} timed out after ${options.timeoutMs ?? TIMEOUT_MS}ms`));
-        else if (code !== 0) reject(new Error(`${command} exited with ${code}: ${stderr.trim().slice(-500)}`));
-        else resolvePromise(stdout);
+        if (code !== 0) settle(() => reject(new Error(`${command} exited with ${code}: ${stderr.trim().slice(-500)}`)));
+        else settle(() => resolvePromise(stdout));
       });
       child.stdin.on("error", () => undefined);
       child.stdin.end(prompt);

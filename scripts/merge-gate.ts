@@ -149,6 +149,11 @@ function unresolvedThreadCount(number: string): number {
 
 export type PullRequestPin = { headRefOid: string; baseRefName: string };
 
+export function baseStillCurrent(reviewBase: string, localMain: string, remoteMain: string): string[] {
+  if (reviewBase && reviewBase === localMain && reviewBase === remoteMain) return [];
+  return [`the reviewed base (${reviewBase.slice(0, 8) || "unknown"}) is not the current main: local origin/main is ${localMain.slice(0, 8) || "unknown"} and GitHub main is ${remoteMain.slice(0, 8) || "unknown"}; fetch main and re-run the gate`];
+}
+
 export function changedDuringReview(before: PullRequestPin, after: PullRequestPin): string[] {
   const reasons: string[] = [];
   if (after.headRefOid !== before.headRefOid) reasons.push("the PR head changed during review; check out the new head and re-run the gate");
@@ -237,6 +242,8 @@ function main(argv: string[]): number {
     },
   );
   reasons.push(...changedDuringReview(pr, current));
+  const mainTips = (): [string, string] => [git(["rev-parse", REVIEW_BASE_REF], root).trim(), gh(["api", "repos/{owner}/{repo}/branches/main", "--jq", ".commit.sha"]).trim()];
+  if (reviewResult) reasons.push(...baseStillCurrent(reviewResult.base ?? "", ...mainTips()));
   if (reasons.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of reasons) console.error(`  - ${r}`);
@@ -252,6 +259,12 @@ function main(argv: string[]): number {
   if (flags.has("--dry-run")) {
     console.log(`PR #${number} passes every gate. Dry run, not merging.`);
     return 0;
+  }
+  const lastCheck = reviewResult ? baseStillCurrent(reviewResult.base ?? "", ...mainTips()) : [];
+  if (lastCheck.length > 0) {
+    console.error(`Not merging PR #${number}:`);
+    for (const r of lastCheck) console.error(`  - ${r}`);
+    return 1;
   }
   gh(["pr", "merge", number, "--squash", "--delete-branch", "--match-head-commit", pr.headRefOid]);
   console.log(`Merged PR #${number} at ${pr.headRefOid}. Main deploys after CI.`);

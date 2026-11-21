@@ -176,7 +176,7 @@ test("collectDiff uses gh for a PR and git for a base", () => {
   collectDiff({ pr: null, base: "origin/dev" }, [], exec, ".");
   assert.deepEqual(calls, [
     ["gh", "pr", "diff", "7"],
-    ["git", "-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "origin/dev...HEAD"],
+    ["git", "-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "origin/dev...HEAD"],
   ]);
 });
 
@@ -660,7 +660,7 @@ test("an oversize diff is reviewed in chunks and every chunk reaches the reviewe
   assert.equal(result.status, "clean");
   assert.equal(prompts.length, 3);
   for (const name of ["a", "b", "c"]) assert.equal(prompts.filter((p) => p.includes(`a/src/${name}.ts`)).length, 1);
-  assert.ok(result.notes.includes("reviewed in 3 chunks"));
+  assert.ok(result.notes.includes("reviewed in 3 chunks; cross-chunk interactions may be missed"));
 });
 
 test("one unclean chunk makes the whole result not clean", async () => {
