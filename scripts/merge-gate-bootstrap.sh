@@ -7,7 +7,8 @@ temp="$(mktemp -d)"
 temp="$(cd "$temp" && pwd -P)"
 trap 'rm -rf "$temp"' EXIT
 mkdir -p "$temp/scripts"
-for file in merge-gate.ts revert-rate.ts bin.ts; do
+for file in merge-gate.ts revert-rate.ts bin.ts agent-verify.sh; do
   git show "$base:scripts/$file" > "$temp/scripts/$file"
 done
-MERGE_GATE_CHECKOUT_ROOT="$root" node "$temp/scripts/merge-gate.ts" "$@"
+chmod +x "$temp/scripts/agent-verify.sh"
+MERGE_GATE_CHECKOUT_ROOT="$root" MERGE_GATE_VERIFY_SCRIPT="$temp/scripts/agent-verify.sh" node "$temp/scripts/merge-gate.ts" "$@"

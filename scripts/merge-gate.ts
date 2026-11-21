@@ -153,6 +153,13 @@ function main(argv: string[]): number {
     console.error("--skip-local is no longer supported; remove it and run local verification");
     return 2;
   }
+  const verifyScript = process.env.MERGE_GATE_VERIFY_SCRIPT;
+  if (!verifyScript) {
+    console.error(
+      "refusing to run: the gate must start from origin/main. Run `git fetch origin main && git show origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>`",
+    );
+    return 2;
+  }
   const number = argv.find((a) => /^\d+$/.test(a));
   if (!number) {
     console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run]");
@@ -183,7 +190,7 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  execFileSync(resolve(root, "scripts/agent-verify.sh"), { stdio: "inherit", cwd: root });
+  execFileSync(verifyScript, { stdio: "inherit", cwd: root, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root } });
   if (flags.has("--dry-run")) {
     console.log(`PR #${number} passes every gate. Dry run, not merging.`);
     return 0;

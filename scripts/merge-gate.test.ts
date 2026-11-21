@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -97,6 +97,19 @@ test("skip-local is rejected before accessing the PR", () => {
   assert.match(result.stderr, /--skip-local.*remove/i);
 });
 
+test("the gate refuses to run without the base verify script from the bootstrap", () => {
+  const env = { ...process.env };
+  delete env.MERGE_GATE_VERIFY_SCRIPT;
+  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123"], { encoding: "utf8", env });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /merge-gate-bootstrap\.sh/);
+});
+
+test("agent:merge in package.json never runs the checkout's own gate", () => {
+  const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
+  assert.doesNotMatch(manifest.scripts["agent:merge"] ?? "", /merge-gate\.ts|bootstrap/);
+});
+
 test("base bootstrap executes the base gate even when the checkout changes it", () => {
   const root = mkdtempSync(join(tmpdir(), "merge-gate-base-"));
   try {
@@ -105,7 +118,7 @@ test("base bootstrap executes the base gate even when the checkout changes it", 
     git("config", "user.email", "test@example.com");
     git("config", "user.name", "Test");
     mkdirSync(join(root, "scripts"));
-    for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts"]) {
+    for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts", "agent-verify.sh"]) {
       copyFileSync(join("scripts", file), join(root, "scripts", file));
     }
     git("add", ".");
