@@ -222,6 +222,27 @@ export function binaryPaths(numstatZ: string): string[] {
     });
 }
 
+export function gitlinkPaths(rawZ: string): string[] {
+  const parts = rawZ.split("\0");
+  const paths: string[] = [];
+  for (let at = 0; at + 1 < parts.length; at += 2) {
+    const [oldMode, newMode] = (parts[at] ?? "").replace(/^:/, "").split(" ");
+    if (oldMode === "160000" || newMode === "160000") paths.push(parts[at + 1] ?? "");
+  }
+  return paths;
+}
+
+export function visiblePath(path: string): string {
+  const named: Record<string, string> = { "\n": "\\n", "\t": "\\t", "\r": "\\r" };
+  return path.replace(/[\u0000-\u001f\u007f-\u009f]/g, (ch) => named[ch] ?? `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
+}
+
+export function isAmbiguousReply(output: string): boolean {
+  const fenced = output.match(/```/g)?.length ?? 0;
+  const bugsObjects = output.match(/\{\s*"bugs"\s*:/g)?.length ?? 0;
+  return fenced > 2 || bugsObjects > 1;
+}
+
 export function splitDiff(rawDiff: string): DiffFile[] {
   const chunks = rawDiff.split(/^(?=diff --git )/m).filter((c) => c.startsWith("diff --git "));
   return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n")[0] ?? ""), patch }));
@@ -234,7 +255,7 @@ export function collectDiff(source: { pr: string | null; base: string; head?: st
   const raw =
     source.pr !== null
       ? exec("gh", ["pr", "diff", source.pr], cwd)
-      : exec("git", ["-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", `${source.base}...${source.head ?? "HEAD"}`], cwd);
+      : exec("git", ["-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${source.base}...${source.head ?? "HEAD"}`], cwd);
   const all = splitDiff(raw);
   return {
     files: all.filter((f) => !isSkipped(f.path, skipList)),
@@ -340,11 +361,11 @@ export function changedPathOverview(files: DiffFile[]): string[] {
   const status = (patch: string): string => (/^new file mode /m.test(patch) ? "A" : /^deleted file mode /m.test(patch) ? "D" : "M");
   const byPath = new Map<string, string>();
   for (const f of files) if (!byPath.has(f.path)) byPath.set(f.path, status(f.patch));
-  return [...byPath.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, code]) => `${code} ${path}`);
+  return [...byPath.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, code]) => `${code} ${visiblePath(path)}`);
 }
 
 function describeParts(files: DiffFile[]): string {
-  return files.map((f) => (f.part ? `${f.path} (${f.part})` : f.path)).join(", ");
+  return files.map((f) => (f.part ? `${visiblePath(f.path)} (${f.part})` : visiblePath(f.path))).join(", ");
 }
 
 export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string; chunk?: ChunkLabel; overview?: string[]; readTools?: boolean }): string {
@@ -672,7 +693,7 @@ export function detectInjection(text: string): string[] {
 
 export function scanForInjection(files: DiffFile[], context: ContextBlock[]): string[] {
   const hits: string[] = [];
-  for (const f of files) for (const why of detectInjection(f.patch)) hits.push(`${f.path}: ${why}`);
+  for (const f of files) for (const why of [...detectInjection(f.patch), ...detectInjection(f.path)]) if (!hits.includes(`${visiblePath(f.path)}: ${why}`)) hits.push(`${visiblePath(f.path)}: ${why}`);
   for (const c of context) for (const why of detectInjection(c.text)) hits.push(`${c.label}: ${why}`);
   return hits;
 }
@@ -759,7 +780,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     ...base,
   });
 
-  const now = deps.now ?? Date.now;
+  const now = deps.now ?? (() => performance.now());
   const startedAt = now();
   const budgetMs = deps.deadlineMs ?? (input.strict ? STRICT_DEADLINE_MS : null);
   const remainingMs = (): number => (budgetMs === null ? Number.POSITIVE_INFINITY : budgetMs - (now() - startedAt));
@@ -797,13 +818,21 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   if (input.strict) {
     let numstat: string;
     try {
-      numstat = deps.exec("git", ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", `${baseSha}...${headSha}`], input.root);
+      numstat = deps.exec("git", ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${baseSha}...${headSha}`], input.root);
     } catch (error) {
       return finish(incomplete(`could not check for binary changes: ${(error as Error).message}`, notes));
     }
     const opaque = new Set(binaryPaths(numstat));
     for (const f of diff.files) if (/^(Binary files .* differ|GIT binary patch)$/m.test(f.patch)) opaque.add(f.path);
     if (opaque.size > 0) return finish(incomplete(`binary or attribute-marked change; a human must review: ${[...opaque].slice(0, 5).join(", ")}`, notes));
+    let raw: string;
+    try {
+      raw = deps.exec("git", ["diff", "--raw", "-z", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${baseSha}...${headSha}`], input.root);
+    } catch (error) {
+      return finish(incomplete(`could not check for submodule changes: ${(error as Error).message}`, notes));
+    }
+    const gitlinks = gitlinkPaths(raw);
+    if (gitlinks.length > 0) return finish(incomplete(`submodule change; a human must review: ${gitlinks.slice(0, 5).map(visiblePath).join(", ")}`, notes));
     const submodules = diff.files.filter((f) => /^[-+]Subproject commit /m.test(f.patch) || /^(new file mode|deleted file mode|old mode|new mode|index .* ) ?160000/m.test(f.patch)).map((f) => f.path);
     if (submodules.length > 0) return finish(incomplete(`submodule change; a human must review: ${submodules.slice(0, 5).join(", ")}`, notes));
   }
@@ -849,6 +878,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
       if (remainingMs() <= 0) return finish(timedOut(notes, injection));
       return finish(incomplete(`reviewer failed${where(at)}: ${(error as Error).message}`, notes, injection));
     }
+    if (input.strict && isAmbiguousReply(output)) return finish(incomplete(`reviewer reply was ambiguous${where(at)}; a human must read this change`, notes, injection));
     const parsed = parseFindings(output, files.map((f) => f.path));
     if (!parsed.ok) return finish(incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection));
     if (input.strict && parsed.outside.length > 0) return finish(incomplete(`reviewer cited a file outside the diff${where(at)}: ${[...new Set(parsed.outside)].slice(0, 5).join(", ")}`, notes, injection));

@@ -154,6 +154,12 @@ export function baseStillCurrent(reviewBase: string, localMain: string, remoteMa
   return [`the reviewed base (${reviewBase.slice(0, 8) || "unknown"}) is not the current main: local origin/main is ${localMain.slice(0, 8) || "unknown"} and GitHub main is ${remoteMain.slice(0, 8) || "unknown"}; fetch main and re-run the gate`];
 }
 
+export type MainTips = { reviewBase: string; localMain: string; remoteMain: string };
+
+export function finalMergeBlockers(before: PullRequestPin, now: PullRequestPin, tips: MainTips | null): string[] {
+  return [...changedDuringReview(before, now), ...(tips ? baseStillCurrent(tips.reviewBase, tips.localMain, tips.remoteMain) : [])];
+}
+
 export function changedDuringReview(before: PullRequestPin, after: PullRequestPin): string[] {
   const reasons: string[] = [];
   if (after.headRefOid !== before.headRefOid) reasons.push("the PR head changed during review; check out the new head and re-run the gate");
@@ -260,7 +266,8 @@ function main(argv: string[]): number {
     console.log(`PR #${number} passes every gate. Dry run, not merging.`);
     return 0;
   }
-  const lastCheck = reviewResult ? baseStillCurrent(reviewResult.base ?? "", ...mainTips()) : [];
+  const [localMain, remoteMain] = reviewResult ? mainTips() : ["", ""];
+  const lastCheck = finalMergeBlockers(pr, JSON.parse(gh(["pr", "view", number, "--json", "headRefOid,baseRefName"])) as PullRequestPin, reviewResult ? { reviewBase: reviewResult.base ?? "", localMain: localMain as string, remoteMain: remoteMain as string } : null);
   if (lastCheck.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of lastCheck) console.error(`  - ${r}`);

@@ -176,7 +176,7 @@ test("collectDiff uses gh for a PR and git for a base", () => {
   collectDiff({ pr: null, base: "origin/dev" }, [], exec, ".");
   assert.deepEqual(calls, [
     ["gh", "pr", "diff", "7"],
-    ["git", "-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "origin/dev...HEAD"],
+    ["git", "-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", "origin/dev...HEAD"],
   ]);
 });
 
@@ -639,7 +639,7 @@ const execDiff = (patch: string, calls: string[][] = []) => (file: string, args:
   calls.push([file, ...args]);
   if (file !== "git") return "";
   if (args.includes("rev-parse")) return `sha-${args[args.length - 1]}\n`;
-  if (args.includes("--numstat")) return "";
+  if (args.includes("--numstat") || args.includes("--raw")) return "";
   return args.includes("diff") ? patch : "";
 };
 const recording = (answer = '{"bugs":[]}') => {

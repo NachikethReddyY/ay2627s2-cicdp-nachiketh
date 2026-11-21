@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baseStillCurrent, changedDuringReview, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { baseStillCurrent, changedDuringReview, finalMergeBlockers, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -27,6 +27,15 @@ test("the reviewed base must equal both the local and the remote main tip", () =
     assert.equal(reasons.length, 1);
     assert.match(reasons[0] ?? "", /fetch main and re-run the gate/);
   }
+});
+
+test("the final pre-merge check refuses a changed head, a retargeted base or a moved main", () => {
+  const pin = { headRefOid: "h1", baseRefName: "main" };
+  assert.deepEqual(finalMergeBlockers(pin, pin, { reviewBase: "b1", localMain: "b1", remoteMain: "b1" }), []);
+  assert.deepEqual(finalMergeBlockers(pin, pin, null), []);
+  assert.equal(finalMergeBlockers(pin, { ...pin, headRefOid: "h2" }, null).length, 1);
+  assert.equal(finalMergeBlockers(pin, { ...pin, baseRefName: "dev" }, null).length, 1);
+  assert.equal(finalMergeBlockers(pin, pin, { reviewBase: "b1", localMain: "b1", remoteMain: "b2" }).length, 1);
 });
 
 test("a sensitive review must be pinned to the base commit the PR will merge into", () => {
