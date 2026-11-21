@@ -201,36 +201,27 @@ function readQuoted(text: string): { token: string; rest: string } | null {
   return null;
 }
 
+function matchingPathPair(pair: string) {
+  const middle = (pair.length - 1) / 2;
+  if (pair[middle] !== " ") return null;
+  const a = pair.slice(0, middle);
+  const b = pair.slice(middle + 1);
+  if (a.startsWith("a/") && b === "b/" + a.slice(2) && !/[\x00-\x1f\x7f"\\]/.test(a)) return { a, b, path: a.slice(2) };
+  if (!a.startsWith('"a/') || b !== '"b/' + a.slice(3)) return null;
+  if (!/^"(?:[^"\\\x00-\x1f\x7f]|\\(?:[abtnvfr"\\]|[0-3][0-7]{2}))*"$/.test(a)) return null;
+  return { a, b, path: unquoteGitPath(a).slice(2) };
+}
+
 export function diffHeaderPath(line: string): string {
   const rest = line.replace(/^diff --git /, "");
+  const matched = matchingPathPair(rest);
+  if (matched) return matched.path;
   const first = readQuoted(rest);
   const second = first ? (readQuoted(first.rest)?.token ?? first.rest) : null;
   if (second !== null) return unquoteGitPath(second).replace(/^b\//, "");
   const quotedSecond = / ("b\/.*")$/.exec(rest);
   if (quotedSecond?.[1]) return unquoteGitPath(quotedSecond[1]).replace(/^b\//, "");
-  const half = (rest.length - 3) / 2;
-  if (Number.isInteger(half) && rest.slice(0, 2) === "a/" && rest.slice(2, 2 + half) === rest.slice(half + 5)) return rest.slice(2, 2 + half);
   return /^a\/(.+?) b\/(.+)$/.exec(rest)?.[2] ?? "unknown";
-}
-
-export function binaryPaths(numstatZ: string): string[] {
-  return numstatZ
-    .split("\0")
-    .filter(Boolean)
-    .flatMap((entry) => {
-      const [added, deleted, ...path] = entry.split("\t");
-      return added === "-" && deleted === "-" ? [path.join("\t")] : [];
-    });
-}
-
-export function gitlinkPaths(rawZ: string): string[] {
-  const parts = rawZ.split("\0");
-  const paths: string[] = [];
-  for (let at = 0; at + 1 < parts.length; at += 2) {
-    const [oldMode, newMode] = (parts[at] ?? "").replace(/^:/, "").split(" ");
-    if (oldMode === "160000" || newMode === "160000") paths.push(parts[at + 1] ?? "");
-  }
-  return paths;
 }
 
 export function visiblePath(path: string): string {
@@ -252,18 +243,21 @@ export function isSingleJsonReply(output: string): boolean {
 }
 
 export function splitDiff(rawDiff: string): DiffFile[] {
-  const chunks = rawDiff.split(/^(?=diff --git )/m).filter((c) => c.startsWith("diff --git "));
-  return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n")[0] ?? ""), patch }));
+  const chunks = rawDiff.split(/(?<=\n)(?=diff --git )/).filter((c) => c.startsWith("diff --git "));
+  return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n", 1)[0] ?? ""), patch }));
 }
 
 export const defaultExec: Exec = (file, args, cwd) =>
   execFileSync(file, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: EXEC_TIMEOUT_MS });
 
-export function collectDiff(source: { pr: string | null; base: string; head?: string }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
-  const raw =
-    source.pr !== null
-      ? exec("gh", ["pr", "diff", source.pr], cwd)
-      : exec("git", ["-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${source.base}...${source.head ?? "HEAD"}`], cwd);
+export function collectDiff(source: { pr: string | null; base: string; head?: string; strict?: boolean }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
+  if (source.strict && source.pr !== null) throw new Error("strict reviews local commits only");
+  const config = source.strict ? ["-c", "diff.suppressBlankEmpty=false"] : [];
+  const format = source.strict ? ["--full-index", "--src-prefix=a/", "--dst-prefix=b/", "--no-color"] : [];
+  const raw = source.pr !== null
+    ? exec("gh", ["pr", "diff", source.pr], cwd)
+    : exec("git", ["-c", "core.quotepath=false", ...config, "diff", ...format, "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${source.base}...${source.head ?? "HEAD"}`], cwd);
+  if (source.strict && raw && (!raw.startsWith("diff --git ") || !raw.endsWith("\n"))) throw new Error("incomplete Git patch records");
   const all = splitDiff(raw);
   return {
     files: all.filter((f) => !isSkipped(f.path, skipList)),
@@ -271,12 +265,131 @@ export function collectDiff(source: { pr: string | null; base: string; head?: st
   };
 }
 
+function requirePatch(valid: unknown, reason: string): asserts valid {
+  if (!valid) throw new Error(reason);
+}
+
+type BlobSide = { mode: string; oid: string };
+
+function checkHunks(lines: string[], at: number, old: BlobSide, next: BlobSide) {
+  let added = 0;
+  let deleted = 0;
+  let oldEnd = 0;
+  let newEnd = 0;
+  let oldEof = false;
+  let newEof = false;
+  while (at < lines.length) {
+    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: [^\n]*)?$/.exec(lines[at++]!);
+    requirePatch(header, "invalid hunk header");
+    let oldCount = Number(header[2] ?? 1);
+    let newCount = Number(header[4] ?? 1);
+    const oldStart = Number(header[1]) - Number(oldCount > 0);
+    const newStart = Number(header[3]) - Number(newCount > 0);
+    const gap = oldStart - oldEnd;
+    requirePatch(gap >= 0 && gap === newStart - newEnd && oldCount + newCount > 0, "inconsistent hunk ranges");
+    oldEnd = oldStart + oldCount;
+    newEnd = newStart + newCount;
+    requirePatch(Number.isSafeInteger(oldEnd) && Number.isSafeInteger(newEnd), "invalid hunk range");
+    requirePatch((old.mode !== "000000" || oldEnd === 0) && (next.mode !== "000000" || newEnd === 0), "unexpected content on missing side");
+    const changesBefore = added + deleted;
+    while (oldCount || newCount) {
+      const marker = lines[at++]?.[0];
+      requirePatch(marker === "+" || marker === "-" || marker === " ", "missing hunk body record");
+      if (marker !== "+") {
+        requirePatch(!oldEof && oldCount > 0, "old hunk count disagrees with body");
+        oldCount--;
+      }
+      if (marker !== "-") {
+        requirePatch(!newEof && newCount > 0, "new hunk count disagrees with body");
+        newCount--;
+      }
+      if (marker === "+") added++;
+      if (marker === "-") deleted++;
+      if (lines[at] === "\\ No newline at end of file") {
+        if (marker !== "+") oldEof = true;
+        if (marker !== "-") newEof = true;
+        at++;
+      }
+    }
+    requirePatch(added + deleted > changesBefore, "hunk has no changed lines");
+  }
+  return { added, deleted };
+}
+
+function patchCounts(file: DiffFile | undefined, path: string, old: BlobSide, next: BlobSide) {
+  requirePatch(file?.path === path, "patch paths disagree with raw diff");
+  const lines = file.patch.slice(0, -1).split("\n");
+  requirePatch(!lines.some((line) => line === "GIT binary patch" || (line.startsWith("Binary files ") && line.endsWith(" differ"))), `binary patch: ${visiblePath(path)}`);
+  requirePatch(!lines.some((line) => /^(?:index \S+|(?:new file|deleted file|old|new) mode) 160000$/.test(line)), `submodule change: ${visiblePath(path)}`);
+  const pair = matchingPathPair(lines[0]!.slice("diff --git ".length));
+  requirePatch(pair?.path === path, "patch header disagrees with raw path");
+
+  let at = 1;
+  const expect = (record: string) => requirePatch(lines[at++] === record, "patch metadata disagrees with raw diff");
+  if (old.mode === "000000") expect(`new file mode ${next.mode}`);
+  else if (next.mode === "000000") expect(`deleted file mode ${old.mode}`);
+  else if (old.mode !== next.mode) {
+    expect(`old mode ${old.mode}`);
+    expect(`new mode ${next.mode}`);
+  }
+  if (old.oid !== next.oid) expect(`index ${old.oid}..${next.oid}${old.mode === next.mode ? " " + old.mode : ""}`);
+  if (at === lines.length) {
+    const empty = createHash(old.oid.length === 40 ? "sha1" : "sha256").update("blob 0\0").digest("hex");
+    requirePatch(old.oid === next.oid || (old.mode === "000000" && next.oid === empty) || (next.mode === "000000" && old.oid === empty), "missing content patch");
+    return { added: 0, deleted: 0 };
+  }
+  requirePatch(old.oid !== next.oid, "unexpected content patch");
+  const expectPath = (record: string) => requirePatch(lines[at++]?.replace(/\t$/, "") === record, "patch marker disagrees with raw path");
+  expectPath(`--- ${old.mode === "000000" ? "/dev/null" : pair.a}`);
+  expectPath(`+++ ${next.mode === "000000" ? "/dev/null" : pair.b}`);
+  requirePatch(at < lines.length, "missing hunk");
+  return checkHunks(lines, at, old, next);
+}
+
+function rawStatus(oldMode: string, newMode: string) {
+  if (oldMode === "000000") return "A";
+  if (newMode === "000000") return "D";
+  return oldMode.slice(0, 3) === newMode.slice(0, 3) ? "M" : "T";
+}
+
+function validateStrictDiff(files: DiffFile[], raw: string, numstat: string) {
+  const records = raw.split("\0");
+  const stats = numstat.split("\0");
+  requirePatch(records.pop() === "" && stats.pop() === "" && records.length === stats.length * 2, "incomplete raw or numstat records");
+  const seen = new Set<string>();
+  let patch = 0;
+  for (const [i, stat] of stats.entries()) {
+    const path = records[i * 2 + 1]!;
+    const meta = /^:(000000|100644|100755|120000|160000) (000000|100644|100755|120000|160000) ([a-f0-9]{40}|[a-f0-9]{64}) ([a-f0-9]{40}|[a-f0-9]{64}) ([ADMT])$/.exec(records[i * 2]!);
+    requirePatch(meta && path && !seen.has(path), "invalid or duplicate raw diff record");
+    seen.add(path);
+    const old = { mode: meta[1]!, oid: meta[3]! };
+    const next = { mode: meta[2]!, oid: meta[4]! };
+    requirePatch(old.mode !== "160000" && next.mode !== "160000", `submodule change; a human must review: ${visiblePath(path)}`);
+    requirePatch(stat !== `-\t-\t${path}`, `binary or attribute-marked change; a human must review: ${visiblePath(path)}`);
+    const missing = { mode: "000000", oid: "0".repeat(old.oid.length) };
+    requirePatch(next.oid.length === old.oid.length && [old, next].every((s) => (s.mode === missing.mode) === (s.oid === missing.oid)), "invalid raw blob identity");
+    const status = rawStatus(old.mode, next.mode);
+    requirePatch(meta[5] === status && (old.oid !== next.oid || old.mode !== next.mode), "inconsistent raw change status");
+    if (status === "T") {
+      const { deleted } = patchCounts(files[patch++], path, old, missing);
+      const { added } = patchCounts(files[patch++], path, missing, next);
+      const counts = /^(\d+)\t(\d+)\t/.exec(stat);
+      requirePatch(counts && stat.slice(counts[0].length) === path && added >= Number(counts[1]) && added - Number(counts[1]) === deleted - Number(counts[2]), "type-change numstat disagrees with patch");
+    } else {
+      const { added, deleted } = patchCounts(files[patch++], path, old, next);
+      requirePatch(stat === `${added}\t${deleted}\t${path}`, "numstat disagrees with patch");
+    }
+  }
+  requirePatch(patch === files.length, "unexpected patch outside raw diff");
+}
+
 function joinedLength(files: DiffFile[]): number {
   return files.reduce((sum, f) => sum + f.patch.length, 0) + Math.max(0, files.length - 1);
 }
 
 function splitFile(file: DiffFile, limit: number): DiffFile[] | string {
-  const [header = "", ...hunks] = file.patch.split(/^(?=@@)/m);
+  const [header = "", ...hunks] = file.patch.split(/(?<=\n)(?=@@ )/);
   if (hunks.length === 0) return `${file.path} has no hunks and is larger than ${limit} characters; cannot split further`;
   const oversized = hunks.findIndex((h) => header.length + h.length > limit);
   if (oversized !== -1) return `hunk ${oversized + 1} of ${file.path} is larger than ${limit} characters; cannot split further`;
@@ -366,9 +479,9 @@ export const FINDING_SHAPE =
 export type ChunkLabel = { index: number; total: number };
 
 export function changedPathOverview(files: DiffFile[]): string[] {
-  const status = (patch: string): string => (/^new file mode /m.test(patch) ? "A" : /^deleted file mode /m.test(patch) ? "D" : "M");
+  const status = (patch: string): string => (patch.includes("\nnew file mode ") ? "A" : patch.includes("\ndeleted file mode ") ? "D" : "M");
   const byPath = new Map<string, string>();
-  for (const f of files) if (!byPath.has(f.path)) byPath.set(f.path, status(f.patch));
+  for (const f of files) byPath.set(f.path, byPath.has(f.path) ? "T" : status(f.patch));
   return [...byPath.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, code]) => `${code} ${visiblePath(path)}`);
 }
 
@@ -643,7 +756,7 @@ export function newEntry(finding: Finding, ctx: { headSha: string; pr: string | 
 
 export function changedLineRanges(patch: string): [number, number][] {
   const ranges: [number, number][] = [];
-  for (const hunk of patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) {
+  for (const hunk of patch.matchAll(/(?:^|\n)@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/g)) {
     const start = Number(hunk[1]);
     const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
     if (count > 0) ranges.push([start, start + count - 1]);
@@ -829,7 +942,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
 
   let diff: CollectedDiff;
   try {
-    diff = collectDiff({ pr: input.pr, base: baseSha, head: headSha }, skipList, deps.exec, input.root);
+    diff = collectDiff({ pr: input.pr, base: baseSha, head: headSha, strict: input.strict }, skipList, deps.exec, input.root);
   } catch (error) {
     return finish(incomplete(`could not collect the diff: ${(error as Error).message}`, []));
   }
@@ -840,25 +953,15 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     return finish({ status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base });
   }
   if (input.strict) {
-    let numstat: string;
     try {
-      numstat = deps.exec("git", ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${baseSha}...${headSha}`], input.root);
+      const range = `${baseSha}...${headSha}`;
+      const options = ["-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", range];
+      const numstat = deps.exec("git", ["diff", "--numstat", ...options], input.root);
+      const raw = deps.exec("git", ["diff", "--raw", "--no-abbrev", ...options], input.root);
+      validateStrictDiff(diff.files, raw, numstat);
     } catch (error) {
-      return finish(incomplete(`could not check for binary changes: ${(error as Error).message}`, notes));
+      return finish(incomplete(`could not validate the pinned diff: ${(error as Error).message}`, notes));
     }
-    const opaque = new Set(binaryPaths(numstat));
-    for (const f of diff.files) if (/^(Binary files .* differ|GIT binary patch)$/m.test(f.patch)) opaque.add(f.path);
-    if (opaque.size > 0) return finish(incomplete(`binary or attribute-marked change; a human must review: ${[...opaque].slice(0, 5).join(", ")}`, notes));
-    let raw: string;
-    try {
-      raw = deps.exec("git", ["diff", "--raw", "-z", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${baseSha}...${headSha}`], input.root);
-    } catch (error) {
-      return finish(incomplete(`could not check for submodule changes: ${(error as Error).message}`, notes));
-    }
-    const gitlinks = gitlinkPaths(raw);
-    if (gitlinks.length > 0) return finish(incomplete(`submodule change; a human must review: ${gitlinks.slice(0, 5).map(visiblePath).join(", ")}`, notes));
-    const submodules = diff.files.filter((f) => /^[-+]Subproject commit /m.test(f.patch) || /^(new file mode|deleted file mode|old mode|new mode|index .* ) ?160000/m.test(f.patch)).map((f) => f.path);
-    if (submodules.length > 0) return finish(incomplete(`submodule change; a human must review: ${submodules.slice(0, 5).join(", ")}`, notes));
   }
   const chunked = chunkDiff(diff.files);
   if ("error" in chunked) return finish(incomplete(`diff is too large to review completely: ${chunked.error}`, notes));

@@ -49,6 +49,8 @@ import {
   type Runner,
 } from "./agent-review.ts";
 
+import { diffHeader, execDiff, hunk, sizedPatch } from "./agent-review.test-fixtures.ts";
+
 const finding = (over: Partial<Finding> = {}): Finding => ({
   file: "src/a.ts",
   line: 3,
@@ -628,20 +630,6 @@ test("author is required for review", () => {
   assert.throws(() => parseArgs([]), /--author/);
 });
 
-const HUNK_HEAD = "@@ -0,0 +1 @@\n";
-const sizedPatch = (path: string, total: number) => {
-  const head = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${HUNK_HEAD}+`;
-  return `${head}${"x".repeat(total - head.length - 1)}\n`;
-};
-const hunk = (size: number, mark: string) => `@@ -1 +1 @@\n+${mark}${"y".repeat(size - 14 - mark.length)}\n`;
-const multiHunkPatch = (path: string, hunks: string[]) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${hunks.join("")}`;
-const execDiff = (patch: string, calls: string[][] = []) => (file: string, args: string[]) => {
-  calls.push([file, ...args]);
-  if (file !== "git") return "";
-  if (args.includes("rev-parse")) return `sha-${args[args.length - 1]}\n`;
-  if (args.includes("--numstat") || args.includes("--raw")) return "";
-  return args.includes("diff") ? patch : "";
-};
 const recording = (answer = '{"bugs":[]}') => {
   const prompts: string[] = [];
   const runner: Runner = async (prompt) => {
@@ -689,8 +677,8 @@ test("an injection flag in any chunk makes the chunked result incomplete", async
 });
 
 test("a single file over the limit is split at hunk boundaries, labelled, and nothing is dropped", async () => {
-  const hunks = [1, 2, 3, 4].map((n) => hunk(70_000, `H${n}`));
-  const patch = multiHunkPatch("src/big.ts", hunks);
+  const hunks = [1, 2, 3, 4].map((n) => hunk(70_000, `H${n}`, n * 10));
+  const patch = diffHeader("src/big.ts") + hunks.join("");
   const { prompts, runner } = recording(JSON.stringify({ bugs: [bug({ file: "src/big.ts", line: 1 })] }));
   const result = await runReview(strictInput, { ...depsWith(runner, confirmAll), exec: execDiff(patch) });
   assert.equal(prompts.length, 2);
