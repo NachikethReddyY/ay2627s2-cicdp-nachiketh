@@ -84,7 +84,7 @@ export function stripComments(file: string, code: string): string {
 }
 
 const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo", ".git", "drizzle", ".agents", "spikes", "coverage"]);
-const SOURCE = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
+const SOURCE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 function* walk(dir: string): Generator<string> {
   for (const e of readdirSync(dir, { withFileTypes: true })) {

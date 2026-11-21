@@ -29,7 +29,7 @@ export function checkFile(file: string, text: string): Violation[] {
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
 
-  for (const match of text.matchAll(/\bimport\s*\(\s*(?!["'\s])/g)) {
+  for (const match of text.matchAll(/\bimport\s*\(\s*(?:(?!["'\s])|(?:"[^"\n]*"|'[^'\n]*')\s*\+)/g)) {
     out.push({ file, line: lineOf(text, match.index), message: NO_COMPUTED_IMPORT });
   }
 
@@ -65,7 +65,7 @@ function* walk(dir: string): Generator<string> {
     if (SKIP_DIRS.has(e.name)) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) yield* walk(p);
-    else if (/\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) yield p;
+    else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) yield p;
   }
 }
 

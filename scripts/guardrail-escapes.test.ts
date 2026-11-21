@@ -64,11 +64,13 @@ test("other generated-looking files, even named like the changelog, stay checked
     for (const top of ["apps", "packages", "e2e", "scripts", "tools"]) mkdirSync(join(dir, top));
     mkdirSync(join(dir, "packages", "sample"));
     mkdirSync(join(dir, "apps", "web", "src", "pages"), { recursive: true });
-    writeFileSync(join(dir, "packages", "sample", "x.generated.ts"), 'import a from "@learnquest/api";\n');
-    writeFileSync(join(dir, "packages", "sample", "changelog-releases.generated.ts"), 'import a from "@learnquest/api";\n');
-    writeFileSync(join(dir, "apps", "web", "src", "pages", "changelog-releases.generated.ts"), 'import a from "@learnquest/api";\n// c\n');
-    assert.deepEqual(checkRepo(dir).map((v) => v.file).sort(), ["packages/sample/changelog-releases.generated.ts", "packages/sample/x.generated.ts"]);
-    assert.deepEqual(checkRepoComments(dir).map((v) => v.file), []);
+    const body = 'import a from "@learnquest/api";\n// c\n// @ts-ignore\n';
+    writeFileSync(join(dir, "packages", "sample", "x.generated.ts"), body);
+    writeFileSync(join(dir, "packages", "sample", "changelog-releases.generated.ts"), body);
+    writeFileSync(join(dir, "apps", "web", "src", "pages", "changelog-releases.generated.ts"), body);
+    const expected = ["packages/sample/changelog-releases.generated.ts", "packages/sample/x.generated.ts"];
+    assert.deepEqual([...new Set(checkRepo(dir).map((v) => v.file))].sort(), expected);
+    assert.deepEqual([...new Set(checkRepoComments(dir).map((v) => v.file))].sort(), expected);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -84,12 +86,14 @@ test("boundary check sees multiline specifiers, computed imports and every JS an
     write("reexport.ts", 'export * from\n  "@learnquest/web";\n');
     write("require.ts", 'const x = require(\n  "@learnquest/api");\n');
     write("computed.ts", 'const n = "@learnquest/api";\nconst x = import(n);\n');
+    write("concat.ts", 'const x = import("./" + name);\n');
+    write("d.jsx", 'import x from "@learnquest/api";\n');
     write("a.cjs", 'const x = require("@learnquest/api");\n');
     write("b.mts", 'import x from "@learnquest/api";\n');
     write("c.cts", 'import x from "@learnquest/api";\n');
     assert.deepEqual(
       checkRepo(dir).map((v) => v.file).sort(),
-      ["a.cjs", "b.mts", "c.cts", "computed.ts", "multiline.ts", "reexport.ts", "require.ts"].map((n) => `packages/sample/${n}`),
+      ["a.cjs", "b.mts", "c.cts", "computed.ts", "concat.ts", "d.jsx", "multiline.ts", "reexport.ts", "require.ts"].map((n) => `packages/sample/${n}`),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
