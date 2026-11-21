@@ -1,6 +1,10 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateGate, REQUIRED_CHECKS, sensitivePaths, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { evaluateGate, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -85,4 +89,88 @@ test("a high revert rate stops self-merging, a low or unknown one does not", () 
   assert.equal(evaluateGate(green, { ...open, revertRate: 0.08 }).length, 1);
   assert.deepEqual(evaluateGate(green, { ...open, revertRate: 0.02 }), []);
   assert.deepEqual(evaluateGate(green, { ...open, revertRate: null }), []);
+});
+
+test("skip-local is rejected before accessing the PR", () => {
+  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123", "--skip-local"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--skip-local.*remove/i);
+});
+
+test("the gate refuses to run without the base verify script from the bootstrap", () => {
+  const env = { ...process.env };
+  delete env.MERGE_GATE_VERIFY_SCRIPT;
+  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123"], { encoding: "utf8", env });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /merge-gate-bootstrap\.sh/);
+});
+
+test("agent:merge in package.json only prints the trusted command and exits", () => {
+  const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
+  assert.match(manifest.scripts["agent:merge"] ?? "", /^echo .* && exit 2$/);
+});
+
+test("verification drops GitHub token variables and uses an empty gh config, which is not isolation from keychain or git credentials", () => {
+  const env = verifyEnv(
+    { PATH: "/bin", GH_TOKEN: "x", GITHUB_TOKEN: "y", GH_ENTERPRISE_TOKEN: "z", GH_CONFIG_DIR: "/home/op/.config/gh" },
+    "/checkout",
+    "/empty",
+  );
+  assert.equal(env.GH_TOKEN, undefined);
+  assert.equal(env.GITHUB_TOKEN, undefined);
+  assert.equal(env.GH_ENTERPRISE_TOKEN, undefined);
+  assert.equal(env.GH_CONFIG_DIR, "/empty");
+  assert.equal(env.MERGE_GATE_CHECKOUT_ROOT, "/checkout");
+  assert.equal(env.PATH, "/bin");
+});
+
+test("the bootstrap refuses a shallow checkout because the revert rate needs full history", () => {
+  const source = mkdtempSync(join(tmpdir(), "merge-gate-src-"));
+  const shallow = mkdtempSync(join(tmpdir(), "merge-gate-shallow-"));
+  try {
+    const run = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "pipe", encoding: "utf8" });
+    run(source, "init", "-q");
+    run(source, "config", "user.email", "test@example.com");
+    run(source, "config", "user.name", "Test");
+    run(source, "config", "commit.gpgsign", "false");
+    for (const n of ["a", "b"]) {
+      writeFileSync(join(source, n), n);
+      run(source, "add", ".");
+      run(source, "commit", "-qm", n);
+    }
+    execFileSync("git", ["clone", "-q", "--depth", "1", `file://${source}`, shallow], { stdio: "pipe" });
+    const bootstrap = readFileSync("scripts/merge-gate-bootstrap.sh", "utf8");
+    const result = spawnSync("bash", ["-s", "--", "123"], { cwd: shallow, input: bootstrap, encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /shallow.*git fetch --unshallow/i);
+  } finally {
+    rmSync(source, { recursive: true, force: true });
+    rmSync(shallow, { recursive: true, force: true });
+  }
+});
+
+test("base bootstrap executes the base gate even when the checkout changes it", () => {
+  const root = mkdtempSync(join(tmpdir(), "merge-gate-base-"));
+  try {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+    mkdirSync(join(root, "scripts"));
+    for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts", "agent-verify.sh"]) {
+      copyFileSync(join("scripts", file), join(root, "scripts", file));
+    }
+    git("add", ".");
+    git("commit", "-qm", "base");
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    writeFileSync(join(root, "scripts/merge-gate.ts"), 'process.stderr.write("untrusted gate executed\\n"); process.exit(0);\n');
+    const bootstrap = git("show", "origin/main:scripts/merge-gate-bootstrap.sh");
+    const result = spawnSync("bash", ["-s", "--", "123", "--skip-local"], { cwd: root, input: bootstrap, encoding: "utf8" });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--skip-local.*remove/i);
+    assert.doesNotMatch(result.stderr, /untrusted gate executed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.ts";
 import { fileURLToPath } from "node:url";
 import { bin } from "./bin.ts";
@@ -148,30 +149,47 @@ function readReviewResult(path: string | undefined): ReviewResultFile | null {
   }
 }
 
+const GITHUB_TOKEN_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
+
+export function verifyEnv(env: NodeJS.ProcessEnv, root: string, ghConfigDir: string): NodeJS.ProcessEnv {
+  const kept = Object.fromEntries(Object.entries(env).filter(([key]) => !GITHUB_TOKEN_VARS.includes(key)));
+  return { ...kept, GH_CONFIG_DIR: ghConfigDir, MERGE_GATE_CHECKOUT_ROOT: root };
+}
+
 function main(argv: string[]): number {
+  if (argv.includes("--skip-local")) {
+    console.error("--skip-local is no longer supported; remove it and run local verification");
+    return 2;
+  }
+  const verifyScript = process.env.MERGE_GATE_VERIFY_SCRIPT;
+  if (!verifyScript) {
+    console.error(
+      "refusing to run: the gate must start from origin/main. Run `git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>`",
+    );
+    return 2;
+  }
   const number = argv.find((a) => /^\d+$/.test(a));
   if (!number) {
-    console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run] [--skip-local]");
+    console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run]");
     return 2;
   }
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   const reviewFlagAt = argv.indexOf("--review-result");
   const reviewResult = readReviewResult(reviewFlagAt >= 0 ? argv[reviewFlagAt + 1] : undefined);
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
   const pr = JSON.parse(
     gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
   ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
-  const skipLocal = flags.has("--skip-local");
   const reasons = evaluateGate(
     { ...pr, files: changedFiles(number) },
     {
       reviewResult,
       unresolvedThreads: unresolvedThreadCount(number),
       revertRate,
-      localHead: skipLocal ? undefined : git(["rev-parse", "HEAD"], root).trim(),
-      worktreeClean: skipLocal ? undefined : git(["status", "--porcelain"], root).trim() === "",
+      localHead: git(["rev-parse", "HEAD"], root).trim(),
+      worktreeClean: git(["status", "--porcelain"], root).trim() === "",
     },
   );
   if (reasons.length > 0) {
@@ -180,8 +198,11 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  if (!skipLocal) {
-    execFileSync(resolve(root, "scripts/agent-verify.sh"), { stdio: "inherit", cwd: root });
+  const ghConfigDir = mkdtempSync(join(tmpdir(), "merge-gate-gh-"));
+  try {
+    execFileSync(verifyScript, { stdio: "inherit", cwd: root, env: verifyEnv(process.env, root, ghConfigDir) });
+  } finally {
+    rmSync(ghConfigDir, { recursive: true, force: true });
   }
   if (flags.has("--dry-run")) {
     console.log(`PR #${number} passes every gate. Dry run, not merging.`);
