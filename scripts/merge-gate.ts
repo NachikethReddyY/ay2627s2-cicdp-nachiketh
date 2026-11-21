@@ -144,7 +144,7 @@ export function changedFilesFromGit(root: string, headRefOid: string, base: stri
   } catch {
     throw new Error(`the PR head ${headRefOid.slice(0, 8)} is not in the local repository; run \`git fetch origin\` and check out the PR head`);
   }
-  return parseRawDiffZ(run(["diff", "--raw", "-z", "-M", "--ignore-submodules=none", `${base}...${headRefOid}`], root));
+  return parseRawDiffZ(run(["diff", "--raw", "-z", "-M", "--find-copies-harder", "--ignore-submodules=none", `${base}...${headRefOid}`], root));
 }
 
 export function changedFilesAgainstFreshMain(root: string, headRefOid: string, remoteMainSha: string, run: GitRunner = git): ChangedFile[] {

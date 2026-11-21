@@ -438,6 +438,23 @@ test("a file renamed out of a sensitive directory reports its old path", () => {
   }
 });
 
+test("a copied file reports its unchanged source as well as its destination", () => {
+  const dir = tempRepo();
+  try {
+    writeFileSync(join(dir, "seed.txt"), "A sample shared test fixture.\n".repeat(20));
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-q", "-m", "prepare fixture");
+    gitIn(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
+    writeFileSync(join(dir, "copy.txt"), readFileSync(join(dir, "seed.txt")));
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-q", "-m", "copy fixture");
+    const files = changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD"));
+    assert.deepEqual(files.map((file) => file.path).sort(), ["copy.txt", "seed.txt"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("more than 300 changed files are all listed", () => {
   const dir = tempRepo();
   try {
