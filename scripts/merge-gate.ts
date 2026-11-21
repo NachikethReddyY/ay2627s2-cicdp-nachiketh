@@ -39,6 +39,9 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/api\/src\/(games\/grade|attempts\/machine|dev\/route)\.ts$/, "grading or help guardrails"],
   [/^apps\/api\/src\/progress\/mastery\.ts$/, "learner model"],
   [/^apps\/api\/src\/app\.ts$/, "API configuration"],
+  [/^apps\/api\/src\/imports\/routes\.ts$/, "import access guards"],
+  [/^INSTRUCTIONS\.md$/, "Sloppy system prompt"],
+  [/^\.(agents|claude)\//, "agent skills and settings"],
   [/^apps\/api\/test\/helpers/, "API test helpers"],
   [/^apps\/api\/drizzle\//, "database migration"],
   [/^apps\/api\/drizzle\.config\.ts$/, "database migration"],
@@ -126,9 +129,22 @@ function git(args: string[], cwd: string): string {
   return execFileSync(bin("git"), args, { encoding: "utf8", cwd });
 }
 
+const GITHUB_FILE_LIST_CAP = 3000;
+
+export function parseChangedFiles(tsv: string): { path: string }[] {
+  const rows = tsv.split("\n").filter(Boolean);
+  if (rows.length >= GITHUB_FILE_LIST_CAP) {
+    throw new Error(
+      `GitHub lists at most ${GITHUB_FILE_LIST_CAP} changed files, so this PR may be truncated; split it into smaller PRs`,
+    );
+  }
+  const paths = rows.flatMap((row) => row.split("\t").filter(Boolean));
+  return paths.map((path) => ({ path }));
+}
+
 function changedFiles(number: string): { path: string }[] {
-  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", ".[].filename"]);
-  return out.split("\n").filter(Boolean).map((path) => ({ path }));
+  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", '.[] | [.filename, (.previous_filename // "")] | @tsv']);
+  return parseChangedFiles(out);
 }
 
 function unresolvedThreadCount(number: string): number {
