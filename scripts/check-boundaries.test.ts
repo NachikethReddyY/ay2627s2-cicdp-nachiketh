@@ -121,7 +121,8 @@ test("constructor parameter properties shadow CommonJS only inside the construct
 
 test("value namespaces shadow module within their scope, but type-only declarations do not", () => {
   const lesson = [
-    'function teach() {',
+    'const topic = "./lesson";',
+    'namespace Teach {',
     '  namespace module { export function require(topic: string) {} }',
     '  module.require(topic);',
     '  module["require"](topic);',
@@ -133,7 +134,7 @@ test("value namespaces shadow module within their scope, but type-only declarati
     '}',
     'import(topic);',
   ].join("\n");
-  assert.deepEqual(checkFile("packages/sample/lesson.ts", lesson).map(({ line }) => line), [6, 9, 11]);
+  assert.deepEqual(checkFile("packages/sample/lesson.ts", lesson).map(({ line }) => line), [7, 10, 12]);
   for (const declaration of [
     'namespace module { export interface Topic { title: string } }',
     'declare namespace module { function require(topic: string): void }',
