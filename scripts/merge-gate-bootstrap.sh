@@ -2,6 +2,10 @@
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
+if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+  echo "refusing to run: this checkout is shallow, so the revert rate may miss recent reverts; run git fetch --unshallow" >&2
+  exit 2
+fi
 base="$(git rev-parse --verify 'refs/remotes/origin/main^{commit}')"
 temp="$(mktemp -d)"
 temp="$(cd "$temp" && pwd -P)"

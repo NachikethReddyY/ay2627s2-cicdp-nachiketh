@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.ts";
 import { fileURLToPath } from "node:url";
 import { bin } from "./bin.ts";
@@ -148,6 +149,13 @@ function readReviewResult(path: string | undefined): ReviewResultFile | null {
   }
 }
 
+const GITHUB_TOKEN_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
+
+export function verifyEnv(env: NodeJS.ProcessEnv, root: string, ghConfigDir: string): NodeJS.ProcessEnv {
+  const kept = Object.fromEntries(Object.entries(env).filter(([key]) => !GITHUB_TOKEN_VARS.includes(key)));
+  return { ...kept, GH_CONFIG_DIR: ghConfigDir, MERGE_GATE_CHECKOUT_ROOT: root };
+}
+
 function main(argv: string[]): number {
   if (argv.includes("--skip-local")) {
     console.error("--skip-local is no longer supported; remove it and run local verification");
@@ -190,7 +198,12 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  execFileSync(verifyScript, { stdio: "inherit", cwd: root, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root } });
+  const ghConfigDir = mkdtempSync(join(tmpdir(), "merge-gate-gh-"));
+  try {
+    execFileSync(verifyScript, { stdio: "inherit", cwd: root, env: verifyEnv(process.env, root, ghConfigDir) });
+  } finally {
+    rmSync(ghConfigDir, { recursive: true, force: true });
+  }
   if (flags.has("--dry-run")) {
     console.log(`PR #${number} passes every gate. Dry run, not merging.`);
     return 0;
