@@ -945,7 +945,6 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const reviewMd = readFromBase(deps.exec, input.root, baseSha, "REVIEW.md");
   const principles = markdownSection(readFromBase(deps.exec, input.root, baseSha, "AGENTS.md"), "Principles");
   const skipList = input.strict ? [] : parseSkipList(reviewMd);
-  const runnerCwd = input.runnerCwd ?? input.root;
 
   let diff: CollectedDiff;
   try {
@@ -984,7 +983,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   }
 
   const timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
-  const optionsFor = (model: string | undefined): RunnerOptions => ({ model, timeoutMs: Math.max(1, Math.min(timeoutMs, remainingMs())), cwd: runnerCwd });
+  const optionsFor = (model: string | undefined): RunnerOptions => ({ model, timeoutMs: Math.max(1, Math.min(timeoutMs, remainingMs())), cwd: input.runnerCwd ?? (input.strict ? undefined : input.root) });
   const reviewMdForPrompt = input.strict ? withoutSection(reviewMd, "Skip") : reviewMd;
 
   const injection = scanForInjection(diff.files, []);
@@ -1009,8 +1008,8 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     const gathered = gatherContext(files, deps.exec, input.root, input.useIndex && !input.strict);
     for (const note of gathered.notes) if (!notes.includes(note)) notes.push(note);
     let contextBlocks = gathered.blocks;
-    if (deps.screener) {
-      const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: optionsFor(undefined).timeoutMs, cwd: runnerCwd });
+    if (!input.strict && deps.screener) {
+      const screened = await screenContext(contextBlocks, deps.screener.runner, optionsFor(deps.screener.model));
       contextBlocks = screened.blocks;
       if (screened.note) notes.push(screened.note);
     }
@@ -1140,11 +1139,15 @@ export function spawnRunner(command: string, args: string[]): Runner {
 }
 
 export function claudeArgs(model: string | undefined, strict = false): string[] {
-  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...(strict ? ["--tools", "", "--strict-mcp-config"] : ["--allowedTools", "Read,Grep,Glob"])];
+  const tools = strict
+    ? ["--safe-mode", "--restricted", "--disallowedTools", "mcp__*", "--tools", "", "--strict-mcp-config"]
+    : ["--allowedTools", "Read,Grep,Glob"];
+  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...tools];
 }
 
 export function codexArgs(model: string | undefined, strict = false): string[] {
-  return ["exec", ...(strict ? ["--ignore-user-config", "--ignore-rules"] : []), "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", ...(model ? ["--model", model] : []), "-"];
+  if (strict) throw new Error("strict review is unavailable for Codex: codex exec has no supported option to disable every model tool");
+  return ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", ...(model ? ["--model", model] : []), "-"];
 }
 
 export function opencodeArgs(model: string | undefined): string[] {
@@ -1152,9 +1155,21 @@ export function opencodeArgs(model: string | undefined): string[] {
 }
 
 export function makeRunner(family: ScreenerFamily, model: string | undefined, strict = false): Runner {
-  if (family === "claude") return spawnRunner("claude", claudeArgs(model, strict));
-  if (family === "codex") return spawnRunner("codex", codexArgs(model, strict));
-  return spawnRunner("opencode", opencodeArgs(model));
+  return async (prompt, options) => {
+    if (family === "codex") return spawnRunner("codex", codexArgs(model, strict))(prompt, options);
+    if (family === "opencode") {
+      if (strict) throw new Error("strict review is unavailable for OpenCode");
+      return spawnRunner("opencode", opencodeArgs(model))(prompt, options);
+    }
+    const run = spawnRunner("claude", claudeArgs(model, strict));
+    if (!strict) return run(prompt, options);
+    const cwd = mkdtempSync(join(tmpdir(), "agent-review-isolated-"));
+    try {
+      return await run(prompt, { ...options, cwd });
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  };
 }
 
 export function commentIdsFromUrl(output: string): number | null {
@@ -1238,9 +1253,8 @@ async function main(argv: string[]): Promise<number> {
   const reviewerModel = modelFor(args.reviewer, args.model);
   const verifierModel = modelFor(args.verifier, null);
   const ledger = readLedger(ledgerPath);
-  const runnerCwd = args.strict ? mkdtempSync(join(tmpdir(), "agent-review-isolated-")) : undefined;
   const result = await runReview(
-    { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier, strict: args.strict, runnerCwd },
+    { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier, strict: args.strict },
     {
       exec: readOnlyExec(defaultExec),
       reviewerRunner: makeRunner(args.reviewer, reviewerModel, args.strict),
@@ -1254,7 +1268,6 @@ async function main(argv: string[]): Promise<number> {
       onAddressed: (entries) => appendLedger(ledgerPath, entries),
     },
   );
-  if (runnerCwd) rmSync(runnerCwd, { recursive: true, force: true });
   if (args.strict) rmSync(dirname(ledgerPath), { recursive: true, force: true });
   const body = renderMarkdown(result);
   console.log(args.json ? JSON.stringify({ ...result, author: args.author }, null, 2) : body);

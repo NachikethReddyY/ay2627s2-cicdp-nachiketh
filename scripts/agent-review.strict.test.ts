@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { chunkDiff, claudeArgs, codexArgs, defaultExec, parseArgs, runReview, diffTextForScreening, scanForInjection, spawnRunner, splitDiff, unquoteGitPath, visiblePath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
+import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chunkDiff, claudeArgs, defaultExec, parseArgs, runReview, diffTextForScreening, scanForInjection, spawnRunner, splitDiff, unquoteGitPath, visiblePath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
 
 import { addedIndex, diffHeader, execDiff, hunk, indexRecord, sizedPatch } from "./agent-review.test-fixtures.ts";
 
@@ -25,7 +26,7 @@ const failing = (message: string): Runner => async () => {
 const confirmAll = constant('{"verdict":"confirmed","reason":"ok"}');
 const depsWith = (reviewer: Runner, verifier: Runner): ReviewDeps => ({ exec: defaultExec, reviewerRunner: reviewer, verifierRunner: verifier });
 const input = { root: ".", pr: null, base: "main", useIndex: true, reviewerName: "claude", verifierName: "codex" };
-const strictInput = { ...input, strict: true, runnerCwd: "/isolated" };
+const strictInput = { ...input, strict: true };
 const lenientInput = { ...input, strict: false };
 
 const binaryRepo = (): string => {
@@ -369,10 +370,48 @@ test("control characters in file names are shown as visible escapes and file nam
   assert.ok(prompts.every((p) => !/^src\/b\.ts$/m.test(p)));
 });
 
-test("strict Codex runs ignore user config, MCP servers and exec policy rules", () => {
-  assert.ok(codexArgs("gpt-x", true).includes("--ignore-user-config"));
-  assert.ok(codexArgs("gpt-x", true).includes("--ignore-rules"));
-  assert.ok(!codexArgs("gpt-x").includes("--ignore-user-config"));
+test("strict dispatch uses only a tool-free, filesystem-confined reviewer", () => {
+  const root = binaryRepo();
+  const bin = mkdtempSync(join(tmpdir(), "review-cli-fixture-"));
+  const record = join(bin, "launch.json");
+  const script = fileURLToPath(new URL("./agent-review.ts", import.meta.url));
+  const run = (author: string) => spawnSync(process.execPath, [script, "--strict", "--base", "main", "--author", author, "--json"], {
+    encoding: "utf8",
+    env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root, PATH: bin + delimiter + process.env.PATH },
+  });
+  try {
+    writeFileSync(join(root, "a.ts"), "export const a = 2;\n");
+    commitAll(root);
+    const stub = `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+const empty = fs.readdirSync(".").length === 0;
+fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({args, cwd: process.cwd(), empty}));
+process.stdin.resume();
+process.stdin.on("end", () => console.log('{"bugs":[]}'));
+`;
+    for (const family of ["claude", "codex"]) writeFileSync(join(bin, family), stub, { mode: 0o755 });
+    const codex = run("claude");
+    assert.equal(codex.status, 3, codex.stderr);
+    assert.match(JSON.parse(codex.stdout).reason, /strict.*codex|codex.*strict/i);
+    assert.equal(existsSync(record), false);
+
+    const claude = run("codex");
+    assert.equal(claude.status, 0, claude.stderr);
+    assert.equal(JSON.parse(claude.stdout).status, "clean");
+    const { args, cwd, empty } = JSON.parse(readFileSync(record, "utf8"));
+    assert.deepEqual(args, ["-p", "--model", "opus", "--output-format", "text", "--safe-mode", "--restricted", "--disallowedTools", "mcp__*", "--tools", "", "--strict-mcp-config"]);
+    assert.equal(empty, true);
+    assert.equal(existsSync(cwd), false);
+
+    writeFileSync(join(bin, "claude"), `#!${process.execPath}\nconsole.error("unknown option --restricted"); process.exit(1);\n`);
+    const older = run("codex");
+    assert.equal(older.status, 3, older.stderr);
+    assert.match(JSON.parse(older.stdout).reason, /unknown option --restricted/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
 });
 
 test("strict is local-commit only and cannot be combined with --pr", async () => {
