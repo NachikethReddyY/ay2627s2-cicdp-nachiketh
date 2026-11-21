@@ -110,7 +110,7 @@ test("agent:merge in package.json only prints the trusted command and exits", ()
   assert.match(manifest.scripts["agent:merge"] ?? "", /^echo .* && exit 2$/);
 });
 
-test("verification runs without GitHub credentials so PR tests cannot act as the operator", () => {
+test("verification drops GitHub token variables and uses an empty gh config, which is not isolation from keychain or git credentials", () => {
   const env = verifyEnv(
     { PATH: "/bin", GH_TOKEN: "x", GITHUB_TOKEN: "y", GH_ENTERPRISE_TOKEN: "z", GH_CONFIG_DIR: "/home/op/.config/gh" },
     "/checkout",
