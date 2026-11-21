@@ -56,6 +56,10 @@ Exit codes: 0 clean or nits only, 1 important findings, 2 usage error, 3 incompl
 
 Start a thread on the branch and run the command with `--author` set to the model that wrote the change. The reviewer CLI runs on this machine under your own login, with read-only tools. Use `--json` when another agent will read the result.
 
+## Strict mode
+
+The merge gate runs `agent-review.ts --strict`. Strict mode ignores the `REVIEW.md` skip list, so every changed file is reviewed, and it starts the model CLIs from an empty temporary directory, so a PR cannot steer them through `AGENTS.md`, `CLAUDE.md` or project settings in its checkout. A diff over 180,000 characters returns `incomplete`, never `clean`. The `incomplete` result also covers flagged injection text and any reviewer failure, and the gate treats it as not clean.
+
 ## Before merge
 
 Every important finding must be fixed, or refuted with evidence (a file and line, or a test) in the PR thread. Run the review again after fixes.
