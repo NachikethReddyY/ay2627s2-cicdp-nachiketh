@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertBaseIsCurrent, changedFilesFromGit, evaluateGate, parseNameStatusZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { assertBaseIsCurrent, changedFilesAgainstFreshMain, changedFilesFromGit, evaluateGate, parseNameStatusZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -190,6 +190,23 @@ const EXPECTED_SENSITIVE = [
   "apps/web/.env.production",
   "apps/web/.env.example",
   ".gitmodules",
+  ".env",
+  ".env.local",
+  "apps/api/.env",
+  "apps/api/.env.production",
+  "services/engine/.env.test",
+  ".babelrc",
+  "apps/web/.babelrc.json",
+  ".eslintrc.cjs",
+  "apps/api/.eslintrc.json",
+  ".npmrc",
+  "apps/web/.npmrc",
+  ".nvmrc",
+  ".prettierrc.yaml",
+  ".node-version",
+  ".tool-versions",
+  ".husky/pre-commit",
+  ".macroscope/review.yaml",
   "apps/web/scripts/build-assets.mjs",
   "spikes/litellm-advisory/check.py",
   "apps/web/src/blocks/game/api.ts",
@@ -203,6 +220,7 @@ const EXPECTED_SENSITIVE = [
 const EXPECTED_NOT_SENSITIVE = [
   "apps/web/src/pages/Home.tsx",
   "apps/web/src/components/Button.tsx",
+  "apps/web/src/components/Button.test.tsx",
   "docs/plan.md",
   "docs/adr/0001-record.md",
   "docs/feature-map.md",
@@ -455,4 +473,28 @@ test("a stale local origin/main is refused with the fetch command in the message
   assert.throws(() => assertBaseIsCurrent("", sha), /git fetch origin/);
   assert.throws(() => assertBaseIsCurrent(sha, ""), /git fetch origin/);
   assert.throws(() => assertBaseIsCurrent("", ""), /git fetch origin/);
+});
+
+test("the diff runs against the main SHA that was verified", () => {
+  const calls: string[][] = [];
+  const base = "a".repeat(40);
+  const run = (args: string[]): string => {
+    calls.push(args);
+    return args[0] === "rev-parse" ? `${base}\n` : args[0] === "diff" ? "M\0x.ts\0" : "";
+  };
+  const files = changedFilesAgainstFreshMain("/r", "h".repeat(40), base, run);
+  assert.deepEqual(files, [{ path: "x.ts" }]);
+  const diff = calls.find((c) => c[0] === "diff");
+  assert.ok(diff?.includes(`${base}...${"h".repeat(40)}`));
+  assert.ok(!diff?.some((a) => a.includes("refs/remotes")));
+});
+
+test("a main mismatch refuses before any diff runs", () => {
+  const calls: string[][] = [];
+  const run = (args: string[]): string => {
+    calls.push(args);
+    return args[0] === "rev-parse" ? "a".repeat(40) : "";
+  };
+  assert.throws(() => changedFilesAgainstFreshMain("/r", "h".repeat(40), "b".repeat(40), run), /git fetch origin/);
+  assert.ok(!calls.some((c) => c[0] === "diff"));
 });

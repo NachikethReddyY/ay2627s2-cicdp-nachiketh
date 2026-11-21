@@ -75,6 +75,12 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/web\/(index\.html|src\/main\.tsx)$/, "web entry point"],
   [/^apps\/web\/([^/]*\.config\.[^/]*|tsconfig[^/]*\.json|\.env.*)$/, "web build config and env"],
   [/^\.gitmodules$/, "submodule sources"],
+  [/(^|\/)\.env[\w.-]*$/, "environment files"],
+  [/(^|\/)\.babelrc[\w.]*$/, "tool config run at startup"],
+  [/(^|\/)\.[\w-]+rc(\.[cm]?[jt]s|\.json|\.ya?ml)?$/, "tool config run at startup"],
+  [/(^|\/)(\.npmrc|\.nvmrc|\.node-version|\.tool-versions)$/, "toolchain config"],
+  [/(^|\/)\.husky\//, "git hooks"],
+  [/^\.macroscope\//, "review policy"],
 ];
 
 const NOT_SENSITIVE: RegExp[] = [
@@ -182,13 +188,21 @@ export function assertBaseIsCurrent(localSha: string, remoteSha: string): void {
   }
 }
 
-export function changedFilesFromGit(root: string, headRefOid: string): { path: string }[] {
+type GitRunner = (args: string[], cwd: string) => string;
+
+export function changedFilesFromGit(root: string, headRefOid: string, base: string = BASE_REF, run: GitRunner = git): { path: string }[] {
   try {
-    git(["cat-file", "-e", `${headRefOid}^{commit}`], root);
+    run(["cat-file", "-e", `${headRefOid}^{commit}`], root);
   } catch {
     throw new Error(`the PR head ${headRefOid.slice(0, 8)} is not in the local repository; run \`git fetch origin\` and check out the PR head`);
   }
-  return parseNameStatusZ(git(["diff", "--name-status", "-z", "-M", "--ignore-submodules=none", `${BASE_REF}...${headRefOid}`], root));
+  return parseNameStatusZ(run(["diff", "--name-status", "-z", "-M", "--ignore-submodules=none", `${base}...${headRefOid}`], root));
+}
+
+export function changedFilesAgainstFreshMain(root: string, headRefOid: string, remoteMainSha: string, run: GitRunner = git): { path: string }[] {
+  const base = run(["rev-parse", BASE_REF], root).trim();
+  assertBaseIsCurrent(base, remoteMainSha);
+  return changedFilesFromGit(root, headRefOid, base, run);
 }
 
 function unresolvedThreadCount(number: string): number {
@@ -249,13 +263,11 @@ function main(argv: string[]): number {
   const pr = JSON.parse(
     gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
   ) as Omit<PullRequest, "files">;
-  assertBaseIsCurrent(
-    git(["rev-parse", BASE_REF], root),
-    gh(["api", "repos/{owner}/{repo}/branches/main", "--jq", ".commit.sha"]),
-  );
+  const remoteMainSha = gh(["api", "repos/{owner}/{repo}/branches/main", "--jq", ".commit.sha"]);
+  const changed = changedFilesAgainstFreshMain(root, pr.headRefOid, remoteMainSha);
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
   const reasons = evaluateGate(
-    { ...pr, files: changedFilesFromGit(root, pr.headRefOid) },
+    { ...pr, files: changed },
     {
       reviewResult,
       unresolvedThreads: unresolvedThreadCount(number),
