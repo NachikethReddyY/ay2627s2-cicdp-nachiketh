@@ -14,7 +14,7 @@
     "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e",
     "lint:comments": "node scripts/check-comments.ts",
     "agent:verify": "scripts/agent-verify.sh",
-    "agent:merge": "node scripts/merge-gate.ts",
+    "agent:merge": "bash -o pipefail -c 'git fetch origin main && git show origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- \"$@\"' --",
     "revert-rate": "node scripts/revert-rate.ts",
     "validator": "node tools/validator/src/cli.ts",
     "validator:up": "node tools/validator/src/cli.ts up",

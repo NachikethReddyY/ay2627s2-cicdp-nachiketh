@@ -149,29 +149,32 @@ function readReviewResult(path: string | undefined): ReviewResultFile | null {
 }
 
 function main(argv: string[]): number {
+  if (argv.includes("--skip-local")) {
+    console.error("--skip-local is no longer supported; remove it and run local verification");
+    return 2;
+  }
   const number = argv.find((a) => /^\d+$/.test(a));
   if (!number) {
-    console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run] [--skip-local]");
+    console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run]");
     return 2;
   }
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   const reviewFlagAt = argv.indexOf("--review-result");
   const reviewResult = readReviewResult(reviewFlagAt >= 0 ? argv[reviewFlagAt + 1] : undefined);
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
   const pr = JSON.parse(
     gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
   ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
-  const skipLocal = flags.has("--skip-local");
   const reasons = evaluateGate(
     { ...pr, files: changedFiles(number) },
     {
       reviewResult,
       unresolvedThreads: unresolvedThreadCount(number),
       revertRate,
-      localHead: skipLocal ? undefined : git(["rev-parse", "HEAD"], root).trim(),
-      worktreeClean: skipLocal ? undefined : git(["status", "--porcelain"], root).trim() === "",
+      localHead: git(["rev-parse", "HEAD"], root).trim(),
+      worktreeClean: git(["status", "--porcelain"], root).trim() === "",
     },
   );
   if (reasons.length > 0) {
@@ -180,9 +183,7 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  if (!skipLocal) {
-    execFileSync(resolve(root, "scripts/agent-verify.sh"), { stdio: "inherit", cwd: root });
-  }
+  execFileSync(resolve(root, "scripts/agent-verify.sh"), { stdio: "inherit", cwd: root });
   if (flags.has("--dry-run")) {
     console.log(`PR #${number} passes every gate. Dry run, not merging.`);
     return 0;

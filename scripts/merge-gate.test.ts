@@ -1,3 +1,7 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateGate, REQUIRED_CHECKS, sensitivePaths, type GateOptions, type PullRequest } from "./merge-gate.ts";
@@ -85,4 +89,35 @@ test("a high revert rate stops self-merging, a low or unknown one does not", () 
   assert.equal(evaluateGate(green, { ...open, revertRate: 0.08 }).length, 1);
   assert.deepEqual(evaluateGate(green, { ...open, revertRate: 0.02 }), []);
   assert.deepEqual(evaluateGate(green, { ...open, revertRate: null }), []);
+});
+
+test("skip-local is rejected before accessing the PR", () => {
+  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123", "--skip-local"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--skip-local.*remove/i);
+});
+
+test("base bootstrap executes the base gate even when the checkout changes it", () => {
+  const root = mkdtempSync(join(tmpdir(), "merge-gate-base-"));
+  try {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    mkdirSync(join(root, "scripts"));
+    for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts"]) {
+      copyFileSync(join("scripts", file), join(root, "scripts", file));
+    }
+    git("add", ".");
+    git("commit", "-qm", "base");
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    writeFileSync(join(root, "scripts/merge-gate.ts"), 'process.stderr.write("untrusted gate executed\\n"); process.exit(0);\n');
+    const bootstrap = git("show", "origin/main:scripts/merge-gate-bootstrap.sh");
+    const result = spawnSync("bash", ["-s", "--", "123", "--skip-local"], { cwd: root, input: bootstrap, encoding: "utf8" });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--skip-local.*remove/i);
+    assert.doesNotMatch(result.stderr, /untrusted gate executed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
