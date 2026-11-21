@@ -4,7 +4,7 @@
 
 ## When to run it
 
-- Before merging a sensitive PR. Run `pnpm review -- --author claude --json > review.json` on the PR head commit, then `pnpm agent:merge <pr> --review-result review.json`. The gate accepts only a clean result for that exact commit.
+- Before merging a sensitive PR. Run the trusted gate command from AGENTS.md (Merging) with `--author claude|codex`, naming the family that wrote the change. The gate runs the review itself from the base copy of `agent-review.ts` and accepts only a clean result for the exact PR head, from a reviewer of a different family than the author. A hand-written result file is not accepted.
 - On any non-trivial PR, after local CI is green and before you ask a human.
 
 ```bash
@@ -21,7 +21,7 @@ Model inversion: the family that wrote the diff does not review it.
 
 - `--author claude` makes Codex the reviewer and Claude the verifier.
 - `--author codex` makes Claude (model `opus`) the reviewer and Codex the verifier.
-- With no `--author`, Claude with `opus` reviews and Codex verifies.
+- `--author` is required. Without it the review refuses to run.
 - `--reviewer` and `--verifier` override this. `--model` sets the reviewer's model only.
 
 ## What it does

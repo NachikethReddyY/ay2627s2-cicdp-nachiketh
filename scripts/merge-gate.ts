@@ -145,12 +145,19 @@ function unresolvedThreadCount(number: string): number {
 
 export function runTrustedReview(script: string, root: string, number: string, author: Family, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
   const ledgerDir = mkdtempSync(join(tmpdir(), "merge-gate-review-"));
+  const asResult = (output: string): ReviewResultFile | null => {
+    try {
+      const value: unknown = JSON.parse(output);
+      return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as ReviewResultFile) : null;
+    } catch {
+      return null;
+    }
+  };
   try {
-    const output = runner(process.execPath, [script, "--pr", number, "--author", author, "--json", "--no-index", "--ledger", join(ledgerDir, "ledger.jsonl")], root);
-    const value: unknown = JSON.parse(output);
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as ReviewResultFile : null;
-  } catch {
-    return null;
+    return asResult(runner(process.execPath, [script, "--pr", number, "--author", author, "--json", "--no-index", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
+  } catch (error) {
+    const stdout = (error as { stdout?: unknown }).stdout;
+    return typeof stdout === "string" ? asResult(stdout) : null;
   } finally {
     rmSync(ledgerDir, { recursive: true, force: true });
   }
