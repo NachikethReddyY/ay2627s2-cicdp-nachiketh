@@ -62,7 +62,9 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/web\/scripts\//, "runs during the web build"],
   [/^\.pnpmfile\.(mjs|cjs)$/, "install hooks"],
   [/^apps\/web\/src\/lib\//, "browser auth and learner passwords"],
-  [/^apps\/web\/src\/pages\/Login\.tsx$/, "browser auth and learner passwords"],
+  [/^apps\/web\/src\/(.*\/)?Login(\.|\/)/, "browser auth and learner passwords"],
+  [/(^|\/)(\.gitattributes|\.gitignore|\.dockerignore|\.vercelignore|AGENTS\.override\.md)$/, "repo control files"],
+  [/(^|\/)(compose(\.[\w-]+)?\.ya?ml|docker-compose[\w.-]*|vercel\.[\w]+)$/, "deploy and container config"],
   [/^worlds\//, "seed prompts and answer keys"],
   [/^spikes\//, "run by the required engine check"],
   [/^apps\/web\/src\/blocks\/game\//, "game hint request and timing"],
@@ -89,7 +91,7 @@ const SENSITIVE: [RegExp, string][] = [
 ];
 
 const NOT_SENSITIVE: RegExp[] = [
-  /^apps\/web\//,
+  /^apps\/web\/src\/(components|pages)\//,
   /^docs\//,
   /(^|\/)README\.md$/,
   /^(?!apps\/api\/|services\/engine\/)(.*\/)?(fixtures|__fixtures__|__snapshots__)\/.*\.(json|txt|md|csv|snap|png|jpg|svg|ya?ml)$/,
@@ -100,6 +102,7 @@ const DENY_BY_DEFAULT: [RegExp, string][] = [
   [/^services\/engine\//, "engine: learner model, answers, credentials"],
   [/^packages\//, "shared packages: replay, answer stripping, catalogue"],
   [/^e2e\//, "required e2e check"],
+  [/^apps\/web\//, "web app outside components and pages"],
 ];
 
 export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
