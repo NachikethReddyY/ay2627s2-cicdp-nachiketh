@@ -154,7 +154,9 @@ export function changedDuringReview(before: PullRequestPin, after: PullRequestPi
   return reasons;
 }
 
-export function runTrustedReview(script: string, root: string, number: string, author: Family, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
+export const REVIEW_BASE_REF = "refs/remotes/origin/main";
+
+export function runTrustedReview(script: string, root: string, author: Family, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
   const ledgerDir = mkdtempSync(join(tmpdir(), "merge-gate-review-"));
   const asResult = (output: string): ReviewResultFile | null => {
     try {
@@ -165,7 +167,7 @@ export function runTrustedReview(script: string, root: string, number: string, a
     }
   };
   try {
-    return asResult(runner(process.execPath, [script, "--pr", number, "--author", author, "--json", "--no-index", "--strict", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
+    return asResult(runner(process.execPath, [script, "--base", REVIEW_BASE_REF, "--author", author, "--json", "--no-index", "--strict", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
   } catch (error) {
     const stdout = (error as { stdout?: unknown }).stdout;
     return typeof stdout === "string" ? asResult(stdout) : null;
@@ -217,7 +219,7 @@ function main(argv: string[]): number {
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
   const files = changedFiles(number);
   const reviewResult = sensitivePaths(files.map((file) => file.path)).length > 0
-    ? runTrustedReview(resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts"), root, number, author, (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }))
+    ? runTrustedReview(resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts"), root, author, (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }))
     : null;
   const current = reviewResult ? (JSON.parse(gh(["pr", "view", number, "--json", "headRefOid,baseRefName"])) as PullRequestPin) : pr;
   const reasons = evaluateGate(

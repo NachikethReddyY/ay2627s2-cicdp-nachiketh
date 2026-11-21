@@ -210,18 +210,19 @@ test("bootstrap extracts the base review script", () => {
   assert.match(bootstrap, /for file in [^\n]*agent-review\.ts/);
 });
 
-test("trusted review runner receives the base script, author, PR and isolated ledger", () => {
+test("trusted review runner receives the base script, author, the local base ref and an isolated ledger", () => {
   let argsSeen: string[] = [];
-  const result = runTrustedReview("/trusted/agent-review.ts", "/checkout", "123", "claude", (file, args, root) => {
+  const result = runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", (file, args, root) => {
     assert.equal(file, process.execPath);
     assert.equal(root, "/checkout");
     argsSeen = args;
     return JSON.stringify(cleanReview);
   });
   assert.deepEqual(result, cleanReview);
-  assert.deepEqual(argsSeen.slice(0, 8), ["/trusted/agent-review.ts", "--pr", "123", "--author", "claude", "--json", "--no-index", "--strict"]);
+  assert.deepEqual(argsSeen.slice(0, 8), ["/trusted/agent-review.ts", "--base", "refs/remotes/origin/main", "--author", "claude", "--json", "--no-index", "--strict"]);
+  assert.ok(!argsSeen.includes("--pr"));
   assert.match(argsSeen[9] ?? "", /merge-gate-review-/);
-  assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "123", "claude", () => "invalid"), null);
+  assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", () => "invalid"), null);
 });
 
 test("a review that exits non-zero with findings or incomplete is reported as that result, not as a tooling failure", () => {
@@ -229,9 +230,9 @@ test("a review that exits non-zero with findings or incomplete is reported as th
     throw Object.assign(new Error("exit 1"), { stdout });
   };
   const findings = { status: "findings", head: "abc123", author: "claude", reviewer: "codex" };
-  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "1", "claude", exited(JSON.stringify(findings))), findings);
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "1", "claude", exited("not json")), null);
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "1", "claude", () => {
+  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", exited(JSON.stringify(findings))), findings);
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", exited("not json")), null);
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", () => {
     throw new Error("spawn failed");
   }), null);
 });

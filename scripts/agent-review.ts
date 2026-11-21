@@ -35,7 +35,7 @@ export type ReviewResult = {
   verifier: string;
 };
 
-export type DiffFile = { path: string; patch: string };
+export type DiffFile = { path: string; patch: string; part?: string };
 export type CollectedDiff = { files: DiffFile[]; skipped: string[] };
 export type ContextBlock = { label: string; text: string };
 
@@ -64,6 +64,7 @@ export const SIMILARITY_THRESHOLD = 0.6;
 export const LEDGER_PATH = ".agent-review/ledger.jsonl";
 export const APPROVAL_DISCLAIMER = "Bot output is advisory. It does not replace CI or the merge gate.";
 export const MAX_DIFF_CHARS = 180_000;
+export const MAX_CHUNKS = 12;
 export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
 
@@ -181,6 +182,57 @@ export function collectDiff(source: { pr: string | null; base: string }, skipLis
   };
 }
 
+function joinedLength(files: DiffFile[]): number {
+  return files.reduce((sum, f) => sum + f.patch.length, 0) + Math.max(0, files.length - 1);
+}
+
+function splitFile(file: DiffFile, limit: number): DiffFile[] | string {
+  const lines = file.patch.split("\n");
+  const firstHunk = lines.findIndex((l) => l.startsWith("@@"));
+  if (firstHunk === -1) return `${file.path} has no hunks and is larger than ${limit} characters; cannot split further`;
+  const header = `${lines.slice(0, firstHunk).join("\n")}\n`;
+  const hunks: string[] = [];
+  for (const line of lines.slice(firstHunk)) {
+    if (line.startsWith("@@")) hunks.push(`${line}\n`);
+    else hunks[hunks.length - 1] += `${line}\n`;
+  }
+  const oversized = hunks.findIndex((h) => header.length + h.length > limit);
+  if (oversized !== -1) return `hunk ${oversized + 1} of ${file.path} is larger than ${limit} characters; cannot split further`;
+  const pieces: DiffFile[] = [];
+  let start = 0;
+  while (start < hunks.length) {
+    let end = start;
+    let size = header.length;
+    while (end < hunks.length && size + (hunks[end] as string).length <= limit) {
+      size += (hunks[end] as string).length;
+      end += 1;
+    }
+    pieces.push({ path: file.path, patch: header + hunks.slice(start, end).join(""), part: `hunks ${start + 1}-${end} of ${hunks.length}` });
+    start = end;
+  }
+  return pieces;
+}
+
+export function chunkDiff(files: DiffFile[], limit: number = MAX_DIFF_CHARS): { chunks: DiffFile[][] } | { error: string } {
+  const pieces: DiffFile[] = [];
+  for (const file of files) {
+    if (file.patch.length <= limit) {
+      pieces.push(file);
+      continue;
+    }
+    const split = splitFile(file, limit);
+    if (typeof split === "string") return { error: split };
+    pieces.push(...split);
+  }
+  const chunks: DiffFile[][] = [];
+  for (const piece of pieces) {
+    const current = chunks[chunks.length - 1];
+    if (current && joinedLength([...current, piece]) <= limit) current.push(piece);
+    else chunks.push([piece]);
+  }
+  return { chunks };
+}
+
 export function changedSymbols(patch: string): string[] {
   const names = new Set<string>();
   const declaration = /^\+\s*(?:export\s+)?(?:async\s+)?(?:function\*?|class|const|let|def|interface|type)\s+([A-Za-z_$][\w$]*)/;
@@ -229,7 +281,13 @@ function defang(text: string): string {
 export const FINDING_SHAPE =
   '{"bugs":[{"file":"repo/relative/path","line":12,"severity":"important|nit","category":"short-kebab-case","summary":"one sentence","failure_scenario":"the concrete input or request that fails and what goes wrong","evidence":"the code you read that proves it, quoted"}]}';
 
-export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string }): string {
+export type ChunkLabel = { index: number; total: number };
+
+function describeParts(files: DiffFile[]): string {
+  return files.map((f) => (f.part ? `${f.path} (${f.part})` : f.path)).join(", ");
+}
+
+export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string; chunk?: ChunkLabel; readTools?: boolean }): string {
   let diff = input.files.map((f) => f.patch).join("\n");
   let truncated = false;
   if (diff.length > MAX_DIFF_CHARS) {
@@ -253,7 +311,8 @@ export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBl
     "- Report bugs, not style. Do not report anything a linter or formatter catches.",
     `- Every finding needs file, line, failure_scenario and evidence. Omit a finding you cannot prove from the code.`,
     `- Report at most ${MAX_NITS} nits, and none if you have an important finding.`,
-    "- You may read files in the repository to check a claim.",
+    input.readTools === false ? "- You cannot read files; judge only what the diff and context show, and omit any claim you cannot prove from them." : "- You may read files in the repository to check a claim.",
+    input.chunk && input.chunk.total > 1 ? `- This is chunk ${input.chunk.index} of ${input.chunk.total} of a large diff. Other chunks are reviewed separately. This chunk holds: ${describeParts(input.files)}.` : "",
     truncated ? "- The diff below was truncated, so say nothing about files you cannot see." : "",
     "",
     "<untrusted-diff>",
@@ -269,7 +328,7 @@ export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBl
 }
 
 export function buildVerifierPrompt(finding: Finding, files: DiffFile[]): string {
-  const patch = files.find((f) => f.path === finding.file)?.patch ?? "";
+  const patch = files.filter((f) => f.path === finding.file).map((f) => f.patch).join("\n");
   return [
     "You are a skeptical verifier. A reviewer reported the finding below. Try to disprove it using the code in the repository.",
     UNTRUSTED_GUARD,
@@ -644,8 +703,15 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   }
   const notes: string[] = [];
   if (diff.skipped.length > 0) notes.push(`skipped ${diff.skipped.length} file(s) per REVIEW.md`);
-  if (diff.files.length === 0) return { status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base };
-  if (diff.files.map((f) => f.patch).join("\n").length > MAX_DIFF_CHARS) return incomplete("diff is too large to review completely; split the PR into smaller changes", notes);
+  if (diff.files.length === 0) {
+    if (input.strict) return incomplete("a strict review found no changed files to review; refusing to treat an empty diff as clean", notes);
+    return { status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base };
+  }
+  const chunked = chunkDiff(diff.files);
+  if ("error" in chunked) return incomplete(`diff is too large to review completely: ${chunked.error}`, notes);
+  const chunks = chunked.chunks;
+  if (chunks.length > MAX_CHUNKS) return incomplete(`diff needs ${chunks.length} review chunks, above the limit of ${MAX_CHUNKS}; split the PR into smaller changes`, notes);
+  if (chunks.length > 1) notes.push(`reviewed in ${chunks.length} chunks`);
 
   if (deps.ledger && deps.onAddressed) {
     const addressed = markAddressed(deps.ledger, diff.files, deps.headSha ?? "unknown", new Date().toISOString());
@@ -653,39 +719,53 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     if (addressed.length > 0) notes.push(`marked ${addressed.length} earlier finding(s) addressed`);
   }
 
-  const gathered = gatherContext(diff.files, deps.exec, input.root, input.useIndex);
-  notes.push(...gathered.notes);
-  let contextBlocks = gathered.blocks;
-  if (deps.screener) {
-    const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd });
-    contextBlocks = screened.blocks;
-    if (screened.note) notes.push(screened.note);
-  }
+  const timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
+  const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs, cwd: runnerCwd };
+  const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs, cwd: runnerCwd };
+  const reviewMdForPrompt = input.strict ? withoutSection(reviewMd, "Skip") : reviewMd;
 
-  const injection = scanForInjection(diff.files, contextBlocks);
+  const injection = scanForInjection(diff.files, []);
+  const confirmed: Finding[] = [];
+  const seen = new Set<string>();
+  const keep = (finding: Finding): boolean => {
+    const key = `${finding.file}\u0000${finding.line}\u0000${finding.summary}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+  const where = (at: number) => (chunks.length > 1 ? ` on chunk ${at + 1} of ${chunks.length}` : "");
+
+  for (const [at, files] of chunks.entries()) {
+    const gathered = gatherContext(files, deps.exec, input.root, input.useIndex);
+    for (const note of gathered.notes) if (!notes.includes(note)) notes.push(note);
+    let contextBlocks = gathered.blocks;
+    if (deps.screener) {
+      const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs, cwd: runnerCwd });
+      contextBlocks = screened.blocks;
+      if (screened.note) notes.push(screened.note);
+    }
+    for (const flag of scanForInjection([], contextBlocks)) if (!injection.includes(flag)) injection.push(flag);
+
+    const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, readTools: !input.strict });
+    let output: string;
+    try {
+      output = await deps.reviewerRunner(prompt, reviewerOptions);
+    } catch (error) {
+      return incomplete(`reviewer failed${where(at)}: ${(error as Error).message}`, notes, injection);
+    }
+    const parsed = parseFindings(output, files.map((f) => f.path));
+    if (!parsed.ok) return incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection);
+    if (parsed.dropped > 0) notes.push(`dropped ${parsed.dropped} finding(s) missing file, line, failure scenario or evidence`);
+
+    const verified = await verifyFindings(parsed.findings, files, deps.verifierRunner, verifierOptions);
+    if (!verified.ok) return incomplete(verified.reason, notes, injection);
+    if (verified.refuted > 0) notes.push(`verifier refuted ${verified.refuted} finding(s)`);
+    if (verified.styleDropped > 0) notes.push(`verifier dropped ${verified.styleDropped} style, naming or cleanup finding(s)`);
+    confirmed.push(...verified.confirmed.filter(keep));
+  }
   if (injection.length > 0) notes.push(`flagged-injection: ${injection.join(" | ")}`);
 
-  const prompt = buildReviewPrompt({ files: diff.files, context: contextBlocks, reviewMd: input.strict ? withoutSection(reviewMd, "Skip") : reviewMd, principles });
-  const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd };
-  const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd };
-
-  let output: string;
-  try {
-    output = await deps.reviewerRunner(prompt, reviewerOptions);
-  } catch (error) {
-    return incomplete(`reviewer failed: ${(error as Error).message}`, notes, injection);
-  }
-  const parsed = parseFindings(output, diff.files.map((f) => f.path));
-  if (!parsed.ok) return incomplete(`reviewer output unusable: ${parsed.reason}`, notes, injection);
-  if (parsed.dropped > 0) notes.push(`dropped ${parsed.dropped} finding(s) missing file, line, failure scenario or evidence`);
-
-  const verified = await verifyFindings(parsed.findings, diff.files, deps.verifierRunner, verifierOptions);
-  if (!verified.ok) return incomplete(verified.reason, notes, injection);
-  if (verified.refuted > 0) notes.push(`verifier refuted ${verified.refuted} finding(s)`);
-
-  if (verified.styleDropped > 0) notes.push(`verifier dropped ${verified.styleDropped} style, naming or cleanup finding(s)`);
-
-  const filtered = filterDismissed(verified.confirmed, deps.ledger ?? [], deps.similarity ?? jaccard);
+  const filtered = filterDismissed(confirmed, deps.ledger ?? [], deps.similarity ?? jaccard);
   if (filtered.dropped > 0) notes.push(`comment filter dropped ${filtered.dropped} finding(s) similar to dismissed ones`);
 
   const capped = capFindings(limitNits(filtered.kept), deps.maxFindings ?? DEFAULT_MAX_FINDINGS);
@@ -752,8 +832,8 @@ export function spawnRunner(command: string, args: string[]): Runner {
     });
 }
 
-export function claudeArgs(model: string | undefined): string[] {
-  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", "--allowedTools", "Read,Grep,Glob"];
+export function claudeArgs(model: string | undefined, strict = false): string[] {
+  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...(strict ? ["--tools", ""] : ["--allowedTools", "Read,Grep,Glob"])];
 }
 
 export function codexArgs(model: string | undefined): string[] {
@@ -764,8 +844,8 @@ export function opencodeArgs(model: string | undefined): string[] {
   return ["run", ...(model ? ["--model", model] : [])];
 }
 
-export function makeRunner(family: ScreenerFamily, model: string | undefined): Runner {
-  if (family === "claude") return spawnRunner("claude", claudeArgs(model));
+export function makeRunner(family: ScreenerFamily, model: string | undefined, strict = false): Runner {
+  if (family === "claude") return spawnRunner("claude", claudeArgs(model, strict));
   if (family === "codex") return spawnRunner("codex", codexArgs(model));
   return spawnRunner("opencode", opencodeArgs(model));
 }
@@ -856,8 +936,8 @@ async function main(argv: string[]): Promise<number> {
     { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier, strict: args.strict, runnerCwd },
     {
       exec: readOnlyExec(defaultExec),
-      reviewerRunner: makeRunner(args.reviewer, reviewerModel),
-      verifierRunner: makeRunner(args.verifier, verifierModel),
+      reviewerRunner: makeRunner(args.reviewer, reviewerModel, args.strict),
+      verifierRunner: makeRunner(args.verifier, verifierModel, args.strict),
       reviewerModel,
       verifierModel,
       screener: args.screener ? { runner: makeRunner(args.screener, undefined) } : undefined,

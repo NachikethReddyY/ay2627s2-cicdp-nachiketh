@@ -24,6 +24,12 @@ Model inversion: the family that wrote the diff does not review it.
 - `--author` is required. Without it the review refuses to run.
 - `--reviewer` and `--verifier` override this. `--model` sets the reviewer's model only.
 
+## Strict mode and large diffs
+
+`--strict` is what the merge gate uses. It runs `git diff refs/remotes/origin/main...HEAD` over the local checkout (never `gh pr diff`), ignores the `REVIEW.md` skip list, runs the model CLIs in an empty temp directory, gives Claude no tools, and treats an empty diff as incomplete.
+
+A diff over 180,000 patch characters is reviewed in chunks: whole files are packed greedily, a larger file is split at hunk boundaries, and each chunk gets the full reviewer and verifier pass. Findings merge across chunks. The result is `clean` only if every chunk is clean. A single hunk over the limit, or more than 12 chunks, is `incomplete`; split the PR.
+
 ## What it does
 
 1. Collects `git diff <base>...HEAD` (or `gh pr diff N`) and drops the files in the `Skip` list of `REVIEW.md`.
