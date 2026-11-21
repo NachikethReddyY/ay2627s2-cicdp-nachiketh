@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baseStillCurrent, changedDuringReview, finalGateReasons, finalMergeBlockers, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { baseStillCurrent, changedDuringReview, finalGateReasons, finalMergeBlockers, finalPreMergeReasons, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -37,6 +37,26 @@ test("a change request, failing check or unresolved thread that appears after th
   assert.ok(finalGateReasons({ ...ready, statusCheckRollup: passing.map((c) => (c.name === "unit" ? { ...c, conclusion: "FAILURE" } : c)) }, final).length > 0);
   assert.equal(finalGateReasons(ready, { ...final, unresolvedThreads: 1 }).length, 1);
   assert.equal(finalGateReasons({ ...ready, mergeable: "CONFLICTING" }, final).length, 1);
+});
+
+test("the final pre-merge samples threads, then the PR, then GitHub main, and reads nothing after", () => {
+  const calls: string[] = [];
+  const { files: _files, ...ready } = green;
+  const reader = {
+    localHead: () => (calls.push("localHead"), "abc123"),
+    worktreeClean: () => (calls.push("worktreeClean"), true),
+    localMain: () => (calls.push("localMain"), "base111"),
+    unresolvedThreads: () => (calls.push("threads"), 0),
+    pullRequest: () => (calls.push("pr"), ready),
+    remoteMain: () => (calls.push("remoteMain"), "base111"),
+  };
+  assert.deepEqual(finalPreMergeReasons(reader, { headRefOid: "abc123", baseRefName: "main" }, "claude", "base111"), []);
+  assert.deepEqual(calls.slice(-3), ["threads", "pr", "remoteMain"]);
+  assert.equal(calls.length, 6);
+  const moved = finalPreMergeReasons({ ...reader, remoteMain: () => "other" }, { headRefOid: "abc123", baseRefName: "main" }, "claude", "base111");
+  assert.equal(moved.length, 1);
+  const noReview = finalPreMergeReasons({ ...reader, remoteMain: () => "other" }, { headRefOid: "abc123", baseRefName: "main" }, "claude", null);
+  assert.deepEqual(noReview, []);
 });
 
 test("the final pre-merge check refuses a changed head, a retargeted base or a moved main", () => {

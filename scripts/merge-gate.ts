@@ -173,6 +173,28 @@ export function finalGateReasons(pr: Omit<PullRequest, "files">, options: Pick<G
   return evaluateGate({ ...pr, files: [] }, { ...options, reviewResult: null });
 }
 
+export type FinalReader = {
+  localHead: () => string;
+  worktreeClean: () => boolean;
+  localMain: () => string;
+  unresolvedThreads: () => number;
+  pullRequest: () => Omit<PullRequest, "files">;
+  remoteMain: () => string;
+};
+
+export function finalPreMergeReasons(reader: FinalReader, before: PullRequestPin, author: Family, reviewBase: string | null): string[] {
+  const localHead = reader.localHead();
+  const worktreeClean = reader.worktreeClean();
+  const localMain = reviewBase === null ? "" : reader.localMain();
+  const unresolvedThreads = reader.unresolvedThreads();
+  const refreshed = reader.pullRequest();
+  const remoteMain = reviewBase === null ? "" : reader.remoteMain();
+  return [
+    ...finalGateReasons(refreshed, { author, unresolvedThreads, localHead, worktreeClean }),
+    ...finalMergeBlockers(before, refreshed, reviewBase === null ? null : { reviewBase, localMain, remoteMain }),
+  ];
+}
+
 export function runTrustedReview(script: string, root: string, author: Family, baseSha: string, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
   const ledgerDir = mkdtempSync(join(tmpdir(), "merge-gate-review-"));
   const asResult = (output: string): ReviewResultFile | null => {
@@ -266,27 +288,27 @@ function main(argv: string[]): number {
   } finally {
     rmSync(ghConfigDir, { recursive: true, force: true });
   }
-  if (flags.has("--dry-run")) {
-    console.log(`PR #${number} passes every gate. Dry run, not merging.`);
-    return 0;
-  }
-  const [localMain, remoteMain] = reviewResult ? mainTips() : ["", ""];
-  const refreshed = JSON.parse(
-    gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,baseRefName,reviewDecision,mergeable,statusCheckRollup"]),
-  ) as Omit<PullRequest, "files">;
-  const lastCheck = [
-    ...finalGateReasons(refreshed, {
-      author,
-      unresolvedThreads: unresolvedThreadCount(number),
-      localHead: git(["rev-parse", "HEAD"], root).trim(),
-      worktreeClean: git(["status", "--porcelain"], root).trim() === "",
-    }),
-    ...finalMergeBlockers(pr, refreshed, reviewResult ? { reviewBase: reviewResult.base ?? "", localMain: localMain as string, remoteMain: remoteMain as string } : null),
-  ];
+  const lastCheck = finalPreMergeReasons(
+    {
+      localHead: () => git(["rev-parse", "HEAD"], root).trim(),
+      worktreeClean: () => git(["status", "--porcelain"], root).trim() === "",
+      localMain: () => mainTips()[0],
+      unresolvedThreads: () => unresolvedThreadCount(number),
+      pullRequest: () => JSON.parse(gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,baseRefName,reviewDecision,mergeable,statusCheckRollup"])) as Omit<PullRequest, "files">,
+      remoteMain: () => mainTips()[1],
+    },
+    pr,
+    author,
+    reviewResult ? (reviewResult.base ?? "") : null,
+  );
   if (lastCheck.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of lastCheck) console.error(`  - ${r}`);
     return 1;
+  }
+  if (flags.has("--dry-run")) {
+    console.log(`PR #${number} passes every gate. Dry run, not merging.`);
+    return 0;
   }
   gh(["pr", "merge", number, "--squash", "--delete-branch", "--match-head-commit", pr.headRefOid]);
   console.log(`Merged PR #${number} at ${pr.headRefOid}. Main deploys after CI.`);

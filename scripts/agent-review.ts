@@ -123,11 +123,11 @@ export function parseArgs(argv: string[]): CliArgs {
     model: value("--model"),
     post: flags.has("--post"),
     json: flags.has("--json"),
-    noIndex: flags.has("--no-index"),
+    noIndex: flags.has("--no-index") || flags.has("--strict"),
     strict: flags.has("--strict"),
     maxFindings: maxRaw === null ? DEFAULT_MAX_FINDINGS : Number(maxRaw),
     screener: screenerRaw,
-    ledger: value("--ledger"),
+    ledger: flags.has("--strict") ? join(mkdtempSync(join(tmpdir(), "agent-review-strict-ledger-")), "ledger.jsonl") : value("--ledger"),
     dismiss: value("--dismiss"),
   };
 }
@@ -243,9 +243,12 @@ export function isSingleJsonReply(output: string): boolean {
   const fenced = /^```(?:json)?[ \t]*\n([\s\S]*?)\n?```$/.exec(text);
   const body = fenced ? (fenced[1] ?? "").trim() : text;
   if (body.includes("```") || !body.startsWith("{") || !body.endsWith("}")) return false;
+  if ((body.match(/"bugs"\s*:/g)?.length ?? 0) !== 1) return false;
   try {
     const value: unknown = JSON.parse(body);
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+    const keys = Object.keys(value);
+    return keys.length === 1 && keys[0] === "bugs" && Array.isArray((value as { bugs: unknown }).bugs);
   } catch {
     return false;
   }
@@ -364,33 +367,6 @@ export const FINDING_SHAPE =
   '{"bugs":[{"file":"repo/relative/path","line":12,"severity":"important|nit","category":"short-kebab-case","summary":"one sentence","failure_scenario":"the concrete input or request that fails and what goes wrong","evidence":"the code you read that proves it, quoted"}]}';
 
 export type ChunkLabel = { index: number; total: number };
-
-export const MAX_FILE_CONTEXT_CHARS = 60_000;
-
-export function fullFileBlocks(files: DiffFile[], headSha: string, exec: Exec, cwd: string): ContextBlock[] {
-  const blocks: ContextBlock[] = [];
-  let budget = MAX_DIFF_CHARS;
-  const seenPaths = new Set<string>();
-  for (const file of files) {
-    if (seenPaths.has(file.path) || /^deleted file mode /m.test(file.patch)) continue;
-    seenPaths.add(file.path);
-    let content: string;
-    try {
-      content = exec("git", ["show", `${headSha}:${file.path}`], cwd);
-    } catch {
-      continue;
-    }
-    if (content === "") continue;
-    const label = `full file after the change: ${visiblePath(file.path)}`;
-    if (content.length > MAX_FILE_CONTEXT_CHARS) blocks.push({ label: `full file: ${visiblePath(file.path)}`, text: `${visiblePath(file.path)}: not included, larger than ${MAX_FILE_CONTEXT_CHARS} characters` });
-    else if (content.length > budget) blocks.push({ label: `full file: ${visiblePath(file.path)}`, text: `${visiblePath(file.path)}: not included, the chunk's file context budget is used up` });
-    else {
-      budget -= content.length;
-      blocks.push({ label, text: content });
-    }
-  }
-  return blocks;
-}
 
 export function changedPathOverview(files: DiffFile[]): string[] {
   const status = (patch: string): string => (/^new file mode /m.test(patch) ? "A" : /^deleted file mode /m.test(patch) ? "D" : "M");
@@ -889,6 +865,10 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const reviewMdForPrompt = input.strict ? withoutSection(reviewMd, "Skip") : reviewMd;
 
   const injection = scanForInjection(diff.files, []);
+  if (input.strict && injection.length > 0) {
+    notes.push(`flagged-injection: ${injection.join(" | ")}`);
+    return finish(incomplete("text in the diff tried to steer the reviewer; a human must read this change, and it was not sent to a model", notes, injection));
+  }
   const candidates: { finding: Finding; files: DiffFile[] }[] = [];
   const seen = new Set<string>();
   const where = (at: number) => (chunks.length > 1 ? ` on chunk ${at + 1} of ${chunks.length}` : "");
@@ -904,9 +884,9 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
       if (screened.note) notes.push(screened.note);
     }
     for (const flag of scanForInjection([], contextBlocks)) if (!injection.includes(flag)) injection.push(flag);
+    if (input.strict && injection.length > 0) return finish(incomplete("text in the context tried to steer the reviewer; a human must read this change, and it was not sent to a model", notes, injection));
 
-    const fileContext = input.strict ? fullFileBlocks(files, headSha, deps.exec, input.root) : [];
-    const prompt = buildReviewPrompt({ files, context: [...contextBlocks, ...fileContext], reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, overview, readTools: !input.strict });
+    const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, overview, readTools: !input.strict });
     let output: string;
     try {
       output = await deps.reviewerRunner(prompt, optionsFor(deps.reviewerModel));
@@ -1144,6 +1124,7 @@ async function main(argv: string[]): Promise<number> {
     },
   );
   if (runnerCwd) rmSync(runnerCwd, { recursive: true, force: true });
+  if (args.strict) rmSync(dirname(ledgerPath), { recursive: true, force: true });
   const body = renderMarkdown(result);
   console.log(args.json ? JSON.stringify({ ...result, author: args.author }, null, 2) : body);
   if (args.post && args.pr !== null) {
