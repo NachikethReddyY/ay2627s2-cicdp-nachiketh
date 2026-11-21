@@ -61,7 +61,7 @@ function refExists(repoDir: string, ref: string): boolean {
 }
 
 export function readFirstParentLog(repoDir: string): string {
-  const ref = refExists(repoDir, "origin/main") ? "origin/main" : "main";
+  const ref = refExists(repoDir, "refs/remotes/origin/main") ? "refs/remotes/origin/main" : "refs/heads/main";
   return execFileSync(
     bin("git"),
     ["-C", repoDir, "log", "--first-parent", "--format=%H%x1f%ct%x1f%s", ref],

@@ -164,7 +164,7 @@ function main(argv: string[]): number {
   const verifyScript = process.env.MERGE_GATE_VERIFY_SCRIPT;
   if (!verifyScript) {
     console.error(
-      "refusing to run: the gate must start from origin/main. Run `git fetch origin main && git show origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>`",
+      "refusing to run: the gate must start from origin/main. Run `git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>`",
     );
     return 2;
   }

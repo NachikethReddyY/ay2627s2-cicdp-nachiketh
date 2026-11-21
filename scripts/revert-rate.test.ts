@@ -74,3 +74,20 @@ test("reads a temporary git repo's first-parent history and counts one revert", 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a tag named origin/main cannot shadow the remote-tracking branch", () => {
+  const dir = mkdtempSync(join(tmpdir(), "revert-rate-tag-"));
+  try {
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", dir, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    git("commit", "-q", "--allow-empty", "-m", "feat: a");
+    git("tag", "origin/main");
+    for (const subject of ['Revert "feat: a"', "feat: b"]) git("commit", "-q", "--allow-empty", "-m", subject);
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    const report = computeRevertRate(parseLog(readFirstParentLog(dir)), Date.now(), 30);
+    assert.deepEqual(report.overall, { changes: 2, reverts: 1, rate: 1 / 2 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
