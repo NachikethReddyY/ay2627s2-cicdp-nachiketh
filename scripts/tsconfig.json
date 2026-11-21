@@ -13,6 +13,6 @@
     "allowJs": true
   },
   "include": [
-    "*.ts"
+    "**/*.ts"
   ]
 }

@@ -57,3 +57,58 @@ test("type-aware lint includes scripts with a project configuration", () => {
   const config = JSON.parse(readFileSync(join(root, "scripts", "tsconfig.json"), "utf8"));
   assert.equal(config.compilerOptions.strict, true);
 });
+
+test("other generated-looking files, even named like the changelog, stay checked", () => {
+  const dir = mkdtempSync(join(tmpdir(), "guardrails-lookalike-"));
+  try {
+    for (const top of ["apps", "packages", "e2e", "scripts", "tools"]) mkdirSync(join(dir, top));
+    mkdirSync(join(dir, "packages", "sample"));
+    mkdirSync(join(dir, "apps", "web", "src", "pages"), { recursive: true });
+    writeFileSync(join(dir, "packages", "sample", "x.generated.ts"), 'import a from "@learnquest/api";\n');
+    writeFileSync(join(dir, "packages", "sample", "changelog-releases.generated.ts"), 'import a from "@learnquest/api";\n');
+    writeFileSync(join(dir, "apps", "web", "src", "pages", "changelog-releases.generated.ts"), 'import a from "@learnquest/api";\n// c\n');
+    assert.deepEqual(checkRepo(dir).map((v) => v.file).sort(), ["packages/sample/changelog-releases.generated.ts", "packages/sample/x.generated.ts"]);
+    assert.deepEqual(checkRepoComments(dir).map((v) => v.file), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("boundary check sees multiline specifiers, computed imports and every JS and TS extension", () => {
+  const dir = mkdtempSync(join(tmpdir(), "boundaries-forms-"));
+  try {
+    for (const top of ["apps", "packages", "e2e", "tools"]) mkdirSync(join(dir, top));
+    mkdirSync(join(dir, "packages", "sample"));
+    const write = (name: string, text: string) => writeFileSync(join(dir, "packages", "sample", name), text);
+    write("multiline.ts", 'import x from\n  "@learnquest/api";\n');
+    write("reexport.ts", 'export * from\n  "@learnquest/web";\n');
+    write("require.ts", 'const x = require(\n  "@learnquest/api");\n');
+    write("computed.ts", 'const n = "@learnquest/api";\nconst x = import(n);\n');
+    write("a.cjs", 'const x = require("@learnquest/api");\n');
+    write("b.mts", 'import x from "@learnquest/api";\n');
+    write("c.cts", 'import x from "@learnquest/api";\n');
+    assert.deepEqual(
+      checkRepo(dir).map((v) => v.file).sort(),
+      ["a.cjs", "b.mts", "c.cts", "computed.ts", "multiline.ts", "reexport.ts", "require.ts"].map((n) => `packages/sample/${n}`),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a backslash in a file name does not impersonate the exempt changelog path", () => {
+  const dir = mkdtempSync(join(tmpdir(), "guardrails-backslash-"));
+  try {
+    for (const top of ["apps", "packages", "e2e", "scripts", "tools"]) mkdirSync(join(dir, top));
+    mkdirSync(join(dir, "apps", "web", "src"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "src", "pages\\changelog-releases.generated.ts"), "// c\n");
+    assert.equal(checkRepoComments(dir).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("scripts type configuration covers nested scripts", () => {
+  const config = JSON.parse(readFileSync(join(root, "scripts", "tsconfig.json"), "utf8"));
+  assert.deepEqual(config.include, ["**/*.ts"]);
+});
