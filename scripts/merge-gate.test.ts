@@ -85,6 +85,32 @@ test("sensitive path classes include auth guards, guardrails and repo rules", ()
   assert.deepEqual(sensitivePaths(["docs/plan.md", "apps/web/src/main.tsx", "apps/web/src/pages/Home.tsx"]), []);
 });
 
+test("sensitive paths cover grading, learner models, configuration and all scripts", () => {
+  const paths = [
+    "scripts/narrate.ts",
+    "scripts/nested/new-tool.ts",
+    "apps/api/src/games/grade.ts",
+    "apps/api/src/attempts/machine.ts",
+    "apps/api/src/dev/route.ts",
+    "services/engine/learnquest_engine/guide.py",
+    "services/engine/learnquest_engine/bkt.py",
+    "services/engine/learnquest_engine/policy.py",
+    "services/engine/learnquest_engine/learner.py",
+    "apps/api/src/progress/mastery.ts",
+    "apps/api/src/app.ts",
+    "package.json",
+    "apps/api/package.json",
+    "packages/player-core/package.json",
+    "e2e/scripts/ci.sh",
+    "pnpm-lock.yaml",
+    "apps/api/test/helpers.ts",
+    "apps/api/test/helpers/database.ts",
+  ];
+  for (const path of paths) {
+    assert.equal(sensitivePaths([path]).length, 1, `${path} must require sensitive review`);
+  }
+});
+
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {
   assert.equal(evaluateGate(green, { ...open, revertRate: 0.08 }).length, 1);
   assert.deepEqual(evaluateGate(green, { ...open, revertRate: 0.02 }), []);
