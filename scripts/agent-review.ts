@@ -113,6 +113,7 @@ export function parseArgs(argv: string[]): CliArgs {
   const verifier = family("--verifier") ?? otherFamily(reviewer);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   if (flags.has("--post") && pr === null) throw new Error("--post needs --pr");
+  if (flags.has("--strict") && pr !== null) throw new Error("--strict reviews local commits only; drop --pr and pass --base <ref>");
   return {
     pr,
     author,
@@ -237,10 +238,17 @@ export function visiblePath(path: string): string {
   return path.replace(/[\u0000-\u001f\u007f-\u009f]/g, (ch) => named[ch] ?? `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
 }
 
-export function isAmbiguousReply(output: string): boolean {
-  const fenced = output.match(/```/g)?.length ?? 0;
-  const bugsObjects = output.match(/\{\s*"bugs"\s*:/g)?.length ?? 0;
-  return fenced > 2 || bugsObjects > 1;
+export function isSingleJsonReply(output: string): boolean {
+  const text = output.trim();
+  const fenced = /^```(?:json)?[ \t]*\n([\s\S]*?)\n?```$/.exec(text);
+  const body = fenced ? (fenced[1] ?? "").trim() : text;
+  if (body.includes("```") || !body.startsWith("{") || !body.endsWith("}")) return false;
+  try {
+    const value: unknown = JSON.parse(body);
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  } catch {
+    return false;
+  }
 }
 
 export function splitDiff(rawDiff: string): DiffFile[] {
@@ -356,6 +364,33 @@ export const FINDING_SHAPE =
   '{"bugs":[{"file":"repo/relative/path","line":12,"severity":"important|nit","category":"short-kebab-case","summary":"one sentence","failure_scenario":"the concrete input or request that fails and what goes wrong","evidence":"the code you read that proves it, quoted"}]}';
 
 export type ChunkLabel = { index: number; total: number };
+
+export const MAX_FILE_CONTEXT_CHARS = 60_000;
+
+export function fullFileBlocks(files: DiffFile[], headSha: string, exec: Exec, cwd: string): ContextBlock[] {
+  const blocks: ContextBlock[] = [];
+  let budget = MAX_DIFF_CHARS;
+  const seenPaths = new Set<string>();
+  for (const file of files) {
+    if (seenPaths.has(file.path) || /^deleted file mode /m.test(file.patch)) continue;
+    seenPaths.add(file.path);
+    let content: string;
+    try {
+      content = exec("git", ["show", `${headSha}:${file.path}`], cwd);
+    } catch {
+      continue;
+    }
+    if (content === "") continue;
+    const label = `full file after the change: ${visiblePath(file.path)}`;
+    if (content.length > MAX_FILE_CONTEXT_CHARS) blocks.push({ label: `full file: ${visiblePath(file.path)}`, text: `${visiblePath(file.path)}: not included, larger than ${MAX_FILE_CONTEXT_CHARS} characters` });
+    else if (content.length > budget) blocks.push({ label: `full file: ${visiblePath(file.path)}`, text: `${visiblePath(file.path)}: not included, the chunk's file context budget is used up` });
+    else {
+      budget -= content.length;
+      blocks.push({ label, text: content });
+    }
+  }
+  return blocks;
+}
 
 export function changedPathOverview(files: DiffFile[]): string[] {
   const status = (patch: string): string => (/^new file mode /m.test(patch) ? "A" : /^deleted file mode /m.test(patch) ? "D" : "M");
@@ -870,7 +905,8 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     }
     for (const flag of scanForInjection([], contextBlocks)) if (!injection.includes(flag)) injection.push(flag);
 
-    const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, overview, readTools: !input.strict });
+    const fileContext = input.strict ? fullFileBlocks(files, headSha, deps.exec, input.root) : [];
+    const prompt = buildReviewPrompt({ files, context: [...contextBlocks, ...fileContext], reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, overview, readTools: !input.strict });
     let output: string;
     try {
       output = await deps.reviewerRunner(prompt, optionsFor(deps.reviewerModel));
@@ -878,7 +914,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
       if (remainingMs() <= 0) return finish(timedOut(notes, injection));
       return finish(incomplete(`reviewer failed${where(at)}: ${(error as Error).message}`, notes, injection));
     }
-    if (input.strict && isAmbiguousReply(output)) return finish(incomplete(`reviewer reply was ambiguous${where(at)}; a human must read this change`, notes, injection));
+    if (input.strict && !isSingleJsonReply(output)) return finish(incomplete(`reviewer reply was not a single JSON response${where(at)}; a human must read this change`, notes, injection));
     const parsed = parseFindings(output, files.map((f) => f.path));
     if (!parsed.ok) return finish(incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection));
     if (input.strict && parsed.outside.length > 0) return finish(incomplete(`reviewer cited a file outside the diff${where(at)}: ${[...new Set(parsed.outside)].slice(0, 5).join(", ")}`, notes, injection));
@@ -996,8 +1032,8 @@ export function claudeArgs(model: string | undefined, strict = false): string[] 
   return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...(strict ? ["--tools", "", "--strict-mcp-config"] : ["--allowedTools", "Read,Grep,Glob"])];
 }
 
-export function codexArgs(model: string | undefined): string[] {
-  return ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", ...(model ? ["--model", model] : []), "-"];
+export function codexArgs(model: string | undefined, strict = false): string[] {
+  return ["exec", ...(strict ? ["--ignore-user-config", "--ignore-rules"] : []), "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", ...(model ? ["--model", model] : []), "-"];
 }
 
 export function opencodeArgs(model: string | undefined): string[] {
@@ -1006,7 +1042,7 @@ export function opencodeArgs(model: string | undefined): string[] {
 
 export function makeRunner(family: ScreenerFamily, model: string | undefined, strict = false): Runner {
   if (family === "claude") return spawnRunner("claude", claudeArgs(model, strict));
-  if (family === "codex") return spawnRunner("codex", codexArgs(model));
+  if (family === "codex") return spawnRunner("codex", codexArgs(model, strict));
   return spawnRunner("opencode", opencodeArgs(model));
 }
 

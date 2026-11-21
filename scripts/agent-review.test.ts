@@ -669,7 +669,7 @@ test("one unclean chunk makes the whole result not clean", async () => {
   const brokenSecond: Runner = async () => (++calls === 2 ? "not json" : '{"bugs":[]}');
   const incomplete = await runReview(strictInput, { ...depsWith(brokenSecond, failing("unused")), exec: execDiff(patch) });
   assert.equal(incomplete.status, "incomplete");
-  assert.match(incomplete.reason ?? "", /unusable/);
+  assert.match(incomplete.reason ?? "", /not a single JSON response/);
 
   const found = JSON.stringify({ bugs: [bug({ file: "src/b.ts", line: 1 })] });
   let n = 0;

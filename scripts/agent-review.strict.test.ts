@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeArgs, defaultExec, gitlinkPaths, runReview, scanForInjection, spawnRunner, splitDiff, unquoteGitPath, visiblePath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
+import { claudeArgs, codexArgs, defaultExec, parseArgs, gitlinkPaths, runReview, scanForInjection, spawnRunner, splitDiff, unquoteGitPath, visiblePath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
 
 const bug = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   file: "src/a.ts",
@@ -344,7 +344,14 @@ test("strict review refuses an ambiguous reply with more than one JSON candidate
   const patch = sizedPatch("src/a.ts", 500);
   const two = await runReview(strictInput, { ...depsWith(recording(`Example:\n${empty}\nActual:\n${real}`).runner, failing("unused")), exec: execDiff(patch) });
   assert.equal(two.status, "incomplete");
-  assert.match(two.reason ?? "", /reviewer reply was ambiguous/);
+  assert.match(two.reason ?? "", /reviewer reply was not a single JSON response/);
+  const refusal = await runReview(strictInput, { ...depsWith(recording('I could not finish. Example: {"bugs":[]}').runner, failing("unused")), exec: execDiff(patch) });
+  assert.equal(refusal.status, "incomplete");
+  assert.match(refusal.reason ?? "", /not a single JSON response/);
+  const wrapped = await runReview(strictInput, { ...depsWith(recording(`Here:\n${empty}\nDone.`).runner, failing("unused")), exec: execDiff(patch) });
+  assert.equal(wrapped.status, "incomplete");
+  const bare = await runReview(strictInput, { ...depsWith(recording(' \n{"bugs":[]}\n ').runner, failing("unused")), exec: execDiff(patch) });
+  assert.equal(bare.status, "clean");
   const prose = await runReview(strictInput, { ...depsWith(recording(`{"bugs":[]} and also {"bugs": []}`).runner, failing("unused")), exec: execDiff(patch) });
   assert.equal(prose.status, "incomplete");
   const single = await runReview(strictInput, { ...depsWith(recording(empty).runner, failing("unused")), exec: execDiff(patch) });
@@ -361,6 +368,40 @@ test("control characters in file names are shown as visible escapes and file nam
   assert.equal(prompts.length, 2);
   assert.ok(prompts.every((p) => p.includes("M src/a.ts\\nsrc/b.ts")));
   assert.ok(prompts.every((p) => !/^src\/b\.ts$/m.test(p)));
+});
+
+test("strict Codex runs ignore user config, MCP servers and exec policy rules", () => {
+  assert.ok(codexArgs("gpt-x", true).includes("--ignore-user-config"));
+  assert.ok(codexArgs("gpt-x", true).includes("--ignore-rules"));
+  assert.ok(!codexArgs("gpt-x").includes("--ignore-user-config"));
+});
+
+test("strict is local-commit only and cannot be combined with --pr", () => {
+  assert.throws(() => parseArgs(["--author", "claude", "--strict", "--pr", "5"]), /strict/);
+  assert.equal(parseArgs(["--author", "claude", "--strict", "--base", "abc123"]).base, "abc123");
+});
+
+test("strict review shows the full post-change file, says when it does not fit, and never drops the diff", async () => {
+  const patch = sizedPatch("src/a.ts", 500) + sizedPatch("src/huge.ts", 500) + sizedPatch("src/gone.ts", 500).replace("--- a/", "deleted file mode 100644\n--- a/");
+  const contents: Record<string, string> = { "sha-HEAD:src/a.ts": "export const helper = 1;\nexport const a = 2;\n", "sha-HEAD:src/huge.ts": "z".repeat(60_001) };
+  const base = execDiff(patch);
+  const exec = (file: string, args: string[]) => (args[0] === "show" && contents[args[1] ?? ""] !== undefined ? (contents[args[1] ?? ""] as string) : base(file, args));
+  const { prompts, runner } = recording();
+  const result = await runReview(strictInput, { ...depsWith(runner, failing("unused")), exec });
+  assert.equal(result.status, "clean");
+  const prompt = prompts[0] ?? "";
+  assert.ok(prompt.indexOf("export const helper = 1;") > prompt.indexOf("<untrusted-context>"));
+  assert.ok(prompt.includes("full file after the change: src/a.ts"));
+  assert.ok(prompt.includes("src/huge.ts: not included, larger than 60000 characters"));
+  assert.ok(!prompt.includes("zzzzzzzz"));
+  assert.ok(prompt.includes("diff --git a/src/huge.ts"));
+});
+
+test("the default flow does not add full file context", async () => {
+  const exec = (file: string, args: string[]) => (args[0] === "show" && args[1]?.startsWith("sha-HEAD:") ? "export const zq_marker = 1;\n" : execDiff(sizedPatch("src/a.ts", 500))(file, args));
+  const { prompts, runner } = recording();
+  await runReview({ ...lenientInput }, { ...depsWith(runner, failing("unused")), exec });
+  assert.ok(!(prompts[0] ?? "").includes("zq_marker"));
 });
 
 test("git-quoted paths with an emoji and an octal escape decode as UTF-8", () => {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baseStillCurrent, changedDuringReview, finalMergeBlockers, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { baseStillCurrent, changedDuringReview, finalGateReasons, finalMergeBlockers, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -27,6 +27,16 @@ test("the reviewed base must equal both the local and the remote main tip", () =
     assert.equal(reasons.length, 1);
     assert.match(reasons[0] ?? "", /fetch main and re-run the gate/);
   }
+});
+
+test("a change request, failing check or unresolved thread that appears after the review blocks the merge", () => {
+  const { files: _files, ...ready } = green;
+  const final = { author: "claude" as const, unresolvedThreads: 0, localHead: "abc123", worktreeClean: true };
+  assert.deepEqual(finalGateReasons(ready, final), []);
+  assert.equal(finalGateReasons({ ...ready, reviewDecision: "CHANGES_REQUESTED" }, final).length, 1);
+  assert.ok(finalGateReasons({ ...ready, statusCheckRollup: passing.map((c) => (c.name === "unit" ? { ...c, conclusion: "FAILURE" } : c)) }, final).length > 0);
+  assert.equal(finalGateReasons(ready, { ...final, unresolvedThreads: 1 }).length, 1);
+  assert.equal(finalGateReasons({ ...ready, mergeable: "CONFLICTING" }, final).length, 1);
 });
 
 test("the final pre-merge check refuses a changed head, a retargeted base or a moved main", () => {
@@ -238,17 +248,17 @@ test("bootstrap extracts the base review script", () => {
 
 test("trusted review runner receives the base script, author, the local base ref and an isolated ledger", () => {
   let argsSeen: string[] = [];
-  const result = runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", (file, args, root) => {
+  const result = runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", "base111", (file, args, root) => {
     assert.equal(file, process.execPath);
     assert.equal(root, "/checkout");
     argsSeen = args;
     return JSON.stringify(cleanReview);
   });
   assert.deepEqual(result, cleanReview);
-  assert.deepEqual(argsSeen.slice(0, 8), ["/trusted/agent-review.ts", "--base", "refs/remotes/origin/main", "--author", "claude", "--json", "--no-index", "--strict"]);
+  assert.deepEqual(argsSeen.slice(0, 8), ["/trusted/agent-review.ts", "--base", "base111", "--author", "claude", "--json", "--no-index", "--strict"]);
   assert.ok(!argsSeen.includes("--pr"));
   assert.match(argsSeen[9] ?? "", /merge-gate-review-/);
-  assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", () => "invalid"), null);
+  assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", "base111", () => "invalid"), null);
 });
 
 test("a review that exits non-zero with findings or incomplete is reported as that result, not as a tooling failure", () => {
@@ -256,9 +266,9 @@ test("a review that exits non-zero with findings or incomplete is reported as th
     throw Object.assign(new Error("exit 1"), { stdout });
   };
   const findings = { status: "findings", head: "abc123", author: "claude", reviewer: "codex" };
-  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", exited(JSON.stringify(findings))), findings);
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", exited("not json")), null);
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", () => {
+  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(findings))), findings);
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited("not json")), null);
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
     throw new Error("spawn failed");
   }), null);
 });
