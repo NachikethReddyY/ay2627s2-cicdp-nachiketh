@@ -653,6 +653,22 @@ test("hunk headers, removed lines and no-newline markers in a clean change raise
   assert.deepEqual(scanForInjection(patch, []), []);
 });
 
+test("separate hunks are screened without joining their text", () => {
+  const boundary = flaggedNote.indexOf(" the ");
+  assert.ok(boundary > 0);
+  const patch = splitDiff([
+    "diff --git a/n.ts b/n.ts",
+    "--- a/n.ts",
+    "+++ b/n.ts",
+    "@@ -0,0 +1 @@",
+    `+${flaggedNote.slice(0, boundary)}`,
+    "@@ -20,0 +22 @@",
+    `+${flaggedNote.slice(boundary + 1)}`,
+    "",
+  ].join("\n"));
+  assert.deepEqual(scanForInjection(patch, []), []);
+});
+
 test("flagged text on an unchanged base line keeps the review incomplete", async () => {
   const root = makeRepo();
   try {

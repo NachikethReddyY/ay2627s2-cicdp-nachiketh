@@ -64,7 +64,7 @@ export const APPROVAL_DISCLAIMER = "Bot output is advisory. It does not replace 
 export const MAX_DIFF_CHARS = 180_000;
 export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
-const STEERING_REASON ="text in the diff or context tried to steer the reviewer; a human must read this change, and it was not sent to a model";
+const STEERING_REASON = "text in the diff or context tried to steer the reviewer. A human must read the flagged text";
 
 const ALWAYS_SKIPPED = ["dist/", "build/", ".turbo/", "node_modules/", ".DS_Store"];
 const FALLBACK_SKIPPED = ["pnpm-lock.yaml", "docs/plan.html", "apps/web/src/worlds/registry.gen.ts"];
@@ -534,27 +534,32 @@ export function detectInjection(text: string): string[] {
   return INJECTION_PATTERNS.filter(([re]) => re.test(text)).map(([, why]) => why);
 }
 
-function patchSides(patch: string): { after: string; before: string } {
-  const start = patch.search(/^@@/m);
-  if (start < 0) return { after: "", before: "" };
-  const after: string[] = [];
-  const before: string[] = [];
-  for (const line of patch.slice(start).split("\n")) {
-    if (line.startsWith("+")) after.push(line.slice(1));
-    else if (line.startsWith("-")) before.push(line.slice(1));
+function* hunkSides(patch: string): Generator<{ after: string[]; before: string[] }> {
+  let sides: { after: string[]; before: string[] } | undefined;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("@@ ")) {
+      if (sides) yield sides;
+      sides = { after: [], before: [] };
+      continue;
+    }
+    if (!sides) continue;
+    if (line.startsWith("+")) sides.after.push(line.slice(1));
+    else if (line.startsWith("-")) sides.before.push(line.slice(1));
     else if (line.startsWith(" ")) {
-      after.push(line.slice(1));
-      before.push(line.slice(1));
+      sides.after.push(line.slice(1));
+      sides.before.push(line.slice(1));
     }
   }
-  return { after: after.join("\n"), before: before.join("\n") };
+  if (sides) yield sides;
 }
 
 export function scanForInjection(files: DiffFile[], context: ContextBlock[]): string[] {
   const hits: string[] = [];
   for (const f of files) {
-    const sides = patchSides(f.patch);
-    const whys = new Set([...detectInjection(f.patch), ...detectInjection(sides.after), ...detectInjection(sides.before)]);
+    const whys = new Set(detectInjection(f.patch));
+    for (const { after, before } of hunkSides(f.patch)) {
+      for (const why of [...detectInjection(after.join("\n")), ...detectInjection(before.join("\n"))]) whys.add(why);
+    }
     for (const why of whys) hits.push(`${f.path}: ${why}`);
   }
   for (const c of context) for (const why of detectInjection(c.text)) hits.push(`${c.label}: ${why}`);
