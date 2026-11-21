@@ -44,7 +44,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^packages\/ui-catalog\/src\/blocks\/game\/public\.ts$/, "answer stripping for games"],
   [/^INSTRUCTIONS\.md$/, "Sloppy system prompt"],
   [/^\.(agents|claude)\//, "agent skills and settings"],
-  [/^apps\/api\/test\/helpers/, "API test helpers"],
+  [/^apps\/api\/test\//, "API tests and test helpers"],
   [/^apps\/api\/drizzle\//, "database migration"],
   [/^apps\/api\/drizzle\.config\.ts$/, "database migration"],
   [/^\.github\//, "workflow or repo policy"],

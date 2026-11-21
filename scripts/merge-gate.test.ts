@@ -105,6 +105,8 @@ test("sensitive paths cover grading, learner models, configuration and all scrip
     "pnpm-lock.yaml",
     "apps/api/test/helpers.ts",
     "apps/api/test/helpers/database.ts",
+    "apps/api/test/security/fixtures/injection.json",
+    "apps/api/test/auth.test.ts",
     "apps/api/src/progress/games.ts",
     "packages/ui-catalog/src/blocks/game/public.ts",
     "services/engine/learnquest_engine/server.py",
