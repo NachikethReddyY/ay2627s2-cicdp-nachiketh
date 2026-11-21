@@ -6,13 +6,15 @@ import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.t
 import { fileURLToPath } from "node:url";
 import { bin } from "./bin.ts";
 
+type ChangedFile = { path: string; oldMode: string; newMode: string };
+
 export type PullRequest = {
   state: string;
   isDraft: boolean;
   headRefOid: string;
   reviewDecision: string | null;
   mergeable: string;
-  files: { path: string }[];
+  files: ChangedFile[];
   statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
 };
 
@@ -29,89 +31,22 @@ export type GateOptions = {
 export const REVERT_RATE_LIMIT = 0.05;
 export const REQUIRED_CHECKS = ["lint", "unit", "engine", "deploy-scripts", "e2e"];
 
-const SENSITIVE: [RegExp, string][] = [
-  [/^apps\/api\/src\/auth\//, "auth"],
-  [/^apps\/api\/src\/trpc\//, "auth guards"],
-  [/^apps\/api\/src\/(access|env)\.ts$/, "access control or secrets config"],
-  [/^apps\/api\/src\/config\//, "config and limits"],
-  [/^apps\/api\/src\/(sandbox|parts|grading|safety)\//, "practice run or answer handling"],
-  [/^apps\/api\/src\/(attempts|lessons)\/router\.ts$/, "answer and hint exposure"],
-  [/^apps\/api\/src\/(games\/grade|attempts\/machine|dev\/route)\.ts$/, "grading or help guardrails"],
-  [/^apps\/api\/src\/progress\/mastery\.ts$/, "learner model"],
-  [/^apps\/api\/src\/app\.ts$/, "API configuration"],
-  [/^apps\/api\/src\/imports\/routes\.ts$/, "import access guards"],
-  [/^apps\/api\/src\/(progress|lint|ai|engine-client|db|imports|media)\//, "learner scoping, authorization, answer exposure or engine credentials"],
-  [/^packages\/ui-catalog\/src\/blocks\/game\/public\.ts$/, "answer stripping for games"],
-  [/^INSTRUCTIONS\.md$/, "Sloppy system prompt"],
-  [/^\.(agents|claude)\//, "agent skills and settings"],
-  [/^apps\/api\/test\//, "API tests and test helpers"],
-  [/^apps\/api\/drizzle\//, "database migration"],
-  [/^apps\/api\/drizzle\.config\.ts$/, "database migration"],
-  [/^\.github\//, "workflow or repo policy"],
-  [/^infra\//, "infra"],
-  [/^docker-compose.*\.yml$/, "infra"],
-  [/(^|\/)([^/]*\.)?Dockerfile$/, "infra"],
-  [/(^|\/)vercel\.json$/, "deploy config"],
-  [/^services\/sandbox\//, "sandbox boundary"],
-  [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
-  [/^services\/engine\/(pyproject\.toml|scripts\/check_comments\.py)$/, "engine guardrail config"],
-  [/^scripts\//, "repo tooling"],
-  [/^packages\/ui-catalog\/src\/index\.ts$/, "public catalogue entry point"],
-  [/^apps\/web\/src\/player\//, "client reveal timing"],
-  [/^docs\/agents\//, "agent guides"],
-  [/^apps\/web\/scripts\//, "runs during the web build"],
-  [/^\.pnpmfile\.(mjs|cjs)$/, "install hooks"],
-  [/^apps\/web\/src\/lib\//, "browser auth and learner passwords"],
-  [/^apps\/web\/src\/(.*\/)?Login(\.|\/)/, "browser auth and learner passwords"],
-  [/(^|\/)(\.gitattributes|\.gitignore|\.dockerignore|\.vercelignore|AGENTS\.override\.md)$/, "repo control files"],
-  [/(^|\/)(compose(\.[\w-]+)?\.ya?ml|docker-compose[\w.-]*|vercel\.[\w]+)$/, "deploy and container config"],
-  [/^worlds\//, "seed prompts and answer keys"],
-  [/^spikes\//, "run by the required engine check"],
-  [/^apps\/web\/src\/blocks\/game\//, "game hint request and timing"],
-  [/(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker-compose[\w.-]*\.yml|uv\.lock|vite\.config\.ts|neon\.ts)$/, "build inputs and deploy config"],
-  [/(^|\/)package\.json$/, "package configuration"],
-  [/^pnpm-lock\.yaml$/, "dependency lockfile"],
-  [/^tools\/(validator|repo-index)\//, "agent tooling"],
-  [/^(\.oxlintrc\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
-  [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
-  [/^apps\/web\/(index\.html|src\/main\.tsx)$/, "web entry point"],
-  [/(^|\/)([^/]*\.config\.[cm]?[jt]s|[^/]*\.config\.json|tsconfig[^/]*\.json)$/, "tool config executed from parent directories"],
-  [/(^|\/)(\.eslintignore|\.prettierignore|\.oxlintrc[\w.]*)$/, "lint and format config"],
-  [/(^|\/)middleware\.[cm]?[jt]s$/, "routing middleware"],
-  [/^(apps\/web\/)?api\//, "serverless handlers"],
-  [/(^|\/)(AGENTS|CLAUDE)\.md$/, "agent instructions"],
-  [/(^|\/)\.(cursor|github)\//, "agent or repo policy"],
-  [/^\.gitmodules$/, "submodule sources"],
-  [/(^|\/)\.env[\w.-]*$/, "environment files"],
-  [/(^|\/)\.babelrc[\w.]*$/, "tool config run at startup"],
-  [/(^|\/)\.[\w-]+rc(\.[cm]?[jt]s|\.json|\.ya?ml)?$/, "tool config run at startup"],
-  [/(^|\/)(\.npmrc|\.nvmrc|\.node-version|\.tool-versions)$/, "toolchain config"],
-  [/(^|\/)\.husky\//, "git hooks"],
-  [/^\.macroscope\//, "review policy"],
-];
+const ORDINARY_DOCUMENTS = new Set([
+  "README.md",
+  "docs/plan.md",
+  "docs/feature-map.md",
+  "docs/adr/0001-object-storage.md",
+  "docs/adr/0002-visual-trust-model.md",
+  "docs/adr/0003-engine-boundary.md",
+  "docs/adr/0004-coverage-gate.md",
+]);
 
-const NOT_SENSITIVE: RegExp[] = [
-  /^apps\/web\/src\/(components|pages)\//,
-  /^docs\//,
-  /(^|\/)README\.md$/,
-  /^(?!apps\/api\/|services\/engine\/)(.*\/)?(fixtures|__fixtures__|__snapshots__)\/.*\.(json|txt|md|csv|snap|png|jpg|svg|ya?ml)$/,
-];
-
-const DENY_BY_DEFAULT: [RegExp, string][] = [
-  [/^apps\/api\/src\//, "API source: authorization, answers, learner scoping"],
-  [/^services\/engine\//, "engine: learner model, answers, credentials"],
-  [/^packages\//, "shared packages: replay, answer stripping, catalogue"],
-  [/^e2e\//, "required e2e check"],
-  [/^apps\/web\//, "web app outside components and pages"],
-];
-
-export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
-  return paths.flatMap((path) => {
-    const exact = SENSITIVE.find(([re]) => re.test(path));
-    if (exact) return [{ path, why: exact[1] }];
-    if (NOT_SENSITIVE.some((re) => re.test(path))) return [];
-    const denied = DENY_BY_DEFAULT.find(([re]) => re.test(path));
-    return denied ? [{ path, why: denied[1] }] : [];
+export function sensitivePaths(files: ChangedFile[]): ChangedFile[] {
+  return files.filter(({ path, oldMode, newMode }) => {
+    const regularDocument = (oldMode === "100644" && newMode === "100644")
+      || (oldMode === "000000" && newMode === "100644")
+      || (oldMode === "100644" && newMode === "000000");
+    return !(regularDocument && ORDINARY_DOCUMENTS.has(path));
   });
 }
 
@@ -154,10 +89,10 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
     reasons.push(`revert rate is ${pct}% over the last 30 days, above ${REVERT_RATE_LIMIT * 100}%. Agents stop self-merging until it falls; a human merges`);
   }
 
-  const sensitive = sensitivePaths(pr.files.map((f) => f.path));
+  const sensitive = sensitivePaths(pr.files);
   if (sensitive.length > 0) {
     const review = options.reviewResult;
-    const list = sensitive.slice(0, 5).map((s) => `${s.path} (${s.why})`).join(", ");
+    const list = sensitive.slice(0, 5).map((file) => JSON.stringify(file.path)).join(", ");
     if (!review) reasons.push(`touches sensitive paths: ${list}. Pass --review-result <file> from \`agent-review --json\` on this head commit`);
     else if (review.status !== "clean") reasons.push(`the review result is "${review.status ?? "missing"}", not clean, and the PR touches sensitive paths: ${list}`);
     else if (review.head !== pr.headRefOid) reasons.push("the review result is for a different commit than the PR head; re-run the review");
@@ -175,15 +110,20 @@ function git(args: string[], cwd: string): string {
 
 const BASE_REF = "refs/remotes/origin/main";
 
-export function parseNameStatusZ(out: string): { path: string }[] {
+export function parseRawDiffZ(out: string): ChangedFile[] {
   const fields = out.split("\0");
-  const files: { path: string }[] = [];
+  if (fields.pop() !== "") throw new Error("incomplete raw Git diff");
+  const files: ChangedFile[] = [];
   for (let i = 0; i < fields.length; ) {
-    const status = fields[i];
-    if (!status) break;
+    const header = /^:([0-7]{6}) ([0-7]{6}) [0-9a-f]+ [0-9a-f]+ (R\d+|C\d+|[ADMT])$/.exec(fields[i++]);
+    if (!header) throw new Error("unrecognized raw Git diff record");
+    const [, oldMode, newMode, status] = header;
     const pathCount = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
-    for (const path of fields.slice(i + 1, i + 1 + pathCount)) files.push({ path });
-    i += 1 + pathCount;
+    for (let n = 0; n < pathCount; n++) {
+      const path = fields[i++];
+      if (!path) throw new Error("missing path in raw Git diff");
+      files.push({ path, oldMode, newMode });
+    }
   }
   return files;
 }
@@ -198,16 +138,16 @@ export function assertBaseIsCurrent(localSha: string, remoteSha: string): void {
 
 type GitRunner = (args: string[], cwd: string) => string;
 
-export function changedFilesFromGit(root: string, headRefOid: string, base: string = BASE_REF, run: GitRunner = git): { path: string }[] {
+export function changedFilesFromGit(root: string, headRefOid: string, base: string = BASE_REF, run: GitRunner = git): ChangedFile[] {
   try {
     run(["cat-file", "-e", `${headRefOid}^{commit}`], root);
   } catch {
     throw new Error(`the PR head ${headRefOid.slice(0, 8)} is not in the local repository; run \`git fetch origin\` and check out the PR head`);
   }
-  return parseNameStatusZ(run(["diff", "--name-status", "-z", "-M", "--ignore-submodules=none", `${base}...${headRefOid}`], root));
+  return parseRawDiffZ(run(["diff", "--raw", "-z", "-M", "--ignore-submodules=none", `${base}...${headRefOid}`], root));
 }
 
-export function changedFilesAgainstFreshMain(root: string, headRefOid: string, remoteMainSha: string, run: GitRunner = git): { path: string }[] {
+export function changedFilesAgainstFreshMain(root: string, headRefOid: string, remoteMainSha: string, run: GitRunner = git): ChangedFile[] {
   const base = run(["rev-parse", BASE_REF], root).trim();
   assertBaseIsCurrent(base, remoteMainSha);
   return changedFilesFromGit(root, headRefOid, base, run);

@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertBaseIsCurrent, changedFilesAgainstFreshMain, changedFilesFromGit, evaluateGate, parseNameStatusZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { assertBaseIsCurrent, changedFilesAgainstFreshMain, changedFilesFromGit, evaluateGate, parseRawDiffZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+
+function regularFile(path: string) {
+  return { path, oldMode: "100644", newMode: "100644" };
+}
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -13,7 +17,7 @@ const green: PullRequest = {
   headRefOid: "abc123",
   reviewDecision: null,
   mergeable: "MERGEABLE",
-  files: [{ path: "apps/web/src/pages/Home.tsx" }],
+  files: [regularFile("docs/plan.md")],
   statusCheckRollup: passing,
 };
 const open: GateOptions = { reviewResult: null, unresolvedThreads: 0, localHead: "abc123", worktreeClean: true };
@@ -48,7 +52,7 @@ test("local verification must match the PR head and a clean tree", () => {
 });
 
 test("sensitive paths need a clean review of this exact head commit", () => {
-  const pr = { ...green, files: [{ path: "apps/api/src/auth/guards.ts" }, { path: "apps/web/src/main.tsx" }] };
+  const pr = { ...green, files: ["apps/api/src/auth/guards.ts", "apps/web/src/main.tsx"].map(regularFile) };
   assert.equal(evaluateGate(pr, open).length, 1);
   assert.deepEqual(evaluateGate(pr, { ...open, reviewResult: cleanReview }), []);
   assert.equal(evaluateGate(pr, { ...open, reviewResult: { status: "findings", head: "abc123" } }).length, 1);
@@ -81,8 +85,7 @@ test("sensitive path classes include auth guards, guardrails and repo rules", ()
     "apps/web/vercel.json",
     "tools/validator/src/db.ts",
   ];
-  assert.equal(sensitivePaths(paths).length, paths.length);
-  assert.deepEqual(sensitivePaths(["docs/plan.md", "apps/web/src/pages/Home.tsx"]), []);
+  assert.equal(sensitivePaths(paths.map(regularFile)).length, paths.length);
 });
 
 test("sensitive paths cover grading, learner models, configuration and all scripts", () => {
@@ -143,7 +146,7 @@ test("sensitive paths cover grading, learner models, configuration and all scrip
     ".claude/skills/verify/SKILL.md",
   ];
   for (const path of paths) {
-    assert.equal(sensitivePaths([path]).length, 1, `${path} must require sensitive review`);
+    assert.equal(sensitivePaths([regularFile(path)]).length, 1, `${path} must require sensitive review`);
   }
 });
 
@@ -264,19 +267,12 @@ const EXPECTED_SENSITIVE = [
   "packages/ui-catalog/fixtures/setup.ts",
   "e2e/fixtures/helper.js",
   "e2e/__fixtures__/run.sh",
-];
-
-const EXPECTED_NOT_SENSITIVE = [
   "apps/web/src/pages/Home.tsx",
   "apps/web/src/components/Button.tsx",
   "apps/web/src/components/Button.test.tsx",
   "apps/web/src/components/Button.module.css",
   "apps/web/src/pages/Home.test.tsx",
   "apps/web/src/pages/home/Hero.tsx",
-  "docs/plan.md",
-  "docs/adr/0001-record.md",
-  "docs/feature-map.md",
-  "README.md",
   "apps/api/README.md",
   "services/engine/README.md",
   "packages/ui-catalog/README.md",
@@ -289,12 +285,67 @@ const EXPECTED_NOT_SENSITIVE = [
   "packages/ui-catalog/fixtures/quiz.json",
 ];
 
+const EXPECTED_NOT_SENSITIVE = [
+  "README.md",
+  "docs/plan.md",
+  "docs/feature-map.md",
+  "docs/adr/0001-object-storage.md",
+  "docs/adr/0002-visual-trust-model.md",
+  "docs/adr/0003-engine-boundary.md",
+  "docs/adr/0004-coverage-gate.md",
+];
+
+const reviewRequiredGroups = {
+  "web build and verification inputs": [
+    "apps/web/src/pages/landing.css",
+    "apps/web/src/components/Disclosure.test.tsx",
+    "apps/web/src/pages/Home.spec.ts",
+  ],
+  "shared login dependencies": [
+    "apps/web/src/components/ui/breadcrumb.tsx",
+    "apps/web/src/pages/landing/Logo.tsx",
+  ],
+  "fixtures and public inputs": [
+    "packages/ui-catalog/fixtures/quiz.json",
+    "apps/web/public/__fixtures__/sample.svg",
+    "apps/web/public/README.md",
+  ],
+  "nested Turbo configuration and unclassified paths": [
+    "tools/new-workspace/turbo.json",
+    "docs/example/turbo.jsonc",
+    "new-workspace/build.ts",
+  ],
+};
+
+for (const [group, paths] of Object.entries(reviewRequiredGroups)) {
+  test(`the merge gate requires review for ${group}`, () => {
+    for (const path of paths) {
+      const pr = { ...green, files: [regularFile(path)] };
+      assert.match(evaluateGate(pr, open).join("\n"), /--review-result/, path);
+    }
+  });
+}
+
+test("a documentation exception requires ordinary file modes on both sides of the change", () => {
+  const path = "docs/plan.md";
+  for (const [oldMode, newMode] of [["000000", "100644"], ["100644", "100644"], ["100644", "000000"]]) {
+    const pr = { ...green, files: [{ path, oldMode, newMode }] };
+    assert.deepEqual(evaluateGate(pr, open), []);
+  }
+  for (const mode of ["100755", "120000", "160000"]) {
+    for (const [oldMode, newMode] of [["000000", mode], [mode, "100644"], ["100644", mode], [mode, "000000"]]) {
+      const pr = { ...green, files: [{ path, oldMode, newMode }] };
+      assert.match(evaluateGate(pr, open).join("\n"), /--review-result/, `${oldMode} -> ${newMode}`);
+    }
+  }
+});
+
 test("the expected sensitive and not-sensitive path lists stay as agreed", () => {
   for (const path of EXPECTED_SENSITIVE) {
-    assert.equal(sensitivePaths([path]).length, 1, `${path} must be sensitive`);
+    assert.equal(sensitivePaths([regularFile(path)]).length, 1, `${path} must be sensitive`);
   }
   for (const path of EXPECTED_NOT_SENSITIVE) {
-    assert.deepEqual(sensitivePaths([path]), [], `${path} must not be sensitive`);
+    assert.deepEqual(sensitivePaths([regularFile(path)]), [], `${path} must not be sensitive`);
   }
 });
 
@@ -307,11 +358,11 @@ test("a brand-new file under a deny-by-default directory is sensitive", () => {
     "e2e/tests/new.spec.ts",
   ];
   for (const path of fresh) {
-    assert.equal(sensitivePaths([path]).length, 1, `${path} must be sensitive by default`);
+    assert.equal(sensitivePaths([regularFile(path)]).length, 1, `${path} must be sensitive by default`);
   }
 });
 
-test("allowlisted paths do not shadow exact sensitive entries", () => {
+test("documentation and fixture names outside the prose allowlist require review", () => {
   const stillSensitive = [
     "apps/web/src/player/x.tsx",
     "apps/web/src/player/fixtures/steps.json",
@@ -325,7 +376,7 @@ test("allowlisted paths do not shadow exact sensitive entries", () => {
     "services/engine/learnquest_engine/prompts/fixtures/x.md",
   ];
   for (const path of stillSensitive) {
-    assert.equal(sensitivePaths([path]).length, 1, `${path} must stay sensitive`);
+    assert.equal(sensitivePaths([regularFile(path)]).length, 1, `${path} must stay sensitive`);
   }
 });
 
@@ -343,12 +394,29 @@ function gitIn(dir: string, ...args: string[]): string {
   return execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
 }
 
-test("name-status -z records parse to both paths of a rename or copy and one path otherwise", () => {
-  const out = ["R100", "scripts/merge-gate.ts", "docs/moved.md", "A", "a.ts", "M", "b.ts", "D", "c.ts", "C075", "old.ts", "new.ts", ""].join("\0");
-  assert.deepEqual(
-    parseNameStatusZ(out).map((f) => f.path),
-    ["scripts/merge-gate.ts", "docs/moved.md", "a.ts", "b.ts", "c.ts", "old.ts", "new.ts"],
-  );
+test("raw Git records preserve both modes and every path, including rename and copy sources", () => {
+  const out = [
+    ":100644 100644 abc abc R100", "old.ts", "docs/plan.md",
+    ":100644 100755 abc abc C075", "copy.ts", "new.ts",
+    ":000000 100644 000 def A", "added.ts",
+    ":120000 100644 abc def T", "changed.md",
+    ":100755 000000 def 000 D", "deleted.md", "",
+  ].join("\0");
+  assert.deepEqual(parseRawDiffZ(out), [
+    regularFile("old.ts"), regularFile("docs/plan.md"),
+    { path: "copy.ts", oldMode: "100644", newMode: "100755" },
+    { path: "new.ts", oldMode: "100644", newMode: "100755" },
+    { path: "added.ts", oldMode: "000000", newMode: "100644" },
+    { path: "changed.md", oldMode: "120000", newMode: "100644" },
+    { path: "deleted.md", oldMode: "100755", newMode: "000000" },
+  ]);
+});
+
+test("incomplete or unrecognized raw Git records stop classification", () => {
+  assert.deepEqual(parseRawDiffZ(""), []);
+  assert.throws(() => parseRawDiffZ(":100644 100644 abc abc M\0path"), /incomplete/);
+  assert.throws(() => parseRawDiffZ("unknown\0path\0"), /unrecognized/);
+  assert.throws(() => parseRawDiffZ(":100644 100644 abc abc R100\0old.ts\0"), /missing path/);
 });
 
 test("a file renamed out of a sensitive directory reports its old path", () => {
@@ -360,10 +428,10 @@ test("a file renamed out of a sensitive directory reports its old path", () => {
     gitIn(dir, "commit", "-q", "-m", "tool");
     gitIn(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
     mkdirSync(join(dir, "docs"));
-    gitIn(dir, "mv", "scripts/tool.ts", "docs/tool.md");
+    gitIn(dir, "mv", "scripts/tool.ts", "docs/plan.md");
     gitIn(dir, "commit", "-q", "-m", "move");
-    const files = changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD")).map((f) => f.path);
-    assert.deepEqual(files.sort(), ["docs/tool.md", "scripts/tool.ts"]);
+    const files = changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD"));
+    assert.deepEqual(files.map((f) => f.path).sort(), ["docs/plan.md", "scripts/tool.ts"]);
     assert.equal(sensitivePaths(files).length, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -404,13 +472,6 @@ test("a head commit missing from the local repo is refused with the fix in the m
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-test("data fixtures under apps/api and services/engine are sensitive, elsewhere they are not", () => {
-  assert.equal(sensitivePaths(["apps/api/src/imports/fixtures/x.json"]).length, 1);
-  assert.equal(sensitivePaths(["apps/api/src/billing/fixtures/x.json"]).length, 1);
-  assert.equal(sensitivePaths(["services/engine/tests/fixtures/x.json"]).length, 1);
-  assert.deepEqual(sensitivePaths(["packages/ui-catalog/fixtures/x.json"]), []);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {
@@ -532,10 +593,10 @@ test("the diff runs against the main SHA that was verified", () => {
   const base = "a".repeat(40);
   const run = (args: string[]): string => {
     calls.push(args);
-    return args[0] === "rev-parse" ? `${base}\n` : args[0] === "diff" ? "M\0x.ts\0" : "";
+    return args[0] === "rev-parse" ? `${base}\n` : args[0] === "diff" ? ":100644 100644 abc def M\0x.ts\0" : "";
   };
   const files = changedFilesAgainstFreshMain("/r", "h".repeat(40), base, run);
-  assert.deepEqual(files, [{ path: "x.ts" }]);
+  assert.deepEqual(files, [regularFile("x.ts")]);
   const diff = calls.find((c) => c[0] === "diff");
   assert.ok(diff?.includes(`${base}...${"h".repeat(40)}`));
   assert.ok(!diff?.some((a) => a.includes("refs/remotes")));
