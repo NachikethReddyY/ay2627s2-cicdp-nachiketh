@@ -1,14 +1,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isIdentifier, traverseFast, type Node } from "@babel/types";
+import { parseSource } from "./parse-source.ts";
 
 export type Violation = { file: string; line: number; message: string };
 
-const IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"']+)["']/g;
-
 const NO_COMPUTED_IMPORT = "Do not pass a template literal or variable to import() or require(). Use a string literal so the boundary check can verify the dependency.";
-
-const lineOf = (text: string, index: number) => text.slice(0, index).split("\n").length;
 
 const CLIENT_TO_SERVER =
   "Shared and client code must not depend on the API. Move the shared type or helper into packages/ui-catalog or packages/player-core and import it from there.";
@@ -23,20 +21,45 @@ const NO_DISABLE_GUARDRAIL =
 const NO_BARE_DISABLE =
   "eslint-disable needs a reason: `// eslint-disable-next-line <rule> -- why`. If you cannot give a real reason, fix the code.";
 
+function dependencyArgument(node: Node) {
+  switch (node.type) {
+    case "ImportDeclaration":
+    case "ExportAllDeclaration":
+    case "ExportNamedDeclaration":
+    case "ImportExpression":
+    case "TSImportType":
+      return node.source ?? undefined;
+    case "TSExternalModuleReference":
+      return node.expression;
+    case "CallExpression":
+    case "OptionalCallExpression": {
+      const callee = node.callee;
+      const name = (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") && !callee.computed
+        ? callee.property
+        : callee;
+      return isIdentifier(name, { name: "require" }) ? node.arguments[0] ?? null : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
 export function checkFile(file: string, text: string): Violation[] {
   const out: Violation[] = [];
   const isTest = /\.(test|spec)\.[cm]?[jt]sx?$/.test(file) || file.startsWith("apps/api/test/");
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
 
-  for (const match of text.matchAll(/\b(?:import|require)\s*\(\s*(?:(?!["'\s])|(?:"[^"\n]*"|'[^'\n]*')\s*\+)/g)) {
-    out.push({ file, line: lineOf(text, match.index), message: NO_COMPUTED_IMPORT });
-  }
-
-  for (const m of text.matchAll(IMPORT)) {
-    const line = lineOf(text, m.index);
+  traverseFast(parseSource(file, text).program, (node) => {
+    const argument = dependencyArgument(node);
+    if (argument === undefined) return;
+    const line = node.loc!.start.line;
     const add = (message: string) => out.push({ file, line, message });
-    const spec = m[1];
+    if (argument?.type !== "StringLiteral") {
+      add(NO_COMPUTED_IMPORT);
+      return;
+    }
+    const spec = argument.value;
     const target = spec.startsWith(".") ? normalize(join(dirname(file), spec)).split("\\").join("/") : spec;
     if (inPackage && (/^@learnquest\/(api|web)(?![\w-])/.test(target) || /^(apps|\.\.)\//.test(target) || /(^|\/)apps\//.test(target))) {
       add(`${spec}: ${/api/.test(target) ? CLIENT_TO_SERVER : PACKAGE_TO_APP}`);
@@ -44,7 +67,7 @@ export function checkFile(file: string, text: string): Violation[] {
     if (inApi && !isTest && (/^@learnquest\/web(?![\w-])/.test(target) || /^apps\/web\//.test(target) || /(^|\/)apps\/web\//.test(target))) {
       add(`${spec}: ${SERVER_TO_CLIENT}`);
     }
-  }
+  });
 
   text.split("\n").forEach((raw, i) => {
     const line = i + 1;

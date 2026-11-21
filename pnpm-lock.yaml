@@ -176,6 +176,9 @@ importers:
       '@babel/parser':
         specifier: ^8.1.2
         version: 8.1.2
+      '@babel/types':
+        specifier: ^8.1.2
+        version: 8.1.2
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6

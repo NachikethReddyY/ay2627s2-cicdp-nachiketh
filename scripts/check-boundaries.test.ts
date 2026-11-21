@@ -41,6 +41,29 @@ test("a relative or dynamic cross-app import is caught", () => {
   assert.deepEqual(checkFile("packages/ui-catalog/src/a.ts", 'import { x } from "@learnquest/web-kit";'), []);
 });
 
+test("lesson text can quote import syntax alongside a real dependency", () => {
+  const file = "packages/sample/lesson.ts";
+  const lesson = [
+    `const example = 'import { topic } from "@learnquest/web"';`,
+    `const hint = "Try import(name) or require(name)";`,
+    `const template = \`require("@learnquest/api")\`;`,
+    'export { topic } from "@learnquest/web";',
+  ].join("\n");
+  const violations = checkFile(file, lesson);
+  assert.deepEqual(violations.map(({ line }) => line), [4]);
+  assert.match(violations[0].message, /@learnquest\/web/);
+});
+
+test("type imports and CommonJS module references observe package boundaries", () => {
+  const file = "packages/sample/types.cts";
+  const declarations = [
+    'type Topic = import("@learnquest/web").Topic;',
+    'import api = require("@learnquest/api");',
+    'const web = module.require("@learnquest/web");',
+  ].join("\n");
+  assert.deepEqual(checkFile(file, declarations).map(({ line }) => line), [1, 2, 3]);
+});
+
 test("the guardrail rules cannot be disabled", () => {
   assert.equal(checkFile("apps/web/src/a.ts", "// eslint-disable-next-line no-restricted-syntax -- needed").length, 1);
 });

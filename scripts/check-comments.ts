@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse } from "@babel/parser";
+import { parseSource } from "./parse-source.ts";
 
 export type CommentViolation = { file: string; line: number; text: string };
 type Range = { start: number; end: number };
@@ -23,13 +23,7 @@ function isAllowed(value: string): boolean {
 }
 
 function analyze(code: string, file: string) {
-  const ast = parse(code, {
-    sourceType: "module",
-    plugins: ["typescript", ...(file.endsWith("x") ? (["jsx"] as const) : [])],
-    errorRecovery: true,
-    allowReturnOutsideFunction: true,
-    attachComment: true,
-  });
+  const ast = parseSource(file, code);
   const jsxEmpty: Range[] = [];
   const walk = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
