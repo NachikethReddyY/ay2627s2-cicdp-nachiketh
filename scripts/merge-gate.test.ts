@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baseStillCurrent, changedDuringReview, finalGateReasons, finalMergeBlockers, finalPreMergeReasons, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { baseStillCurrent, changedDuringReview, finalGateReasons, changedFiles, readSnapshot, finalPreMergeReasons, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -39,33 +39,96 @@ test("a change request, failing check or unresolved thread that appears after th
   assert.equal(finalGateReasons({ ...ready, mergeable: "CONFLICTING" }, final).length, 1);
 });
 
-test("the final pre-merge samples threads, then the PR, then GitHub main, and reads nothing after", () => {
+test("ordinary and sensitive changes require the bootstrap base in the last GitHub snapshot", () => {
   const calls: string[] = [];
-  const { files: _files, ...ready } = green;
   const reader = {
-    localHead: () => (calls.push("localHead"), "abc123"),
-    worktreeClean: () => (calls.push("worktreeClean"), true),
-    localMain: () => (calls.push("localMain"), "base111"),
-    unresolvedThreads: () => (calls.push("threads"), 0),
-    pullRequest: () => (calls.push("pr"), ready),
-    remoteMain: () => (calls.push("remoteMain"), "base111"),
+    localHead: () => (calls.push("head"), green.headRefOid),
+    worktreeClean: () => (calls.push("tree"), true),
+    localMain: () => (calls.push("main"), "base111"),
+    snapshot: () => (calls.push("github"), { pr: green, remoteMain: "base111", unresolvedThreads: 0 }),
   };
-  assert.deepEqual(finalPreMergeReasons(reader, { headRefOid: "abc123", baseRefName: "main" }, "claude", "base111"), []);
-  assert.deepEqual(calls.slice(-3), ["threads", "pr", "remoteMain"]);
-  assert.equal(calls.length, 6);
-  const moved = finalPreMergeReasons({ ...reader, remoteMain: () => "other" }, { headRefOid: "abc123", baseRefName: "main" }, "claude", "base111");
-  assert.equal(moved.length, 1);
-  const noReview = finalPreMergeReasons({ ...reader, remoteMain: () => "other" }, { headRefOid: "abc123", baseRefName: "main" }, "claude", null);
-  assert.deepEqual(noReview, []);
+  assert.deepEqual(finalPreMergeReasons(reader, green, "base111"), []);
+  assert.deepEqual(calls, ["head", "tree", "main", "github"]);
+  for (const change of [
+    { remoteMain: "base222" },
+    { unresolvedThreads: 1 },
+    { pr: { ...green, reviewDecision: "CHANGES_REQUESTED" } },
+    { pr: { ...green, statusCheckRollup: [] } },
+    { pr: { ...green, headRefOid: "head222" } },
+    { pr: { ...green, baseRefName: "release" } },
+  ]) {
+    assert.ok(finalPreMergeReasons({ ...reader, snapshot: () => ({ ...reader.snapshot(), ...change }) }, green, "base111").length > 0);
+  }
+  assert.ok(finalPreMergeReasons({ ...reader, localMain: () => "base222" }, green, "base111").length > 0);
 });
 
-test("the final pre-merge check refuses a changed head, a retargeted base or a moved main", () => {
-  const pin = { headRefOid: "h1", baseRefName: "main" };
-  assert.deepEqual(finalMergeBlockers(pin, pin, { reviewBase: "b1", localMain: "b1", remoteMain: "b1" }), []);
-  assert.deepEqual(finalMergeBlockers(pin, pin, null), []);
-  assert.equal(finalMergeBlockers(pin, { ...pin, headRefOid: "h2" }, null).length, 1);
-  assert.equal(finalMergeBlockers(pin, { ...pin, baseRefName: "dev" }, null).length, 1);
-  assert.equal(finalMergeBlockers(pin, pin, { reviewBase: "b1", localMain: "b1", remoteMain: "b2" }).length, 1);
+test("GitHub samples main, head checks and review state together, including later pages", () => {
+  const page = <T,>(nodes: T[], endCursor: string | null = null) => ({ nodes, pageInfo: { hasNextPage: endCursor !== null, endCursor } });
+  const calls: string[][] = [];
+  const snapshot = readSnapshot("123", (args) => {
+    calls.push(args);
+    const query = args.find((arg) => arg.startsWith("query=")) ?? "";
+    const final = query.includes("threads1:") && query.includes("checks1:");
+    const checks = {
+      checks0: page(passing.slice(0, 3), "checks-next"),
+      ...(final && { checks1: page(passing.slice(3)) }),
+    };
+    return JSON.stringify({ data: { repository: {
+      main: { target: { oid: "base111" } },
+      pullRequest: {
+        ...green,
+        threads0: page([{ isResolved: !final }], "threads-next"),
+        ...(final && { threads1: page([{ isResolved: false }]) }),
+        commits: { nodes: [{ commit: { oid: green.headRefOid, statusCheckRollup: checks } }] },
+      },
+    } } });
+  });
+  for (const args of calls) {
+    const query = args.find((arg) => arg.startsWith("query=")) ?? "";
+    for (const field of ["refs/heads/main", "headRefOid", "statusCheckRollup", "reviewDecision", "reviewThreads"]) assert.ok(query.includes(field));
+  }
+  assert.ok(calls.at(-1)?.some((arg) => arg.includes('threads1:reviewThreads(first:100,after:"threads-next")') && arg.includes('checks1:contexts(first:100,after:"checks-next")')));
+  assert.equal(snapshot.unresolvedThreads, 2);
+  assert.deepEqual(snapshot.pr.statusCheckRollup, passing);
+  assert.equal(snapshot.remoteMain, "base111");
+});
+
+test("a partial snapshot, missing continuation or checks for another head stop the gate", () => {
+  const done = { hasNextPage: false, endCursor: null };
+  const page = (oid: string, pageInfo = done, errors?: unknown[]) => JSON.stringify({
+    errors,
+    data: { repository: { main: { target: { oid: "base111" } }, pullRequest: {
+      ...green,
+      threads0: { nodes: [], pageInfo },
+      commits: { nodes: [{ commit: { oid, statusCheckRollup: { checks0: { nodes: passing, pageInfo: done } } } }] },
+    } } },
+  });
+  assert.throws(() => readSnapshot("123", () => page(green.headRefOid, done, [{}])), /incomplete/i);
+  assert.throws(() => readSnapshot("123", () => page("other")), /different commits/);
+  assert.throws(() => readSnapshot("123", () => page(green.headRefOid, { hasNextPage: true, endCursor: null })), /pagination/i);
+});
+
+test("classification includes both sides of renames between the pinned commits", () => {
+  const root = mkdtempSync(join(tmpdir(), "merge-gate-files-"));
+  try {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+    writeFileSync(join(root, "REVIEW.md"), "Guide");
+    git("add", ".");
+    git("commit", "-qm", "base");
+    const base = git("rev-parse", "HEAD");
+    git("mv", "REVIEW.md", "guide\nnotes.md");
+    git("commit", "-qm", "move");
+    const head = git("rev-parse", "HEAD");
+    git("checkout", "-q", base);
+    git("update-ref", "refs/remotes/origin/main", head);
+    assert.deepEqual(changedFiles(root, base, head), [{ path: "REVIEW.md" }, { path: "guide\nnotes.md" }]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a sensitive review must be pinned to the base commit the PR will merge into", () => {
@@ -303,7 +366,7 @@ test("bootstrap supplies the review script from the base commit", () => {
     git("config", "commit.gpgsign", "false");
     mkdirSync(join(root, "scripts"));
     copyFileSync("scripts/merge-gate-bootstrap.sh", join(root, "scripts/merge-gate-bootstrap.sh"));
-    writeFileSync(join(root, "scripts/merge-gate.ts"), 'import { readFileSync } from "node:fs"; import { dirname, join } from "node:path"; process.stdout.write(readFileSync(join(dirname(process.argv[1]), "agent-review.ts"), "utf8"));');
+    writeFileSync(join(root, "scripts/merge-gate.ts"), 'import { readFileSync } from "node:fs"; import { dirname, join } from "node:path"; process.stdout.write(process.env.MERGE_GATE_BASE_SHA + " " + readFileSync(join(dirname(process.argv[1]), "agent-review.ts"), "utf8"));');
     for (const file of ["revert-rate.ts", "bin.ts", "agent-verify.sh"]) writeFileSync(join(root, "scripts", file), "");
     writeFileSync(join(root, "scripts/agent-review.ts"), "trusted review");
     git("add", ".");
@@ -312,7 +375,7 @@ test("bootstrap supplies the review script from the base commit", () => {
     writeFileSync(join(root, "scripts/agent-review.ts"), "forged review");
     const result = spawnSync("bash", ["scripts/merge-gate-bootstrap.sh"], { cwd: root, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, "trusted review");
+    assert.equal(result.stdout, git("rev-parse", "HEAD").toString().trim() + " trusted review");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

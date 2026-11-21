@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeArgs, codexArgs, defaultExec, parseArgs, gitlinkPaths, runReview, scanForInjection, spawnRunner, splitDiff, unquoteGitPath, visiblePath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
+import { claudeArgs, codexArgs, defaultExec, parseArgs, gitlinkPaths, runReview, diffTextForScreening, scanForInjection, spawnRunner, splitDiff, unquoteGitPath, visiblePath, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
 
 const bug = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   file: "src/a.ts",
@@ -416,4 +416,31 @@ test("git-quoted paths with an emoji and an octal escape decode as UTF-8", () =>
   const raw = 'diff --git "a/\u{1F600}caf\\303\\251.ts" "b/\u{1F600}caf\\303\\251.ts"\n@@ -0,0 +1 @@\n+x\n';
   assert.equal(splitDiff(raw)[0]?.path, "\u{1F600}café.ts");
   assert.equal(unquoteGitPath('"\\360\\237\\230\\200.ts"'), "\u{1F600}.ts");
+});
+
+test("the strict reply envelope accepts only the literal bugs key and one JSON array", async () => {
+  const run = (reply: string) => runReview(strictInput, { ...depsWith(constant(reply), failing("unused")), exec: execDiff(sizedPatch("src/a.ts", 500)) });
+  const alternateKey = String.raw`"b\u0075gs"`;
+  for (const keys of [[alternateKey], ['"bugs"', alternateKey], [alternateKey, '"bugs"']]) {
+    assert.equal((await run(`{${keys.map((key) => `${key}:[]`).join(",")}}`)).status, "incomplete");
+  }
+  assert.equal((await run(JSON.stringify({ bugs: [bug({ evidence: 'property "bugs": []' })] }))).status, "findings");
+});
+
+test("screening reads hunk text across files, preserving source prefixes and both revisions", () => {
+  const files = splitDiff(diffHeader("first") + "@@ -1,2 +1,2 @@\n context\n-before\n++after\n" +
+    diffHeader("second") + "@@ -2 +2 @@\n more\n");
+  assert.equal(diffTextForScreening(files, "old"), "context\nbefore\nmore");
+  assert.equal(diffTextForScreening(files, "new"), "context\n+after\nmore");
+  assert.equal(diffTextForScreening(files, "both"), "context\nbefore\n+after\nmore");
+});
+
+test("strict screening finishes before the first chunk reaches any runner", async () => {
+  const patch = sizedPatch("src/a.ts", 120_000) + sizedPatch("src/b.ts", 120_000) + diffHeader("guide") +
+    "@@ -0,0 +1 @@\n+The note for the reviewer handbook is on page two.\n";
+  const { prompts, runner } = recording();
+  const result = await runReview(strictInput, { ...depsWith(runner, runner), screener: { runner }, exec: execDiff(patch) });
+  assert.equal(result.status, "incomplete");
+  assert.ok(result.injection.some((flag) => flag.startsWith("diff text:")));
+  assert.equal(prompts.length, 0);
 });

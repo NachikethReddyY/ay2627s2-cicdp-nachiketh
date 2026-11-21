@@ -125,25 +125,79 @@ function git(args: string[], cwd: string): string {
   return execFileSync(bin("git"), args, { encoding: "utf8", cwd });
 }
 
-function changedFiles(number: string): { path: string }[] {
-  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", ".[].filename"]);
-  return out.split("\n").filter(Boolean).map((path) => ({ path }));
+export function changedFiles(root: string, base: string, head: string): { path: string }[] {
+  const out = git(["diff", "--name-only", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", `${base}...${head}`, "--"], root);
+  return out.split("\0").filter(Boolean).map((path) => ({ path }));
 }
 
-function unresolvedThreadCount(number: string): number {
-  const query = `query($owner:String!,$repo:String!,$n:Int!,$after:String){repository(owner:$owner,name:$repo){pullRequest(number:$n){reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{isResolved}}}}}`;
-  const repo = JSON.parse(gh(["repo", "view", "--json", "owner,name"])) as { owner: { login: string }; name: string };
-  type Page = { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: { isResolved: boolean }[] } } } } };
-  let unresolved = 0;
-  let after: string | null = null;
+type Snapshot = { pr: Omit<PullRequest, "files">; remoteMain: string; unresolvedThreads: number };
+type Connection<T> = { nodes: T[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
+type ReviewThread = { isResolved: boolean };
+type CheckPages = Record<string, Connection<Check>>;
+type SnapshotPage = {
+  main: { target: { oid: string } };
+  pullRequest: Omit<PullRequest, "files" | "statusCheckRollup"> & Record<`threads${number}`, Connection<ReviewThread>> & {
+    commits: { nodes: { commit: { oid: string; statusCheckRollup: CheckPages | null } }[] };
+  };
+};
+
+function pageFields(alias: string, field: string, cursors: string[], nodeFields: string): string {
+  return [null, ...cursors].map((cursor, i) => {
+    const after = cursor === null ? "" : `,after:${JSON.stringify(cursor)}`;
+    return `${alias}${i}:${field}(first:100${after}) { pageInfo { hasNextPage endCursor } nodes { ${nodeFields} } }`;
+  }).join("\n");
+}
+
+function readPages<T>(cursors: string[], pageAt: (i: number) => Connection<T> | undefined): { nodes: T[]; next: string | null } {
+  const nodes: T[] = [];
+  let next: string | null = null;
+  for (let i = 0; i <= cursors.length; i++) {
+    const page = pageAt(i);
+    if (!page || typeof page.pageInfo?.hasNextPage !== "boolean") throw new Error("GitHub returned an incomplete page of checks or review threads; re-run the gate");
+    next = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    if ((page.pageInfo.hasNextPage && !next) || (i < cursors.length && next !== cursors[i])) {
+      throw new Error("GitHub pagination changed while reading checks and review threads; re-run the gate");
+    }
+    nodes.push(...page.nodes);
+  }
+  if (next && cursors.includes(next)) throw new Error("GitHub returned a repeated cursor; re-run the gate");
+  return { nodes, next };
+}
+
+export function readSnapshot(number: string, request = gh): Snapshot {
+  const threadCursors: string[] = [];
+  const checkCursors: string[] = [];
   for (;;) {
-    const args = ["api", "graphql", "-f", `query=${query}`, "-F", `owner=${repo.owner.login}`, "-F", `repo=${repo.name}`, "-F", `n=${number}`];
-    if (after) args.push("-F", `after=${after}`);
-    const page = JSON.parse(gh(args)) as Page;
-    const threads = page.data.repository.pullRequest.reviewThreads;
-    unresolved += threads.nodes.filter((t) => !t.isResolved).length;
-    if (!threads.pageInfo.hasNextPage) return unresolved;
-    after = threads.pageInfo.endCursor;
+    const threadFields = pageFields("threads", "reviewThreads", threadCursors, "isResolved");
+    const checkFields = pageFields("checks", "contexts", checkCursors, "... on CheckRun { name status conclusion } ... on StatusContext { context state }");
+    const query = `query($owner:String!,$repo:String!,$n:Int!) {
+      repository(owner:$owner,name:$repo) {
+        main:ref(qualifiedName:"refs/heads/main") { target { oid } }
+        pullRequest(number:$n) {
+          state isDraft headRefOid baseRefName reviewDecision mergeable
+          ${threadFields}
+          commits(last:1) { nodes { commit { oid statusCheckRollup { ${checkFields} } } } }
+        }
+      }
+    }`;
+    const args = ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "repo={repo}", "-F", `n=${number}`];
+    const response = JSON.parse(request(args)) as { data: { repository: SnapshotPage }; errors?: unknown[] };
+    if (response.errors?.length) throw new Error("GitHub returned an incomplete PR snapshot; re-run the gate");
+    const { main, pullRequest } = response.data.repository;
+    const commit = pullRequest.commits.nodes[0]?.commit;
+    if (!commit || commit.oid !== pullRequest.headRefOid) throw new Error("the PR head and checks refer to different commits; re-run the gate");
+    const threads = readPages(threadCursors, (i) => pullRequest[`threads${i}`]);
+    const rollup = commit.statusCheckRollup;
+    const checks = rollup ? readPages(checkCursors, (i) => rollup[`checks${i}`]) : { nodes: [], next: null };
+    if (!threads.next && !checks.next) {
+      return {
+        pr: { ...pullRequest, statusCheckRollup: checks.nodes },
+        remoteMain: main.target.oid,
+        unresolvedThreads: threads.nodes.filter((thread) => thread.isResolved !== true).length,
+      };
+    }
+    if (threads.next) threadCursors.push(threads.next);
+    if (checks.next) checkCursors.push(checks.next);
   }
 }
 
@@ -151,13 +205,7 @@ export type PullRequestPin = { headRefOid: string; baseRefName: string };
 
 export function baseStillCurrent(reviewBase: string, localMain: string, remoteMain: string): string[] {
   if (reviewBase && reviewBase === localMain && reviewBase === remoteMain) return [];
-  return [`the reviewed base (${reviewBase.slice(0, 8) || "unknown"}) is not the current main: local origin/main is ${localMain.slice(0, 8) || "unknown"} and GitHub main is ${remoteMain.slice(0, 8) || "unknown"}; fetch main and re-run the gate`];
-}
-
-export type MainTips = { reviewBase: string; localMain: string; remoteMain: string };
-
-export function finalMergeBlockers(before: PullRequestPin, now: PullRequestPin, tips: MainTips | null): string[] {
-  return [...changedDuringReview(before, now), ...(tips ? baseStillCurrent(tips.reviewBase, tips.localMain, tips.remoteMain) : [])];
+  return [`the bootstrap base (${reviewBase.slice(0, 8) || "unknown"}) is not the current main: local origin/main is ${localMain.slice(0, 8) || "unknown"} and GitHub main is ${remoteMain.slice(0, 8) || "unknown"}; fetch main and re-run the gate`];
 }
 
 export function changedDuringReview(before: PullRequestPin, after: PullRequestPin): string[] {
@@ -177,21 +225,18 @@ export type FinalReader = {
   localHead: () => string;
   worktreeClean: () => boolean;
   localMain: () => string;
-  unresolvedThreads: () => number;
-  pullRequest: () => Omit<PullRequest, "files">;
-  remoteMain: () => string;
+  snapshot: () => Snapshot;
 };
 
-export function finalPreMergeReasons(reader: FinalReader, before: PullRequestPin, author: Family, reviewBase: string | null): string[] {
+export function finalPreMergeReasons(reader: FinalReader, before: PullRequestPin, bootstrapBase: string): string[] {
   const localHead = reader.localHead();
   const worktreeClean = reader.worktreeClean();
-  const localMain = reviewBase === null ? "" : reader.localMain();
-  const unresolvedThreads = reader.unresolvedThreads();
-  const refreshed = reader.pullRequest();
-  const remoteMain = reviewBase === null ? "" : reader.remoteMain();
+  const localMain = reader.localMain();
+  const { pr, remoteMain, unresolvedThreads } = reader.snapshot();
   return [
-    ...finalGateReasons(refreshed, { author, unresolvedThreads, localHead, worktreeClean }),
-    ...finalMergeBlockers(before, refreshed, reviewBase === null ? null : { reviewBase, localMain, remoteMain }),
+    ...finalGateReasons(pr, { unresolvedThreads, localHead, worktreeClean }),
+    ...changedDuringReview(before, pr),
+    ...baseStillCurrent(bootstrapBase, localMain, remoteMain),
   ];
 }
 
@@ -238,7 +283,8 @@ function main(argv: string[]): number {
     return 2;
   }
   const verifyScript = process.env.MERGE_GATE_VERIFY_SCRIPT;
-  if (!verifyScript) {
+  const bootstrapBase = process.env.MERGE_GATE_BASE_SHA;
+  if (!verifyScript || !bootstrapBase || !/^[0-9a-f]{40}$/.test(bootstrapBase)) {
     console.error(
       "refusing to run: the gate must start from origin/main. Run `git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>`",
     );
@@ -252,30 +298,28 @@ function main(argv: string[]): number {
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-  const pr = JSON.parse(
-    gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,baseRefName,reviewDecision,mergeable,statusCheckRollup"]),
-  ) as Omit<PullRequest, "files">;
-  const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
-  const files = changedFiles(number);
-  const reviewResult = sensitivePaths(files.map((file) => file.path)).length > 0
-    ? runTrustedReview(resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts"), root, author, git(["rev-parse", REVIEW_BASE_REF], root).trim(), (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }))
-    : null;
-  const current = reviewResult ? (JSON.parse(gh(["pr", "view", number, "--json", "headRefOid,baseRefName"])) as PullRequestPin) : pr;
-  const reasons = evaluateGate(
-    { ...pr, files },
-    {
-      reviewResult,
-      author,
-      unresolvedThreads: unresolvedThreadCount(number),
-      revertRate,
-      localHead: git(["rev-parse", "HEAD"], root).trim(),
-      currentBase: git(["rev-parse", REVIEW_BASE_REF], root).trim(),
-      worktreeClean: git(["status", "--porcelain"], root).trim() === "",
-    },
-  );
-  reasons.push(...changedDuringReview(pr, current));
-  const mainTips = (): [string, string] => [git(["rev-parse", REVIEW_BASE_REF], root).trim(), gh(["api", "repos/{owner}/{repo}/branches/main", "--jq", ".commit.sha"]).trim()];
-  if (reviewResult) reasons.push(...baseStillCurrent(reviewResult.base ?? "", ...mainTips()));
+  const reader: FinalReader = {
+    localHead: () => git(["rev-parse", "HEAD"], root).trim(),
+    worktreeClean: () => git(["status", "--porcelain"], root).trim() === "",
+    localMain: () => git(["rev-parse", REVIEW_BASE_REF], root).trim(),
+    snapshot: () => readSnapshot(number),
+  };
+  const { pr, remoteMain, unresolvedThreads } = reader.snapshot();
+  const reasons = baseStillCurrent(bootstrapBase, reader.localMain(), remoteMain);
+  const localHead = reader.localHead();
+  const worktreeClean = reader.worktreeClean();
+  const revertRate = computeRevertRate(parseLog(readFirstParentLog(root, bootstrapBase)), Date.now(), 30).overall.rate;
+  reasons.push(...evaluateGate({ ...pr, files: [] }, { reviewResult: null, unresolvedThreads, localHead, worktreeClean, revertRate }));
+  if (reasons.length === 0) {
+    const files = changedFiles(root, bootstrapBase, pr.headRefOid);
+    if (sensitivePaths(files.map((file) => file.path)).length > 0) {
+      const script = resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts");
+      const reviewResult = runTrustedReview(script, root, author, bootstrapBase, (file, args, cwd) =>
+        execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }));
+      reasons.push(...evaluateGate({ ...pr, files }, { reviewResult, author, unresolvedThreads, currentBase: bootstrapBase }));
+      if (reasons.length === 0) reasons.push(...finalPreMergeReasons(reader, pr, bootstrapBase));
+    }
+  }
   if (reasons.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of reasons) console.error(`  - ${r}`);
@@ -288,19 +332,7 @@ function main(argv: string[]): number {
   } finally {
     rmSync(ghConfigDir, { recursive: true, force: true });
   }
-  const lastCheck = finalPreMergeReasons(
-    {
-      localHead: () => git(["rev-parse", "HEAD"], root).trim(),
-      worktreeClean: () => git(["status", "--porcelain"], root).trim() === "",
-      localMain: () => mainTips()[0],
-      unresolvedThreads: () => unresolvedThreadCount(number),
-      pullRequest: () => JSON.parse(gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,baseRefName,reviewDecision,mergeable,statusCheckRollup"])) as Omit<PullRequest, "files">,
-      remoteMain: () => mainTips()[1],
-    },
-    pr,
-    author,
-    reviewResult ? (reviewResult.base ?? "") : null,
-  );
+  const lastCheck = finalPreMergeReasons(reader, pr, bootstrapBase);
   if (lastCheck.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of lastCheck) console.error(`  - ${r}`);
