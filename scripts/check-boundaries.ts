@@ -22,15 +22,35 @@ const NO_DISABLE_GUARDRAIL =
 const NO_BARE_DISABLE =
   "eslint-disable needs a reason: `// eslint-disable-next-line <rule> -- why`. If you cannot give a real reason, fix the code.";
 
-function isCommonJsGlobal(node: Node, name: "module" | "require", scope: Scope) {
-  if (!isIdentifier(node, { name })) return false;
-  const binding = scope.getBinding(name);
-  if (!binding) return true;
-  if (binding.path.isTSImportEqualsDeclaration()) return binding.path.node.importKind === "type";
-  return binding.kind === "unknown" || binding.path.parentPath?.isVariableDeclaration({ declare: true }) === true;
+function namespaceHasValue(node: Node): boolean {
+  switch (node.type) {
+    case "TSModuleDeclaration":
+      return !node.declare && node.body != null && namespaceHasValue(node.body);
+    case "TSModuleBlock":
+      return node.body.some(namespaceHasValue);
+    case "ExportNamedDeclaration":
+      return node.declaration != null && namespaceHasValue(node.declaration);
+    case "TSInterfaceDeclaration":
+    case "TSTypeAliasDeclaration":
+      return false;
+    default:
+      return !("declare" in node && node.declare === true);
+  }
 }
 
-function dependencyArgument(node: Node, scope: Scope) {
+function isCommonJsGlobal(node: Node, name: "module" | "require", scope: Scope, extraBindings: WeakMap<Scope, Set<string>>) {
+  if (!isIdentifier(node, { name })) return false;
+  for (let current: Scope | undefined = scope; current; current = current.parent) {
+    if (extraBindings.get(current)?.has(name)) return false;
+    const binding = current.getOwnBinding(name);
+    if (!binding) continue;
+    if (binding.path.isTSImportEqualsDeclaration()) return binding.path.node.importKind === "type";
+    return binding.kind === "unknown" || binding.path.parentPath?.isVariableDeclaration({ declare: true }) === true;
+  }
+  return true;
+}
+
+function dependencyArgument(node: Node, scope: Scope, extraBindings: WeakMap<Scope, Set<string>>) {
   switch (node.type) {
     case "ImportDeclaration":
     case "ExportAllDeclaration":
@@ -43,9 +63,9 @@ function dependencyArgument(node: Node, scope: Scope) {
     case "CallExpression":
     case "OptionalCallExpression": {
       const callee = node.callee;
-      if (isCommonJsGlobal(callee, "require", scope)) return node.arguments[0] ?? null;
+      if (isCommonJsGlobal(callee, "require", scope, extraBindings)) return node.arguments[0] ?? null;
       if (callee.type !== "MemberExpression" && callee.type !== "OptionalMemberExpression") return undefined;
-      if (!isCommonJsGlobal(callee.object, "module", scope)) return undefined;
+      if (!isCommonJsGlobal(callee.object, "module", scope, extraBindings)) return undefined;
       const isRequire = callee.computed
         ? isStringLiteral(callee.property, { value: "require" })
         : isIdentifier(callee.property, { name: "require" });
@@ -62,9 +82,29 @@ export function checkFile(file: string, text: string): Violation[] {
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
 
-  traverse(parseSource(file, text), {
+  const ast = parseSource(file, text);
+  const extraBindings = new WeakMap<Scope, Set<string>>();
+  function addBinding(scope: Scope, name: string) {
+    const names = extraBindings.get(scope) ?? new Set<string>();
+    names.add(name);
+    extraBindings.set(scope, names);
+  }
+  traverse(ast, {
+    TSModuleDeclaration({ node, scope }) {
+      if (isIdentifier(node.id) && namespaceHasValue(node)) addBinding(scope, node.id.name);
+    },
+    ClassMethod({ node, scope }) {
+      if (node.kind !== "constructor") return;
+      for (const parameter of node.params) {
+        if (parameter.type !== "TSParameterProperty") continue;
+        const value = parameter.parameter.type === "AssignmentPattern" ? parameter.parameter.left : parameter.parameter;
+        if (isIdentifier(value)) addBinding(scope, value.name);
+      }
+    },
+  });
+  traverse(ast, {
     enter({ node, scope }) {
-      const argument = dependencyArgument(node, scope);
+      const argument = dependencyArgument(node, scope, extraBindings);
       if (argument === undefined) return;
       const line = node.loc!.start.line;
       const add = (message: string) => out.push({ file, line, message });

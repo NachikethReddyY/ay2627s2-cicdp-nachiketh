@@ -103,6 +103,46 @@ test("CommonJS calls distinguish TypeScript declarations from imported values", 
   assert.deepEqual(checkFile(file, 'import module = require("./lesson"); module.require(topic);'), []);
 });
 
+test("constructor parameter properties shadow CommonJS only inside the constructor", () => {
+  const lesson = [
+    'class Lesson {',
+    '  constructor(public module: { require(topic: string): void }, private require: (topic: string) => void) {',
+    '    module.require(topic);',
+    '    module["require"](topic);',
+    '    require(topic);',
+    '    import(topic);',
+    '  }',
+    '  teach() { module.require(topic); require(topic); }',
+    '}',
+    'module.require(topic); require(topic);',
+  ].join("\n");
+  assert.deepEqual(checkFile("packages/sample/lesson.ts", lesson).map(({ line }) => line), [6, 8, 8, 10, 10]);
+});
+
+test("value namespaces shadow module within their scope, but type-only declarations do not", () => {
+  const lesson = [
+    'function teach() {',
+    '  namespace module { export function require(topic: string) {} }',
+    '  module.require(topic);',
+    '  module["require"](topic);',
+    '}',
+    'module.require(topic);',
+    'function review() {',
+    '  interface module { title: string }',
+    '  module.require(topic);',
+    '}',
+    'import(topic);',
+  ].join("\n");
+  assert.deepEqual(checkFile("packages/sample/lesson.ts", lesson).map(({ line }) => line), [6, 9, 11]);
+  for (const declaration of [
+    'namespace module { export interface Topic { title: string } }',
+    'declare namespace module { function require(topic: string): void }',
+    'namespace module {}',
+  ]) {
+    assert.equal(checkFile("packages/sample/lesson.ts", `${declaration}\nmodule.require(topic);`).length, 1);
+  }
+});
+
 test("the guardrail rules cannot be disabled", () => {
   assert.equal(checkFile("apps/web/src/a.ts", "// eslint-disable-next-line no-restricted-syntax -- needed").length, 1);
 });
