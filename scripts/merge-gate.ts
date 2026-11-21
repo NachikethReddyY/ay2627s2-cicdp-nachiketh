@@ -60,6 +60,10 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/web\/src\/player\//, "client reveal timing"],
   [/^docs\/agents\//, "agent guides"],
   [/^apps\/web\/scripts\//, "runs during the web build"],
+  [/^\.pnpmfile\.(mjs|cjs)$/, "install hooks"],
+  [/^apps\/web\/src\/lib\//, "browser auth and learner passwords"],
+  [/^apps\/web\/src\/pages\/Login\.tsx$/, "browser auth and learner passwords"],
+  [/^worlds\//, "seed prompts and answer keys"],
   [/^spikes\//, "run by the required engine check"],
   [/^apps\/web\/src\/blocks\/game\//, "game hint request and timing"],
   [/(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker-compose[\w.-]*\.yml|uv\.lock|vite\.config\.ts|neon\.ts)$/, "build inputs and deploy config"],
@@ -74,7 +78,7 @@ const NOT_SENSITIVE: RegExp[] = [
   /^apps\/web\//,
   /^docs\//,
   /(^|\/)README\.md$/,
-  /(^|\/)(fixtures|__fixtures__|__snapshots__)\/.*\.(json|txt|md|csv|snap|png|jpg|svg|ya?ml)$/,
+  /^(?!apps\/api\/|services\/engine\/)(.*\/)?(fixtures|__fixtures__|__snapshots__)\/.*\.(json|txt|md|csv|snap|png|jpg|svg|ya?ml)$/,
 ];
 
 const DENY_BY_DEFAULT: [RegExp, string][] = [
@@ -149,27 +153,31 @@ function gh(args: string[]): string {
 }
 
 function git(args: string[], cwd: string): string {
-  return execFileSync(bin("git"), args, { encoding: "utf8", cwd });
+  return execFileSync(bin("git"), args, { encoding: "utf8", cwd, maxBuffer: 256 * 1024 * 1024 });
 }
 
-const GITHUB_FILE_LIST_CAP = 3000;
+const BASE_REF = "refs/remotes/origin/main";
 
-export function parseChangedFiles(tsv: string): { path: string }[] {
-  const rows = tsv.split("\n").filter(Boolean);
-  if (rows.length >= GITHUB_FILE_LIST_CAP) {
-    throw new Error(
-      `GitHub lists at most ${GITHUB_FILE_LIST_CAP} changed files, so this PR may be truncated; split it into smaller PRs`,
-    );
+export function parseNameStatusZ(out: string): { path: string }[] {
+  const fields = out.split("\0");
+  const files: { path: string }[] = [];
+  for (let i = 0; i < fields.length; ) {
+    const status = fields[i];
+    if (!status) break;
+    const pathCount = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
+    for (const path of fields.slice(i + 1, i + 1 + pathCount)) files.push({ path });
+    i += 1 + pathCount;
   }
-  const paths = rows.flatMap((row) => row.split("\t").filter(Boolean));
-  return paths.map((path) => ({ path }));
+  return files;
 }
 
-export const CHANGED_FILES_JQ = '.files[] | [.filename, (.previous_filename // "")] | @tsv';
-
-function changedFiles(headRefOid: string): { path: string }[] {
-  const out = gh(["api", `repos/{owner}/{repo}/compare/main...${headRefOid}`, "--paginate", "--jq", CHANGED_FILES_JQ]);
-  return parseChangedFiles(out);
+export function changedFilesFromGit(root: string, headRefOid: string): { path: string }[] {
+  try {
+    git(["cat-file", "-e", `${headRefOid}^{commit}`], root);
+  } catch {
+    throw new Error(`the PR head ${headRefOid.slice(0, 8)} is not in the local repository; run \`git fetch origin\` and check out the PR head`);
+  }
+  return parseNameStatusZ(git(["diff", "--name-status", "-z", "-M", `${BASE_REF}...${headRefOid}`], root));
 }
 
 function unresolvedThreadCount(number: string): number {
@@ -232,7 +240,7 @@ function main(argv: string[]): number {
   ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
   const reasons = evaluateGate(
-    { ...pr, files: changedFiles(pr.headRefOid) },
+    { ...pr, files: changedFilesFromGit(root, pr.headRefOid) },
     {
       reviewResult,
       unresolvedThreads: unresolvedThreadCount(number),

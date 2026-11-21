@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CHANGED_FILES_JQ, evaluateGate, parseChangedFiles, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { changedFilesFromGit, evaluateGate, parseNameStatusZ, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -167,6 +167,18 @@ const EXPECTED_SENSITIVE = [
   "pnpm-lock.yaml",
   ".github/workflows/ci.yml",
   "services/engine/uv.lock",
+  "apps/api/src/billing/fixtures/sample.json",
+  "services/engine/tests/fixtures/part_learn_doc_bad.json",
+  "services/engine/tests/fixtures/lesson.json",
+  "services/engine/tests/fixtures/lesson.yaml",
+  ".pnpmfile.mjs",
+  ".pnpmfile.cjs",
+  "apps/web/src/lib/auth.ts",
+  "apps/web/src/lib/api.ts",
+  "apps/web/src/pages/Login.tsx",
+  "worlds/codequest/manifest.json",
+  "worlds/loops/lessons/loops-1.json",
+  "worlds/new-world/lessons/x.json",
   "apps/web/scripts/build-assets.mjs",
   "spikes/litellm-advisory/check.py",
   "apps/web/src/blocks/game/api.ts",
@@ -189,13 +201,10 @@ const EXPECTED_NOT_SENSITIVE = [
   "apps/api/README.md",
   "services/engine/README.md",
   "packages/ui-catalog/README.md",
-  "apps/api/src/billing/fixtures/sample.json",
-  "services/engine/tests/fixtures/lesson.json",
   "packages/player-core/src/__fixtures__/timeline.json",
   "packages/ui-catalog/src/blocks/quiz/__snapshots__/Quiz.test.tsx.snap",
   "e2e/fixtures/learner.json",
   "e2e/fixtures/avatar.png",
-  "services/engine/tests/fixtures/lesson.yaml",
   "packages/ui-catalog/fixtures/notes.txt",
   "packages/ui-catalog/src/__snapshots__/a.snap",
   "packages/ui-catalog/fixtures/quiz.json",
@@ -241,25 +250,88 @@ test("allowlisted paths do not shadow exact sensitive entries", () => {
   }
 });
 
-test("a rename reports its old path too, so moving a sensitive file out of its directory is still caught", () => {
-  const files = parseChangedFiles("docs/moved.md\tscripts/merge-gate.ts\napps/web/src/a.ts\t\n");
-  assert.deepEqual(files.map((f) => f.path).sort(), ["apps/web/src/a.ts", "docs/moved.md", "scripts/merge-gate.ts"]);
-  assert.equal(sensitivePaths(files.map((f) => f.path)).length, 1);
+function tempRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "gate-git-"));
+  gitIn(dir, "init", "-q", "-b", "main");
+  writeFileSync(join(dir, "seed.txt"), "seed");
+  gitIn(dir, "add", "-A");
+  gitIn(dir, "commit", "-q", "-m", "seed");
+  gitIn(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
+  return dir;
+}
+
+function gitIn(dir: string, ...args: string[]): string {
+  return execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: dir, encoding: "utf8" }).trim();
+}
+
+test("name-status -z records parse to both paths of a rename or copy and one path otherwise", () => {
+  const out = ["R100", "scripts/merge-gate.ts", "docs/moved.md", "A", "a.ts", "M", "b.ts", "D", "c.ts", "C075", "old.ts", "new.ts", ""].join("\0");
+  assert.deepEqual(
+    parseNameStatusZ(out).map((f) => f.path),
+    ["scripts/merge-gate.ts", "docs/moved.md", "a.ts", "b.ts", "c.ts", "old.ts", "new.ts"],
+  );
 });
 
-test("the changed-files query asks GitHub for the old name of a renamed file", () => {
-  assert.match(CHANGED_FILES_JQ, /previous_filename/);
-  assert.match(CHANGED_FILES_JQ, /^\.files\[\]/);
+test("a file renamed out of a sensitive directory reports its old path", () => {
+  const dir = tempRepo();
+  try {
+    mkdirSync(join(dir, "scripts"));
+    writeFileSync(join(dir, "scripts", "tool.ts"), "export const x = 1;\n".repeat(20));
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-q", "-m", "tool");
+    gitIn(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
+    mkdirSync(join(dir, "docs"));
+    gitIn(dir, "mv", "scripts/tool.ts", "docs/tool.md");
+    gitIn(dir, "commit", "-q", "-m", "move");
+    const files = changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD")).map((f) => f.path);
+    assert.deepEqual(files.sort(), ["docs/tool.md", "scripts/tool.ts"]);
+    assert.equal(sensitivePaths(files).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
-test("a changed-file list one under GitHub's cap is accepted", () => {
-  const rows = Array.from({ length: 2999 }, (_, i) => `f${i}.ts\t`).join("\n");
-  assert.equal(parseChangedFiles(rows).length, 2999);
+test("more than 300 changed files are all listed", () => {
+  const dir = tempRepo();
+  try {
+    mkdirSync(join(dir, "many"));
+    for (let i = 0; i < 450; i++) writeFileSync(join(dir, "many", `f${i}.txt`), String(i));
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-q", "-m", "many");
+    assert.equal(changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD")).length, 450);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
-test("a changed-file list at GitHub's 3000 file cap is refused because it may be truncated", () => {
-  const rows = Array.from({ length: 3000 }, (_, i) => `f${i}.ts\t`).join("\n");
-  assert.throws(() => parseChangedFiles(rows), /3000.*smaller|split/i);
+test("paths with spaces, newlines and non-ASCII survive -z parsing", () => {
+  const dir = tempRepo();
+  const names = ["with space.txt", "new\nline.txt", "café-日本.txt", "tab\there.txt"];
+  try {
+    for (const name of names) writeFileSync(join(dir, name), "x");
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-q", "-m", "odd");
+    const files = changedFilesFromGit(dir, gitIn(dir, "rev-parse", "HEAD")).map((f) => f.path);
+    assert.deepEqual(files.sort(), [...names].sort());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a head commit missing from the local repo is refused with the fix in the message", () => {
+  const dir = tempRepo();
+  try {
+    assert.throws(() => changedFilesFromGit(dir, "0123456789012345678901234567890123456789"), /git fetch origin.*check out/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("data fixtures under apps/api and services/engine are sensitive, elsewhere they are not", () => {
+  assert.equal(sensitivePaths(["apps/api/src/imports/fixtures/x.json"]).length, 1);
+  assert.equal(sensitivePaths(["apps/api/src/billing/fixtures/x.json"]).length, 1);
+  assert.equal(sensitivePaths(["services/engine/tests/fixtures/x.json"]).length, 1);
+  assert.deepEqual(sensitivePaths(["packages/ui-catalog/fixtures/x.json"]), []);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {
