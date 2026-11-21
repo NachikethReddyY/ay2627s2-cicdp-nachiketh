@@ -407,7 +407,8 @@ process.stdin.on("end", () => console.log('{"bugs":[]}'));
     writeFileSync(join(bin, "claude"), `#!${process.execPath}\nconsole.error("unknown option --restricted"); process.exit(1);\n`);
     const older = run("codex");
     assert.equal(older.status, 3, older.stderr);
-    assert.match(JSON.parse(older.stdout).reason, /unknown option --restricted/);
+    assert.match(JSON.parse(older.stdout).reason, /claude exited with 1/);
+    assert.doesNotMatch(older.stdout + older.stderr, /unknown option --restricted/);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(bin, { recursive: true, force: true });

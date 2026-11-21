@@ -109,7 +109,7 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
   if (sensitive.length > 0) {
     const review = options.reviewResult;
     const list = sensitive.slice(0, 5).map((s) => `${s.path} (${s.why})`).join(", ");
-    if (!review) reasons.push(`touches sensitive paths: ${list}. The trusted review did not complete; check the reviewer CLI and credentials`);
+    if (!review) reasons.push(`touches sensitive paths: ${list}. The trusted review did not complete. Check the reviewer CLI and the review process limits`);
     else if (!options.author || review.author !== options.author || !["claude", "codex"].includes(review.reviewer ?? "") || review.reviewer === review.author) reasons.push("trusted review metadata is inconsistent with the declared author or required reviewer family");
     else if (review.status === "incomplete" && options.author === "claude" && review.reason?.includes("strict review is unavailable for Codex")) reasons.push("strict Codex review is unavailable because its CLI cannot disable all model tools; the review is incomplete");
     else if (review.status !== "clean") reasons.push(`the review result is "${review.status ?? "missing"}", not clean, and the PR touches sensitive paths: ${list}`);
@@ -286,13 +286,18 @@ export function trustedReviewProcess(file: string, args: string[], root: string,
       stop();
       finish(() => reject(new Error("trusted review timed out")));
     }, timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      if (output.length > 64 * 1024 * 1024) {
+    let bytes = 0;
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      if (settled) return;
+      bytes += Buffer.byteLength(chunk, "utf8");
+      if (bytes > 64 * 1024 * 1024) {
         stop();
         finish(() => reject(new Error("trusted review output exceeded the limit")));
+        return;
       }
+      output += chunk;
     });
+    child.once("exit", stop);
     child.on("error", () => finish(() => reject(new Error("trusted review failed to start"))));
     child.on("close", (code) => finish(() => {
       if (code === 0) resolvePromise(output);

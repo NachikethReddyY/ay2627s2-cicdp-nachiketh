@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -413,4 +413,20 @@ test("trusted review process times out without exposing its output", async () =>
     return true;
   });
   assert.ok(Date.now() - start < 5000);
+});
+
+test("trusted review cleans up its helper processes after the reviewer exits", async () => {
+  const root = mkdtempSync(join(tmpdir(), "merge-gate-helper-"));
+  try {
+    const review = [
+      'const { spawn } = require("node:child_process");',
+      'spawn(process.execPath, ["-e", \'setTimeout(() => require("node:fs").writeFileSync("finished", "fixture"), 400)\'], { stdio: "ignore" }).unref();',
+      'process.stdout.write("done");',
+    ].join("\n");
+    assert.equal(await trustedReviewProcess(process.execPath, ["-e", review], root, 5000), "done");
+    await new Promise((complete) => setTimeout(complete, 700));
+    assert.equal(existsSync(join(root, "finished")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

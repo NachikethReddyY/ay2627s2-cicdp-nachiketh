@@ -4,18 +4,10 @@
 
 ## When to run it
 
-- Before merging a sensitive PR, once this policy lands on main. Run the trusted gate command below with `--author claude|codex`, declaring the family that wrote the change. The gate runs the review itself from the base copy of `agent-review.ts` and accepts only a clean result for the exact PR head, from a reviewer of a different family than the author. A hand-written result file is not accepted.
+- After this policy lands on main, run the trusted bootstrap with the declared author family before merging a sensitive PR. The gate requires a clean strict review from a different family for the exact PR head and base. [Bootstrap command](../../AGENTS.md#merging)
 - On any non-trivial PR, after local CI is green and before you ask a human.
 
-After this policy lands on main, run the bootstrap from the current main, not the PR checkout:
-
-```bash
-git fetch origin +refs/heads/main:refs/remotes/origin/main
-git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh
-git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>
-```
-
-Until then, current main's gate and policy apply. The author family is an operator declaration; the gate does not authenticate authorship or establish provenance. Operators must declare it accurately.
+During rollout, use the policy on current main. The operator is responsible for declaring the author family accurately.
 
 ```bash
 node scripts/agent-review.ts --pr 123 --author claude

@@ -844,10 +844,9 @@ export function scanForInjection(files: DiffFile[], context: ContextBlock[]): st
 
 export function readOnlyExec(exec: Exec): Exec {
   return (file, args, cwd, strictUtf8) => {
-    const writeVerbs = ["comment", "merge", "review", "close", "edit", "reopen", "ready", "create", "delete"];
-    const apiWrites = args.includes("api") && args.some((a) => /^(?:-[XfF]|--(?:method|field|raw-field|input)(?:=|$))/.test(a));
-    const writes = file === "gh" && (apiWrites || args.some((a) => writeVerbs.includes(a)));
-    if (writes) throw new Error("readers cannot write to GitHub");
+    if (file === "gh" && !(args.length === 3 && args[0] === "pr" && args[1] === "diff" && /^\d+$/.test(args[2] ?? ""))) {
+      throw new Error("GitHub review reads require gh pr diff <number>");
+    }
     return exec(file, args, cwd, strictUtf8);
   };
 }
@@ -1103,7 +1102,7 @@ export function renderMarkdown(result: ReviewResult): string {
   return `${lines.join("\n")}\n`;
 }
 
-export function spawnRunner(command: string, args: string[]): Runner {
+export function spawnRunner(command: string, args: string[], strict = false): Runner {
   return (prompt, options) =>
     new Promise<string>((resolvePromise, reject) => {
       const limit = options.timeoutMs ?? TIMEOUT_MS;
@@ -1127,11 +1126,12 @@ export function spawnRunner(command: string, args: string[]): Runner {
         }
         settle(() => reject(new Error(`${command} timed out after ${limit}ms`)));
       }, limit);
-      child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+      child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+      if (strict) child.stderr.resume();
+      else child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
       child.on("error", (error) => settle(() => reject(error)));
       child.on("close", (code) => {
-        if (code !== 0) settle(() => reject(new Error(`${command} exited with ${code}: ${stderr.trim().slice(-500)}`)));
+        if (code !== 0) settle(() => reject(new Error(`${command} exited with ${code}${stderr ? `: ${stderr.trim().slice(-500)}` : ""}`)));
         else settle(() => resolvePromise(stdout));
       });
       child.stdin.on("error", () => undefined);
@@ -1162,7 +1162,7 @@ export function makeRunner(family: ScreenerFamily, model: string | undefined, st
       if (strict) throw new Error("strict review is unavailable for OpenCode");
       return spawnRunner("opencode", opencodeArgs(model))(prompt, options);
     }
-    const run = spawnRunner("claude", claudeArgs(model, strict));
+    const run = spawnRunner("claude", claudeArgs(model, strict), strict);
     if (!strict) return run(prompt, options);
     const cwd = mkdtempSync(join(tmpdir(), "agent-review-isolated-"));
     try {

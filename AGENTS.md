@@ -89,17 +89,17 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 ## Merging
 
-Agents merge their own PRs. The gate is `pnpm agent:merge <pr>` (`scripts/merge-gate.ts`): the PR must be open and not a draft, CI green on the head commit, no conflicts, no requested changes, no unresolved review threads, and `agent:verify` must pass locally. It then squash-merges at the exact head commit. A merge to main deploys to production after CI, so the gate is the only door. It also stops agents from merging while the 30-day revert rate is above 5%; a human merges until it falls.
+Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI. The gate stops agent merges while the 30-day revert rate exceeds 5%.
 
-PRs that touch sensitive paths (see `SENSITIVE` in `scripts/merge-gate.ts`) require a clean strict review run by the trusted gate on the exact head and base. Once this policy and bootstrap have landed on main, fetch main and run:
+PRs that touch sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Once this policy lands on main, run the bootstrap from your PR checkout using your PR number and author family.
 
 ```bash
-git fetch origin +refs/heads/main:refs/remotes/origin/main
-git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh
-git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>
+git fetch origin +refs/heads/main:refs/remotes/origin/main &&
+  git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh &&
+  git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- 123 --author codex
 ```
 
-Until that landing, current main's gate and policy still apply; a PR cannot bootstrap its own new gate. `--author` is the operator's declaration of the author family, not authenticated provenance. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate also requires every CI job (`lint`, `unit`, `engine`, `deploy-scripts`, `e2e`) to have succeeded, GitHub to report the PR as mergeable, and the local checkout to be the PR head with a clean tree. Product scope, audience and learner-model changes still need the owner (see Ask first).
+The current policy on main applies until then. The operator declares the author family with `--author`, and the gate checks the returned review against that declaration. Authorship depends on the operator’s accuracy. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 

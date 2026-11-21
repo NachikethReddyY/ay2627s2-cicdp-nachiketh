@@ -21,7 +21,7 @@ This file tells the automated reviewer, and human reviewers, what matters in Lea
 - `services/engine/learnquest_engine/prompts/**`. A prompt change alters what every lesson contains.
 - `services/sandbox/**` and practice-run code.
 - `apps/api/drizzle/**` and `apps/api/drizzle.config.ts`.
-- `.github/workflows/**`. A change here needs a reviewer agent pass before `agent:merge --sensitive`.
+- `.github/workflows/**`. The merge gate requires an independent review of workflow changes.
 - Billing, deployment and infra (`infra/**`, `docker-compose.yml`, `Dockerfile`s).
 
 ## Skip
