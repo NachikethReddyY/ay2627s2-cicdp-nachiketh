@@ -42,6 +42,7 @@ export type ContextBlock = { label: string; text: string };
 export type CliArgs = {
   pr: string | null;
   base: string;
+  author: Family;
   reviewer: Family;
   verifier: Family;
   model: string | null;
@@ -101,12 +102,14 @@ export function parseArgs(argv: string[]): CliArgs {
   const pr = value("--pr");
   if (pr !== null && !/^\d+$/.test(pr)) throw new Error("--pr must be a number");
   const author = family("--author");
-  const reviewer = family("--reviewer") ?? (author ? otherFamily(author) : "claude");
+  if (!author) throw new Error("--author is required; pass --author claude or --author codex");
+  const reviewer = family("--reviewer") ?? otherFamily(author);
   const verifier = family("--verifier") ?? otherFamily(reviewer);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   if (flags.has("--post") && pr === null) throw new Error("--post needs --pr");
   return {
     pr,
+    author,
     base: value("--base") ?? "origin/main",
     reviewer,
     verifier,
@@ -631,7 +634,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const notes: string[] = [];
   if (diff.skipped.length > 0) notes.push(`skipped ${diff.skipped.length} file(s) per REVIEW.md`);
   if (diff.files.length === 0) return { status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base };
-  if (diff.files.map((f) => f.patch).join("\n").length > MAX_DIFF_CHARS) notes.push("diff truncated for the reviewer");
+  if (diff.files.map((f) => f.patch).join("\n").length > MAX_DIFF_CHARS) return incomplete("diff is too large to review completely; split the PR into smaller changes", notes);
 
   if (deps.ledger && deps.onAddressed) {
     const addressed = markAddressed(deps.ledger, diff.files, deps.headSha ?? "unknown", new Date().toISOString());
@@ -817,11 +820,11 @@ async function main(argv: string[]): Promise<number> {
   } catch (error) {
     console.error((error as Error).message);
     console.error(
-      "usage: node scripts/agent-review.ts [--pr N | --base origin/main] [--author claude|codex] [--reviewer claude|codex] [--verifier claude|codex] [--model <name>] [--post] [--json] [--no-index]",
+      "usage: node scripts/agent-review.ts [--pr N | --base origin/main] --author claude|codex [--reviewer claude|codex] [--verifier claude|codex] [--model <name>] [--post] [--json] [--no-index]",
     );
     return 2;
   }
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const ledgerPath = resolve(root, args.ledger ?? LEDGER_PATH);
   const now = new Date().toISOString();
   if (args.dismiss !== null) {
@@ -854,7 +857,7 @@ async function main(argv: string[]): Promise<number> {
   );
   const body = renderMarkdown(result);
   const head = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
-  console.log(args.json ? JSON.stringify({ ...result, head }, null, 2) : body);
+  console.log(args.json ? JSON.stringify({ ...result, head, author: args.author }, null, 2) : body);
   if (args.post && args.pr !== null) {
     const headSha = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
     const outcome = postFindings(args.pr, result, body, { exec: defaultExec, cwd: root, headSha, now });

@@ -11,7 +11,7 @@ temp="$(mktemp -d)"
 temp="$(cd "$temp" && pwd -P)"
 trap 'rm -rf "$temp"' EXIT
 mkdir -p "$temp/scripts"
-for file in merge-gate.ts revert-rate.ts bin.ts agent-verify.sh; do
+for file in merge-gate.ts revert-rate.ts bin.ts agent-verify.sh agent-review.ts; do
   git show "$base:scripts/$file" > "$temp/scripts/$file"
 done
 chmod +x "$temp/scripts/agent-verify.sh"

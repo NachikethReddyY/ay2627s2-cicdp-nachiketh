@@ -252,8 +252,6 @@ test("render never shows an incomplete review as clean", () => {
 });
 
 test("parseArgs applies model inversion and defaults", () => {
-  const plain = parseArgs([]);
-  assert.deepEqual([plain.reviewer, plain.verifier, plain.base, plain.pr], ["claude", "codex", "origin/main", null]);
   const byClaude = parseArgs(["--author", "claude"]);
   assert.deepEqual([byClaude.reviewer, byClaude.verifier], ["codex", "claude"]);
   const byCodex = parseArgs(["--author", "codex", "--pr", "12", "--post", "--json", "--no-index"]);
@@ -489,8 +487,8 @@ test("capFindings keeps important findings first", () => {
   assert.deepEqual(capped.kept.map((f) => f.line), [2, 3]);
   assert.equal(capped.dropped, 1);
   assert.throws(() => parseArgs(["--max-findings", "0"]));
-  assert.equal(parseArgs(["--max-findings", "5"]).maxFindings, 5);
-  assert.equal(parseArgs([]).maxFindings, 8);
+  assert.equal(parseArgs(["--author", "codex", "--max-findings", "5"]).maxFindings, 5);
+  assert.equal(parseArgs(["--author", "codex"]).maxFindings, 8);
 });
 
 test("style, naming and cleanup findings are dropped at the verifier without a model call", async () => {
@@ -595,10 +593,10 @@ test("the screener shortlists context chunks and falls back on failure", async (
 });
 
 test("screener and proxy-codex options parse", () => {
-  assert.equal(parseArgs([]).screener, null);
-  assert.equal(parseArgs(["--screener", "opencode"]).screener, "opencode");
+  assert.equal(parseArgs(["--author", "codex"]).screener, null);
+  assert.equal(parseArgs(["--author", "codex", "--screener", "opencode"]).screener, "opencode");
   assert.throws(() => parseArgs(["--screener", "gpt"]));
-  const proxy = parseArgs(["--reviewer", "proxy-codex", "--model", "gpt-6.1-sol"]);
+  const proxy = parseArgs(["--author", "claude", "--reviewer", "proxy-codex", "--model", "gpt-6.1-sol"]);
   assert.deepEqual([proxy.reviewer, proxy.verifier, proxy.model], ["codex", "claude", "gpt-6.1-sol"]);
   assert.throws(() => parseArgs(["--verifier", "proxy-codex"]));
   assert.deepEqual(opencodeArgs("p/m"), ["run", "--model", "p/m"]);
@@ -624,4 +622,15 @@ test("end to end: the ledger filter and the finding cap apply to a real run", as
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("author is required for review", () => {
+  assert.throws(() => parseArgs([]), /--author/);
+});
+
+test("a diff beyond the review limit is incomplete", async () => {
+  const patch = `diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -0,0 +1 @@\n+${"x".repeat(180001)}\n`;
+  const result = await runReview(input("."), { ...depsWith(constant('{"bugs":[]}'), failing("unused")), exec: (file, args) => file === "git" && args[0] === "diff" ? patch : "" });
+  assert.equal(result.status, "incomplete");
+  assert.match(result.reason ?? "", /diff.*(large|truncat)/i);
 });
