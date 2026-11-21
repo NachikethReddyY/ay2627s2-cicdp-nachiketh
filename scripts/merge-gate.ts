@@ -58,9 +58,8 @@ const SENSITIVE: [RegExp, string][] = [
   [/(^|\/)package\.json$/, "package configuration"],
   [/^pnpm-lock\.yaml$/, "dependency lockfile"],
   [/^tools\/(validator|repo-index)\//, "agent tooling"],
-  [/^(\.oxlintrc\.json|package\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
+  [/^(\.oxlintrc\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
   [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
-  [/^\.claude\//, "agent skills"],
 ];
 
 export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
