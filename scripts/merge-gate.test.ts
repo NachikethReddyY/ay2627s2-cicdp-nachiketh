@@ -132,6 +132,7 @@ test("the bootstrap refuses a shallow checkout because the revert rate needs ful
     run(source, "init", "-q");
     run(source, "config", "user.email", "test@example.com");
     run(source, "config", "user.name", "Test");
+    run(source, "config", "commit.gpgsign", "false");
     for (const n of ["a", "b"]) {
       writeFileSync(join(source, n), n);
       run(source, "add", ".");
@@ -155,6 +156,7 @@ test("base bootstrap executes the base gate even when the checkout changes it", 
     git("init", "-q");
     git("config", "user.email", "test@example.com");
     git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
     mkdirSync(join(root, "scripts"));
     for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts", "agent-verify.sh"]) {
       copyFileSync(join("scripts", file), join(root, "scripts", file));
