@@ -210,6 +210,18 @@ test("trusted review runner receives the base script, author, PR and isolated le
   assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "123", "claude", () => "invalid"), null);
 });
 
+test("a review that exits non-zero with findings or incomplete is reported as that result, not as a tooling failure", () => {
+  const exited = (stdout: string) => () => {
+    throw Object.assign(new Error("exit 1"), { stdout });
+  };
+  const findings = { status: "findings", head: "abc123", author: "claude", reviewer: "codex" };
+  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "1", "claude", exited(JSON.stringify(findings))), findings);
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "1", "claude", exited("not json")), null);
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "1", "claude", () => {
+    throw new Error("spawn failed");
+  }), null);
+});
+
 test("bootstrap supplies the review script from the base commit", () => {
   const root = mkdtempSync(join(tmpdir(), "merge-gate-review-base-"));
   try {
