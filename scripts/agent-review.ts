@@ -174,7 +174,7 @@ export function unquoteGitPath(quoted: string): string {
   const bytes: number[] = [];
   const chars = Array.from(inner);
   for (let at = 0; at < chars.length; at += 1) {
-    const ch = chars[at] as string;
+    const ch = chars[at];
     if (ch !== "\\") {
       bytes.push(...Buffer.from(ch, "utf8"));
       continue;
@@ -286,7 +286,7 @@ function checkHunks(lines: string[], at: number, old: BlobSide, next: BlobSide) 
   let oldEof = false;
   let newEof = false;
   while (at < lines.length) {
-    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: [^\n]*)?$/.exec(lines[at++]!);
+    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: [^\n]*)?$/.exec(lines[at++]);
     requirePatch(header, "invalid hunk header");
     let oldCount = Number(header[2] ?? 1);
     let newCount = Number(header[4] ?? 1);
@@ -328,7 +328,7 @@ function patchCounts(file: DiffFile | undefined, path: string, old: BlobSide, ne
   const lines = file.patch.slice(0, -1).split("\n");
   requirePatch(!lines.some((line) => line === "GIT binary patch" || (line.startsWith("Binary files ") && line.endsWith(" differ"))), `binary patch: ${visiblePath(path)}`);
   requirePatch(!lines.some((line) => /^(?:index \S+|(?:new file|deleted file|old|new) mode) 160000$/.test(line)), `submodule change: ${visiblePath(path)}`);
-  const pair = matchingPathPair(lines[0]!.slice("diff --git ".length));
+  const pair = matchingPathPair(lines[0].slice("diff --git ".length));
   requirePatch(pair?.path === path, "patch header disagrees with raw path");
 
   let at = 1;
@@ -366,12 +366,12 @@ function validateStrictDiff(files: DiffFile[], raw: string, numstat: string) {
   const seen = new Set<string>();
   let patch = 0;
   for (const [i, stat] of stats.entries()) {
-    const path = records[i * 2 + 1]!;
-    const meta = /^:(000000|100644|100755|120000|160000) (000000|100644|100755|120000|160000) ([a-f0-9]{40}|[a-f0-9]{64}) ([a-f0-9]{40}|[a-f0-9]{64}) ([ADMT])$/.exec(records[i * 2]!);
+    const path = records[i * 2 + 1];
+    const meta = /^:(000000|100644|100755|120000|160000) (000000|100644|100755|120000|160000) ([a-f0-9]{40}|[a-f0-9]{64}) ([a-f0-9]{40}|[a-f0-9]{64}) ([ADMT])$/.exec(records[i * 2]);
     requirePatch(meta && path && !seen.has(path), "invalid or duplicate raw diff record");
     seen.add(path);
-    const old = { mode: meta[1]!, oid: meta[3]! };
-    const next = { mode: meta[2]!, oid: meta[4]! };
+    const old = { mode: meta[1], oid: meta[3] };
+    const next = { mode: meta[2], oid: meta[4] };
     requirePatch(old.mode !== "160000" && next.mode !== "160000", `submodule change; a human must review: ${visiblePath(path)}`);
     requirePatch(stat !== `-\t-\t${path}`, `binary or attribute-marked change; a human must review: ${visiblePath(path)}`);
     const missing = { mode: "000000", oid: "0".repeat(old.oid.length) };
@@ -405,8 +405,8 @@ function splitFile(file: DiffFile, limit: number): DiffFile[] | string {
   while (start < hunks.length) {
     let end = start;
     let size = header.length;
-    while (end < hunks.length && size + (hunks[end] as string).length <= limit) {
-      size += (hunks[end] as string).length;
+    while (end < hunks.length && size + hunks[end].length <= limit) {
+      size += hunks[end].length;
       end += 1;
     }
     pieces.push({ path: file.path, patch: header + hunks.slice(start, end).join(""), part: `hunks ${start + 1}-${end} of ${hunks.length}` });
