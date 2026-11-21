@@ -40,6 +40,9 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/api\/src\/progress\/mastery\.ts$/, "learner model"],
   [/^apps\/api\/src\/app\.ts$/, "API configuration"],
   [/^apps\/api\/src\/imports\/routes\.ts$/, "import access guards"],
+  [/^apps\/api\/src\/progress\/games\.ts$/, "game hint router"],
+  [/^packages\/ui-catalog\/src\/blocks\/game\/public\.ts$/, "answer stripping for games"],
+  [/^services\/engine\/learnquest_engine\/server\.py$/, "engine token guard"],
   [/^INSTRUCTIONS\.md$/, "Sloppy system prompt"],
   [/^\.(agents|claude)\//, "agent skills and settings"],
   [/^apps\/api\/test\/helpers/, "API test helpers"],
@@ -141,8 +144,10 @@ export function parseChangedFiles(tsv: string): { path: string }[] {
   return paths.map((path) => ({ path }));
 }
 
+export const CHANGED_FILES_JQ = '.[] | [.filename, (.previous_filename // "")] | @tsv';
+
 function changedFiles(number: string): { path: string }[] {
-  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", '.[] | [.filename, (.previous_filename // "")] | @tsv']);
+  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", CHANGED_FILES_JQ]);
   return parseChangedFiles(out);
 }
 

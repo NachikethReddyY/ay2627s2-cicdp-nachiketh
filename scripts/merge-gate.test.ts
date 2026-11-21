@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateGate, parseChangedFiles, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { CHANGED_FILES_JQ, evaluateGate, parseChangedFiles, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -105,6 +105,9 @@ test("sensitive paths cover grading, learner models, configuration and all scrip
     "pnpm-lock.yaml",
     "apps/api/test/helpers.ts",
     "apps/api/test/helpers/database.ts",
+    "apps/api/src/progress/games.ts",
+    "packages/ui-catalog/src/blocks/game/public.ts",
+    "services/engine/learnquest_engine/server.py",
     "INSTRUCTIONS.md",
     "apps/api/src/imports/routes.ts",
     ".agents/skills/verify/SKILL.md",
@@ -119,6 +122,15 @@ test("a rename reports its old path too, so moving a sensitive file out of its d
   const files = parseChangedFiles("docs/moved.md\tscripts/merge-gate.ts\napps/web/src/a.ts\t\n");
   assert.deepEqual(files.map((f) => f.path).sort(), ["apps/web/src/a.ts", "docs/moved.md", "scripts/merge-gate.ts"]);
   assert.equal(sensitivePaths(files.map((f) => f.path)).length, 1);
+});
+
+test("the changed-files query asks GitHub for the old name of a renamed file", () => {
+  assert.match(CHANGED_FILES_JQ, /previous_filename/);
+});
+
+test("a changed-file list one under GitHub's cap is accepted", () => {
+  const rows = Array.from({ length: 2999 }, (_, i) => `f${i}.ts\t`).join("\n");
+  assert.equal(parseChangedFiles(rows).length, 2999);
 });
 
 test("a changed-file list at GitHub's 3000 file cap is refused because it may be truncated", () => {
