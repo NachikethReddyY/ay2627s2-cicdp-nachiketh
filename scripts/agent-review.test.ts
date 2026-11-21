@@ -659,3 +659,20 @@ test("strict is an explicit flag", () => {
   assert.equal(parseArgs(["--author", "claude", "--strict"]).strict, true);
   assert.equal(parseArgs(["--author", "claude"]).strict, false);
 });
+
+test("strict review does not hand the model the REVIEW.md skip list", async () => {
+  const root = makeRepo();
+  try {
+    const prompts: string[] = [];
+    const reviewer: Runner = async (prompt) => {
+      prompts.push(prompt);
+      return '{"bugs":[]}';
+    };
+    await runReview({ ...input(root), strict: true }, depsWith(reviewer, failing("never called")));
+    await runReview(input(root), depsWith(reviewer, failing("never called")));
+    assert.ok(!prompts[0]?.includes("(review package.json)"));
+    assert.ok(prompts[1]?.includes("(review package.json)"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

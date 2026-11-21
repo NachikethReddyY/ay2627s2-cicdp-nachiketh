@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CHANGED_FILES_JQ, evaluateGate, parseChangedFiles, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { CHANGED_FILES_JQ, changedDuringReview, evaluateGate, parseChangedFiles, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -171,6 +171,12 @@ test("a changed-file list one under GitHub's cap is accepted", () => {
 test("a changed-file list at GitHub's 3000 file cap is refused because it may be truncated", () => {
   const rows = Array.from({ length: 3000 }, (_, i) => `f${i}.ts\t`).join("\n");
   assert.throws(() => parseChangedFiles(rows), /3000.*smaller|split/i);
+});
+
+test("a head or base that moves while the review runs is refused", () => {
+  assert.deepEqual(changedDuringReview({ headRefOid: "a", baseRefName: "main" }, { headRefOid: "a", baseRefName: "main" }), []);
+  assert.match(changedDuringReview({ headRefOid: "a", baseRefName: "main" }, { headRefOid: "b", baseRefName: "main" }).join(), /head changed/);
+  assert.match(changedDuringReview({ headRefOid: "a", baseRefName: "main" }, { headRefOid: "a", baseRefName: "other" }).join(), /base changed/);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {

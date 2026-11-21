@@ -176,6 +176,15 @@ function unresolvedThreadCount(number: string): number {
   }
 }
 
+export type PullRequestPin = { headRefOid: string; baseRefName: string };
+
+export function changedDuringReview(before: PullRequestPin, after: PullRequestPin): string[] {
+  const reasons: string[] = [];
+  if (after.headRefOid !== before.headRefOid) reasons.push("the PR head changed during review; check out the new head and re-run the gate");
+  if (after.baseRefName !== before.baseRefName) reasons.push("the PR base changed during review; re-run the gate so the review covers the diff that will merge");
+  return reasons;
+}
+
 export function runTrustedReview(script: string, root: string, number: string, author: Family, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
   const ledgerDir = mkdtempSync(join(tmpdir(), "merge-gate-review-"));
   const asResult = (output: string): ReviewResultFile | null => {
@@ -221,7 +230,7 @@ function main(argv: string[]): number {
   const verifyScript = process.env.MERGE_GATE_VERIFY_SCRIPT;
   if (!verifyScript) {
     console.error(
-      "refusing to run: the gate must start from origin/main. Run `git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>`",
+      "refusing to run: the gate must start from origin/main. Run `git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>`",
     );
     return 2;
   }
@@ -241,7 +250,7 @@ function main(argv: string[]): number {
   const reviewResult = sensitivePaths(files.map((file) => file.path)).length > 0
     ? runTrustedReview(resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts"), root, number, author, (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }))
     : null;
-  const currentHead = reviewResult ? (JSON.parse(gh(["pr", "view", number, "--json", "headRefOid"])) as { headRefOid: string }).headRefOid : pr.headRefOid;
+  const current = reviewResult ? (JSON.parse(gh(["pr", "view", number, "--json", "headRefOid,baseRefName"])) as PullRequestPin) : pr;
   const reasons = evaluateGate(
     { ...pr, files },
     {
@@ -253,7 +262,7 @@ function main(argv: string[]): number {
       worktreeClean: git(["status", "--porcelain"], root).trim() === "",
     },
   );
-  if (currentHead !== pr.headRefOid) reasons.push("the PR head changed during review; check out the new head and re-run the gate");
+  reasons.push(...changedDuringReview(pr, current));
   if (reasons.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of reasons) console.error(`  - ${r}`);
