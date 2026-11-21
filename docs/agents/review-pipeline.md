@@ -4,7 +4,7 @@
 
 ## When to run it
 
-- Before merging a sensitive PR. Run `pnpm review --json > review.json` on the PR head commit, then `pnpm agent:merge <pr> --review-result review.json`. The gate accepts only a clean result for that exact commit.
+- Before merging a sensitive PR. Run `pnpm review -- --author claude --json > review.json` on the PR head commit, then `pnpm agent:merge <pr> --review-result review.json`. The gate accepts only a clean result for that exact commit.
 - On any non-trivial PR, after local CI is green and before you ask a human.
 
 ```bash

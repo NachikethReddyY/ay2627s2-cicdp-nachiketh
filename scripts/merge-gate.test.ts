@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateGate, REQUIRED_CHECKS, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -16,8 +16,8 @@ const green: PullRequest = {
   files: [{ path: "apps/web/src/pages/Home.tsx" }],
   statusCheckRollup: passing,
 };
-const open: GateOptions = { reviewResult: null, unresolvedThreads: 0, localHead: "abc123", worktreeClean: true };
-const cleanReview = { status: "clean", head: "abc123" };
+const open: GateOptions = { reviewResult: null, author: "claude", unresolvedThreads: 0, localHead: "abc123", worktreeClean: true };
+const cleanReview = { status: "clean", head: "abc123", author: "claude", reviewer: "codex" };
 
 test("a green ordinary PR passes the gate", () => {
   assert.deepEqual(evaluateGate(green, open), []);
@@ -51,9 +51,9 @@ test("sensitive paths need a clean review of this exact head commit", () => {
   const pr = { ...green, files: [{ path: "apps/api/src/auth/guards.ts" }, { path: "apps/web/src/main.tsx" }] };
   assert.equal(evaluateGate(pr, open).length, 1);
   assert.deepEqual(evaluateGate(pr, { ...open, reviewResult: cleanReview }), []);
-  assert.equal(evaluateGate(pr, { ...open, reviewResult: { status: "findings", head: "abc123" } }).length, 1);
-  assert.equal(evaluateGate(pr, { ...open, reviewResult: { status: "incomplete", head: "abc123" } }).length, 1);
-  assert.equal(evaluateGate(pr, { ...open, reviewResult: { status: "clean", head: "other" } }).length, 1);
+  assert.equal(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, status: "findings" } }).length, 1);
+  assert.equal(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, status: "incomplete" } }).length, 1);
+  assert.equal(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, head: "other" } }).length, 1);
 });
 
 test("sensitive path classes include auth guards, guardrails and repo rules", () => {
@@ -100,7 +100,7 @@ test("skip-local is rejected before accessing the PR", () => {
 test("the gate refuses to run without the base verify script from the bootstrap", () => {
   const env = { ...process.env };
   delete env.MERGE_GATE_VERIFY_SCRIPT;
-  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123"], { encoding: "utf8", env });
+  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123", "--author", "claude"], { encoding: "utf8", env });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /merge-gate-bootstrap\.sh/);
 });
@@ -158,7 +158,7 @@ test("base bootstrap executes the base gate even when the checkout changes it", 
     git("config", "user.name", "Test");
     git("config", "commit.gpgsign", "false");
     mkdirSync(join(root, "scripts"));
-    for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts", "agent-verify.sh"]) {
+    for (const file of ["merge-gate-bootstrap.sh", "merge-gate.ts", "revert-rate.ts", "bin.ts", "agent-verify.sh", "agent-review.ts"]) {
       copyFileSync(join("scripts", file), join(root, "scripts", file));
     }
     git("add", ".");
@@ -170,6 +170,66 @@ test("base bootstrap executes the base gate even when the checkout changes it", 
     assert.equal(result.status, 2);
     assert.match(result.stderr, /--skip-local.*remove/i);
     assert.doesNotMatch(result.stderr, /untrusted gate executed/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sensitive reviews reject forged or matching identities", () => {
+  const pr = { ...green, files: [{ path: "scripts/agent-review.ts" }] };
+  for (const reviewResult of [
+    { status: "clean", head: "abc123" },
+    { ...cleanReview, reviewer: "claude" },
+    { ...cleanReview, author: "unknown" },
+    { ...cleanReview, reviewer: "unknown" },
+  ]) assert.ok(evaluateGate(pr, { ...open, reviewResult }).length > 0);
+});
+
+test("the old review result flag is rejected with migration guidance", () => {
+  const result = spawnSync(process.execPath, ["scripts/merge-gate.ts", "123", "--review-result", "forged.json"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--review-result.*--author/s);
+});
+
+test("bootstrap extracts the base review script", () => {
+  const bootstrap = readFileSync("scripts/merge-gate-bootstrap.sh", "utf8");
+  assert.match(bootstrap, /for file in [^\n]*agent-review\.ts/);
+});
+
+test("trusted review runner receives the base script, author, PR and isolated ledger", () => {
+  let argsSeen: string[] = [];
+  const result = runTrustedReview("/trusted/agent-review.ts", "/checkout", "123", "claude", (file, args, root) => {
+    assert.equal(file, process.execPath);
+    assert.equal(root, "/checkout");
+    argsSeen = args;
+    return JSON.stringify(cleanReview);
+  });
+  assert.deepEqual(result, cleanReview);
+  assert.deepEqual(argsSeen.slice(0, 7), ["/trusted/agent-review.ts", "--pr", "123", "--author", "claude", "--json", "--no-index"]);
+  assert.match(argsSeen[8] ?? "", /merge-gate-review-/);
+  assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "123", "claude", () => "invalid"), null);
+});
+
+test("bootstrap supplies the review script from the base commit", () => {
+  const root = mkdtempSync(join(tmpdir(), "merge-gate-review-base-"));
+  try {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+    mkdirSync(join(root, "scripts"));
+    copyFileSync("scripts/merge-gate-bootstrap.sh", join(root, "scripts/merge-gate-bootstrap.sh"));
+    writeFileSync(join(root, "scripts/merge-gate.ts"), 'import { readFileSync } from "node:fs"; import { dirname, join } from "node:path"; process.stdout.write(readFileSync(join(dirname(process.argv[1]), "agent-review.ts"), "utf8"));');
+    for (const file of ["revert-rate.ts", "bin.ts", "agent-verify.sh"]) writeFileSync(join(root, "scripts", file), "");
+    writeFileSync(join(root, "scripts/agent-review.ts"), "trusted review");
+    git("add", ".");
+    git("commit", "-qm", "base");
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    writeFileSync(join(root, "scripts/agent-review.ts"), "forged review");
+    const result = spawnSync("bash", ["scripts/merge-gate-bootstrap.sh"], { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "trusted review");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

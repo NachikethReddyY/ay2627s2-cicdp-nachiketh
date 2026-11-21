@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.ts";
@@ -16,10 +16,12 @@ export type PullRequest = {
   statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
 };
 
-export type ReviewResultFile = { status?: string; head?: string };
+export type ReviewResultFile = { status?: string; head?: string; author?: string; reviewer?: string };
+export type Family = "claude" | "codex";
 
 export type GateOptions = {
   reviewResult: ReviewResultFile | null;
+  author?: Family;
   unresolvedThreads: number;
   revertRate?: number | null;
   localHead?: string | null;
@@ -103,7 +105,8 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
   if (sensitive.length > 0) {
     const review = options.reviewResult;
     const list = sensitive.slice(0, 5).map((s) => `${s.path} (${s.why})`).join(", ");
-    if (!review) reasons.push(`touches sensitive paths: ${list}. Pass --review-result <file> from \`agent-review --json\` on this head commit`);
+    if (!review) reasons.push(`touches sensitive paths: ${list}. The trusted review did not complete; check the reviewer CLI and credentials, then re-run with --author claude|codex`);
+    else if (!options.author || review.author !== options.author || !["claude", "codex"].includes(review.reviewer ?? "") || review.reviewer === review.author) reasons.push("review author or reviewer is invalid or matches; pass the correct --author and re-run the review with the other family");
     else if (review.status !== "clean") reasons.push(`the review result is "${review.status ?? "missing"}", not clean, and the PR touches sensitive paths: ${list}`);
     else if (review.head !== pr.headRefOid) reasons.push("the review result is for a different commit than the PR head; re-run the review");
   }
@@ -140,12 +143,16 @@ function unresolvedThreadCount(number: string): number {
   }
 }
 
-function readReviewResult(path: string | undefined): ReviewResultFile | null {
-  if (!path) return null;
+export function runTrustedReview(script: string, root: string, number: string, author: Family, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
+  const ledgerDir = mkdtempSync(join(tmpdir(), "merge-gate-review-"));
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as ReviewResultFile;
+    const output = runner(process.execPath, [script, "--pr", number, "--author", author, "--json", "--no-index", "--ledger", join(ledgerDir, "ledger.jsonl")], root);
+    const value: unknown = JSON.parse(output);
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as ReviewResultFile : null;
   } catch {
-    return { status: "unreadable" };
+    return null;
+  } finally {
+    rmSync(ledgerDir, { recursive: true, force: true });
   }
 }
 
@@ -161,6 +168,16 @@ function main(argv: string[]): number {
     console.error("--skip-local is no longer supported; remove it and run local verification");
     return 2;
   }
+  if (argv.includes("--review-result")) {
+    console.error("--review-result is no longer accepted; pass --author claude|codex to run a trusted review");
+    return 2;
+  }
+  const authorAt = argv.indexOf("--author");
+  const author = argv[authorAt + 1];
+  if (authorAt < 0 || (author !== "claude" && author !== "codex") || argv.lastIndexOf("--author") !== authorAt) {
+    console.error("pass --author claude|codex exactly once to identify the author");
+    return 2;
+  }
   const verifyScript = process.env.MERGE_GATE_VERIFY_SCRIPT;
   if (!verifyScript) {
     console.error(
@@ -170,28 +187,33 @@ function main(argv: string[]): number {
   }
   const number = argv.find((a) => /^\d+$/.test(a));
   if (!number) {
-    console.error("usage: node scripts/merge-gate.ts <pr-number> [--review-result <file>] [--dry-run]");
+    console.error("usage: node scripts/merge-gate.ts <pr-number> --author claude|codex [--dry-run]");
     return 2;
   }
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
-  const reviewFlagAt = argv.indexOf("--review-result");
-  const reviewResult = readReviewResult(reviewFlagAt >= 0 ? argv[reviewFlagAt + 1] : undefined);
   const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
   const pr = JSON.parse(
     gh(["pr", "view", number, "--json", "state,isDraft,headRefOid,reviewDecision,mergeable,statusCheckRollup"]),
   ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
+  const files = changedFiles(number);
+  const reviewResult = sensitivePaths(files.map((file) => file.path)).length > 0
+    ? runTrustedReview(resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts"), root, number, author, (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }))
+    : null;
+  const currentHead = reviewResult ? (JSON.parse(gh(["pr", "view", number, "--json", "headRefOid"])) as { headRefOid: string }).headRefOid : pr.headRefOid;
   const reasons = evaluateGate(
-    { ...pr, files: changedFiles(number) },
+    { ...pr, files },
     {
       reviewResult,
+      author,
       unresolvedThreads: unresolvedThreadCount(number),
       revertRate,
       localHead: git(["rev-parse", "HEAD"], root).trim(),
       worktreeClean: git(["status", "--porcelain"], root).trim() === "",
     },
   );
+  if (currentHead !== pr.headRefOid) reasons.push("the PR head changed during review; check out the new head and re-run the gate");
   if (reasons.length > 0) {
     console.error(`Not merging PR #${number}:`);
     for (const r of reasons) console.error(`  - ${r}`);
