@@ -64,6 +64,17 @@ test("type imports and CommonJS module references observe package boundaries", (
   assert.deepEqual(checkFile(file, declarations).map(({ line }) => line), [1, 2, 3]);
 });
 
+test("CommonJS loading is distinct from unrelated require methods", () => {
+  const file = "packages/sample/loader.cjs";
+  const references = [
+    'module.require("@learnquest/web");',
+    'module["require"]("@learnquest/web");',
+    'registry.require(name);',
+    'registry["require"](name);',
+  ].join("\n");
+  assert.deepEqual(checkFile(file, references).map(({ line }) => line), [1, 2]);
+});
+
 test("the guardrail rules cannot be disabled", () => {
   assert.equal(checkFile("apps/web/src/a.ts", "// eslint-disable-next-line no-restricted-syntax -- needed").length, 1);
 });

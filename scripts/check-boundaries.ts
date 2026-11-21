@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isIdentifier, traverseFast, type Node } from "@babel/types";
+import { isIdentifier, isStringLiteral, traverseFast, type Node } from "@babel/types";
 import { parseSource } from "./parse-source.ts";
 
 export type Violation = { file: string; line: number; message: string };
@@ -34,10 +34,13 @@ function dependencyArgument(node: Node) {
     case "CallExpression":
     case "OptionalCallExpression": {
       const callee = node.callee;
-      const name = (callee.type === "MemberExpression" || callee.type === "OptionalMemberExpression") && !callee.computed
-        ? callee.property
-        : callee;
-      return isIdentifier(name, { name: "require" }) ? node.arguments[0] ?? null : undefined;
+      if (isIdentifier(callee, { name: "require" })) return node.arguments[0] ?? null;
+      if (callee.type !== "MemberExpression" && callee.type !== "OptionalMemberExpression") return undefined;
+      if (!isIdentifier(callee.object, { name: "module" })) return undefined;
+      const isRequire = callee.computed
+        ? isStringLiteral(callee.property, { value: "require" })
+        : isIdentifier(callee.property, { name: "require" });
+      return isRequire ? node.arguments[0] ?? null : undefined;
     }
     default:
       return undefined;
