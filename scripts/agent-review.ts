@@ -49,6 +49,7 @@ export type CliArgs = {
   post: boolean;
   json: boolean;
   noIndex: boolean;
+  strict: boolean;
   maxFindings: number;
   screener: ScreenerFamily | null;
   ledger: string | null;
@@ -117,6 +118,7 @@ export function parseArgs(argv: string[]): CliArgs {
     post: flags.has("--post"),
     json: flags.has("--json"),
     noIndex: flags.has("--no-index"),
+    strict: flags.has("--strict"),
     maxFindings: maxRaw === null ? DEFAULT_MAX_FINDINGS : Number(maxRaw),
     screener: screenerRaw,
     ledger: value("--ledger"),
@@ -600,7 +602,7 @@ export type ReviewDeps = {
   onAddressed?: (entries: LedgerEntry[]) => void;
 };
 
-export type ReviewInput = { root: string; pr: string | null; base: string; useIndex: boolean; reviewerName: string; verifierName: string };
+export type ReviewInput = { root: string; pr: string | null; base: string; useIndex: boolean; reviewerName: string; verifierName: string; strict?: boolean; runnerCwd?: string };
 
 function readFromBase(exec: Exec, root: string, base: string, path: string): string {
   try {
@@ -623,7 +625,8 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
 
   const reviewMd = readFromBase(deps.exec, input.root, input.base, "REVIEW.md");
   const principles = markdownSection(readFromBase(deps.exec, input.root, input.base, "AGENTS.md"), "Principles");
-  const skipList = parseSkipList(reviewMd);
+  const skipList = input.strict ? [] : parseSkipList(reviewMd);
+  const runnerCwd = input.runnerCwd ?? input.root;
 
   let diff: CollectedDiff;
   try {
@@ -646,7 +649,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   notes.push(...gathered.notes);
   let contextBlocks = gathered.blocks;
   if (deps.screener) {
-    const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root });
+    const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd });
     contextBlocks = screened.blocks;
     if (screened.note) notes.push(screened.note);
   }
@@ -655,8 +658,8 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   if (injection.length > 0) notes.push(`flagged-injection: ${injection.join(" | ")}`);
 
   const prompt = buildReviewPrompt({ files: diff.files, context: contextBlocks, reviewMd, principles });
-  const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root };
-  const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root };
+  const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd };
+  const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd };
 
   let output: string;
   try {
@@ -840,8 +843,9 @@ async function main(argv: string[]): Promise<number> {
   const reviewerModel = modelFor(args.reviewer, args.model);
   const verifierModel = modelFor(args.verifier, null);
   const ledger = readLedger(ledgerPath);
+  const runnerCwd = args.strict ? mkdtempSync(join(tmpdir(), "agent-review-isolated-")) : undefined;
   const result = await runReview(
-    { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier },
+    { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier, strict: args.strict, runnerCwd },
     {
       exec: readOnlyExec(defaultExec),
       reviewerRunner: makeRunner(args.reviewer, reviewerModel),
@@ -855,6 +859,7 @@ async function main(argv: string[]): Promise<number> {
       onAddressed: (entries) => appendLedger(ledgerPath, entries),
     },
   );
+  if (runnerCwd) rmSync(runnerCwd, { recursive: true, force: true });
   const body = renderMarkdown(result);
   const head = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
   console.log(args.json ? JSON.stringify({ ...result, head, author: args.author }, null, 2) : body);

@@ -11,6 +11,7 @@ const green: PullRequest = {
   state: "OPEN",
   isDraft: false,
   headRefOid: "abc123",
+  baseRefName: "main",
   reviewDecision: null,
   mergeable: "MERGEABLE",
   files: [{ path: "apps/web/src/pages/Home.tsx" }],
@@ -83,6 +84,13 @@ test("sensitive path classes include auth guards, guardrails and repo rules", ()
   ];
   assert.equal(sensitivePaths(paths).length, paths.length);
   assert.deepEqual(sensitivePaths(["docs/plan.md", "apps/web/src/main.tsx", "apps/web/src/pages/Home.tsx"]), []);
+});
+
+test("a PR that does not target main is refused, since the review is pinned to main's diff", () => {
+  const reasons = evaluateGate({ ...green, baseRefName: "LQ-103-gate-from-base" }, open);
+  assert.equal(reasons.length, 1);
+  assert.match(reasons[0] ?? "", /targets LQ-103-gate-from-base.*retarget.*main/s);
+  assert.deepEqual(evaluateGate(green, open), []);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {
@@ -205,8 +213,8 @@ test("trusted review runner receives the base script, author, PR and isolated le
     return JSON.stringify(cleanReview);
   });
   assert.deepEqual(result, cleanReview);
-  assert.deepEqual(argsSeen.slice(0, 7), ["/trusted/agent-review.ts", "--pr", "123", "--author", "claude", "--json", "--no-index"]);
-  assert.match(argsSeen[8] ?? "", /merge-gate-review-/);
+  assert.deepEqual(argsSeen.slice(0, 8), ["/trusted/agent-review.ts", "--pr", "123", "--author", "claude", "--json", "--no-index", "--strict"]);
+  assert.match(argsSeen[9] ?? "", /merge-gate-review-/);
   assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "123", "claude", () => "invalid"), null);
 });
 
