@@ -21,7 +21,7 @@ export type Finding = {
 
 export type RunnerOptions = { model?: string; timeoutMs?: number; cwd?: string };
 export type Runner = (prompt: string, options: RunnerOptions) => Promise<string>;
-export type Exec = (file: string, args: string[], cwd: string) => string;
+export type Exec = (file: string, args: string[], cwd: string, strictUtf8?: boolean) => string;
 
 export type ReviewStatus = "clean" | "findings" | "incomplete";
 
@@ -33,21 +33,25 @@ export type ReviewResult = {
   injection: string[];
   reviewer: string;
   verifier: string;
+  head?: string;
+  base?: string;
 };
 
-export type DiffFile = { path: string; patch: string };
+export type DiffFile = { path: string; patch: string; part?: string };
 export type CollectedDiff = { files: DiffFile[]; skipped: string[] };
 export type ContextBlock = { label: string; text: string };
 
 export type CliArgs = {
   pr: string | null;
   base: string;
+  author: Family;
   reviewer: Family;
   verifier: Family;
   model: string | null;
   post: boolean;
   json: boolean;
   noIndex: boolean;
+  strict: boolean;
   maxFindings: number;
   screener: ScreenerFamily | null;
   ledger: string | null;
@@ -62,6 +66,9 @@ export const SIMILARITY_THRESHOLD = 0.6;
 export const LEDGER_PATH = ".agent-review/ledger.jsonl";
 export const APPROVAL_DISCLAIMER = "Bot output is advisory. It does not replace CI or the merge gate.";
 export const MAX_DIFF_CHARS = 180_000;
+export const MAX_CHUNKS = 12;
+export const VERIFY_FACTOR = 3;
+export const EXEC_TIMEOUT_MS = 2 * 60 * 1000;
 export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
 
@@ -101,22 +108,26 @@ export function parseArgs(argv: string[]): CliArgs {
   const pr = value("--pr");
   if (pr !== null && !/^\d+$/.test(pr)) throw new Error("--pr must be a number");
   const author = family("--author");
-  const reviewer = family("--reviewer") ?? (author ? otherFamily(author) : "claude");
+  if (!author) throw new Error("--author is required; pass --author claude or --author codex");
+  const reviewer = family("--reviewer") ?? otherFamily(author);
   const verifier = family("--verifier") ?? otherFamily(reviewer);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
   if (flags.has("--post") && pr === null) throw new Error("--post needs --pr");
+  if (flags.has("--strict") && pr !== null) throw new Error("--strict reviews local commits only; drop --pr and pass --base <ref>");
   return {
     pr,
+    author,
     base: value("--base") ?? "origin/main",
     reviewer,
     verifier,
     model: value("--model"),
     post: flags.has("--post"),
     json: flags.has("--json"),
-    noIndex: flags.has("--no-index"),
+    noIndex: flags.has("--no-index") || flags.has("--strict"),
+    strict: flags.has("--strict"),
     maxFindings: maxRaw === null ? DEFAULT_MAX_FINDINGS : Number(maxRaw),
     screener: screenerRaw,
-    ledger: value("--ledger"),
+    ledger: flags.has("--strict") ? join(mkdtempSync(join(tmpdir(), "agent-review-strict-ledger-")), "ledger.jsonl") : value("--ledger"),
     dismiss: value("--dismiss"),
   };
 }
@@ -135,6 +146,14 @@ export function markdownSection(markdown: string, heading: string): string {
   return (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
 }
 
+export function withoutSection(markdown: string, heading: string): string {
+  const lines = markdown.split("\n");
+  const start = lines.findIndex((l) => /^##\s/.test(l) && l.replace(/^##\s+/, "").trim().toLowerCase().startsWith(heading.toLowerCase()));
+  if (start === -1) return markdown;
+  const end = lines.slice(start + 1).findIndex((l) => /^##\s/.test(l));
+  return [...lines.slice(0, start), ...(end === -1 ? [] : lines.slice(start + 1 + end))].join("\n");
+}
+
 export function parseSkipList(reviewMd: string): string[] {
   const section = markdownSection(reviewMd, "Skip");
   const listed = [...section.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
@@ -148,24 +167,272 @@ export function isSkipped(path: string, skipList: string[]): boolean {
   });
 }
 
-export function splitDiff(rawDiff: string): DiffFile[] {
-  const chunks = rawDiff.split(/^(?=diff --git )/m).filter((c) => c.startsWith("diff --git "));
-  return chunks.map((patch) => {
-    const header = /^diff --git a\/(.+?) b\/(.+)$/m.exec(patch);
-    return { path: header?.[2] ?? "unknown", patch };
-  });
+const SIMPLE_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, "\\": 92 };
+
+export function unquoteGitPath(quoted: string): string {
+  const inner = quoted.startsWith('"') && quoted.endsWith('"') && quoted.length >= 2 ? quoted.slice(1, -1) : quoted;
+  const bytes: number[] = [];
+  const chars = Array.from(inner);
+  for (let at = 0; at < chars.length; at += 1) {
+    const ch = chars[at] as string;
+    if (ch !== "\\") {
+      bytes.push(...Buffer.from(ch, "utf8"));
+      continue;
+    }
+    const octal = /^[0-7]{1,3}/.exec(chars.slice(at + 1, at + 4).join(""));
+    if (octal) {
+      bytes.push(Number.parseInt(octal[0], 8));
+      at += octal[0].length;
+      continue;
+    }
+    const next = chars[at + 1] ?? "";
+    bytes.push(...(SIMPLE_ESCAPES[next] !== undefined ? [SIMPLE_ESCAPES[next]] : [...Buffer.from(next, "utf8")]));
+    at += 1;
+  }
+  return Buffer.from(bytes).toString("utf8");
 }
 
-export const defaultExec: Exec = (file, args, cwd) =>
-  execFileSync(file, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+function readQuoted(text: string): { token: string; rest: string } | null {
+  if (!text.startsWith('"')) return null;
+  for (let at = 1; at < text.length; at += 1) {
+    if (text[at] === "\\") at += 1;
+    else if (text[at] === '"') return { token: text.slice(0, at + 1), rest: text.slice(at + 1).replace(/^ /, "") };
+  }
+  return null;
+}
 
-export function collectDiff(source: { pr: string | null; base: string }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
-  const raw = source.pr !== null ? exec("gh", ["pr", "diff", source.pr], cwd) : exec("git", ["diff", `${source.base}...HEAD`], cwd);
+function matchingPathPair(pair: string) {
+  const middle = (pair.length - 1) / 2;
+  if (pair[middle] !== " ") return null;
+  const a = pair.slice(0, middle);
+  const b = pair.slice(middle + 1);
+  if (a.startsWith("a/") && b === "b/" + a.slice(2) && !/[\x00-\x1f\x7f"\\]/.test(a)) return { a, b, path: a.slice(2) };
+  if (!a.startsWith('"a/') || b !== '"b/' + a.slice(3)) return null;
+  if (!/^"(?:[^"\\\x00-\x1f\x7f]|\\(?:[abtnvfr"\\]|[0-3][0-7]{2}))*"$/.test(a)) return null;
+  return { a, b, path: unquoteGitPath(a).slice(2) };
+}
+
+export function diffHeaderPath(line: string): string {
+  const rest = line.replace(/^diff --git /, "");
+  const matched = matchingPathPair(rest);
+  if (matched) return matched.path;
+  const first = readQuoted(rest);
+  const second = first ? (readQuoted(first.rest)?.token ?? first.rest) : null;
+  if (second !== null) return unquoteGitPath(second).replace(/^b\//, "");
+  const quotedSecond = / ("b\/.*")$/.exec(rest);
+  if (quotedSecond?.[1]) return unquoteGitPath(quotedSecond[1]).replace(/^b\//, "");
+  return /^a\/(.+?) b\/(.+)$/.exec(rest)?.[2] ?? "unknown";
+}
+
+export function visiblePath(path: string): string {
+  const named: Record<string, string> = { "\n": "\\n", "\t": "\\t", "\r": "\\r" };
+  return path.replace(/[\u0000-\u001f\u007f-\u009f]/g, (ch) => named[ch] ?? `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
+}
+
+export function isSingleJsonReply(output: string): boolean {
+  const text = output.trim();
+  const fenced = /^```(?:json)?[ \t]*\n([\s\S]*?)\n?```$/.exec(text);
+  const body = fenced ? (fenced[1] ?? "").trim() : text;
+  const envelope = /^\{[ \t\r\n]*"bugs"[ \t\r\n]*:([\s\S]*)\}$/.exec(body);
+  if (!envelope || body.includes("```")) return false;
+  try {
+    return Array.isArray(JSON.parse(envelope[1] ?? ""));
+  } catch {
+    return false;
+  }
+}
+
+export function splitDiff(rawDiff: string): DiffFile[] {
+  const chunks = rawDiff.split(/(?<=\n)(?=diff --git )/).filter((c) => c.startsWith("diff --git "));
+  return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n", 1)[0] ?? ""), patch }));
+}
+
+export const defaultExec: Exec = (file, args, cwd, strictUtf8) => {
+  const output = execFileSync(file, args, { cwd, maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: EXEC_TIMEOUT_MS });
+  if (!strictUtf8) return output.toString("utf8");
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(output);
+  } catch {
+    throw new Error("Git output is not valid UTF-8; use a UTF-8 diff or ask for human review");
+  }
+};
+
+export function collectDiff(source: { pr: string | null; base: string; head?: string; strict?: boolean }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
+  if (source.strict && source.pr !== null) throw new Error("strict reviews local commits only");
+  const config = source.strict ? ["-c", "diff.suppressBlankEmpty=false"] : [];
+  const format = source.strict ? ["--full-index", "--src-prefix=a/", "--dst-prefix=b/", "--no-color"] : [];
+  const raw = source.pr !== null
+    ? exec("gh", ["pr", "diff", source.pr], cwd)
+    : exec("git", ["-c", "core.quotepath=false", ...config, "diff", ...format, "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", `${source.base}...${source.head ?? "HEAD"}`], cwd, source.strict);
+  if (source.strict && raw && (!raw.startsWith("diff --git ") || !raw.endsWith("\n"))) throw new Error("incomplete Git patch records");
   const all = splitDiff(raw);
   return {
     files: all.filter((f) => !isSkipped(f.path, skipList)),
     skipped: all.filter((f) => isSkipped(f.path, skipList)).map((f) => f.path),
   };
+}
+
+function requirePatch(valid: unknown, reason: string): asserts valid {
+  if (!valid) throw new Error(reason);
+}
+
+type BlobSide = { mode: string; oid: string };
+
+function checkHunks(lines: string[], at: number, old: BlobSide, next: BlobSide) {
+  let added = 0;
+  let deleted = 0;
+  let oldEnd = 0;
+  let newEnd = 0;
+  let oldEof = false;
+  let newEof = false;
+  while (at < lines.length) {
+    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: [^\n]*)?$/.exec(lines[at++]!);
+    requirePatch(header, "invalid hunk header");
+    let oldCount = Number(header[2] ?? 1);
+    let newCount = Number(header[4] ?? 1);
+    const oldStart = Number(header[1]) - Number(oldCount > 0);
+    const newStart = Number(header[3]) - Number(newCount > 0);
+    const gap = oldStart - oldEnd;
+    requirePatch(gap >= 0 && gap === newStart - newEnd && oldCount + newCount > 0, "inconsistent hunk ranges");
+    oldEnd = oldStart + oldCount;
+    newEnd = newStart + newCount;
+    requirePatch(Number.isSafeInteger(oldEnd) && Number.isSafeInteger(newEnd), "invalid hunk range");
+    requirePatch((old.mode !== "000000" || oldEnd === 0) && (next.mode !== "000000" || newEnd === 0), "unexpected content on missing side");
+    const changesBefore = added + deleted;
+    while (oldCount || newCount) {
+      const marker = lines[at++]?.[0];
+      requirePatch(marker === "+" || marker === "-" || marker === " ", "missing hunk body record");
+      if (marker !== "+") {
+        requirePatch(!oldEof && oldCount > 0, "old hunk count disagrees with body");
+        oldCount--;
+      }
+      if (marker !== "-") {
+        requirePatch(!newEof && newCount > 0, "new hunk count disagrees with body");
+        newCount--;
+      }
+      if (marker === "+") added++;
+      if (marker === "-") deleted++;
+      if (lines[at] === "\\ No newline at end of file") {
+        if (marker !== "+") oldEof = true;
+        if (marker !== "-") newEof = true;
+        at++;
+      }
+    }
+    requirePatch(added + deleted > changesBefore, "hunk has no changed lines");
+  }
+  return { added, deleted };
+}
+
+function patchCounts(file: DiffFile | undefined, path: string, old: BlobSide, next: BlobSide) {
+  requirePatch(file?.path === path, "patch paths disagree with raw diff");
+  const lines = file.patch.slice(0, -1).split("\n");
+  requirePatch(!lines.some((line) => line === "GIT binary patch" || (line.startsWith("Binary files ") && line.endsWith(" differ"))), `binary patch: ${visiblePath(path)}`);
+  requirePatch(!lines.some((line) => /^(?:index \S+|(?:new file|deleted file|old|new) mode) 160000$/.test(line)), `submodule change: ${visiblePath(path)}`);
+  const pair = matchingPathPair(lines[0]!.slice("diff --git ".length));
+  requirePatch(pair?.path === path, "patch header disagrees with raw path");
+
+  let at = 1;
+  const expect = (record: string) => requirePatch(lines[at++] === record, "patch metadata disagrees with raw diff");
+  if (old.mode === "000000") expect(`new file mode ${next.mode}`);
+  else if (next.mode === "000000") expect(`deleted file mode ${old.mode}`);
+  else if (old.mode !== next.mode) {
+    expect(`old mode ${old.mode}`);
+    expect(`new mode ${next.mode}`);
+  }
+  if (old.oid !== next.oid) expect(`index ${old.oid}..${next.oid}${old.mode === next.mode ? " " + old.mode : ""}`);
+  if (at === lines.length) {
+    const empty = createHash(old.oid.length === 40 ? "sha1" : "sha256").update("blob 0\0").digest("hex");
+    requirePatch(old.oid === next.oid || (old.mode === "000000" && next.oid === empty) || (next.mode === "000000" && old.oid === empty), "missing content patch");
+    return { added: 0, deleted: 0 };
+  }
+  requirePatch(old.oid !== next.oid, "unexpected content patch");
+  const expectPath = (record: string) => requirePatch(lines[at++]?.replace(/\t$/, "") === record, "patch marker disagrees with raw path");
+  expectPath(`--- ${old.mode === "000000" ? "/dev/null" : pair.a}`);
+  expectPath(`+++ ${next.mode === "000000" ? "/dev/null" : pair.b}`);
+  requirePatch(at < lines.length, "missing hunk");
+  return checkHunks(lines, at, old, next);
+}
+
+function rawStatus(oldMode: string, newMode: string) {
+  if (oldMode === "000000") return "A";
+  if (newMode === "000000") return "D";
+  return oldMode.slice(0, 3) === newMode.slice(0, 3) ? "M" : "T";
+}
+
+function validateStrictDiff(files: DiffFile[], raw: string, numstat: string) {
+  const records = raw.split("\0");
+  const stats = numstat.split("\0");
+  requirePatch(records.pop() === "" && stats.pop() === "" && records.length === stats.length * 2, "incomplete raw or numstat records");
+  const seen = new Set<string>();
+  let patch = 0;
+  for (const [i, stat] of stats.entries()) {
+    const path = records[i * 2 + 1]!;
+    const meta = /^:(000000|100644|100755|120000|160000) (000000|100644|100755|120000|160000) ([a-f0-9]{40}|[a-f0-9]{64}) ([a-f0-9]{40}|[a-f0-9]{64}) ([ADMT])$/.exec(records[i * 2]!);
+    requirePatch(meta && path && !seen.has(path), "invalid or duplicate raw diff record");
+    seen.add(path);
+    const old = { mode: meta[1]!, oid: meta[3]! };
+    const next = { mode: meta[2]!, oid: meta[4]! };
+    requirePatch(old.mode !== "160000" && next.mode !== "160000", `submodule change; a human must review: ${visiblePath(path)}`);
+    requirePatch(stat !== `-\t-\t${path}`, `binary or attribute-marked change; a human must review: ${visiblePath(path)}`);
+    const missing = { mode: "000000", oid: "0".repeat(old.oid.length) };
+    requirePatch(next.oid.length === old.oid.length && [old, next].every((s) => (s.mode === missing.mode) === (s.oid === missing.oid)), "invalid raw blob identity");
+    const status = rawStatus(old.mode, next.mode);
+    requirePatch(meta[5] === status && (old.oid !== next.oid || old.mode !== next.mode), "inconsistent raw change status");
+    if (status === "T") {
+      const { deleted } = patchCounts(files[patch++], path, old, missing);
+      const { added } = patchCounts(files[patch++], path, missing, next);
+      const counts = /^(\d+)\t(\d+)\t/.exec(stat);
+      requirePatch(counts && stat.slice(counts[0].length) === path && added >= Number(counts[1]) && added - Number(counts[1]) === deleted - Number(counts[2]), "type-change numstat disagrees with patch");
+    } else {
+      const { added, deleted } = patchCounts(files[patch++], path, old, next);
+      requirePatch(stat === `${added}\t${deleted}\t${path}`, "numstat disagrees with patch");
+    }
+  }
+  requirePatch(patch === files.length, "unexpected patch outside raw diff");
+}
+
+function joinedLength(files: DiffFile[]): number {
+  return files.reduce((sum, f) => sum + f.patch.length, 0) + Math.max(0, files.length - 1);
+}
+
+function splitFile(file: DiffFile, limit: number): DiffFile[] | string {
+  const [header = "", ...hunks] = file.patch.split(/(?<=\n)(?=@@ )/);
+  if (hunks.length === 0) return `${file.path} has no hunks and is larger than ${limit} characters; cannot split further`;
+  const oversized = hunks.findIndex((h) => header.length + h.length > limit);
+  if (oversized !== -1) return `hunk ${oversized + 1} of ${file.path} is larger than ${limit} characters; cannot split further`;
+  const pieces: DiffFile[] = [];
+  let start = 0;
+  while (start < hunks.length) {
+    let end = start;
+    let size = header.length;
+    while (end < hunks.length && size + (hunks[end] as string).length <= limit) {
+      size += (hunks[end] as string).length;
+      end += 1;
+    }
+    pieces.push({ path: file.path, patch: header + hunks.slice(start, end).join(""), part: `hunks ${start + 1}-${end} of ${hunks.length}` });
+    start = end;
+  }
+  return pieces;
+}
+
+export function chunkDiff(files: DiffFile[], limit: number = MAX_DIFF_CHARS): { chunks: DiffFile[][] } | { error: string } {
+  const pieces: DiffFile[] = [];
+  for (const file of files) {
+    if (file.patch.length <= limit) {
+      pieces.push(file);
+      continue;
+    }
+    const split = splitFile(file, limit);
+    if (typeof split === "string") return { error: split };
+    pieces.push(...split);
+  }
+  const chunks: DiffFile[][] = [];
+  for (const piece of pieces) {
+    const current = chunks[chunks.length - 1];
+    if (current && joinedLength([...current, piece]) <= limit) current.push(piece);
+    else chunks.push([piece]);
+  }
+  return { chunks };
 }
 
 export function changedSymbols(patch: string): string[] {
@@ -216,7 +483,21 @@ function defang(text: string): string {
 export const FINDING_SHAPE =
   '{"bugs":[{"file":"repo/relative/path","line":12,"severity":"important|nit","category":"short-kebab-case","summary":"one sentence","failure_scenario":"the concrete input or request that fails and what goes wrong","evidence":"the code you read that proves it, quoted"}]}';
 
-export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string }): string {
+export type ChunkLabel = { index: number; total: number };
+
+export function changedPathOverview(files: DiffFile[]): string[] {
+  const status = (patch: string): string => (patch.includes("\nnew file mode ") ? "A" : patch.includes("\ndeleted file mode ") ? "D" : "M");
+  const byPath = new Map<string, string>();
+  for (const f of files) byPath.set(f.path, byPath.has(f.path) ? "T" : status(f.patch));
+  return [...byPath.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, code]) => `${code} ${visiblePath(path)}`);
+}
+
+function describeParts(files: DiffFile[]): string {
+  return files.map((f) => (f.part ? `${visiblePath(f.path)} (${f.part})` : visiblePath(f.path))).join(", ");
+}
+
+export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string; chunk?: ChunkLabel; overview?: string[]; readTools?: boolean }): string {
+  const chunkLabel = input.chunk && input.chunk.total > 1 ? `[chunk ${input.chunk.index} of ${input.chunk.total}: ${describeParts(input.files)}]\n${input.overview ? `[all changed paths in this change]\n${input.overview.join("\n")}\n` : ""}` : "";
   let diff = input.files.map((f) => f.patch).join("\n");
   let truncated = false;
   if (diff.length > MAX_DIFF_CHARS) {
@@ -240,11 +521,12 @@ export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBl
     "- Report bugs, not style. Do not report anything a linter or formatter catches.",
     `- Every finding needs file, line, failure_scenario and evidence. Omit a finding you cannot prove from the code.`,
     `- Report at most ${MAX_NITS} nits, and none if you have an important finding.`,
-    "- You may read files in the repository to check a claim.",
+    input.readTools === false ? "- You cannot read files; judge only what the diff and context show, and omit any claim you cannot prove from them." : "- You may read files in the repository to check a claim.",
+    chunkLabel ? "- This chunk is part of a larger change. Other chunks are reviewed separately, so consider how this chunk interacts with the other changed paths listed at the top of the diff block. The chunk label is the first line inside the diff block." : "",
     truncated ? "- The diff below was truncated, so say nothing about files you cannot see." : "",
     "",
     "<untrusted-diff>",
-    defang(diff),
+    defang(chunkLabel + diff),
     "</untrusted-diff>",
     "",
     "<untrusted-context>",
@@ -256,7 +538,7 @@ export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBl
 }
 
 export function buildVerifierPrompt(finding: Finding, files: DiffFile[]): string {
-  const patch = files.find((f) => f.path === finding.file)?.patch ?? "";
+  const patch = files.filter((f) => f.path === finding.file).map((f) => f.patch).join("\n");
   return [
     "You are a skeptical verifier. A reviewer reported the finding below. Try to disprove it using the code in the repository.",
     UNTRUSTED_GUARD,
@@ -317,7 +599,7 @@ export function toFinding(raw: unknown, allowedFiles: string[] | null): Finding 
   return { file, line, severity, category, summary, failure_scenario: failure, evidence };
 }
 
-export type ParsedFindings = { ok: true; findings: Finding[]; dropped: number } | { ok: false; reason: string };
+export type ParsedFindings = { ok: true; findings: Finding[]; dropped: number; outside: string[] } | { ok: false; reason: string };
 
 export function parseFindings(output: string, allowedFiles: string[] | null = null): ParsedFindings {
   let data: unknown;
@@ -328,11 +610,15 @@ export function parseFindings(output: string, allowedFiles: string[] | null = nu
   }
   const bugs = typeof data === "object" && data !== null ? (data as Record<string, unknown>)["bugs"] : undefined;
   if (!Array.isArray(bugs)) return { ok: false, reason: 'JSON has no "bugs" array' };
-  const findings = bugs.flatMap((b) => {
-    const f = toFinding(b, allowedFiles);
-    return f ? [f] : [];
-  });
-  return { ok: true, findings, dropped: bugs.length - findings.length };
+  const findings: Finding[] = [];
+  const outside: string[] = [];
+  for (const b of bugs) {
+    const f = toFinding(b, null);
+    if (!f) continue;
+    if (allowedFiles && !allowedFiles.includes(f.file)) outside.push(f.file);
+    else findings.push(f);
+  }
+  return { ok: true, findings, dropped: bugs.length - findings.length, outside };
 }
 
 export type Verdict = { verdict: "confirmed" | "refuted"; reason: string };
@@ -477,7 +763,7 @@ export function newEntry(finding: Finding, ctx: { headSha: string; pr: string | 
 
 export function changedLineRanges(patch: string): [number, number][] {
   const ranges: [number, number][] = [];
-  for (const hunk of patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) {
+  for (const hunk of patch.matchAll(/(?:^|\n)@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/g)) {
     const start = Number(hunk[1]);
     const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
     if (count > 0) ranges.push([start, start + count - 1]);
@@ -533,20 +819,35 @@ export function detectInjection(text: string): string[] {
   return INJECTION_PATTERNS.filter(([re]) => re.test(text)).map(([, why]) => why);
 }
 
+export function diffTextForScreening(files: DiffFile[], revision: "old" | "new" | "both"): string {
+  const lines: string[] = [];
+  for (const file of files) {
+    let inHunk = false;
+    for (const line of file.patch.split("\n")) {
+      if (line.startsWith("@@ ")) inHunk = true;
+      if (!inHunk) continue;
+      const marker = line[0];
+      if (marker === " " || (marker === "+" && revision !== "old") || (marker === "-" && revision !== "new")) {
+        lines.push(line.slice(1));
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
 export function scanForInjection(files: DiffFile[], context: ContextBlock[]): string[] {
   const hits: string[] = [];
-  for (const f of files) for (const why of detectInjection(f.patch)) hits.push(`${f.path}: ${why}`);
+  for (const f of files) for (const why of [...detectInjection(f.patch), ...detectInjection(f.path)]) if (!hits.includes(`${visiblePath(f.path)}: ${why}`)) hits.push(`${visiblePath(f.path)}: ${why}`);
   for (const c of context) for (const why of detectInjection(c.text)) hits.push(`${c.label}: ${why}`);
   return hits;
 }
 
 export function readOnlyExec(exec: Exec): Exec {
-  return (file, args, cwd) => {
-    const writeVerbs = ["comment", "merge", "review", "close", "edit", "reopen", "ready", "create", "delete"];
-    const apiWrites = args.includes("api") && args.some((a) => /^(-X|--method|-f|-F|--field|--raw-field|--input)(=|$)/.test(a));
-    const writes = file === "gh" && (apiWrites || args.some((a) => writeVerbs.includes(a)));
-    if (writes) throw new Error("readers cannot write to GitHub");
-    return exec(file, args, cwd);
+  return (file, args, cwd, strictUtf8) => {
+    if (file === "gh" && !(args.length === 3 && args[0] === "pr" && args[1] === "diff" && /^\d+$/.test(args[2] ?? ""))) {
+      throw new Error("GitHub review reads require gh pr diff <number>");
+    }
+    return exec(file, args, cwd, strictUtf8);
   };
 }
 
@@ -595,9 +896,13 @@ export type ReviewDeps = {
   maxFindings?: number;
   headSha?: string;
   onAddressed?: (entries: LedgerEntry[]) => void;
+  deadlineMs?: number;
+  now?: () => number;
 };
 
-export type ReviewInput = { root: string; pr: string | null; base: string; useIndex: boolean; reviewerName: string; verifierName: string };
+export const STRICT_DEADLINE_MS = 40 * 60 * 1000;
+
+export type ReviewInput = { root: string; pr: string | null; base: string; useIndex: boolean; reviewerName: string; verifierName: string; strict?: boolean; runnerCwd?: string };
 
 function readFromBase(exec: Exec, root: string, base: string, path: string): string {
   try {
@@ -618,20 +923,57 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     ...base,
   });
 
-  const reviewMd = readFromBase(deps.exec, input.root, input.base, "REVIEW.md");
-  const principles = markdownSection(readFromBase(deps.exec, input.root, input.base, "AGENTS.md"), "Principles");
-  const skipList = parseSkipList(reviewMd);
+  const now = deps.now ?? (() => performance.now());
+  const startedAt = now();
+  const budgetMs = deps.deadlineMs ?? (input.strict ? STRICT_DEADLINE_MS : null);
+  const remainingMs = (): number => (budgetMs === null ? Number.POSITIVE_INFINITY : budgetMs - (now() - startedAt));
+  const timedOut = (notes: string[], injection: string[]): ReviewResult => incomplete("review timed out; split the PR into smaller changes", notes, injection);
+
+  let baseSha: string;
+  let headSha: string;
+  try {
+    baseSha = deps.exec("git", ["rev-parse", "--verify", input.base], input.root).trim();
+    headSha = deps.exec("git", ["rev-parse", "--verify", "HEAD"], input.root).trim();
+  } catch (error) {
+    return incomplete(`could not resolve the base and head commits: ${(error as Error).message}`, []);
+  }
+  if (!baseSha || !headSha) return incomplete("could not resolve the base and head commits", []);
+  const pinned = { head: headSha, base: baseSha };
+  const finish = (result: ReviewResult): ReviewResult => ({ ...result, ...pinned });
+
+  const reviewMd = readFromBase(deps.exec, input.root, baseSha, "REVIEW.md");
+  const principles = markdownSection(readFromBase(deps.exec, input.root, baseSha, "AGENTS.md"), "Principles");
+  const skipList = input.strict ? [] : parseSkipList(reviewMd);
 
   let diff: CollectedDiff;
   try {
-    diff = collectDiff({ pr: input.pr, base: input.base }, skipList, deps.exec, input.root);
+    diff = collectDiff({ pr: input.pr, base: baseSha, head: headSha, strict: input.strict }, skipList, deps.exec, input.root);
   } catch (error) {
-    return incomplete(`could not collect the diff: ${(error as Error).message}`, []);
+    return finish(incomplete(`could not collect the diff: ${(error as Error).message}`, []));
   }
   const notes: string[] = [];
   if (diff.skipped.length > 0) notes.push(`skipped ${diff.skipped.length} file(s) per REVIEW.md`);
-  if (diff.files.length === 0) return { status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base };
-  if (diff.files.map((f) => f.patch).join("\n").length > MAX_DIFF_CHARS) notes.push("diff truncated for the reviewer");
+  if (diff.files.length === 0) {
+    if (input.strict) return finish(incomplete("a strict review found no changed files to review; refusing to treat an empty diff as clean", notes));
+    return finish({ status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base });
+  }
+  if (input.strict) {
+    try {
+      const range = `${baseSha}...${headSha}`;
+      const options = ["-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", "--submodule=short", range];
+      const numstat = deps.exec("git", ["diff", "--numstat", ...options], input.root, true);
+      const raw = deps.exec("git", ["diff", "--raw", "--no-abbrev", ...options], input.root, true);
+      validateStrictDiff(diff.files, raw, numstat);
+    } catch (error) {
+      return finish(incomplete(`could not validate the pinned diff: ${(error as Error).message}`, notes));
+    }
+  }
+  const chunked = chunkDiff(diff.files);
+  if ("error" in chunked) return finish(incomplete(`diff is too large to review completely: ${chunked.error}`, notes));
+  const chunks = chunked.chunks;
+  if (chunks.length > MAX_CHUNKS) return finish(incomplete(`diff needs ${chunks.length} review chunks, above the limit of ${MAX_CHUNKS}; split the PR into smaller changes`, notes));
+  if (chunks.length > 1) notes.push(`reviewed in ${chunks.length} chunks; cross-chunk interactions may be missed`);
+  const overview = chunks.length > 1 ? changedPathOverview(diff.files) : undefined;
 
   if (deps.ledger && deps.onAddressed) {
     const addressed = markAddressed(deps.ledger, diff.files, deps.headSha ?? "unknown", new Date().toISOString());
@@ -639,48 +981,98 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     if (addressed.length > 0) notes.push(`marked ${addressed.length} earlier finding(s) addressed`);
   }
 
-  const gathered = gatherContext(diff.files, deps.exec, input.root, input.useIndex);
-  notes.push(...gathered.notes);
-  let contextBlocks = gathered.blocks;
-  if (deps.screener) {
-    const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root });
-    contextBlocks = screened.blocks;
-    if (screened.note) notes.push(screened.note);
-  }
+  const timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
+  const optionsFor = (model: string | undefined): RunnerOptions => ({ model, timeoutMs: Math.max(1, Math.min(timeoutMs, remainingMs())), cwd: input.runnerCwd ?? (input.strict ? undefined : input.root) });
+  const reviewMdForPrompt = input.strict ? withoutSection(reviewMd, "Skip") : reviewMd;
 
-  const injection = scanForInjection(diff.files, contextBlocks);
+  const injection = scanForInjection(diff.files, []);
+  if (input.strict) {
+    for (const revision of ["old", "new", "both"] as const) {
+      for (const why of detectInjection(diffTextForScreening(diff.files, revision))) {
+        const flag = `diff text: ${why}`;
+        if (!injection.includes(flag)) injection.push(flag);
+      }
+    }
+  }
+  if (input.strict && injection.length > 0) {
+    notes.push(`flagged-injection: ${injection.join(" | ")}`);
+    return finish(incomplete("text in the diff tried to steer the reviewer; a human must read this change, and it was not sent to a model", notes, injection));
+  }
+  const candidates: { finding: Finding; files: DiffFile[] }[] = [];
+  const seen = new Set<string>();
+  const where = (at: number) => (chunks.length > 1 ? ` on chunk ${at + 1} of ${chunks.length}` : "");
+
+  for (const [at, files] of chunks.entries()) {
+    if (remainingMs() <= 0) return finish(timedOut(notes, injection));
+    const gathered = gatherContext(files, deps.exec, input.root, input.useIndex && !input.strict);
+    for (const note of gathered.notes) if (!notes.includes(note)) notes.push(note);
+    let contextBlocks = gathered.blocks;
+    if (!input.strict && deps.screener) {
+      const screened = await screenContext(contextBlocks, deps.screener.runner, optionsFor(deps.screener.model));
+      contextBlocks = screened.blocks;
+      if (screened.note) notes.push(screened.note);
+    }
+    for (const flag of scanForInjection([], contextBlocks)) if (!injection.includes(flag)) injection.push(flag);
+    if (input.strict && injection.length > 0) return finish(incomplete("text in the context tried to steer the reviewer; a human must read this change, and it was not sent to a model", notes, injection));
+
+    const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, overview, readTools: !input.strict });
+    let output: string;
+    try {
+      output = await deps.reviewerRunner(prompt, optionsFor(deps.reviewerModel));
+    } catch (error) {
+      if (remainingMs() <= 0) return finish(timedOut(notes, injection));
+      return finish(incomplete(`reviewer failed${where(at)}: ${(error as Error).message}`, notes, injection));
+    }
+    if (input.strict && !isSingleJsonReply(output)) return finish(incomplete(`reviewer reply was not a single JSON response${where(at)}; a human must read this change`, notes, injection));
+    const parsed = parseFindings(output, files.map((f) => f.path));
+    if (!parsed.ok) return finish(incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection));
+    if (input.strict && parsed.outside.length > 0) return finish(incomplete(`reviewer cited a file outside the diff${where(at)}: ${[...new Set(parsed.outside)].slice(0, 5).join(", ")}`, notes, injection));
+    if (input.strict && parsed.dropped - parsed.outside.length > 0) return finish(incomplete(`reviewer returned a malformed finding; a human must read this change${where(at)}`, notes, injection));
+    if (parsed.dropped > 0) notes.push(`dropped ${parsed.dropped} finding(s) missing file, line, failure scenario or evidence`);
+    for (const finding of parsed.findings) {
+      const key = [finding.file, finding.line, finding.severity, finding.category, finding.summary, finding.failure_scenario, finding.evidence].join("\u0000");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ finding, files });
+    }
+  }
   if (injection.length > 0) notes.push(`flagged-injection: ${injection.join(" | ")}`);
 
-  const prompt = buildReviewPrompt({ files: diff.files, context: contextBlocks, reviewMd, principles });
-  const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root };
-  const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root };
+  const maxFindings = deps.maxFindings ?? DEFAULT_MAX_FINDINGS;
+  const filteredEarly = filterDismissed(candidates.map((c) => c.finding), deps.ledger ?? [], deps.similarity ?? jaccard);
+  if (filteredEarly.dropped > 0) notes.push(`comment filter dropped ${filteredEarly.dropped} finding(s) similar to dismissed ones`);
+  const ordered = capFindings(filteredEarly.kept, Number.POSITIVE_INFINITY).kept;
 
-  let output: string;
-  try {
-    output = await deps.reviewerRunner(prompt, reviewerOptions);
-  } catch (error) {
-    return incomplete(`reviewer failed: ${(error as Error).message}`, notes, injection);
+  let confirmed: Finding[];
+  if (input.strict) {
+    const shortlist = capFindings(ordered, maxFindings);
+    if (shortlist.dropped > 0) notes.push(`capped at ${maxFindings} finding(s), dropped ${shortlist.dropped}`);
+    confirmed = shortlist.kept;
+    if (confirmed.length > 0) notes.push("kept: verifier had no repo access");
+  } else {
+    if (ordered.length > maxFindings * VERIFY_FACTOR) return finish(incomplete(`too many findings to verify (${ordered.length}); fix the obvious ones and re-run`, notes, injection));
+    confirmed = [];
+    let verified = 0;
+    for (const finding of ordered) {
+      if (confirmed.length >= maxFindings) break;
+      if (remainingMs() <= 0) return finish(timedOut(notes, injection));
+      const files = candidates.find((c) => c.finding === finding)?.files ?? [];
+      const outcome = await verifyFindings([finding], files, deps.verifierRunner, optionsFor(deps.verifierModel));
+      if (!outcome.ok) return finish(incomplete(outcome.reason, notes, injection));
+      verified += 1;
+      if (outcome.refuted > 0) notes.push(`verifier refuted ${outcome.refuted} finding(s)`);
+      if (outcome.styleDropped > 0) notes.push(`verifier dropped ${outcome.styleDropped} style, naming or cleanup finding(s)`);
+      confirmed.push(...outcome.confirmed);
+    }
+    if (ordered.length - verified > 0) notes.push(`capped at ${maxFindings} finding(s), dropped ${ordered.length - verified}`);
   }
-  const parsed = parseFindings(output, diff.files.map((f) => f.path));
-  if (!parsed.ok) return incomplete(`reviewer output unusable: ${parsed.reason}`, notes, injection);
-  if (parsed.dropped > 0) notes.push(`dropped ${parsed.dropped} finding(s) missing file, line, failure scenario or evidence`);
 
-  const verified = await verifyFindings(parsed.findings, diff.files, deps.verifierRunner, verifierOptions);
-  if (!verified.ok) return incomplete(verified.reason, notes, injection);
-  if (verified.refuted > 0) notes.push(`verifier refuted ${verified.refuted} finding(s)`);
-
-  if (verified.styleDropped > 0) notes.push(`verifier dropped ${verified.styleDropped} style, naming or cleanup finding(s)`);
-
-  const filtered = filterDismissed(verified.confirmed, deps.ledger ?? [], deps.similarity ?? jaccard);
-  if (filtered.dropped > 0) notes.push(`comment filter dropped ${filtered.dropped} finding(s) similar to dismissed ones`);
-
-  const capped = capFindings(limitNits(filtered.kept), deps.maxFindings ?? DEFAULT_MAX_FINDINGS);
-  if (capped.dropped > 0) notes.push(`capped at ${deps.maxFindings ?? DEFAULT_MAX_FINDINGS} finding(s), dropped ${capped.dropped}`);
-  const findings = capped.kept;
+  if (remainingMs() <= 0) return finish(timedOut(notes, injection));
+  const findings = capFindings(limitNits(confirmed), maxFindings).kept;
   if (injection.length > 0) {
-    return { status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base };
+    return finish({ status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base });
   }
-  return { status: findings.length === 0 ? "clean" : "findings", findings, reason: null, notes, injection, ...base };
+  return finish({ status: findings.length === 0 ? "clean" : "findings", findings, reason: null, notes, injection, ...base });
 }
 
 function plural(count: number, word: string): string {
@@ -710,39 +1102,52 @@ export function renderMarkdown(result: ReviewResult): string {
   return `${lines.join("\n")}\n`;
 }
 
-export function spawnRunner(command: string, args: string[]): Runner {
+export function spawnRunner(command: string, args: string[], strict = false): Runner {
   return (prompt, options) =>
     new Promise<string>((resolvePromise, reject) => {
-      const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], shell: false });
+      const limit = options.timeoutMs ?? TIMEOUT_MS;
+      const detached = process.env.MERGE_GATE_REVIEW_PROCESS_GROUP !== "1";
+      const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], shell: false, detached });
       let stdout = "";
       let stderr = "";
-      let timedOut = false;
+      let settled = false;
+      const settle = (finish: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        finish();
+      };
       const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill("SIGKILL");
-      }, options.timeoutMs ?? TIMEOUT_MS);
-      child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-      child.on("error", (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
+        try {
+          if (detached && child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+          else child.kill("SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+        settle(() => reject(new Error(`${command} timed out after ${limit}ms`)));
+      }, limit);
+      child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+      if (strict) child.stderr.resume();
+      else child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+      child.on("error", (error) => settle(() => reject(error)));
       child.on("close", (code) => {
-        clearTimeout(timer);
-        if (timedOut) reject(new Error(`${command} timed out after ${options.timeoutMs ?? TIMEOUT_MS}ms`));
-        else if (code !== 0) reject(new Error(`${command} exited with ${code}: ${stderr.trim().slice(-500)}`));
-        else resolvePromise(stdout);
+        if (code !== 0) settle(() => reject(new Error(`${command} exited with ${code}${stderr ? `: ${stderr.trim().slice(-500)}` : ""}`)));
+        else settle(() => resolvePromise(stdout));
       });
       child.stdin.on("error", () => undefined);
       child.stdin.end(prompt);
     });
 }
 
-export function claudeArgs(model: string | undefined): string[] {
-  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", "--allowedTools", "Read,Grep,Glob"];
+export function claudeArgs(model: string | undefined, strict = false): string[] {
+  const tools = strict
+    ? ["--safe-mode", "--restricted", "--disallowedTools", "mcp__*", "--tools", "", "--strict-mcp-config"]
+    : ["--allowedTools", "Read,Grep,Glob"];
+  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...tools];
 }
 
-export function codexArgs(model: string | undefined): string[] {
+export function codexArgs(model: string | undefined, strict = false): string[] {
+  if (strict) throw new Error("strict review is unavailable for Codex: codex exec has no supported option to disable every model tool");
   return ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--color", "never", ...(model ? ["--model", model] : []), "-"];
 }
 
@@ -750,10 +1155,22 @@ export function opencodeArgs(model: string | undefined): string[] {
   return ["run", ...(model ? ["--model", model] : [])];
 }
 
-export function makeRunner(family: ScreenerFamily, model: string | undefined): Runner {
-  if (family === "claude") return spawnRunner("claude", claudeArgs(model));
-  if (family === "codex") return spawnRunner("codex", codexArgs(model));
-  return spawnRunner("opencode", opencodeArgs(model));
+export function makeRunner(family: ScreenerFamily, model: string | undefined, strict = false): Runner {
+  return async (prompt, options) => {
+    if (family === "codex") return spawnRunner("codex", codexArgs(model, strict))(prompt, options);
+    if (family === "opencode") {
+      if (strict) throw new Error("strict review is unavailable for OpenCode");
+      return spawnRunner("opencode", opencodeArgs(model))(prompt, options);
+    }
+    const run = spawnRunner("claude", claudeArgs(model, strict), strict);
+    if (!strict) return run(prompt, options);
+    const cwd = mkdtempSync(join(tmpdir(), "agent-review-isolated-"));
+    try {
+      return await run(prompt, { ...options, cwd });
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  };
 }
 
 export function commentIdsFromUrl(output: string): number | null {
@@ -817,11 +1234,11 @@ async function main(argv: string[]): Promise<number> {
   } catch (error) {
     console.error((error as Error).message);
     console.error(
-      "usage: node scripts/agent-review.ts [--pr N | --base origin/main] [--author claude|codex] [--reviewer claude|codex] [--verifier claude|codex] [--model <name>] [--post] [--json] [--no-index]",
+      "usage: node scripts/agent-review.ts [--pr N | --base origin/main] --author claude|codex [--reviewer claude|codex] [--verifier claude|codex] [--model <name>] [--post] [--json] [--no-index]",
     );
     return 2;
   }
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = process.env.MERGE_GATE_CHECKOUT_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const ledgerPath = resolve(root, args.ledger ?? LEDGER_PATH);
   const now = new Date().toISOString();
   if (args.dismiss !== null) {
@@ -838,11 +1255,11 @@ async function main(argv: string[]): Promise<number> {
   const verifierModel = modelFor(args.verifier, null);
   const ledger = readLedger(ledgerPath);
   const result = await runReview(
-    { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier },
+    { root, pr: args.pr, base: args.base, useIndex: !args.noIndex, reviewerName: args.reviewer, verifierName: args.verifier, strict: args.strict },
     {
       exec: readOnlyExec(defaultExec),
-      reviewerRunner: makeRunner(args.reviewer, reviewerModel),
-      verifierRunner: makeRunner(args.verifier, verifierModel),
+      reviewerRunner: makeRunner(args.reviewer, reviewerModel, args.strict),
+      verifierRunner: makeRunner(args.verifier, verifierModel, args.strict),
       reviewerModel,
       verifierModel,
       screener: args.screener ? { runner: makeRunner(args.screener, undefined) } : undefined,
@@ -852,9 +1269,9 @@ async function main(argv: string[]): Promise<number> {
       onAddressed: (entries) => appendLedger(ledgerPath, entries),
     },
   );
+  if (args.strict) rmSync(dirname(ledgerPath), { recursive: true, force: true });
   const body = renderMarkdown(result);
-  const head = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
-  console.log(args.json ? JSON.stringify({ ...result, head }, null, 2) : body);
+  console.log(args.json ? JSON.stringify({ ...result, author: args.author }, null, 2) : body);
   if (args.post && args.pr !== null) {
     const headSha = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
     const outcome = postFindings(args.pr, result, body, { exec: defaultExec, cwd: root, headSha, now });
