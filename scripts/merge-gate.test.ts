@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateGate, REQUIRED_CHECKS, sensitivePaths, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { evaluateGate, parseChangedFiles, REQUIRED_CHECKS, sensitivePaths, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -101,10 +101,25 @@ test("sensitive paths cover grading, learner models, configuration and all scrip
     "pnpm-lock.yaml",
     "apps/api/test/helpers.ts",
     "apps/api/test/helpers/database.ts",
+    "INSTRUCTIONS.md",
+    "apps/api/src/imports/routes.ts",
+    ".agents/skills/verify/SKILL.md",
+    ".claude/skills/verify/SKILL.md",
   ];
   for (const path of paths) {
     assert.equal(sensitivePaths([path]).length, 1, `${path} must require sensitive review`);
   }
+});
+
+test("a rename reports its old path too, so moving a sensitive file out of its directory is still caught", () => {
+  const files = parseChangedFiles("docs/moved.md\tscripts/merge-gate.ts\napps/web/src/a.ts\t\n");
+  assert.deepEqual(files.map((f) => f.path).sort(), ["apps/web/src/a.ts", "docs/moved.md", "scripts/merge-gate.ts"]);
+  assert.equal(sensitivePaths(files.map((f) => f.path)).length, 1);
+});
+
+test("a changed-file list at GitHub's 3000 file cap is refused because it may be truncated", () => {
+  const rows = Array.from({ length: 3000 }, (_, i) => `f${i}.ts\t`).join("\n");
+  assert.throws(() => parseChangedFiles(rows), /3000.*smaller|split/i);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {
