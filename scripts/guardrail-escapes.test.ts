@@ -87,13 +87,15 @@ test("boundary check sees multiline specifiers, computed imports and every JS an
     write("require.ts", 'const x = require(\n  "@learnquest/api");\n');
     write("computed.ts", 'const n = "@learnquest/api";\nconst x = import(n);\n');
     write("concat.ts", 'const x = import("./" + name);\n');
+    write("requirevar.ts", 'const x = require(name);\n');
+    write("requiretemplate.ts", 'const x = require(`@learnquest/${n}`);\n');
     write("d.jsx", 'import x from "@learnquest/api";\n');
     write("a.cjs", 'const x = require("@learnquest/api");\n');
     write("b.mts", 'import x from "@learnquest/api";\n');
     write("c.cts", 'import x from "@learnquest/api";\n');
     assert.deepEqual(
       checkRepo(dir).map((v) => v.file).sort(),
-      ["a.cjs", "b.mts", "c.cts", "computed.ts", "concat.ts", "d.jsx", "multiline.ts", "reexport.ts", "require.ts"].map((n) => `packages/sample/${n}`),
+      ["a.cjs", "b.mts", "c.cts", "computed.ts", "concat.ts", "d.jsx", "multiline.ts", "reexport.ts", "require.ts", "requiretemplate.ts", "requirevar.ts"].map((n) => `packages/sample/${n}`),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

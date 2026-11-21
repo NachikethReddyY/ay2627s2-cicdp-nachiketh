@@ -6,7 +6,7 @@ export type Violation = { file: string; line: number; message: string };
 
 const IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"']+)["']/g;
 
-const NO_COMPUTED_IMPORT = "Do not pass a template literal or variable to import(). Use a string literal so the boundary check can verify the dependency.";
+const NO_COMPUTED_IMPORT = "Do not pass a template literal or variable to import() or require(). Use a string literal so the boundary check can verify the dependency.";
 
 const lineOf = (text: string, index: number) => text.slice(0, index).split("\n").length;
 
@@ -29,7 +29,7 @@ export function checkFile(file: string, text: string): Violation[] {
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
 
-  for (const match of text.matchAll(/\bimport\s*\(\s*(?:(?!["'\s])|(?:"[^"\n]*"|'[^'\n]*')\s*\+)/g)) {
+  for (const match of text.matchAll(/\b(?:import|require)\s*\(\s*(?:(?!["'\s])|(?:"[^"\n]*"|'[^'\n]*')\s*\+)/g)) {
     out.push({ file, line: lineOf(text, match.index), message: NO_COMPUTED_IMPORT });
   }
 
