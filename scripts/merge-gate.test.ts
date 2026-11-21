@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { changedDuringReview, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -91,6 +91,12 @@ test("a PR that does not target main is refused, since the review is pinned to m
   assert.equal(reasons.length, 1);
   assert.match(reasons[0] ?? "", /targets LQ-103-gate-from-base.*retarget.*main/s);
   assert.deepEqual(evaluateGate(green, open), []);
+});
+
+test("a head or base that moves while the review runs is refused", () => {
+  assert.deepEqual(changedDuringReview({ headRefOid: "a", baseRefName: "main" }, { headRefOid: "a", baseRefName: "main" }), []);
+  assert.match(changedDuringReview({ headRefOid: "a", baseRefName: "main" }, { headRefOid: "b", baseRefName: "main" }).join(), /head changed/);
+  assert.match(changedDuringReview({ headRefOid: "a", baseRefName: "main" }, { headRefOid: "a", baseRefName: "other" }).join(), /base changed/);
 });
 
 test("a high revert rate stops self-merging, a low or unknown one does not", () => {

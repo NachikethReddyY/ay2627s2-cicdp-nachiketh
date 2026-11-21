@@ -14,7 +14,7 @@
     "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e",
     "lint:comments": "node scripts/check-comments.ts",
     "agent:verify": "scripts/agent-verify.sh",
-    "agent:merge": "echo \"agent:merge is retired. Run: git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr>\" && exit 2",
+    "agent:merge": "echo \"agent:merge is retired. Run: git fetch origin +refs/heads/main:refs/remotes/origin/main && git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh && git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>\" && exit 2",
     "revert-rate": "node scripts/revert-rate.ts",
     "validator": "node tools/validator/src/cli.ts",
     "validator:up": "node tools/validator/src/cli.ts up",
