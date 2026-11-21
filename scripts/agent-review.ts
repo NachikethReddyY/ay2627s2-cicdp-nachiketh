@@ -140,6 +140,14 @@ export function markdownSection(markdown: string, heading: string): string {
   return (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
 }
 
+export function withoutSection(markdown: string, heading: string): string {
+  const lines = markdown.split("\n");
+  const start = lines.findIndex((l) => /^##\s/.test(l) && l.replace(/^##\s+/, "").trim().toLowerCase().startsWith(heading.toLowerCase()));
+  if (start === -1) return markdown;
+  const end = lines.slice(start + 1).findIndex((l) => /^##\s/.test(l));
+  return [...lines.slice(0, start), ...(end === -1 ? [] : lines.slice(start + 1 + end))].join("\n");
+}
+
 export function parseSkipList(reviewMd: string): string[] {
   const section = markdownSection(reviewMd, "Skip");
   const listed = [...section.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
@@ -657,7 +665,7 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const injection = scanForInjection(diff.files, contextBlocks);
   if (injection.length > 0) notes.push(`flagged-injection: ${injection.join(" | ")}`);
 
-  const prompt = buildReviewPrompt({ files: diff.files, context: contextBlocks, reviewMd, principles });
+  const prompt = buildReviewPrompt({ files: diff.files, context: contextBlocks, reviewMd: input.strict ? withoutSection(reviewMd, "Skip") : reviewMd, principles });
   const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd };
   const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: runnerCwd };
 
