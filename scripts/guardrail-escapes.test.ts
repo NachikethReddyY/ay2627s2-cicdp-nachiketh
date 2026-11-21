@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -37,14 +37,24 @@ test("boundary walker checks JavaScript and template imports", () => {
   }
 });
 
-test("oxlint checks generated-looking files", () => {
+test("oxlint exempts only the exact generated changelog", () => {
   const dir = mkdtempSync(join(tmpdir(), "guardrail-fixture-"));
   try {
-    const file = join(dir, "escape.gen.ts");
-    writeFileSync(file, "debugger;\n");
-    const result = spawnSync(join(root, "node_modules", ".bin", "oxlint"), ["-c", join(root, ".oxlintrc.json"), file], { cwd: root, encoding: "utf8" });
-    assert.notEqual(result.status, 0, result.stdout + result.stderr);
-    assert.match(result.stdout + result.stderr, /no-debugger/);
+    mkdirSync(join(dir, "apps", "web", "src", "pages"), { recursive: true });
+    mkdirSync(join(dir, "packages", "sample"), { recursive: true });
+    copyFileSync(join(root, ".oxlintrc.json"), join(dir, ".oxlintrc.json"));
+    for (const file of [
+      "apps/web/src/pages/changelog-releases.generated.ts",
+      "packages/sample/changelog-releases.generated.ts",
+      "packages/sample/escape.gen.ts",
+    ]) writeFileSync(join(dir, file), "debugger;\n");
+    const result = spawnSync(join(root, "node_modules", ".bin", "oxlint"), ["--format", "json", "apps", "packages"], { cwd: dir, encoding: "utf8" });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    const report = JSON.parse(result.stdout) as { diagnostics: { filename: string }[] };
+    assert.deepEqual(report.diagnostics.map(({ filename }) => filename).sort(), [
+      "packages/sample/changelog-releases.generated.ts",
+      "packages/sample/escape.gen.ts",
+    ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

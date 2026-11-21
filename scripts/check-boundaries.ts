@@ -1,14 +1,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import traverse, { type Scope } from "@babel/traverse";
+import { isIdentifier, isStringLiteral, type Node } from "@babel/types";
+import { parseSource } from "./parse-source.ts";
 
 export type Violation = { file: string; line: number; message: string };
 
-const IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"']+)["']/g;
-
 const NO_COMPUTED_IMPORT = "Do not pass a template literal or variable to import() or require(). Use a string literal so the boundary check can verify the dependency.";
-
-const lineOf = (text: string, index: number) => text.slice(0, index).split("\n").length;
 
 const CLIENT_TO_SERVER =
   "Shared and client code must not depend on the API. Move the shared type or helper into packages/ui-catalog or packages/player-core and import it from there.";
@@ -23,28 +22,106 @@ const NO_DISABLE_GUARDRAIL =
 const NO_BARE_DISABLE =
   "eslint-disable needs a reason: `// eslint-disable-next-line <rule> -- why`. If you cannot give a real reason, fix the code.";
 
+function namespaceHasValue(node: Node): boolean {
+  switch (node.type) {
+    case "TSModuleDeclaration":
+      return !node.declare && node.body != null && namespaceHasValue(node.body);
+    case "TSModuleBlock":
+      return node.body.some(namespaceHasValue);
+    case "ExportNamedDeclaration":
+      return node.declaration != null && namespaceHasValue(node.declaration);
+    case "TSInterfaceDeclaration":
+    case "TSTypeAliasDeclaration":
+      return false;
+    default:
+      return !("declare" in node && node.declare === true);
+  }
+}
+
+function isCommonJsGlobal(node: Node, name: "module" | "require", scope: Scope, extraBindings: WeakMap<Scope, Set<string>>) {
+  if (!isIdentifier(node, { name })) return false;
+  for (let current: Scope | undefined = scope; current; current = current.parent) {
+    if (extraBindings.get(current)?.has(name)) return false;
+    const binding = current.getOwnBinding(name);
+    if (!binding) continue;
+    if (binding.path.isTSImportEqualsDeclaration()) return binding.path.node.importKind === "type";
+    return binding.kind === "unknown" || binding.path.parentPath?.isVariableDeclaration({ declare: true }) === true;
+  }
+  return true;
+}
+
+function dependencyArgument(node: Node, scope: Scope, extraBindings: WeakMap<Scope, Set<string>>) {
+  switch (node.type) {
+    case "ImportDeclaration":
+    case "ExportAllDeclaration":
+    case "ExportNamedDeclaration":
+    case "ImportExpression":
+    case "TSImportType":
+      return node.source ?? undefined;
+    case "TSExternalModuleReference":
+      return node.expression;
+    case "CallExpression":
+    case "OptionalCallExpression": {
+      const callee = node.callee;
+      if (isCommonJsGlobal(callee, "require", scope, extraBindings)) return node.arguments[0] ?? null;
+      if (callee.type !== "MemberExpression" && callee.type !== "OptionalMemberExpression") return undefined;
+      if (!isCommonJsGlobal(callee.object, "module", scope, extraBindings)) return undefined;
+      const isRequire = callee.computed
+        ? isStringLiteral(callee.property, { value: "require" })
+        : isIdentifier(callee.property, { name: "require" });
+      return isRequire ? node.arguments[0] ?? null : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
 export function checkFile(file: string, text: string): Violation[] {
   const out: Violation[] = [];
   const isTest = /\.(test|spec)\.[cm]?[jt]sx?$/.test(file) || file.startsWith("apps/api/test/");
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
 
-  for (const match of text.matchAll(/\b(?:import|require)\s*\(\s*(?:(?!["'\s])|(?:"[^"\n]*"|'[^'\n]*')\s*\+)/g)) {
-    out.push({ file, line: lineOf(text, match.index), message: NO_COMPUTED_IMPORT });
+  const ast = parseSource(file, text);
+  const extraBindings = new WeakMap<Scope, Set<string>>();
+  function addBinding(scope: Scope, name: string) {
+    const names = extraBindings.get(scope) ?? new Set<string>();
+    names.add(name);
+    extraBindings.set(scope, names);
   }
-
-  for (const m of text.matchAll(IMPORT)) {
-    const line = lineOf(text, m.index);
-    const add = (message: string) => out.push({ file, line, message });
-    const spec = m[1];
-    const target = spec.startsWith(".") ? normalize(join(dirname(file), spec)).split("\\").join("/") : spec;
-    if (inPackage && (/^@learnquest\/(api|web)(?![\w-])/.test(target) || /^(apps|\.\.)\//.test(target) || /(^|\/)apps\//.test(target))) {
-      add(`${spec}: ${/api/.test(target) ? CLIENT_TO_SERVER : PACKAGE_TO_APP}`);
-    }
-    if (inApi && !isTest && (/^@learnquest\/web(?![\w-])/.test(target) || /^apps\/web\//.test(target) || /(^|\/)apps\/web\//.test(target))) {
-      add(`${spec}: ${SERVER_TO_CLIENT}`);
-    }
-  }
+  traverse(ast, {
+    TSModuleDeclaration({ node, scope }) {
+      if (isIdentifier(node.id) && namespaceHasValue(node)) addBinding(scope, node.id.name);
+    },
+    ClassMethod({ node, scope }) {
+      if (node.kind !== "constructor") return;
+      for (const parameter of node.params) {
+        if (parameter.type !== "TSParameterProperty") continue;
+        const value = parameter.parameter.type === "AssignmentPattern" ? parameter.parameter.left : parameter.parameter;
+        if (isIdentifier(value)) addBinding(scope, value.name);
+      }
+    },
+  });
+  traverse(ast, {
+    enter({ node, scope }) {
+      const argument = dependencyArgument(node, scope, extraBindings);
+      if (argument === undefined) return;
+      const line = node.loc!.start.line;
+      const add = (message: string) => out.push({ file, line, message });
+      if (argument?.type !== "StringLiteral") {
+        add(NO_COMPUTED_IMPORT);
+        return;
+      }
+      const spec = argument.value;
+      const target = spec.startsWith(".") ? normalize(join(dirname(file), spec)).split("\\").join("/") : spec;
+      if (inPackage && (/^@learnquest\/(api|web)(?![\w-])/.test(target) || /^(apps|\.\.)\//.test(target) || /(^|\/)apps\//.test(target))) {
+        add(`${spec}: ${/api/.test(target) ? CLIENT_TO_SERVER : PACKAGE_TO_APP}`);
+      }
+      if (inApi && !isTest && (/^@learnquest\/web(?![\w-])/.test(target) || /^apps\/web\//.test(target) || /(^|\/)apps\/web\//.test(target))) {
+        add(`${spec}: ${SERVER_TO_CLIENT}`);
+      }
+    },
+  });
 
   text.split("\n").forEach((raw, i) => {
     const line = i + 1;

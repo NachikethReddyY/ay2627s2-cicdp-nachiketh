@@ -72,10 +72,10 @@ Never add a prose rule for something a check can catch. Agents copy the code the
 
 Every correction becomes a check. These run in CI and in `pnpm agent:verify`.
 
-- **Type-aware lint.** `pnpm lint:types` runs oxlint with type-aware rules (oxlint-tsgolint, built on the TypeScript 7 compiler, so it works where typescript-eslint does not). `scripts/tsconfig.json` is type-checked by the same command, so the merge and review tooling is covered. Errors fail. Warnings are a ratchet capped by `--max-warnings` in the root `package.json`; lower the number when you fix some, never raise it.
+- **Type-aware lint.** `pnpm lint:types` runs oxlint with type-aware rules (oxlint-tsgolint, built on the TypeScript 7 compiler, so it works where typescript-eslint does not). Errors fail. Warnings are a ratchet capped by `--max-warnings` in the root `package.json`; lower the number when you fix some, never raise it.
 - **No comments.** `pnpm lint:comments` (also run by `test:scripts`) fails on any comment in TypeScript or JavaScript. Make the code say it: a better name, a smaller function, a test that states the rule. Directives are allowed only with a reason after `--`: `eslint-disable`, `oxlint-disable`, `@ts-expect-error`. `node scripts/check-comments.ts --fix` strips banned comments. Comments rot, agents use them to justify shortcuts, and nothing enforces them.
 - **No new `useEffect` or timers.** `apps/web/eslint.config.js` bans new `useEffect` and imperative timers in product code and limits web imports from the API to `import type { AppRouter } from "@learnquest/api/router"`. Files that already use a pattern sit in `apps/web/eslint.allowlists.js`, which only shrinks. A test fails if a list grows or holds a stale entry.
-- **Boundaries.** `scripts/check-boundaries.ts` keeps `packages/*` from importing apps, keeps the API from importing the web app, and rejects `@ts-ignore`, `@ts-nocheck` and bare `eslint-disable`. It also forbids disabling `no-restricted-syntax` or `no-restricted-imports`. It scans `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs` and `.cjs`, reads imports across line breaks, and rejects `import()` and `require()` whose argument is not a string literal. The only generated file exempt from the comment, boundary and oxlint checks is `apps/web/src/pages/changelog-releases.generated.ts`.
+- **Boundaries.** `scripts/check-boundaries.ts` keeps `packages/*` from importing apps, keeps the API from importing the web app, and rejects `@ts-ignore`, `@ts-nocheck` and bare `eslint-disable`. It also forbids disabling `no-restricted-syntax` or `no-restricted-imports`.
 - **Python.** Ruff in `services/engine` checks for stray `print` (`T20`), security smells (`S`) and bare `noqa` or `type: ignore` (`PGH003`, `PGH004`), and mypy runs `--strict`. `#` comments are banned too: `services/engine/scripts/check_comments.py` (run by pytest) allows only coded directives such as `# noqa: S101` and `# type: ignore[code]`, and `--fix` strips the rest. Docstrings are not comments and stay.
 - **Property tests.** Invariants that must hold for any input (predict before reveal, mastery bounds, seeking) are property tests, not examples. See `*.property.test.ts`.
 - **Revert rate.** `pnpm revert-rate` reports the share of changes on main that were reverted. Watch it; if it rises, tighten the checks.
@@ -89,9 +89,17 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 ## Merging
 
-Agents merge their own PRs. The gate is the trusted command in `docs/agents/merge-gate.md` (run it as the one-liner there; `pnpm agent:merge` is a retired stub that only prints it). The gate runs from the `origin/main` copy of `scripts/merge-gate.ts`, `revert-rate.ts`, `bin.ts`, `agent-review.ts` and `agent-verify.sh`, so a PR cannot weaken the gate that judges it. The PR must be open, not a draft, target `main`, with CI green on the head commit, no conflicts, no requested changes, no unresolved review threads, and `agent-verify.sh` must pass locally. It then squash-merges at the exact head commit. A merge to main deploys to production after CI, so the gate is the only door. It also stops agents from merging while the 30-day revert rate is above 5%; a human merges until it falls. There is no `--skip-local`.
+Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI. The gate stops agent merges while the 30-day revert rate exceeds 5%.
 
-PRs that touch sensitive paths (see `SENSITIVE` in `scripts/merge-gate.ts` and `docs/agents/merge-gate.md`) get a trusted review: the gate runs the base copy of `agent-review.ts` itself with `--strict` on the PR head and needs status `clean`, from a reviewer of a different family than the author. Pass `--author claude|codex` for the model that wrote the change; a hand-written result file is not accepted, and `--review-result` is rejected. The gate also requires every CI job (`lint`, `unit`, `engine`, `deploy-scripts`, `e2e`) to have succeeded, GitHub to report the PR as mergeable, and the local checkout to be the PR head with a clean tree, because `agent-verify.sh` runs on it. Product scope, audience and learner-model changes still need the owner (see Ask first).
+All changed paths require a clean strict review except the named ordinary documents in `ORDINARY_DOCUMENTS` when they are regular non-executable files. Sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Run the bootstrap from your PR checkout using your PR number and author family.
+
+```bash
+git fetch origin +refs/heads/main:refs/remotes/origin/main &&
+  git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh &&
+  git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- 123 --author codex
+```
+
+The operator declares the author family with `--author`, and the gate checks the returned review against that declaration. Authorship depends on the operator’s accuracy. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 

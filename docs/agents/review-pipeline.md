@@ -4,8 +4,10 @@
 
 ## When to run it
 
-- Before merging a sensitive PR. Run the trusted gate command from AGENTS.md (Merging) with `--author claude|codex`, naming the family that wrote the change. The gate runs the review itself from the base copy of `agent-review.ts` and accepts only a clean result for the exact PR head, from a reviewer of a different family than the author. A hand-written result file is not accepted.
+- After this policy lands on main, run the trusted bootstrap with the declared author family before merging a sensitive PR. The gate requires a clean strict review from a different family for the exact PR head and base. [Bootstrap command](../../AGENTS.md#merging)
 - On any non-trivial PR, after local CI is green and before you ask a human.
+
+During rollout, use the policy on current main. The operator is responsible for declaring the author family accurately.
 
 ```bash
 node scripts/agent-review.ts --pr 123 --author claude
@@ -23,6 +25,22 @@ Model inversion: the family that wrote the diff does not review it.
 - `--author codex` makes Claude (model `opus`) the reviewer and Codex the verifier.
 - `--author` is required. Without it the review refuses to run.
 - `--reviewer` and `--verifier` override this. `--model` sets the reviewer's model only.
+
+## Strict mode and large diffs
+
+`--strict` is what the merge gate uses. The bootstrap resolves the local `origin/main` commit once and extracts the gate and reviewer from that commit. The gate classifies paths with renames disabled and runs the strict reviewer against the same three-dot diff between that commit and the PR head. The strict reviewer reads the local checkout, ignores the `REVIEW.md` skip list, and treats an empty diff as incomplete.
+
+Strict mode also pins the base and head commits once at the start and returns them as `base` and `head` (the gate requires both to match), diffs as text with no external diff drivers or renames, returns `incomplete` for any binary change or any finding that cites a file outside the diff, keeps every schema-valid finding because the verifier has no repo access, and stops with `incomplete` after a 40 minute wall-clock deadline. The gate also bounds the parent review process to 42 minutes and fails closed if it times out.
+
+Strict mode requires the whole reviewer reply to be one JSON object (bare, or in a single fenced block with nothing else), is local-commit only (`--strict` with `--pr` is a usage error), requires the literal top-level key `"bugs"` followed by a single JSON array, and implies `--no-index` with a fresh temp ledger. Before the first model call, strict mode scans paths and patches, then scans hunk text across the full change with diff line markers removed. This includes the old and new sides of edits. A match makes the review incomplete. The three-dot diff covers the PR's changes since its merge base. An integration with a later main would need a fresh gate run.
+
+Each strict Claude invocation starts in a fresh empty directory. `--restricted` confines file tools to the working directories, `--tools ""` disables built-ins, and `--strict-mcp-config` with `--disallowedTools "mcp__*"` excludes MCP tools. `--safe-mode` suppresses user and project customizations while preserving ordinary CLI authentication. This is a boundary on model capabilities inside the trusted CLI. The CLI process can still access its own login, and administrator-managed policy still applies. An installation that rejects the flags returns `incomplete`. The flags were checked on macOS with Claude Code 2.1.311. [Claude CLI reference](https://code.claude.com/docs/en/cli-reference) · [Working-directory permissions](https://code.claude.com/docs/en/permissions#working-directories)
+
+Strict Codex reviews return `incomplete` before the CLI starts. In Codex 0.170.0 the host can supply an empty tool allowlist when it creates a thread, but `codex exec` exposes no option for that policy. Its read-only sandbox permits reads, and the shell feature toggle leaves other model-selected tools available. Consequently the sensitive gate can run a strict Claude review for a Codex-authored change. A Claude-authored change that requires strict Codex review stays blocked. [Codex tool policy](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/ext/extension-api/src/tool_policy.rs) · [Exec options](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/exec/src/cli.rs) · [Tool registration](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/core/src/tools/spec_plan.rs)
+
+A diff over 180,000 patch characters is reviewed in chunks: whole files are packed greedily, a larger file is split at hunk boundaries, and each chunk gets the reviewer pass (the default flow adds a verifier pass per finding; strict skips the verifier, so every valid finding blocks the merge). Findings merge across chunks. The result is `clean` only if every chunk is clean. Lockfiles receive the same full strict review; generated churn alone is not evidence of a defect. Findings should identify a concrete dependency change and failure scenario. A single hunk over the limit, or more than 12 chunks, is `incomplete`; split the PR. Chunks are reviewed separately, so a bug that only shows across two chunks can be missed. Each chunk prompt lists every changed path.
+
+After local verification, the gate compares the bootstrap SHA with both local `origin/main` and GitHub main for every PR. Its final GitHub query reads main, the PR head and target, mergeability, review decision, review threads and check results together. For paginated results it requests every page in the final query. A changed cursor or a GitHub query limit stops the gate. Dry runs use the same checks. GitHub's merge call pins the head SHA. The base, checks and reviews can still change between the final read and the merge.
 
 ## What it does
 
@@ -45,6 +63,7 @@ The script adds no attribution line. The agent that posts the comment adds it.
 - `REVIEW.md` and the `AGENTS.md` principles are read from the base ref, never from the branch under review, so a branch cannot change what is skipped or trusted.
 - Text posted to GitHub is sanitized: `@` mentions are defused, URLs are removed and token-like values are redacted.
 - Every comment ends with a line saying bot output is advisory and does not replace CI or the merge gate.
+- The injection scan runs before the screener, reviewer and verifier. It covers added, unchanged and removed lines, and a phrase split across lines. A flagged run makes no model call, so flagged text never reaches a model.
 
 ## What "incomplete" means
 
@@ -55,10 +74,6 @@ Exit codes: 0 clean or nits only, 1 important findings, 2 usage error, 3 incompl
 ## From a T3 Code thread
 
 Start a thread on the branch and run the command with `--author` set to the model that wrote the change. The reviewer CLI runs on this machine under your own login, with read-only tools. Use `--json` when another agent will read the result.
-
-## Strict mode
-
-The merge gate runs `agent-review.ts --strict`. Strict mode ignores the `REVIEW.md` skip list, so every changed file is reviewed, and it starts the model CLIs from an empty temporary directory, so a PR cannot steer them through `AGENTS.md`, `CLAUDE.md` or project settings in its checkout. A diff over 180,000 characters returns `incomplete`, never `clean`. The `incomplete` result also covers flagged injection text and any reviewer failure, and the gate treats it as not clean.
 
 ## Before merge
 

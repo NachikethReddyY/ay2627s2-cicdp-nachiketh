@@ -7,5 +7,5 @@ Use a stack when one change depends on another that is not merged yet. One ticke
 3. Keep each PR small enough to pass its own `agent-verify.sh` and review.
 4. When the PR underneath merges, retarget the next PR to `main`, rebase it, push, and run the gate again. The gate refuses a PR whose base is not `main`, because its review is of the diff against `main`.
 5. Two stacks that edit the same file conflict when the second lands. Do not merge stacks early to avoid it. Say in the PR body which file overlaps, and resolve it by keeping both changes.
-6. A PR that documents a whole stack bases on a throwaway integration branch (the top of the stack with any side stack merged in). If that merge conflicts badly, base the docs PR on the top of the stack and say so.
-7. Never force-push a branch that already has a review result for its head. Any push changes the head and needs a new review.
+6. An integration branch can combine a stack for local testing and documentation; it is disposable and is not a merge target.
+7. Verify and review the new head after each branch update. The gate checks the head commit on the PR.
