@@ -209,6 +209,16 @@ export function diffHeaderPath(line: string): string {
   return /^a\/(.+?) b\/(.+)$/.exec(rest)?.[2] ?? "unknown";
 }
 
+export function binaryPaths(numstatZ: string): string[] {
+  return numstatZ
+    .split("\0")
+    .filter(Boolean)
+    .flatMap((entry) => {
+      const [added, deleted, ...path] = entry.split("\t");
+      return added === "-" && deleted === "-" ? [path.join("\t")] : [];
+    });
+}
+
 export function splitDiff(rawDiff: string): DiffFile[] {
   const chunks = rawDiff.split(/^(?=diff --git )/m).filter((c) => c.startsWith("diff --git "));
   return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n")[0] ?? ""), patch }));
@@ -775,8 +785,15 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     return finish({ status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base });
   }
   if (input.strict) {
-    const opaque = diff.files.filter((f) => /^(Binary files .* differ|GIT binary patch)$/m.test(f.patch)).map((f) => f.path);
-    if (opaque.length > 0) return finish(incomplete(`binary changes cannot be reviewed by a model; a human must review: ${opaque.slice(0, 5).join(", ")}`, notes));
+    let numstat: string;
+    try {
+      numstat = deps.exec("git", ["diff", "--numstat", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", `${baseSha}...${headSha}`], input.root);
+    } catch (error) {
+      return finish(incomplete(`could not check for binary changes: ${(error as Error).message}`, notes));
+    }
+    const opaque = new Set(binaryPaths(numstat));
+    for (const f of diff.files) if (/^(Binary files .* differ|GIT binary patch)$/m.test(f.patch)) opaque.add(f.path);
+    if (opaque.size > 0) return finish(incomplete(`binary or attribute-marked change; a human must review: ${[...opaque].slice(0, 5).join(", ")}`, notes));
   }
   const chunked = chunkDiff(diff.files);
   if ("error" in chunked) return finish(incomplete(`diff is too large to review completely: ${chunked.error}`, notes));

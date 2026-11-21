@@ -639,6 +639,7 @@ const execDiff = (patch: string, calls: string[][] = []) => (file: string, args:
   calls.push([file, ...args]);
   if (file !== "git") return "";
   if (args.includes("rev-parse")) return `sha-${args[args.length - 1]}\n`;
+  if (args.includes("--numstat")) return "";
   return args.includes("diff") ? patch : "";
 };
 const recording = (answer = '{"bugs":[]}') => {

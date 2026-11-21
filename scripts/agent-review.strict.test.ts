@@ -1,5 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { claudeArgs, defaultExec, runReview, splitDiff, type Finding, type ReviewDeps, type Runner } from "./agent-review.ts";
 
 const bug = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -32,8 +36,76 @@ const execDiff = (patch: string, calls: string[][] = []) => (file: string, args:
   calls.push([file, ...args]);
   if (file !== "git") return "";
   if (args.includes("rev-parse")) return `sha-${args[args.length - 1]}\n`;
+  if (args.includes("--numstat")) return "";
   return args.includes("diff") ? patch : "";
 };
+
+const binaryRepo = (): string => {
+  const root = mkdtempSync(join(tmpdir(), "agent-review-binary-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  git("init", "-q", "-b", "main");
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+  git("config", "commit.gpgsign", "false");
+  writeFileSync(join(root, "a.ts"), "export const a = 1;\n");
+  writeFileSync(join(root, "image.bin"), Buffer.from([0, 1, 2, 3]));
+  git("add", ".");
+  git("commit", "-q", "-m", "base");
+  git("checkout", "-q", "-b", "feature");
+  return root;
+};
+const commitAll = (root: string) => {
+  execFileSync("git", ["add", "."], { cwd: root });
+  execFileSync("git", ["commit", "-q", "-m", "change"], { cwd: root });
+};
+const realStrict = (root: string) => ({ ...strictInput, root });
+
+test("a real binary file change is incomplete and names the path", async () => {
+  const root = binaryRepo();
+  try {
+    writeFileSync(join(root, "image.bin"), Buffer.from([0, 9, 9, 9, 0, 255]));
+    commitAll(root);
+    const { prompts, runner } = recording();
+    const result = await runReview(realStrict(root), depsWith(runner, failing("unused")));
+    assert.equal(result.status, "incomplete");
+    assert.match(result.reason ?? "", /binary or attribute-marked change; a human must review/);
+    assert.match(result.reason ?? "", /image\.bin/);
+    assert.equal(prompts.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a text file that .gitattributes marks binary is incomplete", async () => {
+  const root = binaryRepo();
+  try {
+    writeFileSync(join(root, ".gitattributes"), "secret.ts binary\n");
+    writeFileSync(join(root, "secret.ts"), "export const key = 'leak';\n");
+    commitAll(root);
+    const { prompts, runner } = recording();
+    const result = await runReview(realStrict(root), depsWith(runner, failing("unused")));
+    assert.equal(result.status, "incomplete");
+    assert.match(result.reason ?? "", /secret\.ts/);
+    assert.equal(prompts.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an ordinary text change in a real repo is reviewed normally", async () => {
+  const root = binaryRepo();
+  try {
+    writeFileSync(join(root, "a.ts"), "export const a = 2;\n");
+    commitAll(root);
+    const { prompts, runner } = recording();
+    const result = await runReview(realStrict(root), depsWith(runner, failing("unused")));
+    assert.equal(result.status, "clean");
+    assert.equal(prompts.length, 1);
+    assert.ok(prompts[0]?.includes("export const a = 2;"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 const recording = (answer = '{"bugs":[]}') => {
   const prompts: string[] = [];
   const runner: Runner = async (prompt) => {
