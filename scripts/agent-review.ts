@@ -845,7 +845,7 @@ export function scanForInjection(files: DiffFile[], context: ContextBlock[]): st
 export function readOnlyExec(exec: Exec): Exec {
   return (file, args, cwd, strictUtf8) => {
     const writeVerbs = ["comment", "merge", "review", "close", "edit", "reopen", "ready", "create", "delete"];
-    const apiWrites = args.includes("api") && args.some((a) => /^(-X|--method|-f|-F|--field|--raw-field|--input)(=|$)/.test(a));
+    const apiWrites = args.includes("api") && args.some((a) => /^(?:-[XfF]|--(?:method|field|raw-field|input)(?:=|$))/.test(a));
     const writes = file === "gh" && (apiWrites || args.some((a) => writeVerbs.includes(a)));
     if (writes) throw new Error("readers cannot write to GitHub");
     return exec(file, args, cwd, strictUtf8);
@@ -1107,7 +1107,8 @@ export function spawnRunner(command: string, args: string[]): Runner {
   return (prompt, options) =>
     new Promise<string>((resolvePromise, reject) => {
       const limit = options.timeoutMs ?? TIMEOUT_MS;
-      const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], shell: false, detached: true });
+      const detached = process.env.MERGE_GATE_REVIEW_PROCESS_GROUP !== "1";
+      const child = spawn(command, args, { cwd: options.cwd, stdio: ["pipe", "pipe", "pipe"], shell: false, detached });
       let stdout = "";
       let stderr = "";
       let settled = false;
@@ -1119,7 +1120,7 @@ export function spawnRunner(command: string, args: string[]): Runner {
       };
       const timer = setTimeout(() => {
         try {
-          if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+          if (detached && child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
           else child.kill("SIGKILL");
         } catch {
           child.kill("SIGKILL");

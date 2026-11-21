@@ -4,8 +4,18 @@
 
 ## When to run it
 
-- Before merging a sensitive PR. Run the trusted gate command from AGENTS.md (Merging) with `--author claude|codex`, naming the family that wrote the change. The gate runs the review itself from the base copy of `agent-review.ts` and accepts only a clean result for the exact PR head, from a reviewer of a different family than the author. A hand-written result file is not accepted.
+- Before merging a sensitive PR, once this policy lands on main. Run the trusted gate command below with `--author claude|codex`, declaring the family that wrote the change. The gate runs the review itself from the base copy of `agent-review.ts` and accepts only a clean result for the exact PR head, from a reviewer of a different family than the author. A hand-written result file is not accepted.
 - On any non-trivial PR, after local CI is green and before you ask a human.
+
+After this policy lands on main, run the bootstrap from the current main, not the PR checkout:
+
+```bash
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh
+git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>
+```
+
+Until then, current main's gate and policy apply. The author family is an operator declaration; the gate does not authenticate authorship or establish provenance. Operators must declare it accurately.
 
 ```bash
 node scripts/agent-review.ts --pr 123 --author claude
@@ -28,7 +38,7 @@ Model inversion: the family that wrote the diff does not review it.
 
 `--strict` is what the merge gate uses. The bootstrap resolves the local `origin/main` commit once and extracts the gate and reviewer from that commit. The gate classifies paths with renames disabled and runs the strict reviewer against the same three-dot diff between that commit and the PR head. The strict reviewer reads the local checkout, ignores the `REVIEW.md` skip list, and treats an empty diff as incomplete.
 
-Strict mode also pins the base and head commits once at the start and returns them as `base` and `head` (the gate requires both to match), diffs as text with no external diff drivers or renames, returns `incomplete` for any binary change or any finding that cites a file outside the diff, keeps every schema-valid finding because the verifier has no repo access, and stops with `incomplete` after a 40 minute wall-clock deadline.
+Strict mode also pins the base and head commits once at the start and returns them as `base` and `head` (the gate requires both to match), diffs as text with no external diff drivers or renames, returns `incomplete` for any binary change or any finding that cites a file outside the diff, keeps every schema-valid finding because the verifier has no repo access, and stops with `incomplete` after a 40 minute wall-clock deadline. The gate also bounds the parent review process to 42 minutes and fails closed if it times out.
 
 Strict mode requires the whole reviewer reply to be one JSON object (bare, or in a single fenced block with nothing else), is local-commit only (`--strict` with `--pr` is a usage error), requires the literal top-level key `"bugs"` followed by a single JSON array, and implies `--no-index` with a fresh temp ledger. Before the first model call, strict mode scans paths and patches, then scans hunk text across the full change with diff line markers removed. This includes the old and new sides of edits. A match makes the review incomplete. The three-dot diff covers the PR's changes since its merge base. An integration with a later main would need a fresh gate run.
 
@@ -36,7 +46,7 @@ Each strict Claude invocation starts in a fresh empty directory. `--restricted` 
 
 Strict Codex reviews return `incomplete` before the CLI starts. In Codex 0.170.0 the host can supply an empty tool allowlist when it creates a thread, but `codex exec` exposes no option for that policy. Its read-only sandbox permits reads, and the shell feature toggle leaves other model-selected tools available. Consequently the sensitive gate can run a strict Claude review for a Codex-authored change. A Claude-authored change that requires strict Codex review stays blocked. [Codex tool policy](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/ext/extension-api/src/tool_policy.rs) · [Exec options](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/exec/src/cli.rs) · [Tool registration](https://github.com/openai/codex/blob/rust-v0.170.0/codex-rs/core/src/tools/spec_plan.rs)
 
-A diff over 180,000 patch characters is reviewed in chunks: whole files are packed greedily, a larger file is split at hunk boundaries, and each chunk gets the reviewer pass (the default flow adds a verifier pass per finding; strict skips the verifier, so every valid finding blocks the merge). Findings merge across chunks. The result is `clean` only if every chunk is clean. A single hunk over the limit, or more than 12 chunks, is `incomplete`; split the PR. Chunks are reviewed separately, so a bug that only shows across two chunks can be missed. Each chunk prompt lists every changed path.
+A diff over 180,000 patch characters is reviewed in chunks: whole files are packed greedily, a larger file is split at hunk boundaries, and each chunk gets the reviewer pass (the default flow adds a verifier pass per finding; strict skips the verifier, so every valid finding blocks the merge). Findings merge across chunks. The result is `clean` only if every chunk is clean. Lockfiles receive the same full strict review; generated churn alone is not evidence of a defect. Findings should identify a concrete dependency change and failure scenario. A single hunk over the limit, or more than 12 chunks, is `incomplete`; split the PR. Chunks are reviewed separately, so a bug that only shows across two chunks can be missed. Each chunk prompt lists every changed path.
 
 After local verification, the gate compares the bootstrap SHA with both local `origin/main` and GitHub main for every PR. Its final GitHub query reads main, the PR head and target, mergeability, review decision, review threads and check results together. For paginated results it requests every page in the final query. A changed cursor or a GitHub query limit stops the gate. Dry runs use the same checks. GitHub's merge call pins the head SHA. The base, checks and reviews can still change between the final read and the merge.
 

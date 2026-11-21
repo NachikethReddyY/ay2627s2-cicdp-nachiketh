@@ -559,6 +559,7 @@ test("readers cannot write to GitHub but the poster can", () => {
   const reader = readOnlyExec(exec);
   assert.throws(() => reader("gh", ["pr", "comment", "7"], "."));
   assert.throws(() => reader("gh", ["api", "x", "--method", "POST"], "."));
+  for (const option of ["-XPOST", "-fkey=value", "-Fkey=value", "--method=POST", "--field=key=value", "--raw-field=key=value", "--input=file"]) assert.throws(() => reader("gh", ["api", "x", option], "."));
   assert.equal(reader("gh", ["pr", "diff", "7"], "."), "");
   const result = { status: "findings" as const, findings: [finding(), finding({ line: 9 })], reason: null, notes: [], injection: [], reviewer: "a", verifier: "b" };
   const outcome = postFindings("7", result, "body", { exec, cwd: ".", headSha: "abc", now: NOW });

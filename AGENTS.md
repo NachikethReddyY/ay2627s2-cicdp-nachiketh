@@ -91,7 +91,15 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 Agents merge their own PRs. The gate is `pnpm agent:merge <pr>` (`scripts/merge-gate.ts`): the PR must be open and not a draft, CI green on the head commit, no conflicts, no requested changes, no unresolved review threads, and `agent:verify` must pass locally. It then squash-merges at the exact head commit. A merge to main deploys to production after CI, so the gate is the only door. It also stops agents from merging while the 30-day revert rate is above 5%; a human merges until it falls.
 
-PRs that touch sensitive paths (see `SENSITIVE` in `scripts/merge-gate.ts`: auth and tRPC guards, access and env config, the sandbox and practice code, answer and hint routers, migrations, workflows and `.github`, infra, engine prompts, the lint and comment guardrails, the merge, check and review tooling, agent tooling, and the repo rules in AGENTS.md and REVIEW.md) need `--review-result <file>`: the `--json` output of `pnpm review` on the exact PR head commit, with status `clean`. Use a reviewer on a different model than the author (`--author`). The gate also requires every CI job (`lint`, `unit`, `engine`, `deploy-scripts`, `e2e`) to have succeeded, GitHub to report the PR as mergeable, and the local checkout to be the PR head with a clean tree, because `agent:verify` runs on it. Product scope, audience and learner-model changes still need the owner (see Ask first).
+PRs that touch sensitive paths (see `SENSITIVE` in `scripts/merge-gate.ts`) require a clean strict review run by the trusted gate on the exact head and base. Once this policy and bootstrap have landed on main, fetch main and run:
+
+```bash
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh
+git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- <pr> --author <claude|codex>
+```
+
+Until that landing, current main's gate and policy still apply; a PR cannot bootstrap its own new gate. `--author` is the operator's declaration of the author family, not authenticated provenance. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate also requires every CI job (`lint`, `unit`, `engine`, `deploy-scripts`, `e2e`) to have succeeded, GitHub to report the PR as mergeable, and the local checkout to be the PR head with a clean tree. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 

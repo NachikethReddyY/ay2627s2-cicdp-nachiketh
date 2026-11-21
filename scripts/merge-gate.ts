@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -17,7 +17,7 @@ export type PullRequest = {
   statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
 };
 
-export type ReviewResultFile = { status?: string; head?: string; base?: string; author?: string; reviewer?: string };
+export type ReviewResultFile = { status?: string; head?: string; base?: string; author?: string; reviewer?: string; reason?: string };
 export type Family = "claude" | "codex";
 
 export type GateOptions = {
@@ -109,8 +109,9 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
   if (sensitive.length > 0) {
     const review = options.reviewResult;
     const list = sensitive.slice(0, 5).map((s) => `${s.path} (${s.why})`).join(", ");
-    if (!review) reasons.push(`touches sensitive paths: ${list}. The trusted review did not complete; check the reviewer CLI and credentials, then re-run with --author claude|codex`);
-    else if (!options.author || review.author !== options.author || !["claude", "codex"].includes(review.reviewer ?? "") || review.reviewer === review.author) reasons.push("review author or reviewer is invalid or matches; pass the correct --author and re-run the review with the other family");
+    if (!review) reasons.push(`touches sensitive paths: ${list}. The trusted review did not complete; check the reviewer CLI and credentials`);
+    else if (!options.author || review.author !== options.author || !["claude", "codex"].includes(review.reviewer ?? "") || review.reviewer === review.author) reasons.push("trusted review metadata is inconsistent with the declared author or required reviewer family");
+    else if (review.status === "incomplete" && options.author === "claude" && review.reason?.includes("strict review is unavailable for Codex")) reasons.push("strict Codex review is unavailable because its CLI cannot disable all model tools; the review is incomplete");
     else if (review.status !== "clean") reasons.push(`the review result is "${review.status ?? "missing"}", not clean, and the PR touches sensitive paths: ${list}`);
     else if (review.head !== pr.headRefOid) reasons.push("the review result is for a different commit than the PR head; re-run the review");
     else if (!options.currentBase || review.base !== options.currentBase) reasons.push("the review result is for a different base commit than the current origin/main; re-run the gate");
@@ -241,7 +242,7 @@ export function finalPreMergeReasons(reader: FinalReader, before: PullRequestPin
   ];
 }
 
-export function runTrustedReview(script: string, root: string, author: Family, baseSha: string, runner: (file: string, args: string[], root: string) => string): ReviewResultFile | null {
+export async function runTrustedReview(script: string, root: string, author: Family, baseSha: string, runner: (file: string, args: string[], root: string) => string | Promise<string>): Promise<ReviewResultFile | null> {
   const ledgerDir = mkdtempSync(join(tmpdir(), "merge-gate-review-"));
   const asResult = (output: string): ReviewResultFile | null => {
     try {
@@ -252,7 +253,7 @@ export function runTrustedReview(script: string, root: string, author: Family, b
     }
   };
   try {
-    return asResult(runner(process.execPath, [script, "--base", baseSha, "--author", author, "--json", "--no-index", "--strict", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
+    return asResult(await runner(process.execPath, [script, "--base", baseSha, "--author", author, "--json", "--no-index", "--strict", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
   } catch (error) {
     const stdout = (error as { stdout?: unknown }).stdout;
     const result = typeof stdout === "string" ? asResult(stdout) : null;
@@ -262,6 +263,44 @@ export function runTrustedReview(script: string, root: string, author: Family, b
   }
 }
 
+export function trustedReviewProcess(file: string, args: string[], root: string, timeoutMs = 42 * 60 * 1000): Promise<string> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(file, args, { cwd: root, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root, MERGE_GATE_REVIEW_PROCESS_GROUP: "1" }, stdio: ["ignore", "pipe", "ignore"], detached: true });
+    let output = "";
+    let settled = false;
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    const stop = () => {
+      try {
+        if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+    };
+    const timer = setTimeout(() => {
+      stop();
+      finish(() => reject(new Error("trusted review timed out")));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+      if (output.length > 64 * 1024 * 1024) {
+        stop();
+        finish(() => reject(new Error("trusted review output exceeded the limit")));
+      }
+    });
+    child.on("error", () => finish(() => reject(new Error("trusted review failed to start"))));
+    child.on("close", (code) => finish(() => {
+      if (code === 0) resolvePromise(output);
+      else reject(Object.assign(new Error("trusted review failed"), { stdout: output }));
+    }));
+  });
+}
+
 const GITHUB_TOKEN_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
 
 export function verifyEnv(env: NodeJS.ProcessEnv, root: string, ghConfigDir: string): NodeJS.ProcessEnv {
@@ -269,7 +308,7 @@ export function verifyEnv(env: NodeJS.ProcessEnv, root: string, ghConfigDir: str
   return { ...kept, GH_CONFIG_DIR: ghConfigDir, MERGE_GATE_CHECKOUT_ROOT: root };
 }
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   if (argv.includes("--skip-local")) {
     console.error("--skip-local is no longer supported; remove it and run local verification");
     return 2;
@@ -316,8 +355,7 @@ function main(argv: string[]): number {
     const files = changedFiles(root, bootstrapBase, pr.headRefOid);
     if (sensitivePaths(files.map((file) => file.path)).length > 0) {
       const script = resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts");
-      const reviewResult = runTrustedReview(script, root, author, bootstrapBase, (file, args, cwd) =>
-        execFileSync(file, args, { encoding: "utf8", cwd, env: { ...process.env, MERGE_GATE_CHECKOUT_ROOT: root }, maxBuffer: 64 * 1024 * 1024 }));
+      const reviewResult = await runTrustedReview(script, root, author, bootstrapBase, trustedReviewProcess);
       reasons.push(...evaluateGate({ ...pr, files }, { reviewResult, author, unresolvedThreads, currentBase: bootstrapBase }));
       if (reasons.length === 0) reasons.push(...finalPreMergeReasons(reader, pr, bootstrapBase));
     }
@@ -349,4 +387,4 @@ function main(argv: string[]): number {
   return 0;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(main(process.argv.slice(2)));
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main(process.argv.slice(2)).then((code) => process.exit(code));

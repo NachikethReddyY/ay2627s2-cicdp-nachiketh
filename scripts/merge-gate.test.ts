@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baseStillCurrent, changedDuringReview, finalGateReasons, changedFiles, readSnapshot, finalPreMergeReasons, evaluateGate, REQUIRED_CHECKS, runTrustedReview, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
+import { baseStillCurrent, changedDuringReview, finalGateReasons, changedFiles, readSnapshot, finalPreMergeReasons, evaluateGate, REQUIRED_CHECKS, runTrustedReview, trustedReviewProcess, sensitivePaths, verifyEnv, type GateOptions, type PullRequest } from "./merge-gate.ts";
 
 const passing = REQUIRED_CHECKS.map((name) => ({ name, status: "COMPLETED", conclusion: "SUCCESS" }));
 const green: PullRequest = {
@@ -316,7 +316,7 @@ test("base bootstrap executes the base gate even when the checkout changes it", 
   }
 });
 
-test("sensitive reviews reject forged or matching identities", () => {
+test("sensitive reviews reject inconsistent author and reviewer metadata", () => {
   const pr = { ...green, files: [{ path: "scripts/agent-review.ts" }] };
   for (const reviewResult of [
     { status: "clean", head: "abc123" },
@@ -324,6 +324,12 @@ test("sensitive reviews reject forged or matching identities", () => {
     { ...cleanReview, author: "unknown" },
     { ...cleanReview, reviewer: "unknown" },
   ]) assert.ok(evaluateGate(pr, { ...open, reviewResult }).length > 0);
+});
+
+test("strict Codex unavailability and inconsistent metadata have explicit diagnostics", () => {
+  const pr = { ...green, files: [{ path: "scripts/agent-review.ts" }] };
+  assert.match(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, status: "incomplete", reason: "strict review is unavailable for Codex" } }).join(" "), /strict Codex review is unavailable/);
+  assert.match(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, author: "codex" } }).join(" "), /metadata is inconsistent/);
 });
 
 test("the old review result flag is rejected with migration guidance", () => {
@@ -337,9 +343,9 @@ test("bootstrap extracts the base review script", () => {
   assert.match(bootstrap, /for file in [^\n]*agent-review\.ts/);
 });
 
-test("trusted review runner receives the base script, author, the local base ref and an isolated ledger", () => {
+test("trusted review runner receives the base script, author, the local base ref and an isolated ledger", async () => {
   let argsSeen: string[] = [];
-  const result = runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", "base111", (file, args, root) => {
+  const result = await runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", "base111", (file, args, root) => {
     assert.equal(file, process.execPath);
     assert.equal(root, "/checkout");
     argsSeen = args;
@@ -349,25 +355,26 @@ test("trusted review runner receives the base script, author, the local base ref
   assert.deepEqual(argsSeen.slice(0, 8), ["/trusted/agent-review.ts", "--base", "base111", "--author", "claude", "--json", "--no-index", "--strict"]);
   assert.ok(!argsSeen.includes("--pr"));
   assert.match(argsSeen[9] ?? "", /merge-gate-review-/);
-  assert.equal(runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", "base111", () => "invalid"), null);
+  assert.equal(await runTrustedReview("/trusted/agent-review.ts", "/checkout", "claude", "base111", () => "invalid"), null);
 });
 
-test("a review that exits non-zero with findings or incomplete is reported as that result, not as a tooling failure", () => {
+test("a review that exits non-zero with findings or incomplete is reported as that result, not as a tooling failure", async () => {
   const exited = (stdout: string) => () => {
     throw Object.assign(new Error("exit 1"), { stdout });
   };
   const findings = { status: "findings", head: "abc123", author: "claude", reviewer: "codex" };
   const incomplete = { ...findings, status: "incomplete" };
-  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(findings))), findings);
-  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(incomplete))), incomplete);
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited("not json")), null);
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
+  assert.deepEqual(await runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(findings))), findings);
+  assert.deepEqual(await runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(incomplete))), incomplete);
+  assert.equal(await runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited("not json")), null);
+  assert.equal(await runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => { throw new Error("trusted review timed out"); }), null);
+  assert.equal(await runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
     throw new Error("spawn failed");
   }), null);
 });
 
-test("a clean review requires a successful process exit", () => {
-  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
+test("a clean review requires a successful process exit", async () => {
+  assert.equal(await runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
     throw Object.assign(new Error("review process ended unsuccessfully"), { stdout: JSON.stringify(cleanReview) });
   }), null);
 });
@@ -395,4 +402,15 @@ test("bootstrap supplies the review script from the base commit", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+
+test("trusted review process times out without exposing its output", async () => {
+  const start = Date.now();
+  await assert.rejects(trustedReviewProcess(process.execPath, ["-e", "process.stdout.write('private output'); setInterval(() => {}, 1000)"], process.cwd(), 200), (error: Error) => {
+    assert.match(error.message, /timed out/);
+    assert.doesNotMatch(error.message, /private output/);
+    return true;
+  });
+  assert.ok(Date.now() - start < 5000);
 });
