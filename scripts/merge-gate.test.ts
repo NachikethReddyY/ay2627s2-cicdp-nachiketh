@@ -145,6 +145,90 @@ test("sensitive paths cover grading, learner models, configuration and all scrip
   }
 });
 
+const EXPECTED_SENSITIVE = [
+  "apps/api/src/auth/session.ts",
+  "apps/api/src/trpc/trpc.ts",
+  "apps/api/src/some-new-feature/handler.ts",
+  "apps/api/src/index.ts",
+  "services/engine/learnquest_engine/bkt.py",
+  "services/engine/tests/test_bkt.py",
+  "packages/player-core/src/replay.ts",
+  "packages/ui-catalog/src/blocks/quiz/Quiz.tsx",
+  "packages/ui-catalog/src/blocks/game/public.ts",
+  "e2e/tests/smoke.spec.ts",
+  "apps/web/src/player/Player.tsx",
+  "apps/web/vite.config.ts",
+  "apps/web/package.json",
+  "apps/web/eslint.config.js",
+  "docs/agents/README.md",
+  "scripts/merge-gate.ts",
+  "AGENTS.md",
+  "REVIEW.md",
+  "pnpm-lock.yaml",
+  ".github/workflows/ci.yml",
+  "services/engine/uv.lock",
+];
+
+const EXPECTED_NOT_SENSITIVE = [
+  "apps/web/src/pages/Home.tsx",
+  "apps/web/src/components/Button.tsx",
+  "apps/web/src/main.tsx",
+  "apps/web/index.html",
+  "docs/plan.md",
+  "docs/adr/0001-record.md",
+  "docs/feature-map.md",
+  "README.md",
+  "apps/api/README.md",
+  "services/engine/README.md",
+  "packages/ui-catalog/README.md",
+  "apps/api/src/billing/fixtures/sample.json",
+  "services/engine/tests/fixtures/lesson.json",
+  "packages/player-core/src/__fixtures__/timeline.json",
+  "packages/ui-catalog/src/blocks/quiz/__snapshots__/Quiz.test.tsx.snap",
+  "e2e/fixtures/learner.json",
+  "packages/ui-catalog/fixtures/quiz.json",
+];
+
+test("the expected sensitive and not-sensitive path lists stay as agreed", () => {
+  for (const path of EXPECTED_SENSITIVE) {
+    assert.equal(sensitivePaths([path]).length, 1, `${path} must be sensitive`);
+  }
+  for (const path of EXPECTED_NOT_SENSITIVE) {
+    assert.deepEqual(sensitivePaths([path]), [], `${path} must not be sensitive`);
+  }
+});
+
+test("a brand-new file under a deny-by-default directory is sensitive", () => {
+  const fresh = [
+    "apps/api/src/brand-new/thing.ts",
+    "services/engine/learnquest_engine/new_module.py",
+    "services/engine/new_top_level.py",
+    "packages/new-pkg/src/x.ts",
+    "e2e/tests/new.spec.ts",
+  ];
+  for (const path of fresh) {
+    assert.equal(sensitivePaths([path]).length, 1, `${path} must be sensitive by default`);
+  }
+});
+
+test("allowlisted paths do not shadow exact sensitive entries", () => {
+  const stillSensitive = [
+    "apps/web/src/player/x.tsx",
+    "apps/web/src/player/fixtures/steps.json",
+    "apps/web/vite.config.ts",
+    "apps/web/package.json",
+    "apps/web/eslint.config.js",
+    "docs/agents/README.md",
+    "docs/agents/fixtures/x.md",
+    "scripts/README.md",
+    ".github/README.md",
+    "services/engine/learnquest_engine/prompts/fixtures/x.md",
+  ];
+  for (const path of stillSensitive) {
+    assert.equal(sensitivePaths([path]).length, 1, `${path} must stay sensitive`);
+  }
+});
+
 test("a rename reports its old path too, so moving a sensitive file out of its directory is still caught", () => {
   const files = parseChangedFiles("docs/moved.md\tscripts/merge-gate.ts\napps/web/src/a.ts\t\n");
   assert.deepEqual(files.map((f) => f.path).sort(), ["apps/web/src/a.ts", "docs/moved.md", "scripts/merge-gate.ts"]);

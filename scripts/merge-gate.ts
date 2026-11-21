@@ -54,13 +54,11 @@ const SENSITIVE: [RegExp, string][] = [
   [/(^|\/)vercel\.json$/, "deploy config"],
   [/^services\/sandbox\//, "sandbox boundary"],
   [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
-  [/^services\/engine\/learnquest_engine\//, "engine: learner model, answers, credentials"],
   [/^services\/engine\/(pyproject\.toml|scripts\/check_comments\.py)$/, "engine guardrail config"],
   [/^scripts\//, "repo tooling"],
-  [/^e2e\//, "required e2e check"],
-  [/^packages\/player-core\/src\//, "predict-before-reveal replay"],
   [/^packages\/ui-catalog\/src\/index\.ts$/, "public catalogue entry point"],
   [/^apps\/web\/src\/player\//, "client reveal timing"],
+  [/^docs\/agents\//, "agent guides"],
   [/(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker-compose[\w.-]*\.yml|uv\.lock|vite\.config\.ts|neon\.ts)$/, "build inputs and deploy config"],
   [/(^|\/)package\.json$/, "package configuration"],
   [/^pnpm-lock\.yaml$/, "dependency lockfile"],
@@ -69,10 +67,27 @@ const SENSITIVE: [RegExp, string][] = [
   [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
 ];
 
+const NOT_SENSITIVE: RegExp[] = [
+  /^apps\/web\//,
+  /^docs\//,
+  /(^|\/)README\.md$/,
+  /(^|\/)(fixtures|__fixtures__|__snapshots__)\//,
+];
+
+const DENY_BY_DEFAULT: [RegExp, string][] = [
+  [/^apps\/api\/src\//, "API source: authorization, answers, learner scoping"],
+  [/^services\/engine\//, "engine: learner model, answers, credentials"],
+  [/^packages\//, "shared packages: replay, answer stripping, catalogue"],
+  [/^e2e\//, "required e2e check"],
+];
+
 export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
   return paths.flatMap((path) => {
-    const hit = SENSITIVE.find(([re]) => re.test(path));
-    return hit ? [{ path, why: hit[1] }] : [];
+    const exact = SENSITIVE.find(([re]) => re.test(path));
+    if (exact) return [{ path, why: exact[1] }];
+    if (NOT_SENSITIVE.some((re) => re.test(path))) return [];
+    const denied = DENY_BY_DEFAULT.find(([re]) => re.test(path));
+    return denied ? [{ path, why: denied[1] }] : [];
   });
 }
 
