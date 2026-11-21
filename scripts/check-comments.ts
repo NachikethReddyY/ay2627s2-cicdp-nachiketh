@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
 
@@ -96,12 +96,12 @@ function* walk(dir: string): Generator<string> {
 }
 
 export function sourceFiles(root: string): string[] {
-  return ["apps", "packages", "e2e", "scripts", "tools"].flatMap((top) => [...walk(join(root, top))]).filter((file) => relative(root, file).split("\\").join("/") !== "apps/web/src/pages/changelog-releases.generated.ts");
+  return ["apps", "packages", "e2e", "scripts", "tools"].flatMap((top) => [...walk(join(root, top))]).filter((file) => relative(root, file).split(sep).join("/") !== "apps/web/src/pages/changelog-releases.generated.ts");
 }
 
 export function checkRepoComments(root: string): CommentViolation[] {
   return sourceFiles(root).flatMap((abs) => {
-    const file = relative(root, abs).split("\\").join("/");
+    const file = relative(root, abs).split(sep).join("/");
     return findBannedComments(file, readFileSync(abs, "utf8"));
   });
 }
