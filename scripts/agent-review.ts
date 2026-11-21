@@ -64,6 +64,7 @@ export const APPROVAL_DISCLAIMER = "Bot output is advisory. It does not replace 
 export const MAX_DIFF_CHARS = 180_000;
 export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
+const STEERING_REASON ="text in the diff or context tried to steer the reviewer; a human must read this change, and it was not sent to a model";
 
 const ALWAYS_SKIPPED = ["dist/", "build/", ".turbo/", "node_modules/", ".DS_Store"];
 const FALLBACK_SKIPPED = ["pnpm-lock.yaml", "docs/plan.html", "apps/web/src/worlds/registry.gen.ts"];
@@ -533,9 +534,29 @@ export function detectInjection(text: string): string[] {
   return INJECTION_PATTERNS.filter(([re]) => re.test(text)).map(([, why]) => why);
 }
 
+function patchSides(patch: string): { after: string; before: string } {
+  const start = patch.search(/^@@/m);
+  if (start < 0) return { after: "", before: "" };
+  const after: string[] = [];
+  const before: string[] = [];
+  for (const line of patch.slice(start).split("\n")) {
+    if (line.startsWith("+")) after.push(line.slice(1));
+    else if (line.startsWith("-")) before.push(line.slice(1));
+    else if (line.startsWith(" ")) {
+      after.push(line.slice(1));
+      before.push(line.slice(1));
+    }
+  }
+  return { after: after.join("\n"), before: before.join("\n") };
+}
+
 export function scanForInjection(files: DiffFile[], context: ContextBlock[]): string[] {
   const hits: string[] = [];
-  for (const f of files) for (const why of detectInjection(f.patch)) hits.push(`${f.path}: ${why}`);
+  for (const f of files) {
+    const sides = patchSides(f.patch);
+    const whys = new Set([...detectInjection(f.patch), ...detectInjection(sides.after), ...detectInjection(sides.before)]);
+    for (const why of whys) hits.push(`${f.path}: ${why}`);
+  }
   for (const c of context) for (const why of detectInjection(c.text)) hits.push(`${c.label}: ${why}`);
   return hits;
 }
@@ -641,15 +662,17 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
 
   const gathered = gatherContext(diff.files, deps.exec, input.root, input.useIndex);
   notes.push(...gathered.notes);
+  const injection = scanForInjection(diff.files, gathered.blocks);
+  if (injection.length > 0) {
+    notes.push(`flagged-injection: ${injection.join(" | ")}`);
+    return { status: "incomplete", findings: [], reason: STEERING_REASON, notes, injection, ...base };
+  }
   let contextBlocks = gathered.blocks;
   if (deps.screener) {
     const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root });
     contextBlocks = screened.blocks;
     if (screened.note) notes.push(screened.note);
   }
-
-  const injection = scanForInjection(diff.files, contextBlocks);
-  if (injection.length > 0) notes.push(`flagged-injection: ${injection.join(" | ")}`);
 
   const prompt = buildReviewPrompt({ files: diff.files, context: contextBlocks, reviewMd, principles });
   const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs: deps.timeoutMs ?? TIMEOUT_MS, cwd: input.root };
@@ -677,9 +700,6 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   const capped = capFindings(limitNits(filtered.kept), deps.maxFindings ?? DEFAULT_MAX_FINDINGS);
   if (capped.dropped > 0) notes.push(`capped at ${deps.maxFindings ?? DEFAULT_MAX_FINDINGS} finding(s), dropped ${capped.dropped}`);
   const findings = capped.kept;
-  if (injection.length > 0) {
-    return { status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base };
-  }
   return { status: findings.length === 0 ? "clean" : "findings", findings, reason: null, notes, injection, ...base };
 }
 

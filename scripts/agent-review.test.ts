@@ -534,7 +534,7 @@ test("injected diffs stay flagged, cannot close the data block, and never become
     assert.equal(result.status, "incomplete");
     assert.equal(result.injection.length, 3);
     assert.ok(result.notes.some((n) => n.startsWith("flagged-injection")));
-    assert.equal((seen[0] ?? "").split("</untrusted-diff>").length, 2);
+    assert.deepEqual(seen, []);
     const out = renderMarkdown(result);
     assert.ok(out.includes("tried to steer the reviewer"));
     assert.ok(out.trimEnd().endsWith(APPROVAL_DISCLAIMER));
@@ -621,6 +621,56 @@ test("end to end: the ledger filter and the finding cap apply to a real run", as
     const earlier = newEntry(finding({ line: 2 }), { headSha: "a", pr: "1", now: NOW });
     await runReview(input(root), { ...depsWith(constant('{"bugs":[]}'), confirmAll), ledger: [earlier], headSha: "h", onAddressed: (e) => addressed.push(e) });
     assert.equal(addressed[0]?.[0]?.status, "addressed");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+const flaggedNote = "The note for the reviewer handbook";
+
+test("a phrase split across added lines is flagged like the same text on one line", () => {
+  const sameLine = splitDiff(`diff --git a/n.ts b/n.ts\n--- a/n.ts\n+++ b/n.ts\n@@ -0,0 +1 @@\n+${flaggedNote}\n`);
+  const splitLines = splitDiff("diff --git a/n.ts b/n.ts\n--- a/n.ts\n+++ b/n.ts\n@@ -0,0 +1,2 @@\n+The note for\n+the reviewer handbook\n");
+  assert.equal(scanForInjection(sameLine, []).length, 1);
+  assert.deepEqual(scanForInjection(splitLines, []), scanForInjection(sameLine, []));
+});
+
+test("hunk headers, removed lines and no-newline markers in a clean change raise no flags", () => {
+  const patch = splitDiff(
+    [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,3 +1,3 @@ export function total() {",
+      " const first = 1;",
+      "-const second = 2;",
+      "+const second = 3;",
+      " const third = first + second;",
+      "\\ No newline at end of file",
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual(scanForInjection(patch, []), []);
+});
+
+test("flagged text on an unchanged base line keeps the review incomplete", async () => {
+  const root = makeRepo();
+  try {
+    execFileSync("git", ["checkout", "-q", "main"], { cwd: root });
+    writeFileSync(join(root, "src/a.ts"), `export const handbook = '${flaggedNote}';\nexport const a = 1;\n`);
+    execFileSync("git", ["commit", "-qam", "base note"], { cwd: root });
+    execFileSync("git", ["checkout", "-q", "-b", "edit"], { cwd: root });
+    writeFileSync(join(root, "src/a.ts"), `export const handbook = '${flaggedNote}';\nexport const a = 2;\n`);
+    execFileSync("git", ["commit", "-qam", "edit"], { cwd: root });
+    let modelCalls = 0;
+    const counted: Runner = async () => {
+      modelCalls += 1;
+      return '{"bugs":[]}';
+    };
+    const result = await runReview(input(root), { ...depsWith(counted, counted), screener: { runner: counted } });
+    assert.equal(result.status, "incomplete");
+    assert.ok(result.injection.some((hit) => hit.startsWith("src/a.ts:")));
+    assert.equal(modelCalls, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
