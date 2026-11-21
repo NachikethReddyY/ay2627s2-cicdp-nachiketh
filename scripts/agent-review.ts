@@ -33,6 +33,8 @@ export type ReviewResult = {
   injection: string[];
   reviewer: string;
   verifier: string;
+  head?: string;
+  base?: string;
 };
 
 export type DiffFile = { path: string; patch: string; part?: string };
@@ -162,19 +164,64 @@ export function isSkipped(path: string, skipList: string[]): boolean {
   });
 }
 
+const SIMPLE_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, "\\": 92 };
+
+export function unquoteGitPath(quoted: string): string {
+  const inner = quoted.startsWith('"') && quoted.endsWith('"') && quoted.length >= 2 ? quoted.slice(1, -1) : quoted;
+  const bytes: number[] = [];
+  for (let at = 0; at < inner.length; at += 1) {
+    const ch = inner[at] as string;
+    if (ch !== "\\") {
+      bytes.push(...Buffer.from(ch, "utf8"));
+      continue;
+    }
+    const octal = /^[0-7]{1,3}/.exec(inner.slice(at + 1, at + 4));
+    if (octal) {
+      bytes.push(Number.parseInt(octal[0], 8));
+      at += octal[0].length;
+      continue;
+    }
+    const next = inner[at + 1] ?? "";
+    bytes.push(SIMPLE_ESCAPES[next] ?? next.charCodeAt(0));
+    at += 1;
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+function readQuoted(text: string): { token: string; rest: string } | null {
+  if (!text.startsWith('"')) return null;
+  for (let at = 1; at < text.length; at += 1) {
+    if (text[at] === "\\") at += 1;
+    else if (text[at] === '"') return { token: text.slice(0, at + 1), rest: text.slice(at + 1).replace(/^ /, "") };
+  }
+  return null;
+}
+
+export function diffHeaderPath(line: string): string {
+  const rest = line.replace(/^diff --git /, "");
+  const first = readQuoted(rest);
+  const second = first ? (readQuoted(first.rest)?.token ?? first.rest) : null;
+  if (second !== null) return unquoteGitPath(second).replace(/^b\//, "");
+  const quotedSecond = / ("b\/.*")$/.exec(rest);
+  if (quotedSecond?.[1]) return unquoteGitPath(quotedSecond[1]).replace(/^b\//, "");
+  const half = (rest.length - 3) / 2;
+  if (Number.isInteger(half) && rest.slice(0, 2) === "a/" && rest.slice(2, 2 + half) === rest.slice(half + 5)) return rest.slice(2, 2 + half);
+  return /^a\/(.+?) b\/(.+)$/.exec(rest)?.[2] ?? "unknown";
+}
+
 export function splitDiff(rawDiff: string): DiffFile[] {
   const chunks = rawDiff.split(/^(?=diff --git )/m).filter((c) => c.startsWith("diff --git "));
-  return chunks.map((patch) => {
-    const header = /^diff --git a\/(.+?) b\/(.+)$/m.exec(patch);
-    return { path: header?.[2] ?? "unknown", patch };
-  });
+  return chunks.map((patch) => ({ path: diffHeaderPath(patch.split("\n")[0] ?? ""), patch }));
 }
 
 export const defaultExec: Exec = (file, args, cwd) =>
   execFileSync(file, args, { cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 
-export function collectDiff(source: { pr: string | null; base: string }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
-  const raw = source.pr !== null ? exec("gh", ["pr", "diff", source.pr], cwd) : exec("git", ["diff", `${source.base}...HEAD`], cwd);
+export function collectDiff(source: { pr: string | null; base: string; head?: string }, skipList: string[], exec: Exec, cwd: string): CollectedDiff {
+  const raw =
+    source.pr !== null
+      ? exec("gh", ["pr", "diff", source.pr], cwd)
+      : exec("git", ["-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", `${source.base}...${source.head ?? "HEAD"}`], cwd);
   const all = splitDiff(raw);
   return {
     files: all.filter((f) => !isSkipped(f.path, skipList)),
@@ -187,15 +234,8 @@ function joinedLength(files: DiffFile[]): number {
 }
 
 function splitFile(file: DiffFile, limit: number): DiffFile[] | string {
-  const lines = file.patch.split("\n");
-  const firstHunk = lines.findIndex((l) => l.startsWith("@@"));
-  if (firstHunk === -1) return `${file.path} has no hunks and is larger than ${limit} characters; cannot split further`;
-  const header = `${lines.slice(0, firstHunk).join("\n")}\n`;
-  const hunks: string[] = [];
-  for (const line of lines.slice(firstHunk)) {
-    if (line.startsWith("@@")) hunks.push(`${line}\n`);
-    else hunks[hunks.length - 1] += `${line}\n`;
-  }
+  const [header = "", ...hunks] = file.patch.split(/^(?=@@)/m);
+  if (hunks.length === 0) return `${file.path} has no hunks and is larger than ${limit} characters; cannot split further`;
   const oversized = hunks.findIndex((h) => header.length + h.length > limit);
   if (oversized !== -1) return `hunk ${oversized + 1} of ${file.path} is larger than ${limit} characters; cannot split further`;
   const pieces: DiffFile[] = [];
@@ -288,6 +328,7 @@ function describeParts(files: DiffFile[]): string {
 }
 
 export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBlock[]; reviewMd: string; principles: string; chunk?: ChunkLabel; readTools?: boolean }): string {
+  const chunkLabel = input.chunk && input.chunk.total > 1 ? `[chunk ${input.chunk.index} of ${input.chunk.total}: ${describeParts(input.files)}]\n` : "";
   let diff = input.files.map((f) => f.patch).join("\n");
   let truncated = false;
   if (diff.length > MAX_DIFF_CHARS) {
@@ -312,11 +353,11 @@ export function buildReviewPrompt(input: { files: DiffFile[]; context: ContextBl
     `- Every finding needs file, line, failure_scenario and evidence. Omit a finding you cannot prove from the code.`,
     `- Report at most ${MAX_NITS} nits, and none if you have an important finding.`,
     input.readTools === false ? "- You cannot read files; judge only what the diff and context show, and omit any claim you cannot prove from them." : "- You may read files in the repository to check a claim.",
-    input.chunk && input.chunk.total > 1 ? `- This is chunk ${input.chunk.index} of ${input.chunk.total} of a large diff. Other chunks are reviewed separately. This chunk holds: ${describeParts(input.files)}.` : "",
+    chunkLabel ? "- The diff below is one chunk of a larger change; other chunks are reviewed separately. The chunk label is the first line inside the diff block." : "",
     truncated ? "- The diff below was truncated, so say nothing about files you cannot see." : "",
     "",
     "<untrusted-diff>",
-    defang(diff),
+    defang(chunkLabel + diff),
     "</untrusted-diff>",
     "",
     "<untrusted-context>",
@@ -389,7 +430,7 @@ export function toFinding(raw: unknown, allowedFiles: string[] | null): Finding 
   return { file, line, severity, category, summary, failure_scenario: failure, evidence };
 }
 
-export type ParsedFindings = { ok: true; findings: Finding[]; dropped: number } | { ok: false; reason: string };
+export type ParsedFindings = { ok: true; findings: Finding[]; dropped: number; outside: string[] } | { ok: false; reason: string };
 
 export function parseFindings(output: string, allowedFiles: string[] | null = null): ParsedFindings {
   let data: unknown;
@@ -400,11 +441,15 @@ export function parseFindings(output: string, allowedFiles: string[] | null = nu
   }
   const bugs = typeof data === "object" && data !== null ? (data as Record<string, unknown>)["bugs"] : undefined;
   if (!Array.isArray(bugs)) return { ok: false, reason: 'JSON has no "bugs" array' };
-  const findings = bugs.flatMap((b) => {
-    const f = toFinding(b, allowedFiles);
-    return f ? [f] : [];
-  });
-  return { ok: true, findings, dropped: bugs.length - findings.length };
+  const findings: Finding[] = [];
+  const outside: string[] = [];
+  for (const b of bugs) {
+    const f = toFinding(b, null);
+    if (!f) continue;
+    if (allowedFiles && !allowedFiles.includes(f.file)) outside.push(f.file);
+    else findings.push(f);
+  }
+  return { ok: true, findings, dropped: bugs.length - findings.length, outside };
 }
 
 export type Verdict = { verdict: "confirmed" | "refuted"; reason: string };
@@ -667,7 +712,11 @@ export type ReviewDeps = {
   maxFindings?: number;
   headSha?: string;
   onAddressed?: (entries: LedgerEntry[]) => void;
+  deadlineMs?: number;
+  now?: () => number;
 };
+
+export const STRICT_DEADLINE_MS = 40 * 60 * 1000;
 
 export type ReviewInput = { root: string; pr: string | null; base: string; useIndex: boolean; reviewerName: string; verifierName: string; strict?: boolean; runnerCwd?: string };
 
@@ -690,27 +739,49 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     ...base,
   });
 
-  const reviewMd = readFromBase(deps.exec, input.root, input.base, "REVIEW.md");
-  const principles = markdownSection(readFromBase(deps.exec, input.root, input.base, "AGENTS.md"), "Principles");
+  const now = deps.now ?? Date.now;
+  const startedAt = now();
+  const budgetMs = deps.deadlineMs ?? (input.strict ? STRICT_DEADLINE_MS : null);
+  const remainingMs = (): number => (budgetMs === null ? Number.POSITIVE_INFINITY : budgetMs - (now() - startedAt));
+  const timedOut = (notes: string[], injection: string[]): ReviewResult => incomplete("review timed out; split the PR into smaller changes", notes, injection);
+
+  let baseSha: string;
+  let headSha: string;
+  try {
+    baseSha = deps.exec("git", ["rev-parse", "--verify", input.base], input.root).trim();
+    headSha = deps.exec("git", ["rev-parse", "--verify", "HEAD"], input.root).trim();
+  } catch (error) {
+    return incomplete(`could not resolve the base and head commits: ${(error as Error).message}`, []);
+  }
+  if (!baseSha || !headSha) return incomplete("could not resolve the base and head commits", []);
+  const pinned = { head: headSha, base: baseSha };
+  const finish = (result: ReviewResult): ReviewResult => ({ ...result, ...pinned });
+
+  const reviewMd = readFromBase(deps.exec, input.root, baseSha, "REVIEW.md");
+  const principles = markdownSection(readFromBase(deps.exec, input.root, baseSha, "AGENTS.md"), "Principles");
   const skipList = input.strict ? [] : parseSkipList(reviewMd);
   const runnerCwd = input.runnerCwd ?? input.root;
 
   let diff: CollectedDiff;
   try {
-    diff = collectDiff({ pr: input.pr, base: input.base }, skipList, deps.exec, input.root);
+    diff = collectDiff({ pr: input.pr, base: baseSha, head: headSha }, skipList, deps.exec, input.root);
   } catch (error) {
-    return incomplete(`could not collect the diff: ${(error as Error).message}`, []);
+    return finish(incomplete(`could not collect the diff: ${(error as Error).message}`, []));
   }
   const notes: string[] = [];
   if (diff.skipped.length > 0) notes.push(`skipped ${diff.skipped.length} file(s) per REVIEW.md`);
   if (diff.files.length === 0) {
-    if (input.strict) return incomplete("a strict review found no changed files to review; refusing to treat an empty diff as clean", notes);
-    return { status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base };
+    if (input.strict) return finish(incomplete("a strict review found no changed files to review; refusing to treat an empty diff as clean", notes));
+    return finish({ status: "clean", findings: [], reason: null, notes: [...notes, "no reviewable changes"], injection: [], ...base });
+  }
+  if (input.strict) {
+    const opaque = diff.files.filter((f) => /^(Binary files .* differ|GIT binary patch)$/m.test(f.patch)).map((f) => f.path);
+    if (opaque.length > 0) return finish(incomplete(`binary changes cannot be reviewed by a model; a human must review: ${opaque.slice(0, 5).join(", ")}`, notes));
   }
   const chunked = chunkDiff(diff.files);
-  if ("error" in chunked) return incomplete(`diff is too large to review completely: ${chunked.error}`, notes);
+  if ("error" in chunked) return finish(incomplete(`diff is too large to review completely: ${chunked.error}`, notes));
   const chunks = chunked.chunks;
-  if (chunks.length > MAX_CHUNKS) return incomplete(`diff needs ${chunks.length} review chunks, above the limit of ${MAX_CHUNKS}; split the PR into smaller changes`, notes);
+  if (chunks.length > MAX_CHUNKS) return finish(incomplete(`diff needs ${chunks.length} review chunks, above the limit of ${MAX_CHUNKS}; split the PR into smaller changes`, notes));
   if (chunks.length > 1) notes.push(`reviewed in ${chunks.length} chunks`);
 
   if (deps.ledger && deps.onAddressed) {
@@ -720,27 +791,21 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
   }
 
   const timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
-  const reviewerOptions: RunnerOptions = { model: deps.reviewerModel, timeoutMs, cwd: runnerCwd };
-  const verifierOptions: RunnerOptions = { model: deps.verifierModel, timeoutMs, cwd: runnerCwd };
+  const optionsFor = (model: string | undefined): RunnerOptions => ({ model, timeoutMs: Math.max(1, Math.min(timeoutMs, remainingMs())), cwd: runnerCwd });
   const reviewMdForPrompt = input.strict ? withoutSection(reviewMd, "Skip") : reviewMd;
 
   const injection = scanForInjection(diff.files, []);
-  const confirmed: Finding[] = [];
+  const candidates: { finding: Finding; files: DiffFile[] }[] = [];
   const seen = new Set<string>();
-  const keep = (finding: Finding): boolean => {
-    const key = `${finding.file}\u0000${finding.line}\u0000${finding.summary}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  };
   const where = (at: number) => (chunks.length > 1 ? ` on chunk ${at + 1} of ${chunks.length}` : "");
 
   for (const [at, files] of chunks.entries()) {
+    if (remainingMs() <= 0) return finish(timedOut(notes, injection));
     const gathered = gatherContext(files, deps.exec, input.root, input.useIndex);
     for (const note of gathered.notes) if (!notes.includes(note)) notes.push(note);
     let contextBlocks = gathered.blocks;
     if (deps.screener) {
-      const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs, cwd: runnerCwd });
+      const screened = await screenContext(contextBlocks, deps.screener.runner, { model: deps.screener.model, timeoutMs: optionsFor(undefined).timeoutMs, cwd: runnerCwd });
       contextBlocks = screened.blocks;
       if (screened.note) notes.push(screened.note);
     }
@@ -749,32 +814,51 @@ export async function runReview(input: ReviewInput, deps: ReviewDeps): Promise<R
     const prompt = buildReviewPrompt({ files, context: contextBlocks, reviewMd: reviewMdForPrompt, principles, chunk: { index: at + 1, total: chunks.length }, readTools: !input.strict });
     let output: string;
     try {
-      output = await deps.reviewerRunner(prompt, reviewerOptions);
+      output = await deps.reviewerRunner(prompt, optionsFor(deps.reviewerModel));
     } catch (error) {
-      return incomplete(`reviewer failed${where(at)}: ${(error as Error).message}`, notes, injection);
+      if (remainingMs() <= 0) return finish(timedOut(notes, injection));
+      return finish(incomplete(`reviewer failed${where(at)}: ${(error as Error).message}`, notes, injection));
     }
     const parsed = parseFindings(output, files.map((f) => f.path));
-    if (!parsed.ok) return incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection);
+    if (!parsed.ok) return finish(incomplete(`reviewer output unusable${where(at)}: ${parsed.reason}`, notes, injection));
+    if (input.strict && parsed.outside.length > 0) return finish(incomplete(`reviewer cited a file outside the diff${where(at)}: ${[...new Set(parsed.outside)].slice(0, 5).join(", ")}`, notes, injection));
     if (parsed.dropped > 0) notes.push(`dropped ${parsed.dropped} finding(s) missing file, line, failure scenario or evidence`);
-
-    const verified = await verifyFindings(parsed.findings, files, deps.verifierRunner, verifierOptions);
-    if (!verified.ok) return incomplete(verified.reason, notes, injection);
-    if (verified.refuted > 0) notes.push(`verifier refuted ${verified.refuted} finding(s)`);
-    if (verified.styleDropped > 0) notes.push(`verifier dropped ${verified.styleDropped} style, naming or cleanup finding(s)`);
-    confirmed.push(...verified.confirmed.filter(keep));
+    for (const finding of parsed.findings) {
+      const key = [finding.file, finding.line, finding.summary, finding.failure_scenario, finding.evidence].join("\u0000");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ finding, files });
+    }
   }
   if (injection.length > 0) notes.push(`flagged-injection: ${injection.join(" | ")}`);
 
-  const filtered = filterDismissed(confirmed, deps.ledger ?? [], deps.similarity ?? jaccard);
-  if (filtered.dropped > 0) notes.push(`comment filter dropped ${filtered.dropped} finding(s) similar to dismissed ones`);
+  const maxFindings = deps.maxFindings ?? DEFAULT_MAX_FINDINGS;
+  const filteredEarly = filterDismissed(candidates.map((c) => c.finding), deps.ledger ?? [], deps.similarity ?? jaccard);
+  if (filteredEarly.dropped > 0) notes.push(`comment filter dropped ${filteredEarly.dropped} finding(s) similar to dismissed ones`);
+  const shortlist = capFindings(filteredEarly.kept, maxFindings);
+  if (shortlist.dropped > 0) notes.push(`capped at ${maxFindings} finding(s) before verification, dropped ${shortlist.dropped}`);
 
-  const capped = capFindings(limitNits(filtered.kept), deps.maxFindings ?? DEFAULT_MAX_FINDINGS);
-  if (capped.dropped > 0) notes.push(`capped at ${deps.maxFindings ?? DEFAULT_MAX_FINDINGS} finding(s), dropped ${capped.dropped}`);
-  const findings = capped.kept;
-  if (injection.length > 0) {
-    return { status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base };
+  let confirmed: Finding[] = shortlist.kept;
+  if (input.strict) {
+    if (confirmed.length > 0) notes.push("kept: verifier had no repo access");
+  } else {
+    confirmed = [];
+    for (const finding of shortlist.kept) {
+      if (remainingMs() <= 0) return finish(timedOut(notes, injection));
+      const files = candidates.find((c) => c.finding === finding)?.files ?? [];
+      const verified = await verifyFindings([finding], files, deps.verifierRunner, optionsFor(deps.verifierModel));
+      if (!verified.ok) return finish(incomplete(verified.reason, notes, injection));
+      if (verified.refuted > 0) notes.push(`verifier refuted ${verified.refuted} finding(s)`);
+      if (verified.styleDropped > 0) notes.push(`verifier dropped ${verified.styleDropped} style, naming or cleanup finding(s)`);
+      confirmed.push(...verified.confirmed);
+    }
   }
-  return { status: findings.length === 0 ? "clean" : "findings", findings, reason: null, notes, injection, ...base };
+
+  const findings = capFindings(limitNits(confirmed), maxFindings).kept;
+  if (injection.length > 0) {
+    return finish({ status: "incomplete", findings, reason: "text in the diff or context tried to steer the reviewer; a human must read this change", notes, injection, ...base });
+  }
+  return finish({ status: findings.length === 0 ? "clean" : "findings", findings, reason: null, notes, injection, ...base });
 }
 
 function plural(count: number, word: string): string {
@@ -833,7 +917,7 @@ export function spawnRunner(command: string, args: string[]): Runner {
 }
 
 export function claudeArgs(model: string | undefined, strict = false): string[] {
-  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...(strict ? ["--tools", ""] : ["--allowedTools", "Read,Grep,Glob"])];
+  return ["-p", ...(model ? ["--model", model] : []), "--output-format", "text", ...(strict ? ["--tools", "", "--strict-mcp-config"] : ["--allowedTools", "Read,Grep,Glob"])];
 }
 
 export function codexArgs(model: string | undefined): string[] {
@@ -949,8 +1033,7 @@ async function main(argv: string[]): Promise<number> {
   );
   if (runnerCwd) rmSync(runnerCwd, { recursive: true, force: true });
   const body = renderMarkdown(result);
-  const head = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
-  console.log(args.json ? JSON.stringify({ ...result, head, author: args.author }, null, 2) : body);
+  console.log(args.json ? JSON.stringify({ ...result, author: args.author }, null, 2) : body);
   if (args.post && args.pr !== null) {
     const headSha = defaultExec("git", ["rev-parse", "HEAD"], root).trim();
     const outcome = postFindings(args.pr, result, body, { exec: defaultExec, cwd: root, headSha, now });

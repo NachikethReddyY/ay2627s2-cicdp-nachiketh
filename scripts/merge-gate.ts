@@ -17,7 +17,7 @@ export type PullRequest = {
   statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
 };
 
-export type ReviewResultFile = { status?: string; head?: string; author?: string; reviewer?: string };
+export type ReviewResultFile = { status?: string; head?: string; base?: string; author?: string; reviewer?: string };
 export type Family = "claude" | "codex";
 
 export type GateOptions = {
@@ -26,6 +26,7 @@ export type GateOptions = {
   unresolvedThreads: number;
   revertRate?: number | null;
   localHead?: string | null;
+  currentBase?: string | null;
   worktreeClean?: boolean;
 };
 
@@ -111,6 +112,7 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
     else if (!options.author || review.author !== options.author || !["claude", "codex"].includes(review.reviewer ?? "") || review.reviewer === review.author) reasons.push("review author or reviewer is invalid or matches; pass the correct --author and re-run the review with the other family");
     else if (review.status !== "clean") reasons.push(`the review result is "${review.status ?? "missing"}", not clean, and the PR touches sensitive paths: ${list}`);
     else if (review.head !== pr.headRefOid) reasons.push("the review result is for a different commit than the PR head; re-run the review");
+    else if (!options.currentBase || review.base !== options.currentBase) reasons.push("the review result is for a different base commit than the current origin/main; re-run the gate");
   }
   return reasons;
 }
@@ -230,6 +232,7 @@ function main(argv: string[]): number {
       unresolvedThreads: unresolvedThreadCount(number),
       revertRate,
       localHead: git(["rev-parse", "HEAD"], root).trim(),
+      currentBase: git(["rev-parse", REVIEW_BASE_REF], root).trim(),
       worktreeClean: git(["status", "--porcelain"], root).trim() === "",
     },
   );

@@ -17,8 +17,16 @@ const green: PullRequest = {
   files: [{ path: "apps/web/src/pages/Home.tsx" }],
   statusCheckRollup: passing,
 };
-const open: GateOptions = { reviewResult: null, author: "claude", unresolvedThreads: 0, localHead: "abc123", worktreeClean: true };
-const cleanReview = { status: "clean", head: "abc123", author: "claude", reviewer: "codex" };
+const open: GateOptions = { reviewResult: null, author: "claude", unresolvedThreads: 0, localHead: "abc123", worktreeClean: true, currentBase: "base111" };
+const cleanReview = { status: "clean", head: "abc123", base: "base111", author: "claude", reviewer: "codex" };
+
+test("a sensitive review must be pinned to the base commit the PR will merge into", () => {
+  const pr = { ...green, files: [{ path: ".github/workflows/ci.yml" }] };
+  assert.deepEqual(evaluateGate(pr, { ...open, reviewResult: cleanReview }), []);
+  assert.equal(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, base: "moved" } }).length, 1);
+  assert.equal(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, base: undefined } }).length, 1);
+  assert.equal(evaluateGate(pr, { ...open, currentBase: undefined, reviewResult: cleanReview }).length, 1);
+});
 
 test("a green ordinary PR passes the gate", () => {
   assert.deepEqual(evaluateGate(green, open), []);

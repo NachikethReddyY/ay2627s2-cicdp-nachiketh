@@ -176,7 +176,7 @@ test("collectDiff uses gh for a PR and git for a base", () => {
   collectDiff({ pr: null, base: "origin/dev" }, [], exec, ".");
   assert.deepEqual(calls, [
     ["gh", "pr", "diff", "7"],
-    ["git", "diff", "origin/dev...HEAD"],
+    ["git", "-c", "core.quotepath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "origin/dev...HEAD"],
   ]);
 });
 
@@ -633,9 +633,14 @@ const sizedPatch = (path: string, total: number) => {
   const head = `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${HUNK_HEAD}+`;
   return `${head}${"x".repeat(total - head.length - 1)}\n`;
 };
-const hunk = (size: number, mark: string) => `@@ -1 +1 @@\n+${mark}${"y".repeat(size - 8 - mark.length)}\n`;
+const hunk = (size: number, mark: string) => `@@ -1 +1 @@\n+${mark}${"y".repeat(size - 14 - mark.length)}\n`;
 const multiHunkPatch = (path: string, hunks: string[]) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${hunks.join("")}`;
-const execDiff = (patch: string) => (file: string, args: string[]) => (file === "git" && args[0] === "diff" ? patch : "");
+const execDiff = (patch: string, calls: string[][] = []) => (file: string, args: string[]) => {
+  calls.push([file, ...args]);
+  if (file !== "git") return "";
+  if (args.includes("rev-parse")) return `sha-${args[args.length - 1]}\n`;
+  return args.includes("diff") ? patch : "";
+};
 const recording = (answer = '{"bugs":[]}') => {
   const prompts: string[] = [];
   const runner: Runner = async (prompt) => {
@@ -738,7 +743,7 @@ test("strict review of an empty diff is incomplete, not clean", async () => {
 });
 
 test("strict Claude runs get no tools while the default flow keeps its read tools", () => {
-  assert.deepEqual(claudeArgs("opus", true).slice(-2), ["--tools", ""]);
+  assert.deepEqual(claudeArgs("opus", true).slice(-3), ["--tools", "", "--strict-mcp-config"]);
   assert.ok(!claudeArgs("opus", true).includes("--allowedTools"));
   assert.ok(claudeArgs("opus").includes("--allowedTools"));
 });
