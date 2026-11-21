@@ -59,6 +59,9 @@ const SENSITIVE: [RegExp, string][] = [
   [/^packages\/ui-catalog\/src\/index\.ts$/, "public catalogue entry point"],
   [/^apps\/web\/src\/player\//, "client reveal timing"],
   [/^docs\/agents\//, "agent guides"],
+  [/^apps\/web\/scripts\//, "runs during the web build"],
+  [/^spikes\//, "run by the required engine check"],
+  [/^apps\/web\/src\/blocks\/game\//, "game hint request and timing"],
   [/(^|\/)(Dockerfile[\w.-]*|\.dockerignore|docker-compose[\w.-]*\.yml|uv\.lock|vite\.config\.ts|neon\.ts)$/, "build inputs and deploy config"],
   [/(^|\/)package\.json$/, "package configuration"],
   [/^pnpm-lock\.yaml$/, "dependency lockfile"],
@@ -71,7 +74,7 @@ const NOT_SENSITIVE: RegExp[] = [
   /^apps\/web\//,
   /^docs\//,
   /(^|\/)README\.md$/,
-  /(^|\/)(fixtures|__fixtures__|__snapshots__)\//,
+  /(^|\/)(fixtures|__fixtures__|__snapshots__)\/.*\.(json|txt|md|csv|snap|png|jpg|svg|ya?ml)$/,
 ];
 
 const DENY_BY_DEFAULT: [RegExp, string][] = [
@@ -162,10 +165,10 @@ export function parseChangedFiles(tsv: string): { path: string }[] {
   return paths.map((path) => ({ path }));
 }
 
-export const CHANGED_FILES_JQ = '.[] | [.filename, (.previous_filename // "")] | @tsv';
+export const CHANGED_FILES_JQ = '.files[] | [.filename, (.previous_filename // "")] | @tsv';
 
-function changedFiles(number: string): { path: string }[] {
-  const out = gh(["api", `repos/{owner}/{repo}/pulls/${number}/files`, "--paginate", "--jq", CHANGED_FILES_JQ]);
+function changedFiles(headRefOid: string): { path: string }[] {
+  const out = gh(["api", `repos/{owner}/{repo}/compare/main...${headRefOid}`, "--paginate", "--jq", CHANGED_FILES_JQ]);
   return parseChangedFiles(out);
 }
 
@@ -229,7 +232,7 @@ function main(argv: string[]): number {
   ) as Omit<PullRequest, "files">;
   const revertRate = computeRevertRate(parseLog(readFirstParentLog(root)), Date.now(), 30).overall.rate;
   const reasons = evaluateGate(
-    { ...pr, files: changedFiles(number) },
+    { ...pr, files: changedFiles(pr.headRefOid) },
     {
       reviewResult,
       unresolvedThreads: unresolvedThreadCount(number),

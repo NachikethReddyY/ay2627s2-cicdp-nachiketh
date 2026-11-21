@@ -167,6 +167,14 @@ const EXPECTED_SENSITIVE = [
   "pnpm-lock.yaml",
   ".github/workflows/ci.yml",
   "services/engine/uv.lock",
+  "apps/web/scripts/build-assets.mjs",
+  "spikes/litellm-advisory/check.py",
+  "apps/web/src/blocks/game/api.ts",
+  "apps/web/src/blocks/game/Shell.tsx",
+  "services/engine/tests/fixtures/test_x.py",
+  "packages/ui-catalog/fixtures/setup.ts",
+  "e2e/fixtures/helper.js",
+  "e2e/__fixtures__/run.sh",
 ];
 
 const EXPECTED_NOT_SENSITIVE = [
@@ -186,6 +194,10 @@ const EXPECTED_NOT_SENSITIVE = [
   "packages/player-core/src/__fixtures__/timeline.json",
   "packages/ui-catalog/src/blocks/quiz/__snapshots__/Quiz.test.tsx.snap",
   "e2e/fixtures/learner.json",
+  "e2e/fixtures/avatar.png",
+  "services/engine/tests/fixtures/lesson.yaml",
+  "packages/ui-catalog/fixtures/notes.txt",
+  "packages/ui-catalog/src/__snapshots__/a.snap",
   "packages/ui-catalog/fixtures/quiz.json",
 ];
 
@@ -237,6 +249,7 @@ test("a rename reports its old path too, so moving a sensitive file out of its d
 
 test("the changed-files query asks GitHub for the old name of a renamed file", () => {
   assert.match(CHANGED_FILES_JQ, /previous_filename/);
+  assert.match(CHANGED_FILES_JQ, /^\.files\[\]/);
 });
 
 test("a changed-file list one under GitHub's cap is accepted", () => {
