@@ -176,6 +176,14 @@ test("sensitive paths need a clean review of this exact head commit", () => {
   assert.equal(evaluateGate(pr, { ...open, reviewResult: { ...cleanReview, head: "other" } }).length, 1);
 });
 
+test("each dependency lockfile requires strict review by itself", () => {
+  for (const path of ["pnpm-lock.yaml", "services/engine/uv.lock"]) {
+    const pr = { ...green, files: [{ path }] };
+    assert.match(evaluateGate(pr, open).join("\n"), /touches sensitive paths/, path);
+    assert.deepEqual(evaluateGate(pr, { ...open, reviewResult: cleanReview }), []);
+  }
+});
+
 test("sensitive path classes include auth guards, guardrails and repo rules", () => {
   const paths = [
     "apps/api/drizzle/0001_x.sql",
@@ -349,10 +357,18 @@ test("a review that exits non-zero with findings or incomplete is reported as th
     throw Object.assign(new Error("exit 1"), { stdout });
   };
   const findings = { status: "findings", head: "abc123", author: "claude", reviewer: "codex" };
+  const incomplete = { ...findings, status: "incomplete" };
   assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(findings))), findings);
+  assert.deepEqual(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited(JSON.stringify(incomplete))), incomplete);
   assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", exited("not json")), null);
   assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
     throw new Error("spawn failed");
+  }), null);
+});
+
+test("a clean review requires a successful process exit", () => {
+  assert.equal(runTrustedReview("/t/agent-review.ts", "/c", "claude", "b", () => {
+    throw Object.assign(new Error("review process ended unsuccessfully"), { stdout: JSON.stringify(cleanReview) });
   }), null);
 });
 

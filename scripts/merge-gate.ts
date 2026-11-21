@@ -50,6 +50,7 @@ const SENSITIVE: [RegExp, string][] = [
   [/^services\/sandbox\//, "sandbox boundary"],
   [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
   [/^services\/engine\/(pyproject\.toml|scripts\/check_comments\.py)$/, "engine guardrail config"],
+  [/^(pnpm-lock\.yaml|services\/engine\/uv\.lock)$/, "dependency lockfile"],
   [/^scripts\/(merge-gate|agent-|check-|revert-rate|deploy|render|assert-main|smoke)/, "merge, check or deploy tooling"],
   [/^tools\/(validator|repo-index)\//, "agent tooling"],
   [/^(\.oxlintrc\.json|package\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
@@ -254,7 +255,8 @@ export function runTrustedReview(script: string, root: string, author: Family, b
     return asResult(runner(process.execPath, [script, "--base", baseSha, "--author", author, "--json", "--no-index", "--strict", "--ledger", join(ledgerDir, "ledger.jsonl")], root));
   } catch (error) {
     const stdout = (error as { stdout?: unknown }).stdout;
-    return typeof stdout === "string" ? asResult(stdout) : null;
+    const result = typeof stdout === "string" ? asResult(stdout) : null;
+    return result?.status === "findings" || result?.status === "incomplete" ? result : null;
   } finally {
     rmSync(ledgerDir, { recursive: true, force: true });
   }
