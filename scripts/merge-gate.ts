@@ -6,6 +6,8 @@ import { computeRevertRate, parseLog, readFirstParentLog } from "./revert-rate.t
 import { fileURLToPath } from "node:url";
 import { bin } from "./bin.ts";
 
+type ChangedFile = { path: string; oldMode: string; newMode: string };
+
 export type PullRequest = {
   state: string;
   isDraft: boolean;
@@ -13,7 +15,7 @@ export type PullRequest = {
   baseRefName: string;
   reviewDecision: string | null;
   mergeable: string;
-  files: { path: string }[];
+  files: ChangedFile[];
   statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string; state?: string }[];
 };
 
@@ -33,35 +35,22 @@ export type GateOptions = {
 export const REVERT_RATE_LIMIT = 0.05;
 export const REQUIRED_CHECKS = ["lint", "unit", "engine", "deploy-scripts", "e2e"];
 
-const SENSITIVE: [RegExp, string][] = [
-  [/^apps\/api\/src\/auth\//, "auth"],
-  [/^apps\/api\/src\/trpc\//, "auth guards"],
-  [/^apps\/api\/src\/(access|env)\.ts$/, "access control or secrets config"],
-  [/^apps\/api\/src\/config\//, "config and limits"],
-  [/^apps\/api\/src\/(sandbox|parts|grading|safety)\//, "practice run or answer handling"],
-  [/^apps\/api\/src\/(attempts|lessons)\/router\.ts$/, "answer and hint exposure"],
-  [/^apps\/api\/drizzle\//, "database migration"],
-  [/^apps\/api\/drizzle\.config\.ts$/, "database migration"],
-  [/^\.github\//, "workflow or repo policy"],
-  [/^infra\//, "infra"],
-  [/^docker-compose.*\.yml$/, "infra"],
-  [/(^|\/)([^/]*\.)?Dockerfile$/, "infra"],
-  [/(^|\/)vercel\.json$/, "deploy config"],
-  [/^services\/sandbox\//, "sandbox boundary"],
-  [/^services\/engine\/learnquest_engine\/prompts\//, "engine prompt"],
-  [/^services\/engine\/(pyproject\.toml|scripts\/check_comments\.py)$/, "engine guardrail config"],
-  [/^(pnpm-lock\.yaml|services\/engine\/uv\.lock)$/, "dependency lockfile"],
-  [/^scripts\/(merge-gate|agent-|check-|revert-rate|deploy|render|assert-main|smoke)/, "merge, check or deploy tooling"],
-  [/^tools\/(validator|repo-index)\//, "agent tooling"],
-  [/^(\.oxlintrc\.json|package\.json|pnpm-workspace\.yaml|turbo\.json|AGENTS\.md|CLAUDE\.md|REVIEW\.md)$/, "repo rules or workspace config"],
-  [/^apps\/web\/(eslint\.config\.js|eslint\.allowlists\.js)$/, "lint guardrail"],
-  [/^\.claude\//, "agent skills"],
-];
+const ORDINARY_DOCUMENTS = new Set([
+  "README.md",
+  "docs/plan.md",
+  "docs/feature-map.md",
+  "docs/adr/0001-object-storage.md",
+  "docs/adr/0002-visual-trust-model.md",
+  "docs/adr/0003-engine-boundary.md",
+  "docs/adr/0004-coverage-gate.md",
+]);
 
-export function sensitivePaths(paths: string[]): { path: string; why: string }[] {
-  return paths.flatMap((path) => {
-    const hit = SENSITIVE.find(([re]) => re.test(path));
-    return hit ? [{ path, why: hit[1] }] : [];
+export function sensitivePaths(files: ChangedFile[]): ChangedFile[] {
+  return files.filter(({ path, oldMode, newMode }) => {
+    const regularDocument = (oldMode === "100644" && newMode === "100644")
+      || (oldMode === "000000" && newMode === "100644")
+      || (oldMode === "100644" && newMode === "000000");
+    return !(regularDocument && ORDINARY_DOCUMENTS.has(path));
   });
 }
 
@@ -105,10 +94,10 @@ export function evaluateGate(pr: PullRequest, options: GateOptions): string[] {
     reasons.push(`revert rate is ${pct}% over the last 30 days, above ${REVERT_RATE_LIMIT * 100}%. Agents stop self-merging until it falls; a human merges`);
   }
 
-  const sensitive = sensitivePaths(pr.files.map((f) => f.path));
+  const sensitive = sensitivePaths(pr.files);
   if (sensitive.length > 0) {
     const review = options.reviewResult;
-    const list = sensitive.slice(0, 5).map((s) => `${s.path} (${s.why})`).join(", ");
+    const list = sensitive.slice(0, 5).map((s) => JSON.stringify(s.path)).join(", ");
     if (!review) reasons.push(`touches sensitive paths: ${list}. The trusted review did not complete. Check the reviewer CLI and the review process limits`);
     else if (!options.author || review.author !== options.author || !["claude", "codex"].includes(review.reviewer ?? "") || review.reviewer === review.author) reasons.push("trusted review metadata is inconsistent with the declared author or required reviewer family");
     else if (review.status === "incomplete" && options.author === "claude" && review.reason?.includes("strict review is unavailable for Codex")) reasons.push("strict Codex review is unavailable because its CLI cannot disable all model tools; the review is incomplete");
@@ -124,12 +113,56 @@ function gh(args: string[]): string {
 }
 
 function git(args: string[], cwd: string): string {
-  return execFileSync(bin("git"), args, { encoding: "utf8", cwd });
+  return execFileSync(bin("git"), args, { encoding: "utf8", cwd, maxBuffer: 256 * 1024 * 1024 });
 }
 
-export function changedFiles(root: string, base: string, head: string): { path: string }[] {
-  const out = git(["diff", "--name-only", "-z", "--no-ext-diff", "--no-textconv", "--no-renames", "--ignore-submodules=none", `${base}...${head}`, "--"], root);
-  return out.split("\0").filter(Boolean).map((path) => ({ path }));
+const BASE_REF = "refs/remotes/origin/main";
+
+export function parseRawDiffZ(out: string): ChangedFile[] {
+  const fields = out.split("\0");
+  if (fields.pop() !== "") throw new Error("incomplete raw Git diff");
+  const files: ChangedFile[] = [];
+  for (let i = 0; i < fields.length; ) {
+    const header = /^:([0-7]{6}) ([0-7]{6}) [0-9a-f]+ [0-9a-f]+ (R\d+|C\d+|[ADMT])$/.exec(fields[i++]);
+    if (!header) throw new Error("unrecognized raw Git diff record");
+    const [, oldMode, newMode, status] = header;
+    const pathCount = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
+    for (let n = 0; n < pathCount; n++) {
+      const path = fields[i++];
+      if (!path) throw new Error("missing path in raw Git diff");
+      files.push({ path, oldMode, newMode });
+    }
+  }
+  return files;
+}
+
+export function assertBaseIsCurrent(localSha: string, remoteSha: string): void {
+  const fix = "run `git fetch origin +refs/heads/main:refs/remotes/origin/main` and re-run the gate";
+  if (!localSha.trim() || !remoteSha.trim()) throw new Error(`could not read both the local and GitHub main commits; ${fix}`);
+  if (localSha.trim() !== remoteSha.trim()) {
+    throw new Error(`local origin/main (${localSha.trim().slice(0, 8)}) is not GitHub main (${remoteSha.trim().slice(0, 8)}), so the diff could hide a revert; ${fix}`);
+  }
+}
+
+type GitRunner = (args: string[], cwd: string) => string;
+
+export function changedFilesFromGit(root: string, headRefOid: string, base: string = BASE_REF, run: GitRunner = git): ChangedFile[] {
+  try {
+    run(["cat-file", "-e", `${headRefOid}^{commit}`], root);
+  } catch {
+    throw new Error(`the PR head ${headRefOid.slice(0, 8)} is not in the local repository; run \`git fetch origin\` and check out the PR head`);
+  }
+  return parseRawDiffZ(run(["diff", "--raw", "-z", "-M", "--find-copies-harder", "--ignore-submodules=none", `${base}...${headRefOid}`], root));
+}
+
+export function changedFilesAgainstFreshMain(root: string, headRefOid: string, remoteMainSha: string, run: GitRunner = git): ChangedFile[] {
+  const base = run(["rev-parse", BASE_REF], root).trim();
+  assertBaseIsCurrent(base, remoteMainSha);
+  return changedFilesFromGit(root, headRefOid, base, run);
+}
+
+export function changedFiles(root: string, base: string, head: string): ChangedFile[] {
+  return changedFilesFromGit(root, head, base);
 }
 
 type Snapshot = { pr: Omit<PullRequest, "files">; remoteMain: string; unresolvedThreads: number };
@@ -358,7 +391,7 @@ async function main(argv: string[]): Promise<number> {
   reasons.push(...evaluateGate({ ...pr, files: [] }, { reviewResult: null, unresolvedThreads, localHead, worktreeClean, revertRate }));
   if (reasons.length === 0) {
     const files = changedFiles(root, bootstrapBase, pr.headRefOid);
-    if (sensitivePaths(files.map((file) => file.path)).length > 0) {
+    if (sensitivePaths(files).length > 0) {
       const script = resolve(dirname(fileURLToPath(import.meta.url)), "agent-review.ts");
       const reviewResult = await runTrustedReview(script, root, author, bootstrapBase, trustedReviewProcess);
       reasons.push(...evaluateGate({ ...pr, files }, { reviewResult, author, unresolvedThreads, currentBase: bootstrapBase }));

@@ -91,7 +91,7 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI. The gate stops agent merges while the 30-day revert rate exceeds 5%.
 
-PRs that touch sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Once this policy lands on main, run the bootstrap from your PR checkout using your PR number and author family.
+All changed paths require a clean strict review except the named ordinary documents in `ORDINARY_DOCUMENTS` when they are regular non-executable files. Sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Once this policy lands on main, run the bootstrap from your PR checkout using your PR number and author family.
 
 ```bash
 git fetch origin +refs/heads/main:refs/remotes/origin/main &&
