@@ -75,6 +75,34 @@ test("CommonJS loading is distinct from unrelated require methods", () => {
   assert.deepEqual(checkFile(file, references).map(({ line }) => line), [1, 2]);
 });
 
+test("lesson parameters and local variables shadow only their own CommonJS references", () => {
+  const lesson = [
+    'function teach(module: { require(topic: string): void }, topic: string) {',
+    '  module.require(topic);',
+    '  module["require"](topic);',
+    '  const require = (title: string) => title;',
+    '  require(topic);',
+    '  return import(topic);',
+    '}',
+    'module.require(topic);',
+    'module["require"](topic);',
+    'require(topic);',
+  ].join("\n");
+  assert.deepEqual(checkFile("packages/sample/lesson.cts", lesson).map(({ line }) => line), [6, 8, 9, 10]);
+});
+
+test("CommonJS calls distinguish TypeScript declarations from imported values", () => {
+  const file = "packages/sample/lesson.cts";
+  const declarations = [
+    'import type { module } from "./lesson-types";',
+    'declare const require: NodeJS.Require;',
+    'module.require(topic);',
+    'require(topic);',
+  ].join("\n");
+  assert.deepEqual(checkFile(file, declarations).map(({ line }) => line), [3, 4]);
+  assert.deepEqual(checkFile(file, 'import module = require("./lesson"); module.require(topic);'), []);
+});
+
 test("the guardrail rules cannot be disabled", () => {
   assert.equal(checkFile("apps/web/src/a.ts", "// eslint-disable-next-line no-restricted-syntax -- needed").length, 1);
 });

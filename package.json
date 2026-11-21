@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@babel/parser": "^8.1.2",
+    "@babel/traverse": "^8.1.2",
     "@babel/types": "^8.1.2",
     "@types/node": "^26.6.6",
     "oxlint": "^1.94.0",

@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isIdentifier, isStringLiteral, traverseFast, type Node } from "@babel/types";
+import traverse, { type Scope } from "@babel/traverse";
+import { isIdentifier, isStringLiteral, type Node } from "@babel/types";
 import { parseSource } from "./parse-source.ts";
 
 export type Violation = { file: string; line: number; message: string };
@@ -21,7 +22,15 @@ const NO_DISABLE_GUARDRAIL =
 const NO_BARE_DISABLE =
   "eslint-disable needs a reason: `// eslint-disable-next-line <rule> -- why`. If you cannot give a real reason, fix the code.";
 
-function dependencyArgument(node: Node) {
+function isCommonJsGlobal(node: Node, name: "module" | "require", scope: Scope) {
+  if (!isIdentifier(node, { name })) return false;
+  const binding = scope.getBinding(name);
+  if (!binding) return true;
+  if (binding.path.isTSImportEqualsDeclaration()) return binding.path.node.importKind === "type";
+  return binding.kind === "unknown" || binding.path.parentPath?.isVariableDeclaration({ declare: true }) === true;
+}
+
+function dependencyArgument(node: Node, scope: Scope) {
   switch (node.type) {
     case "ImportDeclaration":
     case "ExportAllDeclaration":
@@ -34,9 +43,9 @@ function dependencyArgument(node: Node) {
     case "CallExpression":
     case "OptionalCallExpression": {
       const callee = node.callee;
-      if (isIdentifier(callee, { name: "require" })) return node.arguments[0] ?? null;
+      if (isCommonJsGlobal(callee, "require", scope)) return node.arguments[0] ?? null;
       if (callee.type !== "MemberExpression" && callee.type !== "OptionalMemberExpression") return undefined;
-      if (!isIdentifier(callee.object, { name: "module" })) return undefined;
+      if (!isCommonJsGlobal(callee.object, "module", scope)) return undefined;
       const isRequire = callee.computed
         ? isStringLiteral(callee.property, { value: "require" })
         : isIdentifier(callee.property, { name: "require" });
@@ -53,23 +62,25 @@ export function checkFile(file: string, text: string): Violation[] {
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
 
-  traverseFast(parseSource(file, text).program, (node) => {
-    const argument = dependencyArgument(node);
-    if (argument === undefined) return;
-    const line = node.loc!.start.line;
-    const add = (message: string) => out.push({ file, line, message });
-    if (argument?.type !== "StringLiteral") {
-      add(NO_COMPUTED_IMPORT);
-      return;
-    }
-    const spec = argument.value;
-    const target = spec.startsWith(".") ? normalize(join(dirname(file), spec)).split("\\").join("/") : spec;
-    if (inPackage && (/^@learnquest\/(api|web)(?![\w-])/.test(target) || /^(apps|\.\.)\//.test(target) || /(^|\/)apps\//.test(target))) {
-      add(`${spec}: ${/api/.test(target) ? CLIENT_TO_SERVER : PACKAGE_TO_APP}`);
-    }
-    if (inApi && !isTest && (/^@learnquest\/web(?![\w-])/.test(target) || /^apps\/web\//.test(target) || /(^|\/)apps\/web\//.test(target))) {
-      add(`${spec}: ${SERVER_TO_CLIENT}`);
-    }
+  traverse(parseSource(file, text), {
+    enter({ node, scope }) {
+      const argument = dependencyArgument(node, scope);
+      if (argument === undefined) return;
+      const line = node.loc!.start.line;
+      const add = (message: string) => out.push({ file, line, message });
+      if (argument?.type !== "StringLiteral") {
+        add(NO_COMPUTED_IMPORT);
+        return;
+      }
+      const spec = argument.value;
+      const target = spec.startsWith(".") ? normalize(join(dirname(file), spec)).split("\\").join("/") : spec;
+      if (inPackage && (/^@learnquest\/(api|web)(?![\w-])/.test(target) || /^(apps|\.\.)\//.test(target) || /(^|\/)apps\//.test(target))) {
+        add(`${spec}: ${/api/.test(target) ? CLIENT_TO_SERVER : PACKAGE_TO_APP}`);
+      }
+      if (inApi && !isTest && (/^@learnquest\/web(?![\w-])/.test(target) || /^apps\/web\//.test(target) || /(^|\/)apps\/web\//.test(target))) {
+        add(`${spec}: ${SERVER_TO_CLIENT}`);
+      }
+    },
   });
 
   text.split("\n").forEach((raw, i) => {
