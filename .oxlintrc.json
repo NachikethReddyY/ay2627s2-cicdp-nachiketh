@@ -12,8 +12,7 @@
   "ignorePatterns": [
     "**/dist/**",
     "**/node_modules/**",
-    "**/*.gen.ts",
-    "**/*.generated.ts",
+    "apps/web/src/pages/changelog-releases.generated.ts",
     "apps/api/drizzle/**",
     ".agents/**",
     "spikes/**"

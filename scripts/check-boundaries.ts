@@ -6,6 +6,8 @@ export type Violation = { file: string; line: number; message: string };
 
 const IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"']+)["']/g;
 
+const NO_TEMPLATE_IMPORT = "Do not use template literals in import(). Use a string literal so the boundary check can verify the dependency.";
+
 const CLIENT_TO_SERVER =
   "Shared and client code must not depend on the API. Move the shared type or helper into packages/ui-catalog or packages/player-core and import it from there.";
 const SERVER_TO_CLIENT =
@@ -22,15 +24,18 @@ const NO_BARE_DISABLE =
 export function checkFile(file: string, text: string): Violation[] {
   const out: Violation[] = [];
   const isTest = /\.(test|spec)\.[cm]?[jt]sx?$/.test(file) || file.startsWith("apps/api/test/");
-  const inWeb = file.startsWith("apps/web/");
   const inApi = file.startsWith("apps/api/");
   const inPackage = file.startsWith("packages/");
+
+  for (const match of text.matchAll(/\bimport\s*\(\s*`/g)) {
+    out.push({ file, line: text.slice(0, match.index).split("\n").length, message: NO_TEMPLATE_IMPORT });
+  }
 
   text.split("\n").forEach((raw, i) => {
     const line = i + 1;
     const add = (message: string) => out.push({ file, line, message });
     for (const m of raw.matchAll(IMPORT)) {
-      const spec = m[1]!;
+      const spec = m[1];
       const target = spec.startsWith(".") ? normalize(join(dirname(file), spec)).split("\\").join("/") : spec;
       if (inPackage && (/^@learnquest\/(api|web)(?![\w-])/.test(target) || /^(apps|\.\.)\//.test(target) || /(^|\/)apps\//.test(target))) {
         add(`${spec}: ${/api/.test(target) ? CLIENT_TO_SERVER : PACKAGE_TO_APP}`);
@@ -55,7 +60,7 @@ function* walk(dir: string): Generator<string> {
     if (SKIP_DIRS.has(e.name)) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) yield* walk(p);
-    else if (/\.(ts|tsx)$/.test(e.name) && !e.name.endsWith(".d.ts") && !e.name.endsWith(".gen.ts")) yield p;
+    else if (/\.(ts|tsx|js|mjs)$/.test(e.name) && !e.name.endsWith(".d.ts")) yield p;
   }
 }
 
@@ -64,7 +69,7 @@ export function checkRepo(root: string): Violation[] {
   for (const top of ["apps", "packages", "e2e", "tools"]) {
     for (const abs of walk(join(root, top))) {
       const file = relative(root, abs).split("\\").join("/");
-      out.push(...checkFile(file, readFileSync(abs, "utf8")));
+      if (file !== "apps/web/src/pages/changelog-releases.generated.ts") out.push(...checkFile(file, readFileSync(abs, "utf8")));
     }
   }
   return out;

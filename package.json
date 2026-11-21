@@ -11,7 +11,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:scripts": "node --test scripts/*.test.ts",
-    "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e",
+    "lint:types": "oxlint --type-aware -c .oxlintrc.json --max-warnings 69 apps packages e2e scripts && tsc -p scripts/tsconfig.json",
     "lint:comments": "node scripts/check-comments.ts",
     "agent:verify": "scripts/agent-verify.sh",
     "agent:merge": "node scripts/merge-gate.ts",
@@ -25,9 +25,11 @@
   },
   "devDependencies": {
     "@babel/parser": "^8.1.2",
+    "@types/node": "^22.20.5",
     "oxlint": "^1.94.0",
     "oxlint-tsgolint": "^7.0.2007",
-    "turbo": "^2.11.11"
+    "turbo": "^2.11.11",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@neon/config": "^1.14.1",
