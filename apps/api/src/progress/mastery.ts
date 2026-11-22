@@ -101,7 +101,7 @@ async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string
   return new Map(rows.map((r) => [r.slug, r.id]));
 }
 
-async function recommend(tx: Db, learnerId: string, worldId: string): Promise<void> {
+async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
   const worldLessons = await tx
     .select({ id: lessons.id, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
     .from(lessons)
@@ -156,14 +156,27 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
     .orderBy(desc(recommendations.createdAt), desc(recommendations.id))
     .limit(1);
   const inputHash = hashInput(request);
-  if (latest?.inputHash === inputHash) return;
-
-  const next = await engineLearner.next(request, { timeoutMs: ENGINE_CALL_TIMEOUT_MS });
-  const result = { ...next, conceptId: next.conceptId ? (idOfSlug.get(next.conceptId) ?? null) : null };
-  await insertRecommendation(tx, learnerId, worldId, result, inputHash);
+  return { request, idOfSlug, inputHash, current: latest?.inputHash === inputHash };
 }
 
-export const POLICY_VERSION = "4";
+async function recommend(learnerId: string, worldId: string): Promise<void> {
+  const snapshot = await withTx(async (tx) => {
+    await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
+    return recommendationInput(tx, learnerId, worldId);
+  });
+  if (snapshot.current) return;
+  const next = await engineLearner.next(snapshot.request, { timeoutMs: ENGINE_CALL_TIMEOUT_MS });
+  if (next.policyVersion !== POLICY_VERSION) return;
+  const result = { ...next, conceptId: next.conceptId ? (snapshot.idOfSlug.get(next.conceptId) ?? null) : null };
+  await withTx(async (tx) => {
+    await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
+    const current = await recommendationInput(tx, learnerId, worldId);
+    if (current.inputHash === snapshot.inputHash && !current.current)
+      await insertRecommendation(tx, learnerId, worldId, result, snapshot.inputHash);
+  });
+}
+
+export const POLICY_VERSION = "5";
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -192,99 +205,96 @@ const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: Nex
     inputHash,
   });
 
+const inFlight = new Map<string, Promise<void>>();
+
 export async function applyObservations(learnerId: string, opts: { worldId?: string } = {}): Promise<void> {
-  await withTx(async (tx) => {
-    const started = Date.now();
-    await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
-    const pending = await tx
-      .select({
-        id: attempts.id,
-        observed: attempts.observed,
-        attemptKind: attempts.kind,
-        correct: attempts.correct,
-        hintsUsed: attempts.hintsUsed,
+  const previous = inFlight.get(learnerId);
+  if (previous) {
+    await previous;
+    await applyObservations(learnerId, opts);
+    return;
+  }
+  const work = processObservations(learnerId, opts);
+  inFlight.set(learnerId, work);
+  try {
+    await work;
+  } finally {
+    inFlight.delete(learnerId);
+  }
+}
+
+async function processObservations(learnerId: string, opts: { worldId?: string }): Promise<void> {
+  const started = Date.now();
+  const touched = new Set<string>();
+  for (let count = 0; count < BATCH && Date.now() - started <= CATCH_UP_BUDGET_MS; count++) {
+    const snapshot = await withTx(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
+      const [a] = await tx.select({
+        id: attempts.id, observed: attempts.observed, attemptKind: attempts.kind,
+        correct: attempts.correct, hintsUsed: attempts.hintsUsed,
         questionType: sql<"mcq" | "cloze">`${steps.public}->>'kind'`,
         stepConcepts: sql<unknown>`${steps.secret}->'concepts'`,
-        lessonConcepts: lessons.concepts,
-        worldId: lessons.worldId,
-        config: worlds.config,
-      })
-      .from(attempts)
-      .innerJoin(steps, eq(steps.id, attempts.stepId))
-      .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
-      .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
-      .innerJoin(worlds, eq(worlds.id, lessons.worldId))
-      .where(and(eq(attempts.learnerId, learnerId), eq(attempts.observed, true), isNull(attempts.masteryAppliedAt)))
-      .orderBy(asc(attempts.createdAt), asc(attempts.id))
-      .limit(BATCH);
-
-    const touched = new Set<string>();
-    for (const a of pending) {
-      if (Date.now() - started > CATCH_UP_BUDGET_MS) {
-        console.warn(`mastery: catch-up time box reached; attempt ${a.id} and later stay pending`);
+        lessonConcepts: lessons.concepts, worldId: lessons.worldId, config: worlds.config,
+      }).from(attempts)
+        .innerJoin(steps, eq(steps.id, attempts.stepId))
+        .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
+        .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
+        .innerJoin(worlds, eq(worlds.id, lessons.worldId))
+        .where(and(eq(attempts.learnerId, learnerId), eq(attempts.observed, true), isNull(attempts.masteryAppliedAt)))
+        .orderBy(asc(attempts.createdAt), asc(attempts.id)).limit(1);
+      if (!a) return null;
+      const names = conceptNames(a.stepConcepts, a.lessonConcepts, `attempt ${a.id}`);
+      const ids = await ensureConcepts(tx, a.worldId, names);
+      const conceptIds = [...ids.values()];
+      const priors = conceptIds.length ? await tx.select({ conceptId: mastery.conceptId, pKnown: mastery.pKnown, nObs: mastery.nObs })
+        .from(mastery).where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds))) : [];
+      return { a, conceptIds, priors };
+    });
+    if (!snapshot) break;
+    const { a, conceptIds, priors } = snapshot;
+    const obs = observationOf({ observed: a.observed, kind: a.attemptKind, correct: a.correct, hintsUsed: a.hintsUsed });
+    let updates: Awaited<ReturnType<typeof engineLearner.update>> = [];
+    try {
+      if (obs && conceptIds.length) {
+        const prior = new Map(priors.map((p) => [p.conceptId, p.pKnown]));
+        const bkt = mergeBkt((a.config as { bkt?: unknown } | null)?.bkt, `world ${a.worldId}`);
+        updates = await engineLearner.update({
+          priors: conceptIds.map((conceptId) => ({ conceptId, pKnown: prior.get(conceptId) ?? null })),
+          ...(bkt && { params: bkt }), questionType: a.questionType, correct: obs === "correct",
+        }, { timeoutMs: ENGINE_CALL_TIMEOUT_MS });
+      }
+    } catch (e) {
+      if (isTransient(e)) {
+        console.error(`mastery: attempt ${a.id} will be retried`, e);
         break;
       }
-      const obs = observationOf({ observed: a.observed, kind: a.attemptKind, correct: a.correct, hintsUsed: a.hintsUsed });
-      const where = `attempt ${a.id}`;
-      await tx.execute(sql`SAVEPOINT mastery_row`);
-      try {
-        const names = conceptNames(a.stepConcepts, a.lessonConcepts, where);
-        if (obs && names.size === 0) console.warn(`mastery: ${where} has no concepts; no observation made`);
-        if (obs && names.size > 0) {
-          const ids = await ensureConcepts(tx, a.worldId, names);
-          const conceptIds = [...ids.values()];
-          const priors = await tx
-            .select({ conceptId: mastery.conceptId, pKnown: mastery.pKnown })
-            .from(mastery)
-            .where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds)));
-          const prior = new Map(priors.map((p) => [p.conceptId, p.pKnown]));
-          const bkt = mergeBkt((a.config as { bkt?: unknown } | null)?.bkt, `world ${a.worldId}`);
-          const updates = await engineLearner.update(
-            {
-              priors: conceptIds.map((conceptId) => ({ conceptId, pKnown: prior.get(conceptId) ?? null })),
-              ...(bkt && { params: bkt }),
-              questionType: a.questionType,
-              correct: obs === "correct",
-            },
-            { timeoutMs: ENGINE_CALL_TIMEOUT_MS },
-          );
-          for (const u of updates) {
-            await tx
-              .insert(mastery)
-              .values({ learnerId, conceptId: u.conceptId, pKnown: u.pNext, nObs: 1 })
-              .onConflictDoUpdate({
-                target: [mastery.learnerId, mastery.conceptId],
-                set: { pKnown: u.pNext, nObs: sql`${mastery.nObs} + 1`, updatedAt: new Date() },
-              });
-          }
-          touched.add(a.worldId);
-        }
-        await tx.execute(sql`RELEASE SAVEPOINT mastery_row`);
-      } catch (e) {
-        await tx.execute(sql`ROLLBACK TO SAVEPOINT mastery_row`);
-        if (isTransient(e)) {
-          console.error(`mastery: ${where} will be retried`, e);
-          break;
-        }
-        console.error(`mastery: ${where} failed and is skipped`, e);
+      console.error(`mastery: attempt ${a.id} failed and is skipped`, e);
+    }
+    const applied = await withTx(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
+      const [pending] = await tx.select({ id: attempts.id }).from(attempts)
+        .where(and(eq(attempts.id, a.id), isNull(attempts.masteryAppliedAt)));
+      if (!pending) return false;
+      const current = conceptIds.length ? await tx.select({ conceptId: mastery.conceptId, pKnown: mastery.pKnown, nObs: mastery.nObs })
+        .from(mastery).where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds))) : [];
+      const versions = new Map(current.map((p) => [p.conceptId, p.nObs]));
+      if (current.length !== priors.length || priors.some((p) => versions.get(p.conceptId) !== p.nObs)) return false;
+      for (const u of updates) {
+        await tx.insert(mastery).values({ learnerId, conceptId: u.conceptId, pKnown: u.pNext, nObs: 1 })
+          .onConflictDoUpdate({ target: [mastery.learnerId, mastery.conceptId],
+            set: { pKnown: u.pNext, nObs: sql`${mastery.nObs} + 1`, updatedAt: new Date() } });
       }
       await tx.update(attempts).set({ masteryAppliedAt: new Date() }).where(eq(attempts.id, a.id));
+      return true;
+    });
+    if (applied && updates.length) touched.add(a.worldId);
+  }
+  for (const worldId of new Set([...touched, ...(opts.worldId ? [opts.worldId] : [])])) {
+    if (Date.now() - started > CATCH_UP_BUDGET_MS) break;
+    try {
+      await recommend(learnerId, worldId);
+    } catch (e) {
+      console.error(`mastery: recommendation for world ${worldId} failed`, e);
     }
-
-    const want = new Set([...touched, ...(opts.worldId ? [opts.worldId] : [])]);
-    for (const worldId of want) {
-      if (Date.now() - started > CATCH_UP_BUDGET_MS) {
-        console.warn(`mastery: time box reached; recommendation for world ${worldId} is left stale`);
-        break;
-      }
-      await tx.execute(sql`SAVEPOINT recommend`);
-      try {
-        await recommend(tx, learnerId, worldId);
-        await tx.execute(sql`RELEASE SAVEPOINT recommend`);
-      } catch (e) {
-        await tx.execute(sql`ROLLBACK TO SAVEPOINT recommend`);
-        console.error(`mastery: recommendation for world ${worldId} failed`, e);
-      }
-    }
-  });
+  }
 }

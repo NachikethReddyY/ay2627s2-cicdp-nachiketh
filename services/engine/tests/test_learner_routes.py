@@ -73,7 +73,8 @@ def test_next_shape(client: TestClient) -> None:
     r = client.post("/v1/next", json=NEXT, headers=TOKEN)
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"action", "lessonId", "conceptId", "reasonCode", "reason"}
+    assert set(body) == {"policyVersion", "action", "lessonId", "conceptId", "reasonCode", "reason"}
+    assert body["policyVersion"] == "5"
     assert body["action"] == "learn"
     assert body["lessonId"] == "l1"
     assert body["reasonCode"] == "LEARN"
@@ -81,11 +82,21 @@ def test_next_shape(client: TestClient) -> None:
 
 
 def test_next_done_has_null_lesson(client: TestClient) -> None:
-    done = {**NEXT, "lessons": [{**NEXT["lessons"][0], "done": True}]}  # type: ignore[index]
+    done = {
+        **NEXT,
+        "mastery": [{"conceptId": "vars", "pKnown": 0.97}],
+        "lessons": [{**NEXT["lessons"][0], "done": True}],  # type: ignore[index]
+    }
     body = client.post("/v1/next", json=done, headers=TOKEN).json()
     assert body["action"] == "done"
     assert body["lessonId"] is None
     assert body["reason"]
+
+
+def test_next_finished_weak_lesson_uses_next_action(client: TestClient) -> None:
+    weak = {**NEXT, "lessons": [{**NEXT["lessons"][0], "done": True}]}  # type: ignore[index]
+    body = client.post("/v1/next", json=weak, headers=TOKEN).json()
+    assert (body["action"], body["reasonCode"], body["lessonId"]) == ("done", "DONE", None)
 
 
 def test_next_reason_uses_titles(client: TestClient) -> None:

@@ -2,11 +2,12 @@
 
 Rules, first match wins (docs/lq-22-plan.md section 4):
   1. no observations in this world -> start
-  2. lowest-mastery unlocked concept below mastered_at -> learn (< learn_below) or practice
-  3. everything observed is mastered and a lesson remains -> advance
+  2. lowest-mastery unlocked concept in an unfinished lesson below mastered_at -> learn
+     (< learn_below) or practice
+  3. nothing weak and a lesson remains -> advance, naming only concepts at or above mastered_at
   4. nothing remains -> done
 
-If no lesson remains at all the answer is always done, so lesson_id is None only for done.
+Rules 2 and 3 compete in one pool, lowest mastery first. lesson_id is None only for done.
 Reasons never contain step content, hints or expected output.
 """
 
@@ -29,6 +30,7 @@ class ReasonCode(StrEnum):
     PRACTICE = "PRACTICE"
     ADVANCE = "ADVANCE"
     DONE = "DONE"
+    REVIEW = "REVIEW"
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,7 @@ class Recommendation:
     reason: str
 
 
-POLICY_VERSION = "4"
+POLICY_VERSION = "5"
 
 LEARN_KINDS = ("learn", "watch")
 PRACTICE_KINDS = ("predict", "practice", "game-practice")
@@ -89,8 +91,12 @@ def _reason(
                 )
             return f"{name} is at {_pct(p_known)}%. More practice will make it stick."
         case ReasonCode.ADVANCE:
-            listed = ", ".join(concepts[:3]) if concepts else "everything so far"
-            return f"You've mastered {listed}. Next up: {lesson}."
+            if not concepts:
+                return f"Next up: {lesson}."
+            mastered = " ".join(f"You've mastered {concept}." for concept in concepts[:3])
+            return f"{mastered} Next up: {lesson}."
+        case ReasonCode.REVIEW:
+            return f"{name} is at {_pct(p_known)}%. A quick re-do will lock it in."
         case ReasonCode.DONE:
             return "You've finished every lesson here. Nothing left to do."
 
@@ -117,10 +123,10 @@ def recommend(
 ) -> Recommendation:
     ordered = sorted(lessons, key=lambda lesson: lesson.order)
     remaining = [lesson for lesson in ordered if not lesson.done]
+    known = {m.concept_id: m.p_known for m in mastery}
+    remaining_concepts = {c for lesson in remaining for c in lesson.concept_ids}
     if not remaining:
         return Recommendation(Action.DONE, None, None, ReasonCode.DONE, _reason(ReasonCode.DONE))
-
-    known = {m.concept_id: m.p_known for m in mastery}
 
     if not known:
         first = remaining[0]
@@ -151,7 +157,6 @@ def recommend(
     for concept in known:
         course_order.setdefault(concept, len(course_order))
 
-    remaining_concepts = {c for lesson in remaining for c in lesson.concept_ids}
     open_below = [c for c, p in known.items() if p < mastered_at and c in remaining_concepts]
     candidates = [c for c in open_below if unlocked(c)]
     below = open_below
