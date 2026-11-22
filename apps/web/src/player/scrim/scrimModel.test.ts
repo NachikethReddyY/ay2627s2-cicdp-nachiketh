@@ -1,11 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
+import { runCrossed } from "@learnquest/player-core";
+import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, releasedGateRuns, resumeTime, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
 import type { Lesson, Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
 
 const seg = (o: Partial<Segment> = {}): Segment => ({ text: "t", durationMs: 2000, ...o });
+
+test("a fetched gate runs at its scheduled time once after the prediction", () => {
+  const segments = [seg({ edit: { code: "a", run: false } }), seg({ gate: "q", edit: { code: "console.log(1)", run: true } })];
+  const timeline = scrimTimeline(segments, "javascript");
+  const at = timeline.gates[0].t;
+  const answered = new Set([timeline.gates[0].key]);
+  const runs = timeline.runs;
+  assert.ok(runs[0].t > at);
+  assert.deepEqual(releasedGateRuns(segments, [], "q", at, "javascript"), []);
+  assert.deepEqual(runCrossed(timeline, answered, at, runs[0].t), [runs[0]]);
+  assert.deepEqual(runCrossed(timeline, answered, runs[0].t, timeline.clock.total), []);
+});
 
 test("silentWav has a PCM header and the right length", () => {
   const wav = silentWav(0.5);
@@ -87,4 +100,21 @@ test("a scrim whose parts last 100 ms and 200 ms builds a clock that never steps
     const { clock } = scrimTimeline(ms.map((durationMs) => seg({ durationMs })));
     clock.offsets.forEach((offset, i) => assert.ok(i === 0 || offset >= clock.offsets[i - 1], ms.join()));
   }
+});
+
+test("a fresh learner starts at the beginning; a learner with progress resumes at the first unrevealed gate", () => {
+  const segments = [
+    seg({ edit: { code: "a = 1", run: false } }),
+    seg({ gate: "step-1" }),
+    seg({ edit: { code: "a = 2", run: false } }),
+    seg({ gate: "step-2" }),
+  ];
+  const step = (id: string, state: Lesson["steps"][number]["state"]) => ({ id, idx: 0, title: id, hintCount: 1, state });
+  const { clock } = scrimTimeline(segments);
+  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], false), 0);
+  assert.equal(resumeTime(segments, [step("step-1", "hinting"), step("step-2", "predicting")], true), clock.offsets[1]);
+  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "predicting")], true), clock.offsets[3]);
+  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "revealed")], true), 0);
+  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], true), clock.offsets[1]);
+
 });

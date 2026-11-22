@@ -4,9 +4,11 @@ import { TRPCClientError } from "@trpc/client";
 import { useApi } from "../../lib/api";
 import { trpc } from "../../lib/trpc";
 import { PredictPanel, RevealPanel } from "../LivePanels";
-import { canHint, canSkip, canSubmit, stepMachine, type Reveal, type StepPublic } from "../stepMachine";
+import { canHint, canSubmit, stepMachine, type Reveal, type StepPublic } from "../stepMachine";
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
+
+const noSkip = () => undefined;
 
 type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void };
 
@@ -82,10 +84,10 @@ function GateRun({ stepId, ordinal, total, step, onDone }: GateProps & { step: S
         busy={busy}
         canSubmit={canSubmit(snap)}
         canHint={canHint(snap)}
-        canSkip={canSkip(snap)}
+        canSkip={false}
         onSubmit={(answer) => run(async () => send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id: stepId, answer }) }))}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id: stepId }) }))}
-        onSkip={() => run(async () => { await trpc.steps.skip.mutate({ id: stepId }); send({ type: "SKIPPED" }); })}
+        onSkip={noSkip}
       />
     );
   return <p role="status" className="font-medium">Loading step…</p>;

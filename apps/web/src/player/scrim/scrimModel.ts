@@ -4,6 +4,7 @@ import {
   editGateKey,
   openGate,
   reachable,
+  runsReleased,
   scrimClock,
   segmentAt,
   type ScrimGate,
@@ -14,6 +15,16 @@ import type { Lesson, Part } from "../live/types.ts";
 
 type ScrimPart = Extract<Part, { kind: "scrim" }>;
 type Segment = ScrimPart["segments"][number];
+
+export function releasedGateRuns(segments: readonly Segment[], steps: Lesson["steps"], stepId: string, at: number, language: string): string[] {
+  const timeline = scrimTimeline(segments, language);
+  const keys = planScrim(segments).stepByKey;
+  const before = new Set(Object.entries(keys).flatMap(([key, id]) =>
+    steps.some((step) => step.id === id && step.state === "revealed") ? [key] : [],
+  ));
+  const after = new Set([...before, editGateKey(stepId)]);
+  return runsReleased(timeline, before, after, at).map((run) => timeline.edits[run.edit].code);
+}
 
 export function planScrim(segments: readonly Segment[]): { edits: TimedEdit[]; stepByKey: Record<string, string> } {
   const edits: TimedEdit[] = [];
@@ -32,6 +43,15 @@ export function planScrim(segments: readonly Segment[]): { edits: TimedEdit[]; s
 
 export function scrimTimeline(segments: readonly Segment[], language?: string): ScrimTimeline {
   return buildScrimTimeline(planScrim(segments).edits, [], scrimClock(segments.map((s) => s.durationMs / 1000)), language);
+}
+
+export function resumeTime(segments: readonly Segment[], steps: Lesson["steps"], started: boolean): number {
+  if (!started) return 0;
+  const plan = planScrim(segments);
+  const answered = new Set(
+    Object.entries(plan.stepByKey).flatMap(([key, id]) => (steps.find((step) => step.id === id)?.state === "revealed" ? [key] : [])),
+  );
+  return openGate(scrimTimeline(segments), answered)?.t ?? 0;
 }
 
 export function narrationBySegment(media: Lesson["media"], count: number): (string | null)[] {

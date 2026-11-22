@@ -129,7 +129,7 @@ export async function runInShell(o: {
   try {
     const ready = randomToken();
     const readyWait = waitForMarker(watcher, readyMarker(ready), deadline);
-    if (!o.socket.send(CTRL_C) || !o.socket.send(`${shellPrint(`LQ_READY_${ready}`)}\r`)) throw lostShell();
+    if (!o.socket.send(CTRL_C) || !o.socket.send(`\r${shellPrint(`LQ_READY_${ready}`)}\r`)) throw lostShell();
     const readyEnd = await readyWait;
     if (readyEnd === "lost") throw lostShell();
     if (readyEnd === "timeout") throw new RunInShellError("unavailable", "The shell did not confirm it was ready; no code was copied");

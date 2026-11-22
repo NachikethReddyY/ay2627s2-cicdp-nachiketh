@@ -19,13 +19,14 @@ import type { PracticeLanguage } from "../live/checkModel.ts";
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const neverExpires = () => new AbortController().signal;
 
-function fakeShell({ ready = true, interruptAck = true, log = [] as string[] } = {}) {
+function fakeShell({ ready = true, interruptAck = true, dropAfterInterrupt = false, log = [] as string[] } = {}) {
   const encoder = new TextEncoder();
   const outputs = new Set<(bytes: Uint8Array) => void>();
   const states = new Set<(state: ShellState) => void>();
   const files = new Map<string, string>();
   let screen = "";
   let open = true;
+  let dropNext = false;
   let running: { source: string; rest: string[]; hangs: boolean; token: string } | null = null;
   const emit = (text: string) => {
     screen += text;
@@ -54,6 +55,7 @@ function fakeShell({ ready = true, interruptAck = true, log = [] as string[] } =
     send: (data: string) => {
       if (!open) return false;
       if (data === CTRL_C) {
+        dropNext = dropAfterInterrupt;
         log.push(running ? `ctrl-c stops ${running.source}` : "ctrl-c");
         if (running) {
           emit("^C");
@@ -61,10 +63,11 @@ function fakeShell({ ready = true, interruptAck = true, log = [] as string[] } =
         }
         return true;
       }
+      if (dropNext) { data = data.slice(1); dropNext = false; }
       const readyToken = /LQ_READY_([a-f0-9]+)/.exec(data)?.[1];
       if (readyToken) {
         log.push("ready-probe");
-        if (ready) emit(`\u001eLQ_READY_${readyToken}\u001f\n`);
+        if (ready && data.replace(/^\r/, "").startsWith("printf ")) emit(`\u001eLQ_READY_${readyToken}\u001f\n`);
         emit(data.replace("\r", "\r\n"));
         return true;
       }
@@ -127,6 +130,12 @@ test("a run waits for a fresh shell acknowledgement before copying, then finishe
   assert.match(shell.log[5], command);
   assert.deepEqual(shell.log.slice(6), ["tree", "exit a1 a2"]);
   assert.equal(shell.listeners(), 0);
+});
+
+test("a shell that drops the first byte after Ctrl+C still receives the readiness command", async () => {
+  const shell = fakeShell({ dropAfterInterrupt: true });
+  assert.equal(await runInShell(harness(shell)), "finished");
+  assert.ok(shell.log.includes("put:solution.py:1"));
 });
 
 test("the wrapper acknowledges completion in both supported shell languages", () => {

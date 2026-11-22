@@ -50,6 +50,10 @@ export const LessonFile = z
   })
   .superRefine((file, ctx) => {
     if (!file.scrim) return;
+    const gated = new Set(file.scrim.segments.flatMap((segment) => (segment.gate === undefined ? [] : [segment.gate])));
+    file.steps.forEach((_step, idx) => {
+      if (!gated.has(idx)) ctx.addIssue({ code: "custom", path: ["steps", idx], message: `step ${idx} has no gate segment in the scrim` });
+    });
     file.scrim.segments.forEach((segment, idx) => {
       if (segment.gate === undefined) return;
       const step = file.steps[segment.gate];
