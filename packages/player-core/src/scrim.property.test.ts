@@ -270,7 +270,7 @@ test("for any scrim, a frame shows the same code as codeAt, and typing at full s
   }
 });
 
-const HOSTILE_TIMES = [-5, -0.001, 0, 0, 0.02, 1, 1, 2.5, 9, 1e6, Infinity, -Infinity];
+const HOSTILE_TIMES = [-5, -0.001, 0, 0, 0.02, 1, 1, 2.5, 9, 1e6, Infinity, -Infinity, NaN];
 const DURATIONS = [0, 0.01, 0.04, 0.05, 0.3, 1, 2.5, 6];
 
 function hostileScrim(rand: () => number, language?: string) {
@@ -284,6 +284,18 @@ function hostileScrim(rand: () => number, language?: string) {
 }
 
 const finiteEdits = (edits: TimedEdit[]) => edits.map((e) => (Number.isFinite(e.at) ? e : { ...e, at: e.at > 0 ? 1e6 : -5 }));
+
+test("generated scrims reject non-finite cue times, including NaN", () => {
+  const rand = mulberry32(113);
+  let nanCases = 0;
+  for (let n = 0; n < 1000; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    if (!edits.some((item) => !Number.isFinite(item.at))) continue;
+    if (edits.some((item) => Number.isNaN(item.at))) nanCases++;
+    assert.throws(() => buildScrimTimeline(edits, predicts, clock), RangeError, `run ${n}`);
+  }
+  assert.ok(nanCases > 0, "the generator must exercise NaN");
+});
 
 test("for any scrim, edit times stay in their own part, in order, and gates stay inside the clock in order", () => {
   const rand = mulberry32(101);
