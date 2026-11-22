@@ -386,7 +386,7 @@ test("checks use a private input file in an isolated disposable Daytona sandbox"
       snapshot: "lesson-runtime", networkBlockAll: true, resources: { cpu: 1, memory: 1, disk: 3 },
       user: "root", labels: { app: "learnquest", role: "check" }, ephemeral: true, autoStopInterval: 2, ttlMinutes: 3,
     });
-    assert.deepEqual(log.uploaded, ["/tmp/learnquest-check/input.json"]);
+    assert.deepEqual(log.uploaded, ["/root/learnquest-check/input.json"]);
     assert.match(log.execs[0] ?? "", /mkdir -m 700/);
     assert.equal(log.deleted, 1);
   }

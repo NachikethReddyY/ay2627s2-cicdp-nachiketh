@@ -370,7 +370,7 @@ export function daytonaBackend(opts: {
           autoStopInterval: 2,
           ttlMinutes: 3,
         }, { timeout: SANDBOX_START_S });
-        const dir = "/tmp/learnquest-check";
+        const dir = "/root/learnquest-check";
         const setup = await sbx.process.executeCommand(
           `test "$(id -u)" = 0 && command -v setpriv >/dev/null && mkdir -m 700 -- ${dir}`,
           undefined, undefined, SANDBOX_FILE_S,
