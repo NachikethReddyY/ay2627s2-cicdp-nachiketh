@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codeAt, reachable, openGate } from "@learnquest/player-core";
+import { codeAt, editGateKey, reachable, openGate } from "@learnquest/player-core";
 import { codeShown, heldGate, initPlayback, partSkipTarget, planScrim, playbackReducer, scrimTimeline, speechCue, speechView, type Playback, type PlaybackAction } from "./scrimModel.ts";
 import type { Part } from "../live/types.ts";
 
@@ -64,7 +64,7 @@ test("playback invariants hold for random segments and action sequences", () => 
       assert.ok([...next.answered].every((k) => gateKeys.has(k)), where);
       if (action.type === "play" && heldGate(state)) assert.equal(next, state, where);
       const lines = codeShown(next).split("\n");
-      const lockedFrom = scrim.edits.findIndex((e, i) => e.predict !== null && !next.answered.has(`edit-${i}`));
+      const lockedFrom = scrim.edits.findIndex((e) => e.predict !== null && !next.answered.has(editGateKey(e.id)));
       if (lockedFrom >= 0) {
         const markers = lines.filter((l) => /^m\d+$/.test(l)).map((l) => Number(l.slice(1)));
         const lockedMarkers = scrim.edits.slice(lockedFrom).flatMap((e) => e.code.split("\n").map((l) => Number(l.slice(1))));
@@ -87,8 +87,7 @@ test("planScrim puts every gate at its segment start and maps it to its step", (
     const gated = segments.map((s, i) => ({ s, i })).filter(({ s }) => s.gate);
     assert.equal(scrim.gates.length, gated.length, `seed ${seed}`);
     for (const { s, i } of gated) {
-      const index = plan.edits.findIndex((e) => e.segment === i);
-      const gate = scrim.gates.find((g) => g.key === `edit-${index}`);
+      const gate = scrim.gates.find((g) => g.key === editGateKey(s.gate ?? ""));
       assert.ok(gate, `seed ${seed} segment ${i}`);
       assert.equal(gate.t, scrim.clock.offsets[i], `seed ${seed} segment ${i}`);
       assert.equal(plan.stepByKey[gate.key], s.gate, `seed ${seed} segment ${i}`);

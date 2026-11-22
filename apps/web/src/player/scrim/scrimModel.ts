@@ -1,8 +1,10 @@
 import {
   buildScrimTimeline,
   codeAt,
+  editGateKey,
   openGate,
   reachable,
+  runsReleased,
   scrimClock,
   segmentAt,
   type ScrimGate,
@@ -14,6 +16,16 @@ import type { Lesson, Part } from "../live/types.ts";
 type ScrimPart = Extract<Part, { kind: "scrim" }>;
 type Segment = ScrimPart["segments"][number];
 
+export function releasedGateRuns(segments: readonly Segment[], steps: Lesson["steps"], stepId: string, at: number, language: string): string[] {
+  const timeline = scrimTimeline(segments, language);
+  const keys = planScrim(segments).stepByKey;
+  const before = new Set(Object.entries(keys).flatMap(([key, id]) =>
+    steps.some((step) => step.id === id && step.state === "revealed") ? [key] : [],
+  ));
+  const after = new Set([...before, editGateKey(stepId)]);
+  return runsReleased(timeline, before, after, at).map((run) => timeline.edits[run.edit].code);
+}
+
 export function planScrim(segments: readonly Segment[]): { edits: TimedEdit[]; stepByKey: Record<string, string> } {
   const edits: TimedEdit[] = [];
   const stepByKey: Record<string, string> = {};
@@ -21,15 +33,16 @@ export function planScrim(segments: readonly Segment[]): { edits: TimedEdit[]; s
   segments.forEach((segment, index) => {
     if (!segment.edit && !segment.gate) return;
     const code = segment.edit?.code ?? previous;
-    if (segment.gate) stepByKey[`edit-${edits.length}`] = segment.gate;
-    edits.push({ segment: index, at: 0, cueHeard: true, cue: "", predict: segment.gate ?? null, code, run: segment.edit?.run });
+    const id = segment.gate ?? `segment-${index}`;
+    if (segment.gate) stepByKey[editGateKey(id)] = segment.gate;
+    edits.push({ id, segment: index, at: 0, cueHeard: true, cue: "", predict: segment.gate ?? null, code, run: segment.edit?.run });
     previous = code;
   });
   return { edits, stepByKey };
 }
 
-export function scrimTimeline(segments: readonly Segment[]): ScrimTimeline {
-  return buildScrimTimeline(planScrim(segments).edits, [], scrimClock(segments.map((s) => s.durationMs / 1000)));
+export function scrimTimeline(segments: readonly Segment[], language?: string): ScrimTimeline {
+  return buildScrimTimeline(planScrim(segments).edits, [], scrimClock(segments.map((s) => s.durationMs / 1000)), language);
 }
 
 export function resumeTime(segments: readonly Segment[], steps: Lesson["steps"], started: boolean): number {

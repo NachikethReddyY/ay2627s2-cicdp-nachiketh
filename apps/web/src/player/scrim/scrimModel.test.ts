@@ -1,11 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, resumeTime, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
+import { runCrossed } from "@learnquest/player-core";
+import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, releasedGateRuns, resumeTime, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
 import type { Lesson, Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
 
 const seg = (o: Partial<Segment> = {}): Segment => ({ text: "t", durationMs: 2000, ...o });
+
+test("a fetched gate runs at its scheduled time once after the prediction", () => {
+  const segments = [seg({ edit: { code: "a", run: false } }), seg({ gate: "q", edit: { code: "console.log(1)", run: true } })];
+  const timeline = scrimTimeline(segments, "javascript");
+  const at = timeline.gates[0].t;
+  const answered = new Set([timeline.gates[0].key]);
+  const runs = timeline.runs;
+  assert.ok(runs[0].t > at);
+  assert.deepEqual(releasedGateRuns(segments, [], "q", at, "javascript"), []);
+  assert.deepEqual(runCrossed(timeline, answered, at, runs[0].t), [runs[0]]);
+  assert.deepEqual(runCrossed(timeline, answered, runs[0].t, timeline.clock.total), []);
+});
 
 test("silentWav has a PCM header and the right length", () => {
   const wav = silentWav(0.5);
@@ -53,7 +66,7 @@ test("a gate-only segment carries the previous code", () => {
   assert.equal(plan.edits.length, 2);
   assert.equal(plan.edits[1].code, "a = 1");
   assert.equal(plan.edits[1].predict, "step-1");
-  assert.deepEqual(plan.stepByKey, { "edit-1": "step-1" });
+  assert.deepEqual(plan.stepByKey, { "edit:step-1": "step-1" });
 });
 
 test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
@@ -72,14 +85,21 @@ test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
   state = playbackReducer(state, { type: "tick", t: 5 });
   assert.equal(state.t, 2);
   assert.equal(state.playing, false);
-  assert.equal(heldGate(state)?.key, "edit-1");
+  assert.equal(heldGate(state)?.key, "edit:q");
   assert.equal(playbackReducer(state, { type: "play" }), state);
-  state = playbackReducer(state, { type: "answer", key: "edit-1" });
+  state = playbackReducer(state, { type: "answer", key: "edit:q" });
   assert.equal(state.playing, true);
   state = playbackReducer(state, { type: "tick", t: 99 });
   assert.equal(state.t, 8);
   assert.equal(finished(state), true);
   assert.equal(playbackReducer(state, { type: "play" }).t, 0);
+});
+
+test("a scrim whose parts last 100 ms and 200 ms builds a clock that never steps backward", () => {
+  for (const ms of [[100, 200, 100, 200], [200, 100, 200, 100, 100], [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]]) {
+    const { clock } = scrimTimeline(ms.map((durationMs) => seg({ durationMs })));
+    clock.offsets.forEach((offset, i) => assert.ok(i === 0 || offset >= clock.offsets[i - 1], ms.join()));
+  }
 });
 
 test("a fresh learner starts at the beginning; a learner with progress resumes at the first unrevealed gate", () => {
@@ -96,4 +116,5 @@ test("a fresh learner starts at the beginning; a learner with progress resumes a
   assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "predicting")], true), clock.offsets[3]);
   assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "revealed")], true), 0);
   assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], true), clock.offsets[1]);
+
 });

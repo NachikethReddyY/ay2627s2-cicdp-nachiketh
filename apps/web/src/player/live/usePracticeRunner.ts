@@ -1,17 +1,25 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createShellSocket, type ShellSocket, type ShellState } from "../terminal/shellSocket";
-import { RunInShellError, runInShell } from "../terminal/runInShell";
+import { RunInShellError, STILL_RUNNING, runInShell } from "../terminal/runInShell";
 import { checkPractice, lintPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type LintFinding, type PyPoll } from "../runPython";
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
 import { lintErrorMessage } from "./lintModel";
 import { outputTail } from "./lessonWorkbenchModel";
+import { createRunGate, createRunQueue, withDeadline } from "./runQueue";
 import type { CheckResponse, PracticeLanguage } from "./checkModel";
 
 const MAX_POLL_FAILURES = 4;
 const MAX_OUTPUT = 100_000;
-const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
+const START_TIMEOUT_MS = 10_000;
+const POLL_TIMEOUT_MS = 5_000;
+const STOP_TIMEOUT_MS = 3_000;
+const msg = (e: unknown) => {
+  if (!(e instanceof Error)) return "Could not run the code";
+  return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
+};
 
 type Options = { lessonId: string; language: PracticeLanguage; code: string; openTerminal: () => void };
+type RunJob = { source: string; authored: boolean };
 
 export function usePracticeRunner({ lessonId, language, code, openTerminal }: Options) {
   const [term, setTerm] = useState("");
@@ -34,6 +42,14 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const shellUnreachable = useRef(false);
   const readyTimeouts = useRef(0);
   const lintSeq = useRef(0);
+  const runNow = useRef<(job: RunJob) => Promise<void>>(async () => {});
+  const [runGate] = useState(createRunGate);
+  const [enqueue] = useState(() => createRunQueue<RunJob>((job) => runNow.current(job), { isLive: () => live.current }));
+  const [stopThenRelease] = useState(() => (id: string) => {
+    void withDeadline((signal) => stopPython(id, signal), STOP_TIMEOUT_MS)
+      .catch(() => {})
+      .then(() => runGate.release());
+  });
   const append = (text: string) => setTerm((t) => outputTail(t + text, MAX_OUTPUT));
 
   const [shell, setShell] = useState<ShellSocket | null>(null);
@@ -56,7 +72,6 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     return shell.onState((st) => {
       track();
       if (st.kind === "open" && st.ready) {
-        shellUnreachable.current = false;
         readyTimeouts.current = 0;
         setRunNote(undefined);
       }
@@ -66,9 +81,10 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     live.current = true;
     return () => {
       live.current = false;
-      if (sidRef.current) void stopPython(sidRef.current).catch(() => {});
+      if (sidRef.current) stopThenRelease(sidRef.current);
+      else runGate.release();
     };
-  }, []);
+  }, [runGate, stopThenRelease]);
   useEffect(() => { sidRef.current = sid; }, [sid]);
 
   useEffect(() => {
@@ -80,12 +96,12 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     const poll = async () => {
       let p: PyPoll;
       try {
-        p = await pollPython(sid, from);
+        p = await withDeadline((signal) => pollPython(sid, from, signal), POLL_TIMEOUT_MS);
       } catch (e) {
         if (!alive) return;
         if (++failures < MAX_POLL_FAILURES) { timer = setTimeout(poll, 300 * failures); return; }
         append(`\n${msg(e)}\n`);
-        void stopPython(sid).catch(() => {});
+        stopThenRelease(sid);
         setSid(null);
         return;
       }
@@ -94,32 +110,37 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
       from = p.next;
       if (p.output) { stdout.current += p.output; append(p.output); }
       if (!p.done) { timer = setTimeout(poll, 300); return; }
-      if (p.error) setTerm((t) => `${t}${t && !t.endsWith("\n") ? "\n" : ""}${p.error}\n`);
-      else if (!stdout.current) setTerm((t) => t || "The program ran and printed nothing.");
+      if (p.error) append(`${p.error}\n`);
+      else if (!stdout.current) append("The program ran and printed nothing.\n");
       setSid(null);
+      runGate.release();
     };
     void poll();
     return () => { alive = false; clearTimeout(timer); };
-  }, [sid]);
+  }, [sid, runGate, stopThenRelease]);
 
   const oneShot = async (args: Parameters<typeof startPython>) => {
+    if (!live.current) return;
     stdout.current = "";
-    setTerm("");
+    openTerminal();
+    setTerm((current) => outputTail(`${current}${current ? "\n" : ""}[Run]\n`, MAX_OUTPUT));
     setStarting(true);
     let id: string;
     try {
-      id = (await startPython(...args)).id;
+      id = (await withDeadline((signal) => startPython(args[0], args[1], args[2], signal), START_TIMEOUT_MS)).id;
     } catch (e) {
       if (!live.current) return;
       setStarting(false);
-      setTerm(msg(e));
+      append(`${msg(e)}\n`);
       return;
     }
     if (!live.current) { void stopPython(id).catch(() => {}); return; }
     setStarting(false);
+    const finished = runGate.wait();
     setSid(id);
+    await finished;
   };
-  const actionsFor = (enabled: boolean, source: string = code) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled });
+  const actionsFor = (enabled: boolean, source: string = code, authored = false) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled, authored });
 
   useEffect(() => {
     lintSeq.current++;
@@ -151,11 +172,11 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setCheckBusy(false);
   };
-  const run = async (source: string = code) => {
-    const a = actionsFor(sandboxEnabled, source).run;
+  runNow.current = async ({ source, authored }) => {
+    const a = actionsFor(sandboxEnabled, source, authored).run;
     if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
-    if (skipShellWait(shellUnreachable.current, shell.state())) {
+    if (shellUnreachable.current || skipShellWait(false, shell.state())) {
       setRunNote(undefined);
       const fb = actionsFor(false, source).run;
       if (fb.via === "oneshot") await oneShot(fb.args);
@@ -163,20 +184,21 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     setRunNote(undefined);
     setShellRun(true);
-    stdout.current = "";
-    setTerm("");
     try {
-      await runInShell({
+      const end = await runInShell({
         language: language === "python" ? "python" : "javascript",
         code: source,
         panel: { open: openTerminal },
         socket: shell,
         putFile,
         refreshTree: () => {},
+        onTimeout: () => live.current && setRunNote(STILL_RUNNING),
       });
+      if (end === "timeout" && live.current) setRunNote(undefined);
     } catch (e) {
       if (!live.current) return;
       if (e instanceof RunInShellError && e.kind === "starting") readyTimeouts.current += 1;
+      if (e instanceof RunInShellError && e.kind === "unavailable") shellUnreachable.current = true;
       if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state(), readyTimeouts.current)) {
         shellUnreachable.current = true;
         setShellRun(false);
@@ -188,11 +210,16 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setShellRun(false);
   };
+  const run = (source: string = code) => enqueue({ source, authored: false });
+  const runAuthored = (source: string) => enqueue({ source, authored: true });
   const stop = () => {
-    if (!sid) return;
-    void stopPython(sid).catch(() => {});
-    setSid(null);
-    append("\n[stopped]\n");
+    if (sid) {
+      stopThenRelease(sid);
+      setSid(null);
+      append("\n[stopped]\n");
+      return;
+    }
+    if (shellRun && shell) shell.send("\u0003");
   };
   const answer = (e: FormEvent) => {
     e.preventDefault();
@@ -207,7 +234,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     shell, shellState, term, sid, starting, shellRun, runNote, typed, setTyped,
     result, checkBusy, checkError, findings, lintBusy, lintError,
     busy: starting || sid !== null || shellRun,
-    showOutput: sid !== null || starting || term !== "",
-    run, check, lint, stop, answer,
+    showOutput: sid !== null || starting || shellRun || term !== "",
+    run, runAuthored, check, lint, stop, answer,
   };
 }
