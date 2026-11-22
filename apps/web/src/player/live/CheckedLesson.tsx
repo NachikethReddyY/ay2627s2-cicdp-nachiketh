@@ -19,7 +19,7 @@ function CheckPage({ check, ordinal, total, onDone, onAttempt }: PageProps) {
   return (
     <main className="lq lq-moon grid min-h-dvh place-items-center p-6 text-[color:var(--tx)]">
       <div className="chunk w-full max-w-2xl p-5">
-        <GatePanel key={check.id} skippable={false} showCode stepId={check.id} ordinal={ordinal} total={total} onDone={onDone} onAttempt={onAttempt} />
+        <GatePanel key={check.id} skippable={false} showCode showAnswer={false} stepId={check.id} ordinal={ordinal} total={total} onDone={onDone} onAttempt={onAttempt} />
       </div>
     </main>
   );

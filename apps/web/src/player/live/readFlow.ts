@@ -24,3 +24,8 @@ export function stageFor(checks: readonly CheckStep[], completed: boolean, phase
 export function hasChecks(kind: string, checks: readonly unknown[]): boolean {
   return (kind === "learn" || kind === "watch") && checks.length >= 2;
 }
+
+export const outcomeCopy = (correct: boolean | null) => ({
+  heading: correct === true ? "Correct!" : correct === false ? "Not quite." : "Check complete.",
+  note: "Watch the lesson to see the answer and why it works.",
+});

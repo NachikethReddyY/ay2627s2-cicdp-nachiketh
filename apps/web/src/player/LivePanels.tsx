@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Hint, Reveal, StepPublic } from "./stepMachine";
 import { FOCUS } from "./ui";
+import { outcomeCopy } from "./live/readFlow";
 
 type Answer = { kind: "mcq"; choice: number } | { kind: "cloze"; text: string };
 
@@ -132,6 +133,29 @@ export function RevealPanel({ idx, total, state, correct, step, reveal, last, ne
           <button type="button" onClick={onNext} className={`btn mt-4 !px-5 !py-1.5 text-sm ${FOCUS}`}>{nextLabel ?? (last ? "Finish lesson" : "Next step")}</button>
         </>
       )}
+    </div>
+  );
+}
+
+type OutcomeProps = {
+  idx: number;
+  total: number;
+  correct: boolean | null;
+  step: StepPublic;
+  nextLabel: string;
+  onNext: () => void;
+};
+
+const focusOnMount = (el: HTMLElement | null) => el?.focus();
+
+export function OutcomePanel({ idx, total, correct, step, nextLabel, onNext }: OutcomeProps) {
+  const { heading, note } = outcomeCopy(correct);
+  return (
+    <div>
+      <Head idx={idx} total={total} title={step.title} />
+      <h4 ref={focusOnMount} tabIndex={-1} className="mt-3 text-lg font-semibold tracking-tight outline-none">{heading}</h4>
+      <p className="mt-2 text-sm">{note}</p>
+      <button type="button" onClick={onNext} className={`btn mt-4 !px-5 !py-1.5 text-sm ${FOCUS}`}>{nextLabel}</button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { advance, hasChecks, offersNext, stageFor, startStage } from "./readFlow.ts";
+import { advance, hasChecks, offersNext, outcomeCopy, stageFor, startStage } from "./readFlow.ts";
 
 const open = { state: "predicting" as const };
 const wrong = { state: "hinting" as const };
@@ -79,4 +79,15 @@ test("with no closing check in progress the stage is the served stage", () => {
   assert.equal(stageFor([done, open], false, "off", true), "reading");
   assert.equal(stageFor([done, done], true, "off", false), "done");
   assert.equal(stageFor([open, open], false, "on", false), "opening");
+});
+
+test("a checked lesson outcome never shows an answer and points to the video", () => {
+  for (const correct of [true, false, null]) {
+    const { heading, note } = outcomeCopy(correct);
+    assert.match(note, /Watch the lesson/);
+    assert.doesNotMatch(`${heading} ${note}`, /here's the answer|answer:/i);
+  }
+  assert.equal(outcomeCopy(true).heading, "Correct!");
+  assert.equal(outcomeCopy(false).heading, "Not quite.");
+  assert.equal(outcomeCopy(null).heading, "Check complete.");
 });
