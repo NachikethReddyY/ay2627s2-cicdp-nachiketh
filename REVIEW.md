@@ -23,7 +23,7 @@ Owner decisions 2026-11-21 and 2026-11-22 supersede the earlier human-review and
 - `services/engine/learnquest_engine/prompts/**`. A prompt change alters what every lesson contains.
 - `services/sandbox/**` and practice-run code.
 - `apps/api/drizzle/**` and `apps/api/drizzle.config.ts`.
-- `.github/workflows/**`. The merge gate requires an independent review of workflow changes.
+- `.github/workflows/**`, especially changes that can skip required checks or disrupt deployment.
 - Billing, deployment and infra (`infra/**`, `docker-compose.yml`, `Dockerfile`s).
 
 ## Skip
@@ -37,6 +37,7 @@ Owner decisions 2026-11-21 and 2026-11-22 supersede the earlier human-review and
 - Cite a file and line for every finding. Do not flag code from its name or from a guess about what it probably does.
 - For a security or answer-leak finding, name the request or code path that exposes the data.
 - Mark each finding **Important** (wrong behaviour, leak, or security gap), **Nit** (style or naming), or **Pre-existing** (the PR did not introduce it).
+- Reserve change requests for actionable defects introduced by the PR. Do not block on speculative risks, style preferences, or pre-existing issues.
 
 ## Nits
 

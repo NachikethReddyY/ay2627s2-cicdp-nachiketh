@@ -11,7 +11,7 @@ export default function RunBottom({ runner: r, terminalActive }: { runner: Retur
         <section aria-labelledby="out-h" className="flex max-h-[45%] min-h-24 flex-none flex-col border-b border-[var(--line)]">
           <div className="flex flex-none items-center gap-2 px-3 py-1">
             <h3 id="out-h" className="text-xs font-semibold">Output</h3>
-            {r.sid && (
+            {(r.sid || r.shellRun) && (
               <button type="button" onClick={r.stop} className="wb-tb wb-outline ml-auto h-6 px-2 text-xs">
                 <Square size={11} fill="currentColor" aria-hidden="true" /> Stop
               </button>

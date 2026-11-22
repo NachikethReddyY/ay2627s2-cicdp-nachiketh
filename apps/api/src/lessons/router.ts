@@ -10,6 +10,8 @@ import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
 import { parseScrim } from "../parts/scrim-schema.ts";
+import { malformedScrim, publicScrimMedia, publicScrimSegments, scrimGateStates, scrimStepState, servedGateIds } from "./scrim.ts";
+import { loadScrimGates } from "./scrim-gates.ts";
 import { publicDoc } from "@learnquest/ui-catalog";
 
 const PracticeTestSummary = z.object({ id: z.string(), name: z.string(), stretch: z.boolean() });
@@ -40,7 +42,18 @@ function publicPractice(content: unknown): z.output<typeof PublicPractice> {
   };
 }
 
-const malformedScrim = () => new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Scrim lesson is malformed" });
+const ScrimMore = z.object({
+  from: z.number().int().min(0).max(20),
+  segments: z.array(z.object({
+    text: z.string(),
+    durationMs: z.number(),
+    edit: z.object({ code: z.string(), run: z.boolean() }).optional(),
+    gate: z.string().optional(),
+  })),
+  nextOffset: z.number().int(),
+  complete: z.boolean(),
+  media: z.array(z.object({ stepId: z.string().nullable(), segment: z.number().nullable(), kind: z.literal("narration"), url: z.string() })),
+});
 
 const Lesson = z.object({
   id: z.string(),
@@ -64,6 +77,7 @@ const Lesson = z.object({
           gate: z.string().optional(),
         })),
         lab: PublicPractice,
+        started: z.boolean(),
       }),
       PublicPractice,
       z.object({ kind: z.literal("game-practice"), versionId: z.string().uuid(), intro: z.string(), doc: z.unknown() }),
@@ -137,6 +151,7 @@ export const lessonsRouter = router({
       const content = version?.content;
       if ((lesson.kind === "scrim") !== (content?.kind === "scrim")) throw malformedScrim();
       let part: z.output<typeof Lesson>["part"] = null;
+      const served = new Set<string>();
       switch (content?.kind) {
         case "practice":
           part = publicPractice(content);
@@ -144,20 +159,15 @@ export const lessonsRouter = router({
         case "scrim": {
           const scrim = parseScrim(content);
           if (!scrim) throw malformedScrim();
+          const gates = scrimGateStates(scrim, rows);
+          const visible = publicScrimSegments(scrim, gates);
+          for (const id of servedGateIds(visible.segments)) served.add(id);
           part = {
             kind: "scrim",
             language: scrim.language,
-            segments: scrim.segments.map(({ text, durationMs, edit, gate }) => {
-              const step = gate === undefined ? undefined : rows.find((row) => row.idx === gate);
-              if (gate !== undefined && step?.pub.kind !== "mcq") throw malformedScrim();
-              return {
-                text,
-                durationMs,
-                ...(edit && { edit: { code: edit.code, run: edit.run } }),
-                ...(step && { gate: step.id }),
-              };
-            }),
+            segments: visible.segments,
             lab: publicPractice(scrim.lab),
+            started: rows.some((row) => row.state !== null),
           };
           break;
         }
@@ -179,19 +189,48 @@ export const lessonsRouter = router({
         case undefined:
           break;
       }
+      const servedRows = part?.kind === "scrim" ? rows.filter((row) => served.has(row.id)) : rows;
       return {
         id: lesson.slug,
         title: lesson.title,
         kind: lesson.kind,
         part,
-        steps: rows.map((r) => ({
+        steps: servedRows.map((r) => ({
           id: r.id,
           idx: r.idx,
           title: r.pub.title,
           hintCount: r.hintCount,
-          state: lesson.kind === "predict" && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
+          state: lesson.kind === "scrim" ? scrimStepState(r.state) : lesson.kind === "predict" && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
         })),
-        media: await listMedia(lesson.currentVersionId),
+        media: await listMedia(lesson.currentVersionId).then((media) => {
+          if (lesson.kind !== "scrim" || part?.kind !== "scrim") return media;
+          const revealedStepIds = new Set(servedRows.filter((row) => row.state === "revealed").map((row) => row.id));
+          return publicScrimMedia(media, { from: 0, to: part.segments.length, revealedStepIds });
+        }),
+      };
+    }),
+  scrimMore: protectedProcedure
+    .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/), from: z.number().int().min(0).max(20) }))
+    .output(ScrimMore)
+    .query(async ({ ctx, input }) => {
+      const [lesson] = await db
+        .select({ lesson: lessons })
+        .from(lessons)
+        .innerJoin(worlds, eq(worlds.id, lessons.worldId))
+        .innerJoin(learners, eq(learners.id, ctx.learnerId))
+        .where(and(lessonRef(input.id, lessons), playableLesson(lessons), visibleWorld(learners.userId, worlds)));
+      const found = lesson?.lesson;
+      if (!found?.currentVersionId || found.kind !== "scrim" || (found.status !== "published" && !(found.status === "draft" && found.sourceKind === "ai"))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Scrim lesson not found" });
+      }
+      const { scrim, gates } = await loadScrimGates(found.currentVersionId, ctx.learnerId);
+      const visible = publicScrimSegments(scrim, gates, input.from);
+      if (input.from > visible.nextOffset) throw new TRPCError({ code: "CONFLICT", message: "Scrim segment is still gated" });
+      const media = await listMedia(found.currentVersionId);
+      return {
+        from: input.from,
+        ...visible,
+        media: publicScrimMedia(media, { from: input.from, to: visible.nextOffset, revealedStepIds: new Set() }),
       };
     }),
 });

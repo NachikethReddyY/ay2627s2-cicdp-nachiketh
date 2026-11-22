@@ -1,11 +1,19 @@
 import { buildTimeline } from "./events.ts";
 import type { Hunk, Timeline, TypingConfig } from "./types.ts";
 
-export const SCRIM_FILE = "main.py";
+const EXTENSIONS = new Map([
+  ["python", "py"],
+  ["typescript", "ts"],
+  ["javascript", "js"],
+]);
+
+export function scrimFile(language: string | undefined): string {
+  return `main.${EXTENSIONS.get(language ?? "") ?? "js"}`;
+}
 
 const TYPING: TypingConfig = { msPerChar: 55, lineEndPauseMs: 250, blockThresholdLines: 20 };
 
-export function editHunk(before: string, after: string, file: string = SCRIM_FILE): Hunk[] {
+export function editHunk(before: string, after: string, file: string): Hunk[] {
   if (before === after) return [];
   const a = before.split("\n");
   const b = after.split("\n");
@@ -19,6 +27,6 @@ export function editHunk(before: string, after: string, file: string = SCRIM_FIL
   return [{ id: "scrim-edit", file, oldStart: head + 1, lines: [...removed, ...added] }];
 }
 
-export function editTimeline(before: string, after: string): Timeline {
-  return buildTimeline([{ beforeFiles: { [SCRIM_FILE]: before }, hunks: editHunk(before, after) }], TYPING);
+export function editTimeline(before: string, after: string, file: string): Timeline {
+  return buildTimeline([{ beforeFiles: { [file]: before }, hunks: editHunk(before, after, file) }], TYPING);
 }

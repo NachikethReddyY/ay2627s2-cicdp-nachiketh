@@ -45,6 +45,17 @@ async function loadWorld(world: string) {
 
 type Loaded = Awaited<ReturnType<typeof loadWorld>>;
 
+async function archiveStaleSteps(tx: Tx, versionId: string, keep: string[]) {
+  const rows = await tx.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId));
+  const kept = new Set(keep);
+  let nextIdx = Math.min(0, ...rows.map((row) => row.idx)) - 1;
+  for (const row of rows) {
+    if (row.idx >= 0 && !kept.has(row.id)) {
+      await tx.update(steps).set({ idx: nextIdx-- }).where(eq(steps.id, row.id));
+    }
+  }
+}
+
 async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
   const course = { title: manifest.title, description: manifest.description };
   await tx
@@ -90,9 +101,15 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
     await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
     await tx.update(lessonVersions).set({ content: file.scrim ?? null }).where(eq(lessonVersions.id, version.id));
 
+    const stepId = (s: { id?: string }, idx: number) => s.id ?? `${file.slug}-${idx}`;
+    if (file.scrim) {
+      const served = file.scrim.segments.flatMap(({ gate }) => gate === undefined ? [] : [stepId(file.steps[gate], gate)]);
+      await archiveStaleSteps(tx, version.id, served);
+    }
+
     for (const [idx, s] of file.steps.entries()) {
       const row = {
-        id: s.id ?? `${file.slug}-${idx}`,
+        id: stepId(s, idx),
         lessonVersionId: version.id,
         idx,
         public: s.public,

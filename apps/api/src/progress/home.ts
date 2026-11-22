@@ -1,5 +1,9 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { steps } from "../db/schema.ts";
+import { publicScrimSegments, servedGateIds } from "../lessons/scrim.ts";
+import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { streak, week } from "./streak.ts";
@@ -82,6 +86,27 @@ async function pathCards(learnerId: string, official: boolean) {
   return rows;
 }
 
+async function continueSnippet(lessonSlug: string, learnerId: string) {
+  const { rows: [lesson] } = await db.execute<{ kind: string; versionId: string | null }>(sql`
+    SELECT kind, current_version_id AS "versionId" FROM lessons WHERE slug = ${lessonSlug}`);
+  if (!lesson?.versionId) return null;
+  if (lesson.kind !== "scrim") {
+    const { rows: [first] } = await db.execute<{ prompt: string | null }>(sql`
+      SELECT s.public->>'prompt' AS prompt FROM steps s WHERE s.lesson_version_id = ${lesson.versionId}
+      ORDER BY s.idx LIMIT 1`);
+    return first?.prompt ? firstCodeBlock(first.prompt) : null;
+  }
+  const loaded = await loadScrimGates(lesson.versionId, learnerId).catch((error: unknown) => {
+    if (error instanceof TRPCError) return null;
+    throw error;
+  });
+  if (!loaded) return null;
+  const [firstServed] = servedGateIds(publicScrimSegments(loaded.scrim, loaded.gates).segments);
+  if (!firstServed) return null;
+  const [step] = await db.select({ prompt: sql<string | null>`${steps.public}->>'prompt'` }).from(steps).where(eq(steps.id, firstServed));
+  return step?.prompt ? firstCodeBlock(step.prompt) : null;
+}
+
 const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const me = ctx.learnerId;
 
@@ -147,15 +172,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       break;
     }
 
-    let snippet: string[] | null = null;
-    if (next) {
-      const { rows: [first] } = await db.execute<{ prompt: string | null }>(sql`
-        SELECT s.public->>'prompt' AS prompt
-        FROM lessons l JOIN steps s ON s.lesson_version_id = l.current_version_id
-        WHERE l.slug = ${next.lesson.slug}
-        ORDER BY s.idx LIMIT 1`);
-      snippet = first?.prompt ? firstCodeBlock(first.prompt) : null;
-    }
+    const snippet = next && (await continueSnippet(next.lesson.slug, me));
 
     const { rows: ranked } = await db.execute<{ handle: string; xp: number; position: number; own: boolean }>(sql`
       WITH x AS (
