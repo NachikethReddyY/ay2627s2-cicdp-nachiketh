@@ -220,9 +220,11 @@ function stepRows(lessonVersionId: string, list: readonly GeneratedStep[]) {
   }));
 }
 
-async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, generated }: Generated) {
+async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, generated }: Generated, isPublic: boolean) {
   const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
   if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
+  const [world] = await tx.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, l.worldId));
+  if ((world?.visibility === "public") !== isPublic) throw new Error("World visibility changed while the lesson was generated");
 
   const { content, gateSteps } = splitPart(part);
   const [version] = await tx
@@ -290,17 +292,17 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
   const ctx = await lessonContext(pre);
-  const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
-  const isPublic = world?.visibility === "public";
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
   const cached = key ? await cachedPart(key) : null;
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
+    const isPublic = world?.visibility === "public";
     if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
-      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));
+      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result, isPublic));
       if (!written) return false;
       if (written.prewarm) {
         const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId })

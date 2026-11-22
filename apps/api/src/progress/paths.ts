@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
+import { withTx } from "../db/tx.ts";
 import { generatePath, lessonWriteState } from "../ai/service.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { TRPCError } from "@trpc/server";
@@ -153,49 +154,58 @@ const publish = protectedProcedure
   .input(Slug)
   .output(z.void())
   .mutation(async ({ ctx, input }) => {
-    const { rows: pending } = await db.execute<{ text: string }>(sql`
-      SELECT concat_ws(E'\n', p.title, p.tagline, w.title, w.description, l.title, v.content::text) AS text
-      FROM paths p
-      LEFT JOIN path_courses pc ON pc.path_id = p.id
-      LEFT JOIN worlds w ON w.id = pc.world_id AND w.owner_id = p.owner_id
-      LEFT JOIN lessons l ON l.world_id = w.id
-      LEFT JOIN lesson_versions v ON v.id = l.current_version_id
-      WHERE p.slug = ${input.slug} AND p.owner_id = ${myUser(ctx.learnerId)}`);
-    if (pending.length === 0) throw notFound("Path not found");
-    const body = pending.map((r) => r.text).join("\n");
-    for (let i = 0; i < body.length; i += MODERATION_CHUNK) {
-      if (!(await isSafe(body.slice(i, i + MODERATION_CHUNK)))) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: PUBLISH_REFUSAL });
+    await withTx(async (tx) => {
+      await tx.execute(sql`
+        SELECT l.id FROM lessons l
+        WHERE l.world_id IN (
+          SELECT pc.world_id FROM path_courses pc
+          JOIN paths p ON p.id = pc.path_id
+          WHERE p.slug = ${input.slug} AND p.owner_id = ${myUser(ctx.learnerId)})
+        FOR UPDATE`);
+      const { rows: pending } = await tx.execute<{ text: string }>(sql`
+        SELECT concat_ws(E'\n', p.title, p.tagline, w.title, w.description, l.title, v.content::text) AS text
+        FROM paths p
+        LEFT JOIN path_courses pc ON pc.path_id = p.id
+        LEFT JOIN worlds w ON w.id = pc.world_id AND w.owner_id = p.owner_id
+        LEFT JOIN lessons l ON l.world_id = w.id
+        LEFT JOIN lesson_versions v ON v.id = l.current_version_id
+        WHERE p.slug = ${input.slug} AND p.owner_id = ${myUser(ctx.learnerId)}`);
+      if (pending.length === 0) throw notFound("Path not found");
+      const body = pending.map((r) => r.text).join("\n");
+      for (let i = 0; i < body.length; i += MODERATION_CHUNK) {
+        if (!(await isSafe(body.slice(i, i + MODERATION_CHUNK)))) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: PUBLISH_REFUSAL });
+        }
       }
-    }
 
-    const { rows } = await db.execute(sql`
-      WITH me AS (SELECT user_id AS id FROM learners WHERE id = ${ctx.learnerId}),
-      p AS (
-        UPDATE paths SET visibility = 'public'
-        WHERE slug = ${input.slug} AND owner_id = (SELECT id FROM me)
-        RETURNING id
-      ),
-      w AS (
-        UPDATE worlds SET visibility = 'public'
-        WHERE owner_id = (SELECT id FROM me)
-          AND id IN (SELECT world_id FROM path_courses WHERE path_id IN (SELECT id FROM p))
-        RETURNING id
-      ),
-      l AS (
-        UPDATE lessons SET status = 'published'
-        WHERE source_kind = 'ai' AND status = 'draft'
-          AND world_id IN (SELECT world_id FROM path_courses WHERE path_id IN (SELECT id FROM p))
-          AND world_id IN (SELECT id FROM w)
-        RETURNING id, current_version_id
-      ),
-      v AS (
-        UPDATE lesson_versions SET published_at = coalesce(published_at, now())
-        WHERE id IN (SELECT current_version_id FROM l)
-        RETURNING id
-      )
-      SELECT id FROM p`);
-    if (rows.length === 0) throw notFound("Path not found");
+      const { rows } = await tx.execute(sql`
+        WITH me AS (SELECT user_id AS id FROM learners WHERE id = ${ctx.learnerId}),
+        p AS (
+          UPDATE paths SET visibility = 'public'
+          WHERE slug = ${input.slug} AND owner_id = (SELECT id FROM me)
+          RETURNING id
+        ),
+        w AS (
+          UPDATE worlds SET visibility = 'public'
+          WHERE owner_id = (SELECT id FROM me)
+            AND id IN (SELECT world_id FROM path_courses WHERE path_id IN (SELECT id FROM p))
+          RETURNING id
+        ),
+        l AS (
+          UPDATE lessons SET status = 'published'
+          WHERE source_kind = 'ai' AND status = 'draft'
+            AND world_id IN (SELECT world_id FROM path_courses WHERE path_id IN (SELECT id FROM p))
+            AND world_id IN (SELECT id FROM w)
+          RETURNING id, current_version_id
+        ),
+        v AS (
+          UPDATE lesson_versions SET published_at = coalesce(published_at, now())
+          WHERE id IN (SELECT current_version_id FROM l)
+          RETURNING id
+        )
+        SELECT id FROM p`);
+      if (rows.length === 0) throw notFound("Path not found");
+    });
   });
 
 const generate = protectedProcedure
