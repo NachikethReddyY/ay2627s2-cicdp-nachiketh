@@ -32,6 +32,15 @@ export function scrimTimeline(segments: readonly Segment[]): ScrimTimeline {
   return buildScrimTimeline(planScrim(segments).edits, [], scrimClock(segments.map((s) => s.durationMs / 1000)));
 }
 
+export function resumeTime(segments: readonly Segment[], steps: Lesson["steps"], started: boolean): number {
+  if (!started) return 0;
+  const plan = planScrim(segments);
+  const answered = new Set(
+    Object.entries(plan.stepByKey).flatMap(([key, id]) => (steps.find((step) => step.id === id)?.state === "revealed" ? [key] : [])),
+  );
+  return openGate(scrimTimeline(segments), answered)?.t ?? 0;
+}
+
 export function narrationBySegment(media: Lesson["media"], count: number): (string | null)[] {
   return Array.from({ length: count }, (_, s) => media.find((m) => m.kind === "narration" && m.segment === s)?.url ?? null);
 }

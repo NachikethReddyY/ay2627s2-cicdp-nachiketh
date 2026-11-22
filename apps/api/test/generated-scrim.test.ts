@@ -130,7 +130,7 @@ test("lessons.get points each gate at its step id and leaks no gate answer, hint
 
   const body = out(res);
   assert.equal(body.kind, "scrim");
-  assert.deepEqual(body.part.segments.map((s: { gate?: string }) => s.gate), [undefined, stepRows[0]!.id, stepRows[1]!.id, undefined]);
+  assert.deepEqual(body.part.segments.map((s: { gate?: string }) => s.gate), [undefined, stepRows[0]!.id]);
   assertOmitted(res.json(), [
     "GEN_ANSWER_OPTION_PRIVATE",
     "GEN_ANSWER_OPTION_TWO_PRIVATE",

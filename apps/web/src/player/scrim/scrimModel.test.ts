@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
+import { initPlayback, narrationBySegment, partSkipTarget, planScrim, playbackReducer, resumeTime, scrimTimeline, silentWav, heldGate, finished, speechCue } from "./scrimModel.ts";
 import type { Lesson, Part } from "../live/types.ts";
 
 type Segment = Extract<Part, { kind: "scrim" }>["segments"][number];
@@ -80,4 +80,20 @@ test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
   assert.equal(state.t, 8);
   assert.equal(finished(state), true);
   assert.equal(playbackReducer(state, { type: "play" }).t, 0);
+});
+
+test("a fresh learner starts at the beginning; a learner with progress resumes at the first unrevealed gate", () => {
+  const segments = [
+    seg({ edit: { code: "a = 1", run: false } }),
+    seg({ gate: "step-1" }),
+    seg({ edit: { code: "a = 2", run: false } }),
+    seg({ gate: "step-2" }),
+  ];
+  const step = (id: string, state: Lesson["steps"][number]["state"]) => ({ id, idx: 0, title: id, hintCount: 1, state });
+  const { clock } = scrimTimeline(segments);
+  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], false), 0);
+  assert.equal(resumeTime(segments, [step("step-1", "hinting"), step("step-2", "predicting")], true), clock.offsets[1]);
+  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "predicting")], true), clock.offsets[3]);
+  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "revealed")], true), 0);
+  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], true), clock.offsets[1]);
 });

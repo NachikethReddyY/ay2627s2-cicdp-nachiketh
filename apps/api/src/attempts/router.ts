@@ -8,6 +8,8 @@ import { attempts, hintEvents, learners, lessons, lessonVersions, stepProgress, 
 import { withTx } from "../db/tx.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
+import { scrimGateOpen } from "../lessons/scrim.ts";
+import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { applyObservations, resolveConcepts } from "../progress/mastery.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
@@ -24,13 +26,19 @@ const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Step not fou
 
 async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
-  if (!step) throw notFound();
+  const reachable = step !== undefined && (step.lessonKind !== "scrim" || (await scrimGateReachable(step, learnerId)));
+  if (!step || !reachable) throw notFound();
   return step;
+}
+
+async function scrimGateReachable(step: { versionId: string; idx: number }, learnerId: string) {
+  const { scrim, gates } = await loadScrimGates(step.versionId, learnerId);
+  return scrimGateOpen(scrim, gates, step.idx);
 }
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
+    .select({ id: steps.id, idx: steps.idx, versionId: steps.lessonVersionId, lessonKind: lessons.kind, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -56,12 +64,15 @@ const hintAt = (step: Step, rung: number) => {
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
 
-async function readProgress(learnerId: string, stepId: string): Promise<Progress> {
+const scrimUnskipped = (step: Step, p: Progress): Progress =>
+  step.lessonKind === "scrim" && p.state === "skipped" ? { ...p, state: "predicting" } : p;
+
+async function readProgress(learnerId: string, step: Step): Promise<Progress> {
   const [p] = await db
     .select()
     .from(stepProgress)
-    .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId)));
-  return p ?? fresh();
+    .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, step.id)));
+  return scrimUnskipped(step, p ?? fresh());
 }
 
 function mutate(
@@ -75,7 +86,7 @@ function mutate(
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
-    const r = next(p, action, { hintCount: step.secret.hints.length });
+    const r = next(scrimUnskipped(step, p), action, { hintCount: step.secret.hints.length });
     if ("conflict" in r) return r;
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
@@ -150,7 +161,7 @@ export const stepsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
-      const p = await readProgress(ctx.learnerId, step.id);
+      const p = await readProgress(ctx.learnerId, step);
       return {
         id: step.id,
         idx: step.idx,
@@ -209,6 +220,7 @@ export const stepsRouter = router({
     .output(z.object({ state: z.literal("skipped") }))
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
+      if (step.lessonKind === "scrim") throw conflict("Scrim gates cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);
@@ -231,7 +243,7 @@ export const stepsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
-      const { state } = await readProgress(ctx.learnerId, step.id);
+      const { state } = await readProgress(ctx.learnerId, step);
       if (state !== "revealed" && state !== "skipped") throw conflict("Not revealed yet");
       const s = step.secret;
       return {

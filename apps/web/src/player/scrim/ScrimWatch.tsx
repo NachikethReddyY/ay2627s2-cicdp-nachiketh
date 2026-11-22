@@ -21,21 +21,24 @@ type ScrimPart = Extract<Part, { kind: "scrim" }>;
 
 const SPEEDS = [0.75, 1, 1.25, 1.5] as const;
 
-type Props = { lessonId: string; title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; onLab: () => void };
+type Props = { lessonId: string; title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; resumeAt: number; onGateDone: (stepId: string, at: number) => Promise<void>; onLab: () => void };
 
-export default function ScrimWatch({ lessonId, title, part, steps, media, onLab }: Props) {
+export default function ScrimWatch({ lessonId, title, part, steps, media, resumeAt, onGateDone, onLab }: Props) {
   const scrim = useMemo(() => scrimTimeline(part.segments), [part.segments]);
   const plan = useMemo(() => planScrim(part.segments), [part.segments]);
   const urls = useMemo(() => narrationBySegment(media, part.segments.length), [media, part.segments.length]);
   const { clock } = scrim;
   const [state, dispatch] = useReducer(playbackReducer, null, () =>
-    initPlayback(
+    ({
+      ...initPlayback(
       scrim,
       Object.entries(plan.stepByKey).flatMap(([key, id]) => {
         const status = steps.find((s) => s.id === id)?.state;
         return status === "revealed" || status === "skipped" ? [key] : [];
       }),
-    ),
+      ),
+      t: resumeAt,
+    }),
   );
   const [failedAudio, setFailedAudio] = useState<ReadonlySet<number>>(() => new Set());
   const [muted, setMuted] = useState(false);
@@ -174,7 +177,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       />
       {gate && gateStep && (
         <section role="region" aria-label="Predict" className="scrim-gate">
-          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => commit({ type: "answer", key: gate.key })} />
+          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => { void onGateDone(gateStep, state.t); }} />
         </section>
       )}
       {done && (
