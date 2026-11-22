@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { buildTimeline, seek } from "@learnquest/player-core";
+import { containsAnswer } from "./answer-leak.ts";
 
 export const text = (max: number) => z.string().trim().min(1).max(max);
 
@@ -27,37 +28,38 @@ type LeakCheckStep = {
   accepted?: ReadonlyArray<string>;
 };
 
-const WHITESPACE = "\\t-\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff";
-const WHITESPACE_RUN = new RegExp(`[${WHITESPACE}]+`, "g");
-const WHITESPACE_EDGE = new RegExp(`^[${WHITESPACE}]+|[${WHITESPACE}]+$`, "g");
-const IDENTIFIER = /^[a-z0-9_]+$/;
-const MIN_ANSWER_LENGTH = 3;
+const OPTION_WHITESPACE = "\\t-\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff";
+const OPTION_WHITESPACE_RUN = new RegExp(`[${OPTION_WHITESPACE}]+`, "g");
+const OPTION_WHITESPACE_EDGE = new RegExp(`^[${OPTION_WHITESPACE}]+|[${OPTION_WHITESPACE}]+$`, "g");
+const OPTION_IDENTIFIER = /^[a-z0-9_]+$/;
 
-const codePoints = (s: string) => Array.from(s).length;
-
-export function containsAnswer(text: string, answer: string): boolean {
+function containsMcqOption(text: string, answer: string): boolean {
   const haystack = text.toLowerCase();
-  const needle = answer.toLowerCase().replace(WHITESPACE_EDGE, "");
-  if (IDENTIFIER.test(needle)) {
-    return codePoints(needle) >= MIN_ANSWER_LENGTH && new RegExp(`(?<![a-z0-9_])${needle}(?![a-z0-9_])`).test(haystack);
+  const needle = answer.toLowerCase().replace(OPTION_WHITESPACE_EDGE, "");
+  if (OPTION_IDENTIFIER.test(needle)) {
+    return Array.from(needle).length >= 3 && new RegExp(`(?<![a-z0-9_])${needle}(?![a-z0-9_])`).test(haystack);
   }
-  const squashed = needle.replace(WHITESPACE_RUN, "");
-  return codePoints(squashed) >= MIN_ANSWER_LENGTH && haystack.replace(WHITESPACE_RUN, "").includes(squashed);
+  const squashed = needle.replace(OPTION_WHITESPACE_RUN, "");
+  return Array.from(squashed).length >= 3 && haystack.replace(OPTION_WHITESPACE_RUN, "").includes(squashed);
 }
 
 function answerLeaks(step: LeakCheckStep): boolean {
-  const answers = step.options
-    ? [step.options[typeof step.answer === "number" ? step.answer : Number(step.answer)] ?? ""]
-    : [String(step.answer), ...(step.accepted ?? []).map(String)];
   const surfaces = [
     step.title,
     step.prompt,
     step.explanations.workedExample,
     step.explanations.practice,
     ...step.hints.map((h) => h.text),
-    ...(step.kind === "cloze" ? Object.values(step.beforeFiles) : []),
   ];
-  return answers.some((answer) => surfaces.some((surface) => containsAnswer(surface, answer)));
+  if (step.kind === "mcq") {
+    const answer = step.options?.[typeof step.answer === "number" ? step.answer : Number(step.answer)] ?? "";
+    return surfaces.some((surface) => containsMcqOption(surface, answer));
+  }
+  const answers = [String(step.answer), ...(step.accepted ?? []).map(String)];
+  return answers.some((answer) =>
+    surfaces.some((surface) => containsAnswer(surface, answer)) ||
+    (step.kind === "cloze" && Object.values(step.beforeFiles).some((surface) => containsAnswer(surface, answer, false))),
+  );
 }
 
 const leakMessage = (step: LeakCheckStep) =>

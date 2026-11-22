@@ -4,7 +4,16 @@ import re
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, ValidationInfo, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    model_validator,
+)
+
+from .answer_leak import contains_answer
 
 
 def _c(n: int) -> StringConstraints:
@@ -21,6 +30,32 @@ T300 = Annotated[str, _c(300)]
 T400 = Annotated[str, _c(400)]
 T500 = Annotated[str, _c(500)]
 T1000 = Annotated[str, _c(1000)]
+_ZOD_TRIM = (
+    "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+    "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+_OPTION_WHITESPACE = (
+    "\t-\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+_OPTION_WHITESPACE_RUN = re.compile(f"[{_OPTION_WHITESPACE}]+")
+_OPTION_WHITESPACE_EDGE = re.compile(f"^[{_OPTION_WHITESPACE}]+|[{_OPTION_WHITESPACE}]+\\Z")
+_OPTION_IDENTIFIER = re.compile("[a-z0-9_]+")
+ClozeText = Annotated[
+    str,
+    BeforeValidator(lambda value: value.strip(_ZOD_TRIM)),
+    StringConstraints(min_length=1, max_length=100),
+]
+
+
+def _contains_mcq_option(text: str, answer: str) -> bool:
+    haystack = text.lower()
+    needle = _OPTION_WHITESPACE_EDGE.sub("", answer.lower())
+    if _OPTION_IDENTIFIER.fullmatch(needle):
+        return len(needle) >= 3 and bool(
+            re.search(f"(?<![a-z0-9_]){needle}(?![a-z0-9_])", haystack)
+        )
+    squashed = _OPTION_WHITESPACE_RUN.sub("", needle)
+    return len(squashed) >= 3 and squashed in _OPTION_WHITESPACE_RUN.sub("", haystack)
 
 
 class OutlineLesson(BaseModel):
@@ -81,25 +116,6 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
-_WHITESPACE = "\t-\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
-_WHITESPACE_RUN = re.compile(f"[{_WHITESPACE}]+")
-_WHITESPACE_EDGE = re.compile(f"^[{_WHITESPACE}]+|[{_WHITESPACE}]+\\Z")
-_IDENTIFIER = re.compile("[a-z0-9_]+")
-_MIN_ANSWER_LENGTH = 3
-
-
-def contains_answer(text: str, answer: str) -> bool:
-    """Whether `text` gives `answer` away; kept in step with containsAnswer in step-schema.ts."""
-    haystack = text.lower()
-    needle = _WHITESPACE_EDGE.sub("", answer.lower())
-    if _IDENTIFIER.fullmatch(needle):
-        return len(needle) >= _MIN_ANSWER_LENGTH and bool(
-            re.search(f"(?<![a-z0-9_]){needle}(?![a-z0-9_])", haystack)
-        )
-    squashed = _WHITESPACE_RUN.sub("", needle)
-    return len(squashed) >= _MIN_ANSWER_LENGTH and squashed in _WHITESPACE_RUN.sub("", haystack)
-
-
 class _Step(BaseModel):
     title: T100
     prompt: T500
@@ -127,7 +143,19 @@ class _Step(BaseModel):
             raise ValueError("beforeFiles needs 1 to 4 files")
         surfaces = self._leak_surfaces()
         for answer in self._answers():
-            if any(contains_answer(surface, answer) for surface in surfaces):
+            leaks = (
+                any(_contains_mcq_option(surface, answer) for surface in surfaces)
+                if isinstance(self, McqStep)
+                else any(contains_answer(surface, answer) for surface in surfaces)
+                or (
+                    isinstance(self, ClozeStep)
+                    and any(
+                        contains_answer(surface, answer, False)
+                        for surface in self.beforeFiles.values()
+                    )
+                )
+            )
+            if leaks:
                 raise ValueError(
                     f"step {self.title!r}: hints, title, prompt, explanations or starter code "
                     "leak the answer"
@@ -152,14 +180,14 @@ class McqStep(_Step):
 
 class ClozeStep(_Step):
     kind: Literal["cloze"]
-    answer: T100
-    accepted: list[T100] = Field(default=[], max_length=6)
+    answer: ClozeText
+    accepted: list[ClozeText] = Field(default=[], max_length=6)
 
     def _answers(self) -> list[str]:
         return [self.answer, *self.accepted]
 
     def _leak_surfaces(self) -> list[str]:
-        return [*super()._leak_surfaces(), *self.beforeFiles.values()]
+        return super()._leak_surfaces()
 
 
 Step = Annotated[McqStep | ClozeStep, Field(discriminator="kind")]
