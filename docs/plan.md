@@ -4,6 +4,7 @@
 > Changes from v1: 6-week core with a Wk-3 cut gate and an ordered cut line; adaptivity redefined (steps keep commit order); answers, hints and source served server-side only; World seam defined; one queue (pg-boss on Postgres); data model and API made consistent; KidsQuest, sandbox, embed and SDK publish moved to stretch (Appendix A).
 >
 > **Pivot (2026-11-06): programming learning tool.** The audience is learners of programming, 13 and over, JavaScript and TypeScript first. Children, KidsQuest, parental consent and the YC Primer framing are dropped. Code and schema keep the names `world` and `worlds`; read them as *track*. Already built, per a 2026-11-06 check: game blocks (grid, order, match, sort, physics, quiz) and the visual engine (LQ-19, LQ-48 to LQ-58). Sections touching children, KidsQuest or the audience are updated; the superseded decision is marked in §17.
+> **Scope update (2026-11-20).** Programming concepts are the MVP input. The real-code-change capstone and Pro are coming soon. Generated paths start private and their creator can publish them without an approval queue.
 > Date: 2026-10-27 · Owner: Nachikethreddyy · CICDP course project, solo, **6 weeks** (§11), deadline unknown (Q3).
 > Source: `docs/idea.md`, `docs/notes/`.
 
@@ -11,16 +12,16 @@
 
 ## 1. The idea
 
-**LearnSlop turns a real code change into an adaptive lesson: the learner predicts before being told, and the system models what they understand and adapts the next step.**
+**LearnSlop teaches programming concepts in short lessons. Learners predict what code will do before seeing the answer.**
 
-Core AI, stated plainly: (a) **generated lessons**: an LLM drafts a prediction, hints and explanations for each step, which the author reviews and publishes; (b) **adaptive choices**: explanation style (worked example, practice or diagram), hint depth, skip offer and next-lesson recommendation come from a learner model. The AI help is Sloppy, a chat in practice. It answers a learner who is stuck, and its guardrails stop it from giving the finished answer; the answer key stays server-side.
+The engine generates paths with predictions, hints and explanations. A path starts private. Its creator can publish it when it passes automatic moderation. The planned learner model recommends a next lesson and review items with reasons. Sloppy is the practice help chat. It is intended to give hints, and a deterministic chat output check is planned (LQ-124). Answer keys stay server-side.
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 
 - From the earlier **Primer** idea: the learner model and adaptive next step. Dropped: the children's-tutor framing and the YC Primer link (that request is for ages 4–10).
 - From **Scrim-Forge**: editable replay from commit history, narration. Dropped: any-repo import, recorded keystrokes, O(1) scrub, "AI knows why the author wrote it" (§12).
 - **Tracks** (code and schema name: `world`): CodeQuest, the JavaScript and TypeScript track, is core. A second language track is stretch (Appendix A). A track is a plugin (§8.4).
-- **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (the lesson's own file in the workbench: editor, Run, Check, Lint, Sloppy and a sandbox terminal), and game parts (order, match, sort, physics, quiz, grid). Game parts exist as catalog blocks and an engine prompt (`game_practice.md`). Wiring them into lesson steps in the web player is not yet verified.
+- **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (the lesson's own file in the workbench: editor, Run, Check, Lint, Sloppy and a sandbox terminal), and game parts (order, match, sort, physics, quiz, grid). The player supports games as the `game-practice` lesson kind.
 - **"Video injection"** (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won't.
 
 ---
@@ -28,13 +29,13 @@ Core loop: present a step → predict → hint ladder on a miss → reveal (repl
 ## 2. Goals, non-goals, success criteria
 
 **Goals**
-- G1. A permissively licensed JS/TS commit becomes a replayable lesson with predictions, hints and narration.
+- G1. A programming concept becomes a short lesson with predictions, hints and practice. Replaying a permissively licensed JS/TS commit is the advanced track.
 - G2. A BKT learner model per account drives the next step.
 - G3. A second language track on the same engine. Core proves the seam with a CI fixture track; a second track is stretch (Rec-1).
 - G4. Model-agnostic AI: LiteLLM, one provider in core.
 - G5. TS and Python SDKs (stretch). G6. CI/CD and one live URL. G7. SDLC artefacts.
 
-**Non-goals:** any-repo or arbitrary-URL import; pull-request import (commit only); private repos; non-JS/TS content; real-time multi-user; payments; mobile; children's product or kids chat; calling the replay "recorded".
+**Non-goals:** any-repo or arbitrary-URL import; pull-request import (commit only); private repo imports; non-programming topics; real-time multi-user; payments (Pro is coming soon); mobile; children's product or kids chat; calling the replay "recorded".
 
 **Success criteria**
 - S1: one permissive OSS commit (Q6) plays end to end in the **deployed** app by Wk 6. Agni is a local pilot only, never deployed (Q7).
@@ -58,7 +59,8 @@ Core actors: **learner (student or junior developer)**, author, admin.
 | UC11 | Import a commit → draft lesson | yes (author) |
 | UC12 | Publish / unpublish (editing: cut 6) | yes (author) |
 | UC2, UC10 | Removed 2026-11-06: child profile and KidsQuest challenge | dropped |
-| UC7, UC13–UC15 | Sandbox; provider config; SDK; embed | stretch (cuts 4, 5, 9, 11, 12) |
+| UC7 | Run, check and use a shell in the server-side practice sandbox | yes |
+| UC13–UC15 | Provider config, SDK and embed | stretch (cuts 4, 5, 11, 12) |
 
 Full flows: `docs/sdlc/use-cases.md` (WP0).
 
@@ -76,12 +78,12 @@ Full flows: `docs/sdlc/use-cases.md` (WP0).
 - FR7 Narration: pre-rendered MP3 per step; browser speech fallback.
 - FR10 CI/CD, one live URL. FR13a Author publish/unpublish. FR14a Mastery list.
 
-**Should** (cut line, §11.3): FR3b LLM extras (12); FR7b live TTS (8); FR8 game parts in lessons (10); FR9 SDKs (4, 11); FR11 sandbox (9); FR12 embed (5); FR13b author editing (6); FR14b quest, review, dashboard (7).
+**Should** (cut line, §11.3): FR3b LLM extras (12); FR7b live TTS (8); FR8 game parts in lessons (10); FR9 SDKs (4, 11); FR11 WebContainers fork (9); FR12 embed (5); FR13b author editing (6); FR14b quest, review, dashboard (7).
 **Could:** FR16 local-model profile (Ollama); FR17 Prometheus/Grafana. **Won't:** FR15 MP4 export.
 
 **Non-functional**
-- NFR1 Audience age: 13 and over. No child accounts, no parental consent flow, no under-13 data (Pivot, top of this file).
-- NFR2 Security: argon2id; httpOnly secure cookies; CSRF; in-memory rate limits (single instance); secrets in env store; dependency, secret and image scans; code runs only in the browser.
+- NFR1 (retired 2026-11-20). The audience is 13 and over. Sign-up has no age gate and the product has no child profiles.
+- NFR2 Security: argon2id; httpOnly secure cookies; CSRF; in-memory rate limits (single instance); secrets in env store; dependency, secret and image scans; learner code runs in a server-side sandbox.
 - NFR3 Performance: seek replays ≤ K events (§8.3); first paint ≤ 2.5 s; generation is async.
 - NFR4 Accessibility: WCAG 2.2 AA target; keyboard player control; captions from narration text (WP4 M2); axe in Playwright.
 - NFR5 Reliability: LLM failure → fallback content; attempts are never lost.
@@ -149,7 +151,7 @@ attempts in revealed or skipped: 409
 | Ingest | GitHub REST, engine only, allow-listed; licence and vendored check | — |
 | Pedagogy | LiteLLM → Anthropic, one provider; Pydantic + Zod validation; one repair retry inside the engine; fallback | segmentation, other providers, evals, T3 judge, prompt registry, admin page (cut 12) |
 | Narration | Pre-rendered MP3 per step (WP11 script). Cloud: ElevenLabs if the author has a key. Local: Kokoro, run by the author. Browser speech if the MP3 is missing | live TTS, other adapters (OpenAI-compatible), Piper (cut 8) |
-| Generated UI, sandbox | — | OpenUI (cut 10); WebContainers, Sandpack fallback (cut 9) |
+| Generated UI, sandbox | Server-side practice runs, checks and shells | OpenUI (cut 10); WebContainers, Sandpack fallback (cut 9) |
 
 Details of the stretch items: Appendix A.
 
@@ -225,7 +227,7 @@ pg-boss keeps its own job tables. Mastery work is not in `lesson_jobs`.
 Import (`POST /lessons/import`) → pg-boss job `import` in the API process:
 1. Import body is `{repo, sha}`. The API rejects repos not in `worlds/codequest/repos.yml` (400); the engine resolves the parent SHA. `POST /v1/pipeline/ingest` (engine) fetches the commit. Checks licence and vendored code, and scans for secrets. Returns whole-file before/after per changed file and hunks. The engine applies hunks in order with `unidiff` to compute one `beforeFiles`/`afterFiles` state per step (WP6 deliverable, with a test). Commits over the §15.4 limits fail with `lesson_jobs.error = "split this lesson"`.
 2. `POST /v1/pipeline/pedagogy` (engine, one call per lesson). The engine validates with Pydantic and does one repair retry with the validation errors appended. Validators reject output where any hint, title or explanation contains the normalised answer or an accepted variant, or where a concept slug is not in the manifest (both are validation errors). Returns the content, `usage` and `validation`.
-3. The API re-validates with Zod, writes a draft `lesson_versions` and `steps`, and writes `llm_calls` from `usage`. The author publishes (UC12). Published versions are immutable.
+3. The API re-validates with Zod, writes a draft `lesson_versions` and `steps`, and writes `llm_calls` from `usage`. The author publishes the imported lesson (UC12). For generated paths, the creator publishes the path after automatic moderation. Published versions are immutable.
 
 **Fallback** (LLM off or invalid): synthetic lessons use hand-written content (WP11). The OSS lesson uses the LLM, with the deterministic fallback below. Imported lessons get a deterministic prediction. Cloze: one identifier or literal token of an added line with ≥ 3 tokens (§15.1). MCQ: the added line as the answer; distractors are drawn only from lines absent from the visible `beforeFiles` (added lines from other hunks, or mutated variants of the answer), so the answer is not the only absent option. Hints are generic (§15.1). The explanation is the commit title, labelled `inferred`.
 
@@ -233,7 +235,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 
 ### 8.2 Learner model and adaptivity (engine: `bkt`, `policy`)
 
-**Scope.** Steps in a commit lesson are a fixed sequence (step N depends on the code after N−1), so they are never reordered. Adaptivity means explanation style, hint depth, skip offer, and next-lesson recommendation. Independent quiz items in a second track can be reordered (stretch).
+**Scope.** Steps in a commit lesson are a fixed sequence (step N depends on the code after N−1), so they are never reordered. The planned recommendations cover the next lesson and review items, with a reason for each choice. Independent quiz items in a second track can be reordered (stretch).
 
 **Observations.** Only the **first action on a step** (attempt or skip) is observed. Later actions are logged, not observed. Each concept in the step's `conceptIds` gets the same observation.
 - correct, 0 hints → correct
@@ -257,10 +259,16 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 **Thresholds** (one value each):
 - Unlock: prerequisites at `p_known ≥ 0.8`.
 - Failures on a concept = observed incorrect (including revealed). Hint-assisted successes do not count.
-- Explanation style: `practice` if `floor(failures / 3)` is odd, else `worked_example`.
-- `GET /steps/:id` returns `explanationStyle` and `skipOffered`, computed server-side from observed attempts (WP5, tested). Skip is always available (§9). `skipOffered` is display-only: it prompts the learner after ≥ 6 failures and does not gate skip.
+- Skip stays available (§9). A skip on the first action counts as incorrect evidence.
 
-**Policy:** between lessons, pick the lowest `p_known` among unlocked concepts and recommend the lesson that covers it, with `reason`. Stretch: review items before steps.
+**Planned policy** (revised idea §4). Select the next lesson and review items using mastery and catalogue prerequisites. Review includes concepts from finished lessons with `p_known < 0.8`. An ADVANCE reason can name only mastered concepts.
+
+- Require concepts on each step and read prerequisite edges from the catalogue.
+- Set MCQ `p_guess` to the reciprocal of the number of options.
+- Keep unapplied evidence available to retry after an engine error.
+- Make engine calls between short read and write transactions.
+- Drive Continue from `me.next` and course locks from `p_known`.
+- Count Sloppy help on an open step as a hint for mastery scoring.
 
 **Queue:** one DB transaction first locks the `step_progress` row (`SELECT … FOR UPDATE`), then writes the attempt, `step_progress`, hint rows, and a pg-boss job `mastery` (singleton key `mastery:<attemptId>`, so retries are idempotent). The response returns at once. The worker, in one transaction, locks the learner's `learners` row (`SELECT … FOR UPDATE`), calls `/v1/mastery/update` and `/v1/next`, and writes `mastery` and `recommendations`. The WK-1 spike confirms pg-boss can enqueue on the transaction's connection.
 
@@ -294,7 +302,7 @@ Replay is built in `player-core` from hunks; no LLM is involved. Narration: `scr
 **Public (core)**
 - `POST /auth/register|login|logout` · `GET /auth/github` · `GET /auth/github/callback` (WP5)
 - `GET /worlds` · `GET /worlds/:slug/concepts` · `GET /lessons?world=` (published only) · `GET /lessons/:id` (§7)
-- `GET /steps/:id` → `{prompt, state, explanationStyle, skipOffered, beforeFiles | null}`. `beforeFiles` is returned only when the previous step is `revealed` or `skipped`, or for step 1.
+- `GET /steps/:id` → `{prompt, state, beforeFiles | null}`. `beforeFiles` is returned only when the previous step is `revealed` or `skipped`, or for step 1.
 - `POST /steps/:id/attempts` → `200 {attemptId, correct, feedback, missedConcepts, hintsUsed, state}`. `409` if the state is `revealed` or `skipped`, or if `hinting` with `attempt_allowed = false` (take the next rung first).
 - `POST /steps/:id/hints` → `{rung, text, eliminate?}`. `eliminate` (MCQ rung 1 only) is the index of the distractor to cross out, picked by the API deterministically from the non-answer options (no schema change); never the answer. Allowed in `predicting` or `hinting`. `409` when all rungs are used.
 - `POST /steps/:id/skip` → `{state:"skipped"}`. Always available until revealed. Writes an `attempts` row with `kind=skip`.
@@ -488,7 +496,7 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 
 Threat model: STRIDE in `docs/sdlc/threat-model.md`. Draft by WP0 in Wk 2; final by WP15 in Wk 6.
 
-**15.6 Privacy.** Core collects email and password (or GitHub identity) only. Privacy notice: one paragraph in `docs/sdlc/privacy.md` (Wk 6). Audience is 13 and over; no child data (§4 NFR1).
+**15.6 Privacy.** The learner data policy covers account email, attempts, mastery, public handle, XP, streak, timezone and daily goal. XP and streak are calculated from activity. The weekly leaderboard shows the handle and XP. See `docs/sdlc/privacy.md` for the privacy notice.
 
 **15.7 AI practice.** Core: recorded fixtures only in CI; no live calls in PR checks; `prompt_version` on steps and `llm_calls`; repair inside the engine. Stretch (cut 12): prompt registry, provider failover, live evals with spend cap.
 

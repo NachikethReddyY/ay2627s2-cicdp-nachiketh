@@ -53,7 +53,7 @@ Sources: `apps/web/vercel.json` (rewrites and CSP), `apps/api/src/app.ts`, `apps
 | A4 | Host and sandbox integrity | Escape from a sandbox container gives host access. | API host, Docker daemon, Daytona sandboxes |
 | A5 | AI spend budget | Unbounded model calls drive real cost. | `spend_ledger`, `AI_KILL_SWITCH`, `AI_CALL_ESTIMATE_USD` |
 | A6 | Engine token | Lets any holder call every engine endpoint. | `ENGINE_TOKEN` (env, ≥ 32 chars) |
-| A7 | Content integrity of published lessons | Learners trust published lessons; LLM output must not reach them unreviewed. | `lessons`, `lesson_versions` (published versions are not rewritten, plan §15.10) |
+| A7 | Content integrity of published lessons | Generated paths start private. Only the creator can make them public, after an automatic moderation check. | `lessons`, `lesson_versions` (published versions are not rewritten, plan §15.10) |
 
 ## 3. Threat tables by trust boundary
 
@@ -90,11 +90,12 @@ Residual risk: **Low / Med / High**, the risk left after the existing mitigation
 | # | STRIDE | Threat | Existing mitigation | Residual |
 |---|---|---|---|---|
 | B3.1 | D | Guide chat drives unlimited model spend | Guide route is `apps/api/src/dev/route.ts:101-140`. It has an in-memory limit of 10 per 60 s per learner (`:109-115`). It does not call `reserveAiSpend` and does not check `AI_KILL_SWITCH`. The generation path does both (`apps/api/src/ai/service.ts:73`, `:96`, `:299`; `apps/api/src/config/budget.ts:15-16`). Registered in every environment (`apps/api/src/dev/route.ts:100` comment). The engine has no budget check of its own (F26). | High |
-| B3.2 | D | Generation cost by many accounts | `apps/api/src/ai/service.ts` reserves budget per call against `spend_ledger`. Per-learner daily caps exist for paths (`aiPathsPerDay`, `ai/service.ts:90`) and images (`imagesPerDay`, `media/imagegen.ts:79`). Free tier: 5 paths and 1 image per day (`apps/api/src/config/tiers.ts:6`). Guide chat has no daily cap (F1). No cap on account creation (F25). | Med |
+| B3.2 | D | Generation cost by many accounts | `apps/api/src/ai/service.ts` reserves budget per call against `spend_ledger`. Per-learner daily caps exist for paths (`aiPathsPerDay`, `ai/service.ts:90`) and images (`imagesPerDay`, `media/imagegen.ts:79`). The MVP applies five paths and one image per day to every learner (`apps/api/src/config/limits.ts`). Guide chat has no daily cap (F1). No cap on account creation (F25). | Med |
 | B3.3 | T | Prompt injection through repo files sent to the guide | Up to 24 workspace files, 6 KB each, 18 KB total, text types only, `.env*` and lockfiles excluded (`apps/api/src/dev/route.ts:19-24`, `:43`). Files are sent as data (engine prompt contract, Report A). Output is not validated server-side. | Med |
 | B3.4 | T | Prompt injection through learner topic or chat | Topic ≤ 300 chars, moderated (`apps/api/src/ai/service.ts:80`). Moderation fails open (see B6.2). Model output is schema-validated in the engine; LLM calls have no tools (plan §15.5; tool absence not re-checked). | Med |
 | B3.5 | I | Learner data sent to providers | Guide chat sends the editor code, selection and messages to the LLM provider. See `docs/sdlc/privacy.md`. | Med |
 | B3.6 | E | Model output executes code or HTML in the browser | Client renders Markdown without raw HTML (Report A). Widgets from guide output are not validated server-side (Report A). | Low |
+| B3.7 | I | Sloppy reveals a finished solution | The guide prompt asks for hints. The reply path in `apps/api/src/dev/route.ts` has no deterministic output check. See F27. | Med |
 
 ### B4. API to sandbox (code execution)
 
@@ -108,6 +109,7 @@ Residual risk: **Low / Med / High**, the risk left after the existing mitigation
 | B4.6 | S | Shell WebSocket opened by a different learner | Shell tickets: 32 random bytes (`apps/api/src/sandbox/ticket.ts:61`), 30 s TTL (`apps/api/src/sandbox/ticket.ts:6`), single use, bound to a learner. Origin checked on the WebSocket upgrade (`apps/api/src/sandbox/route.ts:31-41`). | Low |
 | B4.7 | I | Shell ticket leaks through URL logs or proxies | Ticket travels in the query string (`apps/api/src/sandbox/route.ts:45`). API request log URL is redacted (`apps/api/src/app.ts:40`, `redactUrl`). Proxy and Render platform logs not verified (F4); the shell WebSocket goes from the browser straight to Render, so the ticket may appear there. Ticket TTL limits the window. | Low |
 | B4.8 | I | Daytona sandbox exposes learner code to other tenants | Practice-run Daytona sandboxes use `networkBlockAll: true` and `ephemeral: true` (`apps/api/src/sandbox/daytona.ts:438-439`). The per-learner shell sandbox has network access and is auto-stopped, not deleted, when idle (`apps/api/src/sandbox/daytona.ts:96-101`). It is deleted and replaced only when its state is broken (`apps/api/src/sandbox/daytona.ts:52`, `:92`), so its files persist until then (see F6, F24). Sandbox label is SHA-256 of learner ID (Report B). Daytona retention unverified. | Med |
+| B4.9 | I | Persistent Daytona shell retains learner files or reaches the internet | The shell auto-stops on idle, is reused for the same learner, and is created without the network block used by one-off practice runs. Shell ticket and origin controls apply. See B4.6 and B4.8. | High until verified |
 
 ### B5. API to engine (service-to-service)
 
@@ -171,7 +173,7 @@ Severity is the impact if the gap is exploited today. Follow-up titles are sugge
 | F6 | Shell egress not verified. Spec says the shell network is on. | `apps/api/src/sandbox/docker.ts:38` (ICC off only); no egress rule found. Production uses Daytona (`docs/configuration.md:33`), so the Daytona shell sandbox (`apps/api/src/sandbox/daytona.ts:96-101`) has the same exposure. | High until verified | Check the host firewall or iptables for the Docker shell network, and the network settings of the Daytona shell sandbox; add an egress test; block outbound by default. |
 | F7 | `parts.complete` lets a learner mark a learn or watch lesson complete without viewing it. | `apps/api/src/parts/router.ts:10-25` | Low | Require step progress or a view event before completion; add a test. |
 | F8 | `games.hint` returns any hint by index with no ladder check. | `apps/api/src/progress/games.ts:34-42` | Low | Enforce the rung order from plan §15.1 on the server; add a test. |
-| F9 | Topic and generated-lesson moderation fail open. | `apps/api/src/safety/moderation.ts:39-40`, `:59-60`; `apps/api/src/ai/service.ts:80`, `:105`, `:175` | Med | Decide per policy: fail closed for topics, keep fail-open for lessons only with a review queue. |
+| F9 | Topics and private generation can fail open when moderation is unavailable. Publish and generation in a public world fail closed. | `apps/api/src/safety/moderation.ts:39-40`, `:59-60`; `apps/api/src/ai/service.ts:80`, `:105`, `:175` | Med | Monitor moderation outages. The creator publish flow uses strict moderation with no approval queue. |
 | F10 | No account deletion or data export route. | No route found in `apps/api/src/`; see `docs/sdlc/privacy.md` | Med | Add `account.delete` and `account.export`; cover in the privacy note once built. |
 | F11 | `ON DELETE NO ACTION` on learner foreign keys. Deleting a learner fails while attempts, hints, step progress or game completions exist. `game_completions.learner_id` also lacks a cascade. Deleting a user cascades to `learners`, but the learner delete then fails on these keys, so user deletion is blocked one level down. | `apps/api/drizzle/0000_workable_forge.sql:133`, `:136`, `:142`; `apps/api/src/db/schema.ts:435` (`game_completions`); learners to user cascade at `apps/api/drizzle/0000_workable_forge.sql:138` | Med | Migration (expand/contract, plan §15.10) to cascade or to delete child rows first. |
 | F12 | Better Auth defaults not verified: cookie flags, scrypt or argon2id, password minimum length, session expiry. Plan §15.5 says argon2id and httpOnly, Secure, SameSite. | `apps/api/src/auth/auth.ts:9` (`emailAndPassword: { enabled: true }` only) | Med | Read the installed Better Auth source and record the values here; set explicit options if they differ from plan §15.5. |
@@ -184,13 +186,14 @@ Severity is the impact if the gap is exploited today. Follow-up titles are sugge
 | F19 | Engine-to-API transport TLS not verified. | `services/engine/learnquest_engine/server.py:62-63` (token check only) | Med | Confirm HTTPS on `ENGINE_URL` in production; record in `docs/configuration.md`. |
 | F20 | Media bucket public or private status not verified. | `apps/api/src/media/storage.ts:12`, `:43` | Med | Check the bucket policy; add a test that an unsigned URL returns 403. |
 | F21 | Security test folder `apps/api/test/security/` does not exist. Plan WP15 requires SSRF tests and a final review of WP5 answer-leak tests. | `apps/api/test/` (no `security/` folder) | Med | Create the folder with answer-leak and rate-limit tests (WP15 follow-up). |
-| F22 | No age gate or age field. The 13+ audience is not enforced at sign-up. | `apps/web/src/pages/Login.tsx:21` (no age input) | Low (privacy) | Decide the gate with the user (audience change needs approval per AGENTS). See `docs/sdlc/privacy.md`. |
-| F23 | Sign-up name is the email local part, so it can hold a real name. | `apps/web/src/pages/Login.tsx:21` | Low (privacy) | Ask for a display name or default to a neutral label. |
+| F22 | No age gate or age field. The 13+ audience is not enforced at sign-up. | `apps/web/src/pages/Login.tsx:21` (no age input) | Low (privacy) | Owner decision on 2026-11-20: sign-up has no age gate. See `docs/sdlc/privacy.md`. |
+| F23 | Older accounts may store the email local part as their account name. | `apps/web/src/pages/Login.tsx`, `apps/api/src/progress/home.ts` | Low (privacy) | LQ-109 uses a neutral name for new sign-ups and lists the public handle and XP on the leaderboard. |
 | F24 | Compute and egress abuse from the always-on, network-enabled shell. A learner can run mining, port scanning or spam from our IPs, which could lead to abuse reports against our hosting accounts. | `apps/api/src/sandbox/docker.ts:38`; `apps/api/src/sandbox/daytona.ts:96-101`; see F6 | High | Default-deny egress on shell sandboxes; cap CPU time per shell; alert on sustained CPU and outbound volume. |
 | F25 | No email verification. The `verification` table exists but no flow uses it, so one person can create unlimited free accounts. Per-learner limits (guide: 10 per minute; sandbox tabs and shells) then multiply across accounts into Daytona and LLM cost. | `apps/api/src/auth/auth.ts:9` (`emailAndPassword: { enabled: true }` only); `apps/api/src/db/schema.ts:67` (`verification`) | High | Require email verification before AI or sandbox use; add a per-account daily cap and a cap on account creation per IP. |
 | F26 | Guide endpoint relies on the API for the kill switch and budget. `/v1/guide/chat` has no engine-side budget backstop, so a leaked `ENGINE_TOKEN` allows unlimited guide spend. | `services/engine/learnquest_engine/server.py:179`; `apps/api/src/dev/route.ts:131`; API-side kill switch at `apps/api/src/config/budget.ts:15-16` | Med | Add an engine-side spend or request cap on `/v1/guide/chat`; rotate `ENGINE_TOKEN` if it may have leaked. |
+| F27 | Sloppy can return a finished solution. | `apps/api/src/dev/route.ts`, B3.7 | Med | Add an output check with repair or refusal and test it with solution fixtures (LQ-124). |
 
-Findings F1-F3, F6, F24 and F25 should be fixed before the presentation demo, since they can cost money, lock out users, or give host access. F13 and F22 need the user's decision.
+Findings F1-F3, F6, F24 and F25 should be fixed before the presentation demo, since they can cost money, lock out users, or give host access. F13 needs the user's decision.
 
 ---
 
@@ -212,7 +215,7 @@ Each item needs a check before this model is treated as complete. None was verif
 | O10 | LiteLLM advisory check (plan §15.5, WP0). The outcome is not recorded in the repo. | Check the PyPI advisory and the pinned version in `services/engine`. |
 | O11 | Whether the guide route's kill-switch gap is intentional. | Ask the user. |
 | O12 | Which runner production uses for practice checks. `docs/configuration.md:33` says Daytona, but `/sandbox/check` always runs docker (`apps/api/src/sandbox/check.ts:64`). Either production has a Docker socket on the API host (F3 is real), or practice checks fail there. | Compare `docs/configuration.md` with the Render service settings. Run a practice check on production or staging and see whether it fails. If it runs, run `docker info` on the API host. |
-| O13 | Whether AI-generated learner-published paths reach other learners without human review. AGENTS.md says a human approves generated content. Not asserted either way. | Read the path publish flow and the review and moderation steps that apply to published paths. |
+| O13 | Generated path visibility and moderation during publication. | Verify private access and the concurrent publish and generation case in `apps/api/test/ai.test.ts` and `apps/api/test/gen-ai.test.ts`. |
 
 ## 7. What is not in scope
 
