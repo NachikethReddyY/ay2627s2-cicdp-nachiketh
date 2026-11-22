@@ -79,6 +79,7 @@ const meNext = protectedProcedure
         lessonTitle: z.string().nullable(),
         conceptSlug: z.string().nullable(),
         reason: z.string(),
+        reasonCode: z.string(),
       })
       .nullable(),
   )
@@ -91,8 +92,9 @@ const meNext = protectedProcedure
       lesson_title: string | null;
       concept_slug: string | null;
       reason: string;
+      reason_code: string;
     }>(sql`
-      SELECT r.action, l.slug AS lesson_slug, l.title AS lesson_title, c.slug AS concept_slug, r.reason
+      SELECT r.action, l.slug AS lesson_slug, l.title AS lesson_title, c.slug AS concept_slug, r.reason, r.reason_code
       FROM recommendations r
       LEFT JOIN lessons l ON l.id = r.lesson_id
       LEFT JOIN concepts c ON c.id = r.concept_id
@@ -101,7 +103,7 @@ const meNext = protectedProcedure
       ORDER BY r.created_at DESC, r.id DESC LIMIT 1`);
     const r = rows[0];
     if (!r) return null;
-    return { action: r.action, lessonSlug: r.lesson_slug, lessonTitle: r.lesson_title, conceptSlug: r.concept_slug, reason: r.reason };
+    return { action: r.action, lessonSlug: r.lesson_slug, lessonTitle: r.lesson_title, conceptSlug: r.concept_slug, reason: r.reason, reasonCode: r.reason_code };
   });
 
 export const meRouter = router({ update: meUpdate, mastery: meMastery, next: meNext });

@@ -139,7 +139,7 @@ const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo", ".git", "drizzle"])
 
 function* walk(dir: string): Generator<string> {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(e.name)) continue;
+    if (SKIP_DIRS.has(e.name) || (dir.endsWith(`${sep}e2e`) && ["playwright-report", "test-results"].includes(e.name))) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) yield* walk(p);
     else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) yield p;

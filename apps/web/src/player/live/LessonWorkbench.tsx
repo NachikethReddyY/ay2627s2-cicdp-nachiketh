@@ -1,3 +1,4 @@
+import type { GuideChat } from "../workbench/PlannedParts";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ListChecks, Play } from "lucide-react";
@@ -48,7 +49,8 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   const [code, setCode] = useState(part.starterCode);
   const [selection, setSelection] = useState<{ startLine: number; endLine: number; text: string } | null>(null);
   const [tab, setTab] = useState<Tab>("instructions");
-  const [sloppyMounted, setSloppyMounted] = useState(false);
+  const [guideChat, setGuideChat] = useState<GuideChat>({ messages: [], question: "", sending: false, chatError: "" });
+  const guideRequestId = useRef(0);
   const [revealDocs, setRevealDocs] = useState(0);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<{ text: string } | null>(null);
@@ -76,7 +78,6 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   const show = (t: Tab) => {
     setTab(t);
     setRevealDocs((n) => n + 1);
-    if (t === "sloppy") setSloppyMounted(true);
   };
   const can = actionGuards({ busy: r.busy, checkBusy: r.checkBusy, lintBusy: r.lintBusy, code });
   const run = () => {
@@ -153,10 +154,10 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
           <PracticeSolution lessonId={lessonId} versionId={part.versionId} revision={part.revision} solution={part.solution} attemptCount={r.attemptCount} />
         </LessonResults>
       </div>
-      {sloppyMounted && (
-        <div hidden={tab !== "sloppy"} className="flex min-h-0 min-w-0 flex-1">
+      {tab === "sloppy" && (
+        <div className="flex min-h-0 min-w-0 flex-1">
           <Suspense fallback={null}>
-            <AIGuide lessonId={lessonId} fileName={fileName} filePath={fileName} projectRoot="." code={code} language={language} selection={selection} pendingFinding={pendingFinding} onFindingSent={() => setPendingFinding(null)} pendingPrompt={pendingPrompt} onPromptSent={() => setPendingPrompt(null)} />
+            <AIGuide session={{ chat: guideChat, setChat: setGuideChat, requestId: guideRequestId }} lessonId={lessonId} fileName={fileName} filePath={fileName} projectRoot="." code={code} language={language} selection={selection} pendingFinding={pendingFinding} onFindingSent={() => setPendingFinding(null)} pendingPrompt={pendingPrompt} onPromptSent={() => setPendingPrompt(null)} />
           </Suspense>
         </div>
       )}

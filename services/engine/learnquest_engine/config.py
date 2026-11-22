@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     LLM_DEADLINE_S: int = 300
     LLM_MAX_TOKENS: int = 8000
     ENGINE_TOKEN: SecretStr = Field(min_length=32)
-    PORT: int = 8000
 
 
 @lru_cache

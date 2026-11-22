@@ -5,10 +5,10 @@ import { quizKind } from "./quiz.ts";
 import { matchKind, orderKind, sortKind } from "./drag.ts";
 import { shellFields, type GameKind, type ShellProps } from "./shell.ts";
 
-export const GAME_KINDS = { grid: gridKind, order: orderKind, match: matchKind, sort: sortKind, physics: physicsKind, quiz: quizKind } as const;
+const GAME_KINDS = { grid: gridKind, order: orderKind, match: matchKind, sort: sortKind, physics: physicsKind, quiz: quizKind } as const;
 
 type Kinds = typeof GAME_KINDS;
-export type GameKindProps = { [K in keyof Kinds]: Kinds[K] extends GameKind<infer P> ? P : never }[keyof Kinds];
+type GameKindProps = { [K in keyof Kinds]: Kinds[K] extends GameKind<infer P> ? P : never }[keyof Kinds];
 export type GameProps = ShellProps & { kind: GameKindProps };
 
 const kinds = Object.values(GAME_KINDS).map((k) => k.schema);

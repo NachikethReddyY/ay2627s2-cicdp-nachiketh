@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
-import { clampStep, stateAt, stepCount, timelineSchema, type Timeline } from "../src/index.ts";
+import { clampStep, stateAt, stepCount, timelineSchema, type BlockTimeline } from "../src/index.ts";
 
-const step = (set: Timeline["steps"][number]["set"] = [], caption = "Step") => ({ caption, durationMs: 1000, set });
-const t: Timeline = timelineSchema.parse({
+const step = (set: BlockTimeline["steps"][number]["set"] = [], caption = "Step") => ({ caption, durationMs: 1000, set });
+const t: BlockTimeline = timelineSchema.parse({
   steps: [
     step([{ id: "box", prop: "x", value: 0 }, { id: "box", prop: "fill", value: "green" }]),
     step([{ id: "box", prop: "x", value: 50 }]),

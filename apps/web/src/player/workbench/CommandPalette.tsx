@@ -65,10 +65,8 @@ export default function CommandPalette({ open, initial, files, commands, docs, o
   }
 
   const { mode, term } = parseQuery(query);
-  const results = useMemo<PaletteItem[]>(
-    () => filterItems(mode === "file" ? files : mode === "cmd" ? commands : docs, term),
-    [mode, term, files, commands, docs],
-  );
+  const entries = mode === "file" ? files : mode === "cmd" ? commands : docs;
+  const results = useMemo<PaletteItem[]>(() => filterItems(entries, term), [entries, term]);
   const sel = Math.min(index, Math.max(0, results.length - 1));
 
   useEffect(() => {

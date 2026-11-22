@@ -6,8 +6,6 @@ Equations (docs/plan.md section 8.2):
   learn:     p_next = p' + (1-p') * p_learn
 """
 
-from dataclasses import dataclass
-
 P_MIN = 0.001
 P_MAX = 0.999
 
@@ -16,14 +14,6 @@ P_LEARN = 0.2
 P_SLIP = 0.1
 P_GUESS_MCQ = 0.25
 P_GUESS_CLOZE = 0.10
-
-
-@dataclass(frozen=True)
-class BktParams:
-    p_slip: float = P_SLIP
-    p_guess: float = P_GUESS_MCQ
-    p_learn: float = P_LEARN
-    p_init: float = P_INIT
 
 
 def clamp(p: float) -> float:

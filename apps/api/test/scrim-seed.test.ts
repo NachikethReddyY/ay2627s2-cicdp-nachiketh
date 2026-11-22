@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { after, test } from "node:test";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
-import { attempts, hintEvents, lessonMedia, learners, lessons, lessonVersions, stepProgress, steps, user, worlds } from "../src/db/schema.ts";
+import { attempts, gameCompletions, hintEvents, lessonMedia, learners, lessons, lessonVersions, stepProgress, steps, user, worlds } from "../src/db/schema.ts";
 import { seed } from "../src/db/seed.ts";
 import { silentWav } from "../src/media/silent-wav.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
@@ -82,7 +82,10 @@ test("seeding twice keeps one scrim lesson, one step and one narration per segme
   setStorage(mem);
   try {
     await seed();
-    await seed();
+    const { versionId: seeded } = await scrimVersionId();
+    assert.equal((await db.select().from(lessonMedia).where(eq(lessonMedia.lessonVersionId, seeded))).length, 0);
+    await seed({ narration: true });
+    await seed({ narration: true });
     const { versionId } = await scrimVersionId();
     assert.equal((await db.select().from(lessons).where(eq(lessons.slug, SLUG))).length, 1);
     assert.equal((await db.select().from(steps).where(eq(steps.lessonVersionId, versionId))).length, 1);
@@ -129,15 +132,18 @@ test("silentWav is a valid 8 kHz mono 16-bit RIFF/WAVE file of the requested len
 
 test("reseeding after a removed gate keeps the learner's attempts, hints and progress", async () => {
   await seed();
-  const { versionId } = await scrimVersionId();
+  const { versionId, lesson } = await scrimVersionId();
   const [gated] = await db.select().from(steps).where(eq(steps.lessonVersionId, versionId));
   const [ghost] = await db.insert(steps).values({ ...gated!, id: "scrim-return-values-removed-gate", idx: 9 }).returning();
+  await db.insert(steps).values({ ...gated!, id: "unused-removed-gate", idx: 10 });
   const [authUser] = await db.insert(user).values({ id: "lq112-reseed", name: "Reseed", email: "lq112-reseed@example.com" }).returning();
   const learnerId = (await db.insert(learners).values({ userId: authUser.id }).returning({ id: learners.id }))[0]!.id;
-  await db.insert(attempts).values({ learnerId, stepId: ghost!.id, kind: "mcq", response: { option: 0 }, observed: true, correct: true, hintsUsed: 1 });
+  await db.insert(attempts).values({ learnerId, stepId: ghost!.id, kind: "mcq", observed: true, correct: true, hintsUsed: 1 });
   await db.insert(hintEvents).values({ learnerId, stepId: ghost!.id, rung: 1 });
   await db.insert(stepProgress).values({ learnerId, stepId: ghost!.id, state: "hinting" });
+  await db.insert(gameCompletions).values({ learnerId, lessonId: lesson.id, partIdx: 0, blockId: "old-game" });
   await seed();
+  assert.equal((await db.select().from(steps).where(eq(steps.id, "unused-removed-gate"))).length, 0);
   assert.equal((await db.select().from(attempts).where(eq(attempts.stepId, ghost!.id))).length, 1);
   assert.equal((await db.select().from(hintEvents).where(eq(hintEvents.stepId, ghost!.id))).length, 1);
   assert.equal((await db.select().from(stepProgress).where(eq(stepProgress.stepId, ghost!.id))).length, 1);
@@ -146,4 +152,9 @@ test("reseeding after a removed gate keeps the learner's attempts, hints and pro
   const client = trpc(app, await signUp(app, "scrim-reseed-view@example.com"));
   assert.equal((await client.q("lessons.get", { id: SLUG })).statusCode, 200);
   assert.equal((await client.q("steps.get", { id: ghost!.id })).statusCode, 404);
+  await db.delete(user).where(eq(user.id, authUser.id));
+  assert.equal((await db.select().from(attempts).where(eq(attempts.learnerId, learnerId))).length, 0);
+  assert.equal((await db.select().from(hintEvents).where(eq(hintEvents.learnerId, learnerId))).length, 0);
+  assert.equal((await db.select().from(stepProgress).where(eq(stepProgress.learnerId, learnerId))).length, 0);
+  assert.equal((await db.select().from(gameCompletions).where(eq(gameCompletions.learnerId, learnerId))).length, 0);
 });

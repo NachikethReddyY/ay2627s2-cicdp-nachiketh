@@ -10,7 +10,7 @@ export type PartContext = {
 
 export const engineParts = {
   lesson: async (ctx: PartContext): Promise<unknown> => {
-    const body = await callEngine<{ lesson?: unknown }>("/v1/pipeline/lesson", { ...ctx, missedConcepts: [] });
+    const body = await callEngine<{ lesson?: unknown }>("/v1/pipeline/lesson", ctx);
     return body.lesson;
   },
 };

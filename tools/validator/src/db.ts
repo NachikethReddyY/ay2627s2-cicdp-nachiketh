@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { bin } from "./bin.ts";
+import { bin } from "../../../scripts/bin.ts";
 
 const LOCAL_ROLE = "learnquest";
 

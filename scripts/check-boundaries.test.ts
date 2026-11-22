@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dirname, resolve } from "node:path";
+import { dirname, matchesGlob, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
+import traverse from "@babel/traverse";
+import { parseSource } from "./parse-source.ts";
 import { checkFile, checkRepo } from "./check-boundaries.ts";
 import { EFFECT_ALLOWLIST, TIMER_ALLOWLIST } from "../apps/web/eslint.allowlists.js";
 
@@ -148,11 +150,50 @@ test("the guardrail rules cannot be disabled", () => {
   assert.equal(checkFile("apps/web/src/a.ts", "// eslint-disable-next-line no-restricted-syntax -- needed").length, 1);
 });
 
-const MAX_EFFECT_FILES = 38;
-const MAX_TIMER_FILES = 22;
+const MAX_EFFECT_FILES = 36;
+const MAX_TIMER_FILES = 21;
 const EFFECT = /\buse(Layout|Insertion)?Effect\(/;
 const TIMER = /\b(setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)\(/;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+test("every allowlisted web module has an importer", () => {
+  const web = resolve(root, "apps/web");
+  const allowlisted = new Set([...EFFECT_ALLOWLIST, ...TIMER_ALLOWLIST].map((file) => resolve(web, file)));
+  const imported = new Set([...readFileSync(resolve(web, "index.html"), "utf8").matchAll(/<script[^>]+src="\/(src\/[^"]+)"/g)]
+    .map((match) => resolve(web, match[1])));
+
+  for (const file of globSync("src/**/*.{ts,tsx,js,jsx}", { cwd: web })) {
+    const importer = resolve(web, file);
+    function record(spec: string, glob = false) {
+      const target = spec.startsWith("@/") ? resolve(web, "src", spec.slice(2))
+        : spec.startsWith(".") ? resolve(dirname(importer), spec) : undefined;
+      if (!target) return;
+      for (const module of allowlisted) {
+        if (module === importer) continue;
+        const matches = glob ? matchesGlob(module, target)
+          : [target, `${target}.ts`, `${target}.tsx`, `${target}/index.ts`, `${target}/index.tsx`].includes(module);
+        if (matches) imported.add(module);
+      }
+    }
+    traverse(parseSource(file, readFileSync(importer, "utf8")), {
+      ImportDeclaration({ node }) { record(node.source.value); },
+      ImportExpression({ node }) { if (node.source.type === "StringLiteral") record(node.source.value); },
+      ExportNamedDeclaration({ node }) { if (node.source) record(node.source.value); },
+      ExportAllDeclaration({ node }) { record(node.source.value); },
+      CallExpression({ node }) {
+        const { callee } = node;
+        if (callee.type !== "MemberExpression" || callee.property.type !== "Identifier" || callee.property.name !== "glob"
+            || callee.object.type !== "MetaProperty" || callee.object.meta.name !== "import") return;
+        const [pattern] = node.arguments;
+        if (pattern?.type === "StringLiteral") record(pattern.value, true);
+      },
+    });
+  }
+
+  for (const file of allowlisted) {
+    assert.ok(imported.has(file), `${file} has no importer. Remove the unused file and its entry from apps/web/eslint.allowlists.js.`);
+  }
+});
 
 for (const [name, list, max, pattern] of [
   ["effect", EFFECT_ALLOWLIST, MAX_EFFECT_FILES, EFFECT],

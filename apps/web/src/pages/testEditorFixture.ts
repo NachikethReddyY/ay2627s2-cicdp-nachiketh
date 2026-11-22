@@ -56,7 +56,6 @@ export const TEST_LESSONS: Record<TestLanguage, TestLesson> = {
   },
 };
 
-export const TEST_LESSON: TestLesson = TEST_LESSONS.javascript;
 
 export function pickTestLesson(language: unknown): TestLesson {
   return typeof language === "string" && Object.hasOwn(TEST_LESSONS, language)
@@ -65,7 +64,6 @@ export function pickTestLesson(language: unknown): TestLesson {
 }
 
 export const TREE_ROOT = "learnquest";
-export const LESSON_DIR = `${TREE_ROOT}/packages/player-core/src`;
 
 export function designTree(lessonFile: string): TreeNode[] {
   return [
@@ -111,14 +109,6 @@ export function designTree(lessonFile: string): TreeNode[] {
 }
 
 export const designFilePaths = (lessonFile: string) => filePaths(designTree(lessonFile));
-
-export function placeholderBody(path: string): string {
-  const name = path.split("/").pop() ?? path;
-  if (name.endsWith(".json")) return "{}\n";
-  if (name.endsWith(".md")) return `# ${name}\n\nPlaceholder text for the test page.\n`;
-  if (name.endsWith(".py")) return `# ${name}: placeholder for the test page.\n`;
-  return `// ${name}: placeholder for the test page.\n`;
-}
 
 export function languageOf(path: string, lessonLanguage: TestLanguage): string {
   if (path.endsWith(".md")) return "markdown";

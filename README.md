@@ -63,6 +63,10 @@ cd services/engine && uv run uvicorn learnquest_engine.server:app --reload
 
 Set `ENGINE_URL` and `ENGINE_TOKEN` (the same token as the engine) in `apps/api/.env`. See [services/engine/README.md](services/engine/README.md).
 
+## Seeding lesson content
+
+Run `pnpm --filter @learnquest/api db:seed` to load the authored worlds. Reseeding restores authored lesson statuses and updates their steps. Retired steps with learner history are archived. With local object storage configured, pass `--narration` to also seed placeholder scrim audio.
+
 ## End-to-end tests
 
 `e2e/` has Playwright tests (Chromium) with axe accessibility checks. They run against the real compose stack: Postgres, the API and the engine. The engine's model calls go to `e2e/fake-llm`, which replays recorded replies from `services/engine/tests/fixtures`. No live model is called, and the engine cannot reach the internet.
@@ -71,4 +75,4 @@ Set `ENGINE_URL` and `ENGINE_TOKEN` (the same token as the engine) in `apps/api/
 pnpm --filter @learnquest/e2e run ci
 ```
 
-The script brings up compose (`docker-compose.yml` with `docker-compose.ci.yml`), migrates and seeds the database, runs the tests, then tears the stack down with its volumes. It needs Docker, and ports 3000 (API) and 5173 (web, Vite preview) free. Postgres uses host port 55432 (`E2E_POSTGRES_PORT`). Failures print the last 200 lines of compose logs.
+The script brings up compose (`docker-compose.yml` with `docker-compose.ci.yml`), migrates and seeds the database, runs the tests, then tears the stack down with its volumes. It needs Docker. Override `E2E_API_PORT`, `E2E_WEB_PORT` and `E2E_POSTGRES_PORT` if the defaults of 3000, 5173 and 55432 are in use. Set `E2E_COMPOSE_PROJECT` for a separate Compose project when running suites in parallel. Failures print the last 200 lines of compose logs.

@@ -357,7 +357,7 @@ export const stepProgress = pgTable(
   {
     learnerId: text("learner_id")
       .notNull()
-      .references(() => learners.id),
+      .references(() => learners.id, { onDelete: "cascade" }),
     stepId: text("step_id")
       .notNull()
       .references(() => steps.id),
@@ -378,7 +378,7 @@ export const attempts = pgTable(
     id: id(),
     learnerId: text("learner_id")
       .notNull()
-      .references(() => learners.id),
+      .references(() => learners.id, { onDelete: "cascade" }),
     stepId: text("step_id")
       .notNull()
       .references(() => steps.id),
@@ -409,7 +409,7 @@ export const hintEvents = pgTable(
   {
     learnerId: text("learner_id")
       .notNull()
-      .references(() => learners.id),
+      .references(() => learners.id, { onDelete: "cascade" }),
     stepId: text("step_id")
       .notNull()
       .references(() => steps.id),
@@ -429,7 +429,7 @@ export const generationCache = pgTable("generation_cache", {
 export const gameCompletions = pgTable(
   "game_completions",
   {
-    learnerId: text("learner_id").notNull().references(() => learners.id),
+    learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
     lessonId: text("lesson_id").notNull().references(() => lessons.id),
     partIdx: integer("part_idx").notNull(),
     blockId: text("block_id").notNull(),

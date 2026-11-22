@@ -29,6 +29,8 @@ import { resizeRect, type PreviewRect, type ResizeEdge } from "./previewResize";
 import { readStoredPreviewWindow, writeStoredPreviewWindow } from "./previewMemory";
 import { readStoredCodeWindow, writeStoredCodeWindow } from "./codeWindowMemory";
 
+const PALETTE_DOCS = DOCS.map((doc) => ({ id: doc.id, title: doc.title, sub: doc.src }));
+
 const READY: WorkbenchStatus = { text: "Ready" };
 const DEMO_WEB_FILES = DEMO_PROJECT_FILES.filter((file) => file.path.includes("/web/"));
 const DEMO_ENTRY_TEXT = DEMO_PROJECT_FILES.find((file) => file.path === DEMO_ENTRY_FILE)?.content ?? "";
@@ -834,11 +836,10 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
     }
   };
 
-  const paletteFiles = workspaceFiles(tree).map((p) => {
+  const paletteFiles = useMemo(() => workspaceFiles(tree).map((p) => {
     const at = p.lastIndexOf("/");
     return { id: p, title: p.slice(at + 1), sub: p.slice(0, at) };
-  });
-  const paletteDocs = DOCS.map((d) => ({ id: d.id, title: d.title, sub: d.src }));
+  }), [tree]);
   const paletteCommands = [
     { id: "run", title: "Run", run },
     { id: "check", title: "Check", run: check },
@@ -1031,6 +1032,13 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
   };
 
   const openLang = languageOf(open, "javascript");
+  const aiContext = useMemo(() => ({
+    fileName: open.slice(open.lastIndexOf("/") + 1),
+    filePath: open,
+    projectRoot: DEMO_DIRECTORY,
+    code: content,
+    language: openLang,
+  }), [open, content, openLang]);
   const previewLive = browserPreview.state === "ready" || browserPreview.state === "starting";
   const previewVisible = previewLive && previewOpen;
   const dockItems: EditorDockItem[] = [
@@ -1069,7 +1077,7 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
       actions={actions}
       paletteFiles={paletteFiles}
       paletteCommands={paletteCommands}
-      paletteDocs={paletteDocs}
+      paletteDocs={PALETTE_DOCS}
       onOpenFile={openFile}
       onOpenDoc={setSelectedDoc}
       status={workspaceStatus}
@@ -1084,7 +1092,7 @@ export default function TestEditor({ replay, dock = true }: { replay?: Ref<Edito
         onDragMove: moveEditorDrag,
         onDragEnd: () => { editorDragStart.current = null; },
       }}
-      aiContext={{ fileName: open.slice(open.lastIndexOf("/") + 1), filePath: open, projectRoot: DEMO_DIRECTORY, code: content, language: openLang }}
+      aiContext={aiContext}
     />
     {previewHost && browserPreview.state !== "idle" && createPortal(
       <section

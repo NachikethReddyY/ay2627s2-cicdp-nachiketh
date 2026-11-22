@@ -5,6 +5,7 @@ import { z } from "zod";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { env } from "./env.ts";
 import { pool } from "./db/client.ts";
+import { idleImages } from "./media/imagegen.ts";
 import { idle } from "./ai/service.ts";
 import { authRoutes } from "./auth/routes.ts";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
@@ -98,6 +99,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
   app.addHook("onClose", async () => {
     await idle();
     await importsIdle();
+    await idleImages();
     await pool.end().catch(() => undefined);
   });
 

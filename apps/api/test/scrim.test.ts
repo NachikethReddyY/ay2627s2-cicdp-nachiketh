@@ -7,7 +7,7 @@ import { buildApp } from "../src/app.ts";
 import { db, pool } from "../src/db/client.ts";
 import {
   attempts, checkResults, enrollments, hintEvents, learners, lessonMedia, lessons, lessonVersions,
-  partCompletions, pathCourses, paths, stepProgress, steps, worlds, type PartSecret,
+  partCompletions, pathCourses, paths, stepProgress, steps, user, worlds, type PartSecret,
 } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
@@ -113,6 +113,40 @@ test("the migrated database allows distinct ready narration segments and rejects
     "INSERT INTO lesson_media (id, lesson_version_id, segment, kind, status, content_type, bytes) VALUES ('duplicate-narration', $1, 0, 'narration', 'ready', 'audio/wav', 12)",
     [versionId],
   ), { code: "23505", constraint: "lesson_media_one_narration" });
+});
+
+test("lessons.get rejects unauthenticated scrim readers", async () => {
+  await insertScrim();
+  assert.equal((await trpc(app).q("lessons.get", { id: slug })).statusCode, 401);
+});
+
+test("lessons.get hides a private scrim from another learner", async () => {
+  const owner = trpc(app, await signUp(app, "scrim-owner@example.com"));
+  const other = trpc(app, await signUp(app, "scrim-visitor@example.com"));
+  const { worldId } = await insertScrim();
+  const [account] = await db.select({ id: user.id }).from(user).where(eq(user.email, "scrim-owner@example.com"));
+  await db.update(worlds).set({ ownerId: account.id, visibility: "private" }).where(eq(worlds.id, worldId));
+  assert.equal((await owner.q("lessons.get", { id: slug })).statusCode, 200);
+  assert.equal((await other.q("lessons.get", { id: slug })).statusCode, 404);
+});
+
+test("lessons.get hides an authored draft scrim", async () => {
+  const reader = trpc(app, await signUp(app));
+  const { lessonId } = await insertScrim();
+  await db.update(lessons).set({ status: "draft" }).where(eq(lessons.id, lessonId));
+  assert.equal((await reader.q("lessons.get", { id: slug })).statusCode, 404);
+});
+
+test("lessons.get serves a legacy scrim lab as a hidden test", async () => {
+  const reader = trpc(app, await signUp(app));
+  const { versionId } = await insertScrim();
+  const expectedOutput = "LEGACY_SCRIM_OUTPUT_PRIVATE";
+  const { tests: _tests, ...lab } = scrim.lab;
+  await db.update(lessonVersions).set({ content: { ...scrim, lab: { ...lab, expectedOutput } } }).where(eq(lessonVersions.id, versionId));
+  const res = await reader.q("lessons.get", { id: slug });
+  assert.equal(res.statusCode, 200, res.body);
+  assertOmitted(res.json(), [expectedOutput, '"expectedOutput"', '"expectedStdout"']);
+  assert.deepEqual(out(res).part.lab.tests, [{ id: "legacy", name: "Expected output", visibility: "hidden", stretch: false }]);
 });
 
 test("lessons.get returns only through the first pending gate with no secrets", async () => {
@@ -287,12 +321,12 @@ test("a scrim gate uses the normal MCQ attempt, hint, reveal and progress flow",
   const storedHints = await db.select({ learnerId: hintEvents.learnerId, rung: hintEvents.rung }).from(hintEvents).where(eq(hintEvents.stepId, gateId));
   assert.deepEqual(storedHints, [{ learnerId: learner.id, rung: 1 }]);
   const storedAttempts = await db.select({
-    learnerId: attempts.learnerId, id: attempts.id, response: attempts.response, kind: attempts.kind,
+    learnerId: attempts.learnerId, id: attempts.id, kind: attempts.kind,
     correct: attempts.correct, hintsUsed: attempts.hintsUsed, observed: attempts.observed,
   }).from(attempts).where(eq(attempts.stepId, gateId)).orderBy(asc(attempts.hintsUsed));
   assert.deepEqual(storedAttempts, [
-    { learnerId: learner.id, id: first.attemptId, response: wrongAnswer, kind: "mcq", correct: false, hintsUsed: 0, observed: true },
-    { learnerId: learner.id, id: second.attemptId, response: rightAnswer, kind: "mcq", correct: true, hintsUsed: 1, observed: false },
+    { learnerId: learner.id, id: first.attemptId, kind: "mcq", correct: false, hintsUsed: 0, observed: true },
+    { learnerId: learner.id, id: second.attemptId, kind: "mcq", correct: true, hintsUsed: 1, observed: false },
   ]);
 });
 

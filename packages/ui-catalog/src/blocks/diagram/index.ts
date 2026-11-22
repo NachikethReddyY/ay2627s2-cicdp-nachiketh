@@ -2,7 +2,7 @@ import { z } from "zod";
 import { alt, id } from "../../core/caps.ts";
 import type { BlockModule } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
-import { timelineSchema, type Timeline } from "../../core/timeline.ts";
+import { timelineSchema, type BlockTimeline } from "../../core/timeline.ts";
 
 const MAX_NODES = 30;
 const MAX_EDGES = 50;
@@ -16,7 +16,7 @@ type Props = {
   alt: string;
   nodes: { id: string; label: string }[];
   edges: { from: string; to: string; label?: string }[];
-  timeline?: Timeline;
+  timeline?: BlockTimeline;
 };
 
 export const diagramBlock: BlockModule<Props> = {

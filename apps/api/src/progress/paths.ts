@@ -6,7 +6,7 @@ import { withTx } from "../db/tx.ts";
 import { generatePath, lessonWriteState } from "../ai/service.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { TRPCError } from "@trpc/server";
-import { complete, lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
+import { lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
 
 const Lesson = z.object({
   slug: z.string(),
@@ -24,19 +24,6 @@ const CourseDetail = z.object({
   origin: Origin,
   lessons: z.array(Lesson),
 });
-const PathDetail = z.object({
-  slug: z.string(),
-  title: z.string(),
-  tagline: z.string(),
-  origin: Origin,
-  visibility: z.enum(["private", "public"]),
-  mine: z.boolean(),
-  enrolled: z.boolean(),
-  courses: z.array(
-    z.object({ slug: z.string(), title: z.string(), description: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() }),
-  ),
-});
-
 const enroll = protectedProcedure.input(Slug).output(z.void()).mutation(async ({ ctx, input }) => {
       const { rows } = await db.execute(sql`
         INSERT INTO enrollments (learner_id, path_id)
@@ -96,58 +83,6 @@ const pathList = protectedProcedure
       return pathCards(me, sql`${scoped} ${search}`, sql`learners DESC, p.created_at DESC`, 50);
   });
 
-const pathGet = protectedProcedure.input(Slug).output(PathDetail).query(async ({ ctx, input }) => {
-      const me = ctx.learnerId;
-      const {
-        rows: [path],
-      } = await db.execute<{ id: string; slug: string; title: string; tagline: string; origin: z.infer<typeof Origin>; visibility: "private" | "public"; mine: boolean; enrolled: boolean }>(sql`
-        SELECT p.id, p.slug, p.title, p.tagline, p.origin, p.visibility,
-          COALESCE(p.owner_id = ${myUser(me)}, false) AS mine,
-          EXISTS (SELECT 1 FROM enrollments e WHERE e.path_id = p.id AND e.learner_id = ${me}) AS enrolled
-        FROM paths p
-        WHERE p.slug = ${input.slug} AND (p.visibility = 'public' OR p.owner_id = ${myUser(me)})`);
-      if (!path) throw notFound("Path not found");
-
-      const { rows } = await db.execute<{
-        course_slug: string;
-        course_title: string;
-        description: string;
-        lesson_id: string | null;
-        done: number;
-        total: number;
-      }>(sql`
-        SELECT w.slug AS course_slug, w.title AS course_title, w.description,
-          l.id AS lesson_id, ${lessonDone(me)} AS done, ${lessonTotal} AS total
-        FROM path_courses pc
-        JOIN worlds w ON w.id = pc.world_id
-        LEFT JOIN lessons l ON l.world_id = w.id AND ${listed}
-        WHERE pc.path_id = ${path.id} AND ${visibleCourse(me)}
-        ORDER BY pc.position, l.level, l.position, l.id`);
-
-      const courses = new Map<string, { slug: string; title: string; description: string; lessonsDone: number; lessonsTotal: number }>();
-      for (const row of rows) {
-        let c = courses.get(row.course_slug);
-        if (!c) {
-          c = { slug: row.course_slug, title: row.course_title, description: row.description, lessonsDone: 0, lessonsTotal: 0 };
-          courses.set(row.course_slug, c);
-        }
-        if (row.lesson_id) {
-          c.lessonsTotal++;
-          if (complete(row)) c.lessonsDone++;
-        }
-      }
-      return {
-        slug: path.slug,
-        title: path.title,
-        tagline: path.tagline,
-        origin: path.origin,
-        visibility: path.visibility,
-        mine: path.mine,
-        enrolled: path.enrolled,
-        courses: [...courses.values()],
-      };
-  });
-
 const PUBLISH_REFUSAL = "This path can't be published right now: it couldn't be cleared by our safety check.";
 const MODERATION_CHUNK = 8000;
 const publish = protectedProcedure
@@ -202,5 +137,5 @@ const generate = protectedProcedure
   .output(z.object({ slug: z.string(), firstCourseSlug: z.string() }))
   .mutation(({ ctx, input }) => generatePath(ctx.learnerId, input.prompt));
 
-export const pathsRouter = router({ list: pathList, get: pathGet, enroll, publish, generate });
+export const pathsRouter = router({ list: pathList, enroll, publish, generate });
 export const coursesRouter = router({ get: courseGet });

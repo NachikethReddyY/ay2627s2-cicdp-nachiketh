@@ -78,7 +78,7 @@ test("parts.complete: read lessons require checks, predict is a no-op, invisible
   assert.equal((await m(otherCookie, "parts.complete", { lessonId: "b-learn" })).statusCode, 403);
 });
 
-test("a completed learn lesson counts as done in course, path and home progress", async () => {
+test("a completed learn lesson counts as done in course and home progress", async () => {
   const cookie = await signUp(app);
   await enroll(cookie, "js-foundations");
   const lessonId = await addLesson("learn-1", "learn", learnPart);
@@ -92,8 +92,6 @@ test("a completed learn lesson counts as done in course, path and home progress"
 
   const after = await lessonOf();
   assert.deepEqual([after.done, after.total], [1, 1]);
-  const path = out(await trpc(app, cookie).q("paths.get", { slug: "js-foundations" }));
-  assert.deepEqual([path.courses[0].lessonsDone, path.courses[0].lessonsTotal], [1, 2]);
   const home = out(await get(cookie));
   assert.deepEqual([home.paths[0].courses[0].lessonsDone, home.paths[0].courses[0].lessonsTotal], [1, 2]);
 });

@@ -150,7 +150,7 @@ async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
   };
 
   const [latest] = await tx
-    .select()
+    .select({ inputHash: recommendations.inputHash })
     .from(recommendations)
     .where(and(eq(recommendations.learnerId, learnerId), eq(recommendations.worldId, worldId)))
     .orderBy(desc(recommendations.createdAt), desc(recommendations.id))

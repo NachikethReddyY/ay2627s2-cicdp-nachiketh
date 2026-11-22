@@ -22,7 +22,7 @@ import { API_ORIGIN, VALIDATOR_EMAIL, VALIDATOR_ENGINE_TOKEN, VALIDATOR_PASSWORD
 import type { Layout, State } from "./state.ts";
 import { SERVICE_NAMES, emptyState, ensureLayout, isAlive, readState, removeState, writeState } from "./state.ts";
 import { realClock, waitForHttp } from "./wait.ts";
-import { bin } from "./bin.ts";
+import { bin } from "../../../scripts/bin.ts";
 
 export class CliError extends Error {}
 

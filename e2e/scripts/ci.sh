@@ -6,7 +6,7 @@ set -euo pipefail
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$E2E_DIR/.." && pwd)"
 # A project name of its own keeps this stack, its volume and its network apart from a local `docker compose up`.
-COMPOSE=(docker compose -p learnquest-e2e -f "$ROOT/docker-compose.yml" -f "$ROOT/docker-compose.ci.yml")
+COMPOSE=(docker compose -p "${E2E_COMPOSE_PROJECT:-learnquest-e2e}" -f "$ROOT/docker-compose.yml" -f "$ROOT/docker-compose.ci.yml")
 
 # Compose needs ENGINE_TOKEN for both the engine and the API. Generated per run unless the caller sets one.
 export ENGINE_TOKEN="${ENGINE_TOKEN:-$(openssl rand -hex 32)}"
@@ -17,7 +17,9 @@ export DATABASE_URL="postgres://learnquest:learnquest@localhost:${E2E_POSTGRES_P
 export DATABASE_URL_UNPOOLED="$DATABASE_URL"
 export E2E_DATABASE_URL="$DATABASE_URL"
 export BETTER_AUTH_SECRET="e2e-secret-not-for-production-0123456789"
-export PUBLIC_ORIGIN="http://localhost:5173"
+export PUBLIC_ORIGIN="http://localhost:${E2E_WEB_PORT:-5173}"
+export DEV_API_ORIGIN="http://localhost:${E2E_API_PORT:-3000}"
+export E2E_WEB_PORT E2E_API_PORT
 
 cleanup() {
   local status=$?

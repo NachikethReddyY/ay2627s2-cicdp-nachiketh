@@ -3,7 +3,6 @@ export const EFFECT_ALLOWLIST = [
   "src/blocks/hooks/useTimeline.ts",
   "src/blocks/scene3d/View.tsx",
   "src/blocks/stage/View.tsx",
-  "src/components/DitherField.tsx",
   "src/components/RouteStates.tsx",
   "src/lib/api.ts",
   "src/pages/Course.tsx",
@@ -26,7 +25,6 @@ export const EFFECT_ALLOWLIST = [
   "src/player/live/LessonWorkbench.tsx",
   "src/player/live/Steps.tsx",
   "src/player/live/usePracticeRunner.ts",
-  "src/player/terminal/FileTree.tsx",
   "src/player/terminal/TerminalView.tsx",
   "src/player/terminal/usePanel.ts",
   "src/player/useReplay.ts",
@@ -42,7 +40,6 @@ export const EFFECT_ALLOWLIST = [
 export const TIMER_ALLOWLIST = [
   "src/blocks/hooks/useTimeline.ts",
   "src/blocks/stage/View.tsx",
-  "src/components/DitherField.tsx",
   "src/main.tsx",
   "src/pages/Explore.tsx",
   "src/pages/Login.tsx",

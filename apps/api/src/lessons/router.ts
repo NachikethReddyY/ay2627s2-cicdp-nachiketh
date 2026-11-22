@@ -1,4 +1,4 @@
-import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql, gte } from "drizzle-orm";
 import { lessonRef, playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -204,7 +204,7 @@ export const lessonsRouter = router({
           stepProgress,
           and(eq(stepProgress.stepId, steps.id), eq(stepProgress.learnerId, ctx.learnerId)),
         )
-        .where(eq(steps.lessonVersionId, lesson.currentVersionId))
+        .where(and(eq(steps.lessonVersionId, lesson.currentVersionId), gte(steps.idx, 0)))
         .orderBy(asc(steps.idx));
       const [completion] = await db
         .select({ lessonId: partCompletions.lessonId })

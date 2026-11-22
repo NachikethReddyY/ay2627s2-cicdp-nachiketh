@@ -3,10 +3,10 @@ import { BLOCKS } from "@learnquest/ui-catalog";
 import type { BlockViewProps } from "../registry.ts";
 import StepControls from "../StepControls.tsx";
 import { useTimeline } from "../hooks/useTimeline.ts";
-import type { Timeline, TimelineState } from "@learnquest/ui-catalog";
+import type { BlockTimeline, TimelineState } from "@learnquest/ui-catalog";
 import { FONT, LINE_H, directionFor, layoutDiagram, pathOf, wrap, type DiagramProps, type Layout, type PlacedNode } from "./layout.ts";
 
-type Props = DiagramProps & { alt: string; timeline?: Timeline };
+type Props = DiagramProps & { alt: string; timeline?: BlockTimeline };
 
 function Shape({ n, shape, active }: { n: PlacedNode; shape: DiagramProps["shape"]; active: boolean }) {
   const { x, y, w, h } = n;
@@ -76,7 +76,7 @@ function Diagram({ block, state }: BlockViewProps<Props> & { state?: TimelineSta
   return <div ref={box} className="min-w-0 max-w-full">{body}</div>;
 }
 
-function Timed({ block, timeline }: BlockViewProps<Props> & { timeline: Timeline }) {
+function Timed({ block, timeline }: BlockViewProps<Props> & { timeline: BlockTimeline }) {
   const tl = useTimeline(timeline);
   return (
     <div ref={tl.ref} className="min-w-0 max-w-full">

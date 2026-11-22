@@ -5,7 +5,7 @@ import { PORTS, processTree } from "./ports.ts";
 import type { Layout, ServiceName, ServiceRecord } from "./state.ts";
 import { isAlive } from "./state.ts";
 import type { Clock } from "./wait.ts";
-import { bin } from "./bin.ts";
+import { bin } from "../../../scripts/bin.ts";
 
 export const VALIDATOR_SECRET = "validator-secret-not-for-production-0123456789";
 export const VALIDATOR_ENGINE_TOKEN = "validator-engine-token-0123456789-abcdefgh";
@@ -97,7 +97,7 @@ export function serviceSpecs(root: string, databaseUrl: string, engine: boolean)
       cwd: root,
       command: "pnpm",
       args: ["--filter", "@learnquest/web", "exec", "vite", "--port", String(PORTS.web), "--host", "127.0.0.1", "--strictPort"],
-      env: {},
+      env: { DEV_API_ORIGIN: API_ORIGIN },
       healthUrl: `${WEB_ORIGIN}/`,
       url: WEB_ORIGIN,
       timeoutMs: 90_000,

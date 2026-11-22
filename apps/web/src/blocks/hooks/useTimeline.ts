@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { Timeline } from "@learnquest/ui-catalog";
+import type { BlockTimeline } from "@learnquest/ui-catalog";
 import { initialPlaying, motionAction, stepReduce, tick, viewState, type StepAction, type Stepper } from "../model.ts";
 import { useReducedMotion } from "./useReducedMotion.ts";
 
-export function useTimeline(timeline: Timeline) {
+export function useTimeline(timeline: BlockTimeline) {
   const reduced = useReducedMotion();
   const [s, dispatch] = useReducer(
     (cur: Stepper, a: StepAction | "tick") => (a === "tick" ? tick(timeline, cur) : stepReduce(timeline, cur, a)),

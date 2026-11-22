@@ -130,6 +130,7 @@ def test_chunked_oversize_body_is_413(client: TestClient) -> None:
         headers={**TOKEN, "content-type": "application/json"},
     )
     assert r.status_code == 413
+    assert "content-length" not in r.request.headers
 
 
 def test_lesson_context_fields_are_capped(client: TestClient) -> None:

@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import fc from "fast-check";
 import { z } from "zod";
-import { BLOCKS, RESERVED, alt, blockSchema, color, parseSpec, sanitize, text, type BlockModule, type ParseResult } from "../src/index.ts";
+import { BLOCKS, parseSpec, sanitize, type BlockModule } from "../src/index.ts";
+import { RESERVED } from "../src/core/reserved.ts";
+import { alt, color } from "../src/core/caps.ts";
+import { blockSchema } from "../src/core/envelope.ts";
+import { text } from "../src/core/sanitize.ts";
+import { type ParseResult } from "../src/core/parse.ts";
 
 const probe: BlockModule<{ title: string; alt: string; tone?: string; secret?: { token: string } }> = {
   type: "probe",

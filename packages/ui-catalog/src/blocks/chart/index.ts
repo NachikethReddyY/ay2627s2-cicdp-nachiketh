@@ -4,9 +4,9 @@ import { MAX_EXPR_LEN, FUNCTIONS, evalExpr, parseExpr } from "../../core/expr.ts
 import type { BlockModule, Issue } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
 
-export const MAX_SERIES = 4;
-export const MAX_POINTS = 60;
-export const MAX_SLIDERS = 2;
+const MAX_SERIES = 4;
+const MAX_POINTS = 60;
+const MAX_SLIDERS = 2;
 const KINDS = ["bar", "line", "scatter", "function"] as const;
 export const DEFAULT_DOMAIN = [-10, 10] as const;
 

@@ -1,4 +1,4 @@
-import { and, count, eq, max, ne } from "drizzle-orm";
+import { and, count, eq, max, ne, gte } from "drizzle-orm";
 import { playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -50,6 +50,7 @@ async function loadStep(id: string, learnerId: string) {
     .where(
       and(
         eq(steps.id, id),
+        gte(steps.idx, 0),
         playableLesson(lessons),
         eq(lessons.currentVersionId, steps.lessonVersionId),
         visibleWorld(learners.userId, worlds),
@@ -97,7 +98,7 @@ async function triesOf(tx: Db, learnerId: string, stepId: string) {
 
 async function closesReadLesson(tx: Db, step: Step) {
   if (!isReadLesson(step)) return false;
-  const [last] = await tx.select({ idx: max(steps.idx), total: count() }).from(steps).where(eq(steps.lessonVersionId, step.versionId));
+  const [last] = await tx.select({ idx: max(steps.idx), total: count() }).from(steps).where(and(eq(steps.lessonVersionId, step.versionId), gte(steps.idx, 0)));
   return last?.total >= 2 && last.idx === step.idx;
 }
 
@@ -121,7 +122,6 @@ function mutate(
   learnerId: string,
   step: Step,
   action: Action,
-  response: { kind: "mcq" | "cloze"; choice?: number; text?: string } | null,
 ) {
   const stepId = step.id;
   return withTx(async (tx) => {
@@ -143,6 +143,7 @@ function mutate(
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
     const o = r.outcome;
     let attemptId: string | undefined;
+    let missedConcepts: string[] = [];
     let observedFirst = false;
     let hintsUsed = r.progress.rungsTaken;
     if (o.type === "hint") {
@@ -160,22 +161,21 @@ function mutate(
         .values({
           learnerId,
           stepId,
-          kind: o.type === "skip" ? "skip" : response!.kind,
-          response: o.type === "skip" ? null : response,
+          kind: o.type === "skip" ? "skip" : step.pub.kind,
           observed: n === 0,
           correct: o.type === "skip" ? null : o.correct,
           hintsUsed,
-          feedback: o.type === "skip" ? null : o.correct ? "Correct!" : "Not quite.",
           missedConcepts: o.type === "skip" || o.correct ? [] : missedOf(step),
         })
-        .returning({ id: attempts.id });
+        .returning({ id: attempts.id, missedConcepts: attempts.missedConcepts });
       attemptId = row.id;
+      missedConcepts = row.missedConcepts;
       observedFirst = n === 0;
       if (o.type === "attempt" && (await closesReadLesson(tx, step))) {
         await tx.insert(partCompletions).values({ learnerId, lessonId: step.lessonId }).onConflictDoNothing();
       }
     }
-    return { ...r, attemptId, hintsUsed, observed: attemptId !== undefined && observedFirst };
+    return { ...r, attemptId, missedConcepts, hintsUsed, observed: attemptId !== undefined && observedFirst };
   });
 }
 
@@ -199,7 +199,7 @@ export async function guideStep(learnerId: string, stepIds: string[]) {
       answers: step.pub.kind === "mcq" ? [step.pub.options?.[Number(step.secret.answer)] ?? ""] : [String(step.secret.answer), ...(step.secret.accepted ?? [])],
       record: async () => {
         if (step.secret.hints.length > 0) {
-          await mutate(learnerId, step, { type: "hint" }, null);
+          await mutate(learnerId, step, { type: "hint" });
           return;
         }
         await withTx(async (tx) => {
@@ -276,14 +276,14 @@ export const stepsRouter = router({
       const { answer, accepted } = step.secret;
       const correct =
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);
-      const out = await mutate(ctx.learnerId, step, { type: "attempt", correct }, b);
+      const out = await mutate(ctx.learnerId, step, { type: "attempt", correct });
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);
       return {
         attemptId: out.attemptId!,
         correct,
         feedback: correct ? (out.progress.state === "revealed" ? "Correct!" : "Correct! Try again to unlock the explanation.") : "Not quite.",
-        missedConcepts: correct ? [] : missedOf(step),
+        missedConcepts: out.missedConcepts,
         hintsUsed: out.hintsUsed,
         state: out.progress.state,
         attemptAllowed: out.progress.attemptAllowed,
@@ -295,7 +295,7 @@ export const stepsRouter = router({
     .output(Hint)
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
-      const out = await mutate(ctx.learnerId, step, { type: "hint" }, null);
+      const out = await mutate(ctx.learnerId, step, { type: "hint" });
       if ("conflict" in out) throw conflict(out.conflict);
       return hintAt(step, out.progress.rungsTaken);
     }),
@@ -307,7 +307,7 @@ export const stepsRouter = router({
       const step = await mustStep(input.id, ctx.learnerId);
       if (step.lessonKind === "predict") throw predictSkip();
       if (isReadLesson(step) || step.lessonKind === "scrim") throw conflict("This check cannot be skipped");
-      const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
+      const out = await mutate(ctx.learnerId, step, { type: "skip" });
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);
       return { state: "skipped" as const };

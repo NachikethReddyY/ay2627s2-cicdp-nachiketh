@@ -74,13 +74,12 @@ async function predicted(t: ReturnType<typeof trpc>, slug: string) {
 test("outline creates a private path, courses, draft lessons and an enrollment", async () => {
   const { t, slug, firstCourseSlug, lessons: ls } = await setup();
   assert.equal(ls.length, 3);
-  const path = out(await t.q("paths.get", { slug }));
-  assert.deepEqual([path.origin, path.visibility, path.mine, path.enrolled, path.courses.length], ["ai", "private", true, true, 2]);
+  const path = out(await t.q("paths.list", { scope: "mine" })).find((entry: { slug: string }) => entry.slug === slug);
+  assert.deepEqual([path.origin, path.enrolled, path.courses.length], ["ai", true, 2]);
   const rows = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));
   assert.deepEqual([rows[0]!.status, rows[0]!.sourceKind, rows[0]!.currentVersionId, rows[0]!.concepts, rows[0]!.kind], ["draft", "ai", null, ["ownership"], "learn"]);
 
   const other = trpc(app, await signUp(app, "b@example.com"));
-  assert.equal(code(await other.q("paths.get", { slug })), "NOT_FOUND");
   assert.equal(code(await other.q("courses.get", { slug: firstCourseSlug })), "NOT_FOUND");
   assert.equal(code(await openGeneratedLesson(other, { id: ls[0]!.slug })), "NOT_FOUND");
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);

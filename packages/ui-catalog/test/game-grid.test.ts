@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import fc from "fast-check";
-import { BLOCKS, GRID_COMMANDS, parseSpec, simulate, solvable, type GameProps, type GridProps, type GridStep } from "../src/index.ts";
+import { BLOCKS, parseSpec, simulate, type GameProps, type GridProps, type GridStep } from "../src/index.ts";
+import { GRID_COMMANDS, solvable } from "../src/blocks/game/grid.ts";
 
 const load = (n: string) => readFileSync(new URL(`../fixtures/game/${n}.json`, import.meta.url), "utf8");
 const mod = BLOCKS.find((m) => m.type === "game")!;

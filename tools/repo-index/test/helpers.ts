@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeEmbedder, type Embedder } from "../src/embed.ts";
-import { bin } from "../src/bin.ts";
+import { bin } from "../../../scripts/bin.ts";
 
 export const SAMPLE_FILES: Record<string, string> = {
   "src/greeting.ts": `import { shout } from "./shout.ts";

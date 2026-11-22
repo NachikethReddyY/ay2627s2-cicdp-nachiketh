@@ -7,7 +7,7 @@ export const MAX_QUIZ_QUESTIONS = 10;
 export const MIN_QUIZ_OPTIONS = 2;
 export const MAX_QUIZ_OPTIONS = 4;
 
-export type QuizQuestion = { prompt: string; options: string[]; answer: number };
+type QuizQuestion = { prompt: string; options: string[]; answer: number };
 export type QuizProps = { kind: "quiz"; questions: QuizQuestion[] };
 
 const questionSchema = z.strictObject({

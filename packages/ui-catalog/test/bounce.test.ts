@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bounceTimeline, bounceY, G_UNITS, MAX_HOPS, MAX_SIM_S, REST_HEIGHT, simulateBounce } from "../src/index.ts";
+import { bounceTimeline, bounceY, simulateBounce } from "../src/index.ts";
+import { G_UNITS, MAX_HOPS, MAX_SIM_S, REST_HEIGHT } from "../src/blocks/stage/bounce.ts";
 
 const shape = { y: 20, below: 6 };
 const physics = { kind: "bounce" as const, floor: 80, restitution: 0.75 };

@@ -2,14 +2,14 @@ import { z } from "zod";
 import { THEME_COLORS, alt, color, id } from "../../core/caps.ts";
 import type { BlockModule, Issue } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
-import { MAX_STEPS, timelineSchema, type Timeline } from "../../core/timeline.ts";
+import { MAX_STEPS, timelineSchema, type BlockTimeline } from "../../core/timeline.ts";
 
 export const MAX_PRIMITIVES = 60;
-export const MAX_GROUPS = 10;
+const MAX_GROUPS = 10;
 export const KINDS = ["sphere", "box", "cylinder", "cone", "torus", "plane", "arrow", "line", "label"] as const;
-export const MATERIALS = ["matte", "glossy", "wire"] as const;
-export const CAMERAS = ["front", "top", "side", "iso"] as const;
-export const LIGHTS = ["soft", "bright", "dim"] as const;
+const MATERIALS = ["matte", "glossy", "wire"] as const;
+const CAMERAS = ["front", "top", "side", "iso"] as const;
+const LIGHTS = ["soft", "bright", "dim"] as const;
 export const ANIMATABLE = ["position", "rotation", "color", "opacity"] as const;
 
 type Vec3 = [number, number, number];
@@ -30,7 +30,7 @@ export type Scene3dProps = {
   camera: (typeof CAMERAS)[number];
   lights: (typeof LIGHTS)[number];
   controls?: boolean;
-  timeline?: Timeline;
+  timeline?: BlockTimeline;
 };
 
 const vec3 = (lim: number) => z.tuple([z.number().min(-lim).max(lim), z.number().min(-lim).max(lim), z.number().min(-lim).max(lim)]);

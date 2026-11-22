@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { eq } from "drizzle-orm";
 import fixture from "../../web/src/player/fixtures/lesson1.ts";
 import { db } from "../src/db/client.ts";
-import { applyHunks, assertHunksApply, assertUniqueAcrossFiles, LessonFile } from "../src/db/lesson-file.ts";
+import { applyHunks, assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "../src/db/lesson-file.ts";
 import { concepts, lessons, steps } from "../src/db/schema.ts";
 import { slugOf } from "../src/progress/mastery.ts";
 import { seed } from "../src/db/seed.ts";
@@ -67,7 +67,18 @@ test("seed is idempotent and gives the expected ids", async () => {
   const first = await count();
   await seed();
   assert.deepEqual(await count(), first);
-  assert.deepEqual(first, { lessons: 5, steps: 11, concepts: 9 });
+  const expected = { lessons: 0, steps: 0, concepts: 0 };
+  for (const slug of ["codequest", "variables", "loops", "scrim-demo"]) {
+    const world = join(DIR, "../..", slug);
+    const manifest = Manifest.parse(JSON.parse(await readFile(join(world, "manifest.json"), "utf8")));
+    expected.concepts += manifest.concepts.length;
+    const files = (await readdir(join(world, "lessons"))).filter((file) => file.endsWith(".json"));
+    expected.lessons += files.length;
+    for (const file of files) {
+      expected.steps += LessonFile.parse(JSON.parse(await readFile(join(world, "lessons", file), "utf8"))).steps.length;
+    }
+  }
+  assert.deepEqual(first, expected);
 
   const l1 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-1")))[0]!;
   const l2 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-2")))[0]!;
@@ -83,7 +94,7 @@ test("seed is idempotent and gives the expected ids", async () => {
 
 const s1 = async () => (await db.select().from(steps).where(eq(steps.id, "s1")))[0]!;
 
-test("reseed keeps an author's status change but restores repo-owned step content", async () => {
+test("reseed restores the authored status and step content", async () => {
   await seed();
   const original = await s1();
   try {
@@ -92,8 +103,8 @@ test("reseed keeps an author's status change but restores repo-owned step conten
     await db.update(steps).set({ public: { title: "edited", prompt: "edited", kind: "mcq" }, secret: { ...original.secret, narration: "edited" } }).where(eq(steps.id, "s1"));
     await seed();
     const status = async (slug: string) => (await db.select().from(lessons).where(eq(lessons.slug, slug)))[0]!.status;
-    assert.equal(await status("lesson-1"), "draft");
-    assert.equal(await status("lesson-2"), "published");
+    assert.equal(await status("lesson-1"), "published");
+    assert.equal(await status("lesson-2"), "draft");
     const row = await s1();
     const file = await load("lesson-1.json");
     assert.deepEqual(row.public, file.steps[0]!.public);
@@ -103,6 +114,15 @@ test("reseed keeps an author's status change but restores repo-owned step conten
     await db.update(lessons).set({ status: "draft" }).where(eq(lessons.slug, "lesson-2"));
     await db.update(steps).set({ public: original.public, secret: original.secret }).where(eq(steps.id, "s1"));
   }
+});
+
+test("reseed replaces an unreferenced step with a different ID at the same position", async () => {
+  await seed();
+  const original = await s1();
+  await db.update(steps).set({ id: "retired-s1" }).where(eq(steps.id, original.id));
+  await seed();
+  assert.deepEqual(await s1(), original);
+  assert.deepEqual(await db.select().from(steps).where(eq(steps.id, "retired-s1")), []);
 });
 
 test("duplicate lesson slugs or step ids across files are errors", async () => {
