@@ -114,11 +114,14 @@ test("the migrated database allows distinct ready narration segments and rejects
   ), { code: "23505", constraint: "lesson_media_one_narration" });
 });
 
-test("lessons.get returns segments, a resolved gate and sample tests with no secrets", async () => {
+test("lessons.get returns only through the first pending gate with no secrets", async () => {
   const t = trpc(app, await signUp(app));
   const { versionId, gateId } = await insertScrim();
   setStorage(memoryStorage());
-  await db.insert(lessonMedia).values({ ...narration, lessonVersionId: versionId, segment: 1, key: "scrim-segment-1.wav" });
+  await db.insert(lessonMedia).values([
+    { ...narration, lessonVersionId: versionId, segment: 1, key: "scrim-segment-1.wav" },
+    { ...narration, lessonVersionId: versionId, stepId: gateId, key: "scrim-gate.wav" },
+  ]);
 
   const res = await t.q("lessons.get", { id: slug });
   assert.equal(res.statusCode, 200, res.body);
@@ -133,7 +136,7 @@ test("lessons.get returns segments, a resolved gate and sample tests with no sec
     part: {
       kind: "scrim",
       language: "javascript",
-      segments: [scrim.segments[0], scrim.segments[1], { ...scrim.segments[2], gate: gateId }, scrim.segments[3]],
+      segments: [scrim.segments[0], scrim.segments[1], { ...scrim.segments[2], gate: gateId }],
       lab: {
         kind: "practice", instructions: scrim.lab.instructions, language: "javascript", starterCode: scrim.lab.starterCode,
         tests: publicTests,
@@ -141,6 +144,26 @@ test("lessons.get returns segments, a resolved gate and sample tests with no sec
     },
     steps: [{ id: gateId, idx: gateIdx, title: gateTitle, hintCount: 1, state: "predicting" }],
     media: [{ stepId: null, segment: 1, kind: "narration", url: "memory://scrim-segment-1.wav" }],
+  });
+});
+
+test("scrimMore reveals only the next slice after a gate is completed", async () => {
+  const t = trpc(app, await signUp(app));
+  const { gateId } = await insertScrim();
+  const initial = out(await t.q("lessons.get", { id: slug }));
+  assert.equal(initial.part.segments.length, 3);
+  const blocked = await t.q("lessons.scrimMore", { id: slug, from: 4 });
+  assert.equal(blocked.statusCode, 409);
+
+  await t.m("steps.skip", { id: gateId });
+  const more = await t.q("lessons.scrimMore", { id: slug, from: 2 });
+  assert.equal(more.statusCode, 200, more.body);
+  assert.deepEqual(out(more), {
+    from: 2,
+    segments: [{ ...scrim.segments[2], gate: gateId }, scrim.segments[3]],
+    nextOffset: 4,
+    complete: true,
+    media: [],
   });
 });
 
@@ -239,7 +262,7 @@ function fakeSandbox(stdout: string[]) {
 
 test("sandbox check grades the scrim lab and records completion without returning hidden test data", async (t) => {
   const cookie = await signUp(app);
-  const { lessonId } = await insertScrim();
+  const { lessonId, gateId } = await insertScrim();
   const previous = env.SANDBOX_ENABLED;
   env.SANDBOX_ENABLED = true;
   t.after(() => { env.SANDBOX_ENABLED = previous; });
@@ -277,6 +300,11 @@ test("sandbox check grades the scrim lab and records completion without returnin
   const [learner] = await db.select({ id: learners.id }).from(learners);
   const completed = await db.select({ learnerId: partCompletions.learnerId }).from(partCompletions).where(eq(partCompletions.lessonId, lessonId));
   assert.deepEqual(completed, [{ learnerId: learner.id }]);
+  const beforeGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(beforeGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
+  await trpc(app, cookie).m("steps.skip", { id: gateId });
+  const afterGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(afterGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 1);
   const scores = await db.select({
     learnerId: checkResults.learnerId, bestPoints: checkResults.bestPoints, maxPoints: checkResults.maxPoints, complete: checkResults.complete,
   }).from(checkResults).where(eq(checkResults.lessonId, lessonId));

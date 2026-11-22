@@ -23,6 +23,12 @@ export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}
       AND sp.state IN ('revealed', 'skipped'))::int
+  WHEN l.kind = 'scrim'
+  THEN (SELECT count(*) FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}
+    AND NOT EXISTS (SELECT 1 FROM steps s LEFT JOIN step_progress sp
+      ON sp.step_id = s.id AND sp.learner_id = ${me}
+      WHERE s.lesson_version_id = l.current_version_id
+        AND (sp.state IS NULL OR sp.state NOT IN ('revealed', 'skipped'))))::int
   ELSE (SELECT count(*) FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me})::int END)`;
 export const lastActive = (me: string) => sql`GREATEST(
   (SELECT max(sp.updated_at) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
