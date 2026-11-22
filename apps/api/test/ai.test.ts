@@ -7,7 +7,7 @@ import { eq, sql } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { learners, lessonVersions, lessons, steps, user } from "../src/db/schema.ts";
+import { learners, lessonVersions, lessons, steps } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { EngineError } from "../src/engine-client/client.ts";
