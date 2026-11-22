@@ -9,13 +9,14 @@ import { db, pool } from "../src/db/client.ts";
 import { withTx } from "../src/db/tx.ts";
 import { attempts, gameCompletions, learners, lessons, lessonVersions, stepProgress, user, worlds, type PartSecret } from "../src/db/schema.ts";
 import { lessonDone } from "../src/progress/shared.ts";
+import { POLICY_VERSION } from "../src/progress/mastery.ts";
 import { seed } from "../src/db/seed.ts";
 import { engineLearner } from "../src/engine-client/learner.ts";
 
 const app = buildApp();
 const real = { update: engineLearner.update, next: engineLearner.next };
 engineLearner.update = async (req) => req.priors.map((p) => ({ conceptId: p.conceptId, pPosterior: p.pKnown ?? 0.2, pNext: p.pKnown ?? 0.2 }));
-engineLearner.next = async () => ({ action: "done", lessonId: null, conceptId: null, reasonCode: "stub", reason: "Stub reason." });
+engineLearner.next = async () => ({ policyVersion: POLICY_VERSION, action: "done", lessonId: null, conceptId: null, reasonCode: "stub", reason: "Stub reason." });
 after(() => {
   Object.assign(engineLearner, real);
   return app.close();

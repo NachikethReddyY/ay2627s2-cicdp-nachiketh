@@ -37,6 +37,7 @@ beforeEach(() => {
     lastNext = req;
     const lesson = req.lessons.find((l) => !l.done) ?? null;
     return {
+      policyVersion: POLICY_VERSION,
       action: lesson ? "practice" : "done",
       lessonId: lesson?.lessonId ?? null,
       conceptId: req.mastery[0]?.conceptId ?? null,
@@ -221,6 +222,29 @@ test("two reads with no change make one engine next call; new information makes 
   assert.equal(nextCalls, 3);
 });
 
+test("a response from another policy version is not stored under the current hash", async () => {
+  const c = await signUp(app);
+  engineLearner.next = async (req) => {
+    nextCalls++;
+    lastNext = req;
+    const lesson = req.lessons.find((l) => !l.done) ?? null;
+    return {
+      policyVersion: "4",
+      action: lesson ? "practice" : "done",
+      lessonId: lesson?.lessonId ?? null,
+      conceptId: req.mastery[0]?.conceptId ?? null,
+      reasonCode: "stub",
+      reason: "Stub reason.",
+    };
+  };
+  const read = () => trpc(app, c).q("me.next", { world: "codequest" });
+  assert.equal((await read()).statusCode, 200);
+  assert.equal((await db.select().from(recommendations)).length, 0);
+  assert.equal((await read()).statusCode, 200);
+  assert.equal(nextCalls, 2);
+  assert.equal((await db.select().from(recommendations)).length, 0);
+});
+
 test("a changed world title changes the hash and the engine receives display titles", async () => {
   const c = await signUp(app);
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
@@ -317,6 +341,62 @@ test("20 parallel attempts give n_obs = 1", async () => {
   assert.equal(updateCalls, 1);
 });
 
+
+test("concurrent workers apply an observation only once", async () => {
+  const c = await signUp(app);
+  engineLearner.update = async () => { throw new EngineError("unavailable", 503, null); };
+  await attempt(c, 1);
+  const id = await learnerId();
+  let arrivals = 0;
+  let release: () => void = () => {};
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  engineLearner.update = async (req) => {
+    arrivals++;
+    if (arrivals === 2) release();
+    await barrier;
+    return stubUpdate(req);
+  };
+  // @ts-expect-error -- A distinct module instance models a second worker.
+  const other: typeof import("../src/progress/mastery.ts") = await import("../src/progress/mastery.ts?other-worker");
+  await Promise.all([applyObservations(id), other.applyObservations(id)]);
+  assert.equal(arrivals, 2);
+  assert.equal((await pOf("functions"))?.n, 1);
+  assert.equal((await pOf("array reduce"))?.n, 1);
+});
+
+test("an older recommendation cannot replace one for newer inputs", async () => {
+  const c = await signUp(app);
+  await trpc(app, c).q("me.next", { world: "codequest" });
+  await db.delete(recommendations);
+  const id = await learnerId();
+  const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
+  let entered: () => void = () => {};
+  let release: () => void = () => {};
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  const next = engineLearner.next;
+  let calls = 0;
+  engineLearner.next = async (req, opts) => {
+    calls++;
+    if (calls === 1) {
+      entered();
+      await barrier;
+    }
+    return { ...await next(req, opts), reason: req.worldTitle ?? "" };
+  };
+  // @ts-expect-error -- A distinct module instance models a second worker.
+  const other: typeof import("../src/progress/mastery.ts") = await import("../src/progress/mastery.ts?recommendation-worker");
+  const older = applyObservations(id, { worldId: world!.id });
+  await started;
+  await db.update(worlds).set({ title: "New title" }).where(eq(worlds.id, world!.id));
+  await other.applyObservations(id, { worldId: world!.id });
+  release();
+  await older;
+  const rows = await db.select().from(recommendations);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.reason, "New title");
+});
+
 test("steps with their own concepts use them, and a step with none makes no observation", async () => {
   const c = await signUp(app);
   await db.update(steps).set({ secret: sql`jsonb_set(secret, '{concepts}', '["  Loops "]')` }).where(eq(steps.id, "s1"));
@@ -372,15 +452,28 @@ test("a course of unwritten AI drafts is still sent to the engine, as unfinished
   assert.ok(lastNext.lessons.every((l) => !l.done));
 });
 
-test("the engine call made inside the mastery transaction times out before PostgreSQL's idle limit", async () => {
+test("engine calls run outside transactions and keep their timeout", async () => {
   let timeoutMs: number | undefined;
+  let nextChecked = false;
+  const assertNoTransaction = async () => {
+    const active = await db.execute(sql`SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'`);
+    assert.equal(active.rows[0]?.count, 0);
+  };
+  const next = engineLearner.next;
+  engineLearner.next = async (req, opts) => {
+    await assertNoTransaction();
+    nextChecked = true;
+    return next(req, opts);
+  };
   engineLearner.update = async (req, opts) => {
     timeoutMs = opts?.timeoutMs;
+    await assertNoTransaction();
     return stubUpdate(req);
   };
   const c = await signUp(app);
   await attempt(c, 1);
   assert.ok(timeoutMs !== undefined && timeoutMs < 30_000, `timeout ${timeoutMs}`);
+  assert.ok(nextChecked);
 });
 
 test("me.mastery and me.next leak no answer keys, hints or explanations", async () => {

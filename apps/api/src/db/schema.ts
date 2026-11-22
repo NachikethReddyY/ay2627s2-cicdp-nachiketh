@@ -280,7 +280,9 @@ export type PartSecret =
   | { kind: "game-practice"; intro: string; doc: Spec }
   | { kind: "scrim"; language: "python" | "javascript" | "typescript"; segments: Array<{ text: string; durationMs: number; edit?: { code: string; run: boolean }; gate?: number }>; lab: Extract<PartSecret, { kind: "practice" }> };
 
-export type GeneratedPart = PartSecret | (Extract<PartSecret, { kind: "scrim" }> & { steps: GeneratedMcqStep[] });
+export type GeneratedPart =
+  | PartSecret
+  | ((Extract<PartSecret, { kind: "scrim" | "learn" | "watch" }>) & { steps: GeneratedMcqStep[] });
 
 export const lessons = pgTable(
   "lessons",

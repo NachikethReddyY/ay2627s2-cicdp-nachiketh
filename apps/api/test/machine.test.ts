@@ -77,3 +77,35 @@ test("no hints: the retry ends the step either way", () => {
   assert.ok("progress" in ok2);
   assert.equal(ok2.progress.state, "revealed");
 });
+
+const gated = { hintCount: 0, triesBeforeAnswer: 3 };
+test("three-try rule: wrong attempts one and two keep the step open, the third finishes it", () => {
+  const first = next(P({}), wrong, { ...gated, triesMade: 0 });
+  assert.ok("progress" in first);
+  assert.deepEqual(first.progress, { state: "hinting", rungsTaken: 0, attemptAllowed: true, retryAllowed: true });
+  const second = next(first.progress, wrong, { ...gated, triesMade: 1 });
+  assert.ok("progress" in second);
+  assert.deepEqual(second.progress, { state: "hinting", rungsTaken: 0, attemptAllowed: true, retryAllowed: true });
+  const third = next(second.progress, wrong, { ...gated, triesMade: 2 });
+  assert.ok("progress" in third);
+  assert.equal(third.progress.state, "revealed");
+});
+test("three-try rule: a correct answer keeps the step open until the third attempt", () => {
+  const first = next(P({}), right, { ...gated, triesMade: 0 });
+  assert.ok("progress" in first);
+  assert.deepEqual(first.progress, { state: "hinting", rungsTaken: 0, attemptAllowed: true, retryAllowed: true });
+  const second = next(first.progress, right, { ...gated, triesMade: 1 });
+  assert.ok("progress" in second);
+  assert.equal(second.progress.state, "hinting");
+  const third = next(second.progress, right, { ...gated, triesMade: 2 });
+  assert.ok("progress" in third);
+  assert.equal(third.progress.state, "revealed");
+});
+test("three-try rule: skip needs the tries first, scrim rules (0) skip freely", () => {
+  assert.ok("conflict" in next(P({}), { type: "skip" }, { ...gated, triesMade: 2 }));
+  const enough = next(P({}), { type: "skip" }, { ...gated, triesMade: 3 });
+  assert.ok("progress" in enough);
+  assert.equal(enough.progress.state, "skipped");
+  const free = next(P({}), { type: "skip" }, { hintCount: 0, triesBeforeAnswer: 0, triesMade: 0 });
+  assert.ok("progress" in free);
+});

@@ -1,3 +1,4 @@
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,6 +13,13 @@ VALID_DOC = {
     "v": 1,
     "blocks": [{"type": "text", "id": "t", "props": {"md": "A short note."}}],
 }
+
+
+STEPS = json.loads(
+    json.loads((FIXTURES / "part_learn_1.json").read_text())["responses"][0]["choices"][0][
+        "message"
+    ]["content"]
+)["steps"]
 
 
 class FakeClient:
@@ -54,8 +62,8 @@ def test_replay_dry_run_reports_pass_rate_block_mix_and_cost() -> None:
 
 
 def test_threshold_and_cost_are_computed_from_results() -> None:
-    valid = LearnPart(kind="learn", body="x", doc=VALID_DOC)
-    missing = LearnPart(kind="learn", body="y")
+    valid = LearnPart(kind="learn", body="x", doc=VALID_DOC, steps=STEPS)
+    missing = LearnPart(kind="learn", body="y", steps=STEPS)
     client = FakeClient([(valid, 1000, 500), (missing, 1000, 500)])
 
     report = eval_visuals.evaluate(eval_visuals.TOPICS[:2], client)
@@ -68,7 +76,7 @@ def test_threshold_and_cost_are_computed_from_results() -> None:
 
 
 def test_json_output_marks_placeholders() -> None:
-    client = FakeClient([(LearnPart(kind="learn", body="x", doc=VALID_DOC), 10, 5)])
+    client = FakeClient([(LearnPart(kind="learn", body="x", doc=VALID_DOC, steps=STEPS), 10, 5)])
     report = eval_visuals.evaluate(eval_visuals.TOPICS[:1], client)
 
     data = eval_visuals.to_json(report)

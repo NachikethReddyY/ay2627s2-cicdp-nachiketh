@@ -1,10 +1,10 @@
-import { code, out, signUp, trpc } from "./helpers.ts";
+import { code, out, readSteps, signUp, trpc } from "./helpers.ts";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { gameCompletions, lessons, lessonVersions, partCompletions, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { gameCompletions, lessons, lessonVersions, partCompletions, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
 import { toPublicGame, type GameProps } from "@learnquest/ui-catalog";
 
 const app = buildApp();
@@ -81,6 +81,12 @@ test("lessons.get strips quiz answers and hints from game blocks in a learn doc"
   const [lesson] = await db.insert(lessons).values({ slug: "learn-1", title: "learn-1", worldId: world, sourceKind: "authored", kind: "learn", status: "published" }).returning();
   const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, content: learn }).returning();
   await db.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
+  const checks = await db.insert(steps).values(readSteps.map((s, idx) => ({
+    lessonVersionId: version!.id, idx,
+    public: { title: s.title, prompt: s.prompt, kind: s.kind, options: s.options },
+    secret: { beforeFiles: s.beforeFiles, hunks: s.hunks, answer: s.answer, hints: s.hints, explanations: s.explanations, concepts: s.concepts },
+  }))).returning();
+  out(await m(cookie, "steps.attempt", { id: checks[0]!.id, answer: { kind: "mcq", choice: 0 } }));
 
   const res = await q(cookie, "lessons.get", { id: "learn-1" });
   assert.equal(res.statusCode, 200);
