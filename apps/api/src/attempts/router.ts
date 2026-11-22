@@ -21,6 +21,7 @@ const Body = z.discriminatedUnion("kind", [
 
 const conflict = (message: string) => new TRPCError({ code: "CONFLICT", message });
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Step not found" });
+const predictSkip = () => new TRPCError({ code: "BAD_REQUEST", message: "Predict steps cannot be skipped. Answer the step to finish the lesson." });
 
 async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
@@ -30,7 +31,7 @@ async function mustStep(id: string, learnerId: string) {
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
+    .select({ id: steps.id, idx: steps.idx, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts, lessonKind: lessons.kind })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -209,6 +210,7 @@ export const stepsRouter = router({
     .output(z.object({ state: z.literal("skipped") }))
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
+      if (step.lessonKind === "predict") throw predictSkip();
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);

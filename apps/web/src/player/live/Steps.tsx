@@ -4,7 +4,7 @@ import { buildTimeline } from "@learnquest/player-core";
 import { TRPCClientError } from "@trpc/client";
 import { trpc } from "../../lib/trpc";
 import { PredictPanel, RevealPanel } from "../LivePanels";
-import { canHint, canSkip, canSubmit, stepMachine, type Reveal } from "../stepMachine";
+import { canHint, canSubmit, stepMachine, type Reveal } from "../stepMachine";
 import { Player } from "./LazyPlayer";
 import type { Lesson } from "./types";
 
@@ -88,10 +88,9 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
     panel = (
       <PredictPanel
         key={id} idx={idx} total={n} step={step} hints={hints} feedback={snap.context.feedback} notice={snap.context.notice} busy={busy}
-        canSubmit={canSubmit(snap)} canHint={canHint(snap)} canSkip={canSkip(snap)}
+        canSubmit={canSubmit(snap)} canHint={canHint(snap)}
         onSubmit={(answer) => run(async () => send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id, answer }) }))}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id }) }))}
-        onSkip={() => run(async () => { await trpc.steps.skip.mutate({ id }); send({ type: "SKIPPED" }); })}
       />
     );
   } else {

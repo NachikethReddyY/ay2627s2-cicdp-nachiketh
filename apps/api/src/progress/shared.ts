@@ -19,12 +19,21 @@ export const Slug = z.object({ slug: z.string().regex(/^[\w-]{1,64}$/) });
 
 export const lessonTotal = sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int ELSE 1 END)`;
+export const everyGameWon = (me: string) => sql`(SELECT count(*) > 0 AND count(*) = count(gc.block_id)
+  FROM (SELECT DISTINCT v.version, b.value->>'id' AS block_id
+    FROM lesson_versions v
+    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(v.content->'doc'->'blocks') = 'array'
+      THEN v.content->'doc'->'blocks' ELSE '[]'::jsonb END) b
+    WHERE v.id = l.current_version_id AND b.value->>'type' = 'game') blocks
+  LEFT JOIN game_completions gc ON gc.learner_id = ${me} AND gc.lesson_id = l.id
+    AND gc.part_idx = blocks.version - 1 AND gc.block_id = blocks.block_id)`;
 export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}
       AND sp.state = 'revealed'
       AND EXISTS (SELECT 1 FROM attempts a
         WHERE a.step_id = s.id AND a.learner_id = ${me} AND a.observed AND a.kind <> 'skip'))::int
+  WHEN l.kind = 'game-practice' THEN (CASE WHEN ${everyGameWon(me)} THEN 1 ELSE 0 END)
   ELSE (SELECT count(*) FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me})::int END)`;
 export const lastActive = (me: string) => sql`GREATEST(
   (SELECT max(sp.updated_at) FROM steps s JOIN step_progress sp ON sp.step_id = s.id

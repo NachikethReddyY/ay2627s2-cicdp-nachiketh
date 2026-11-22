@@ -6,14 +6,15 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 import { BadSubmission, grade, submissionSchema } from "../games/grade.ts";
+import { everyGameWon } from "./shared.ts";
 
 const lessonId = z.string().regex(/^[\w-]{1,64}$/);
 const gameIndex = z.number().int().min(0).max(100);
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-async function loadGame(learnerId: string, ref: string, index: number): Promise<{ lessonDbId: string; blockId: string; blockIds: string[]; game: GameProps }> {
+async function loadGame(learnerId: string, ref: string, index: number): Promise<{ lessonDbId: string; blockId: string; winIdx: number; game: GameProps }> {
   const { rows } = await db.execute(sql`
-    SELECT l.id AS lesson_id, v.content->'doc' AS doc
+    SELECT l.id AS lesson_id, v.version - 1 AS win_idx, v.content->'doc' AS doc
     FROM lessons l
     JOIN worlds w ON w.id = l.world_id
     JOIN learners me ON me.id = ${learnerId}
@@ -22,21 +23,19 @@ async function loadGame(learnerId: string, ref: string, index: number): Promise<
       AND ${playableLesson()}
       AND ${visibleWorld(meUser)}
       AND v.content->>'kind' = 'game-practice'`);
-  const row = rows[0] as { lesson_id: string; doc: unknown } | undefined;
+  const row = rows[0] as { lesson_id: string; win_idx: number; doc: unknown } | undefined;
   const block = row && gameBlocksOf(row.doc)[index];
   const parsed = block && gameSchema.safeParse(block.props);
   if (!row || !block || !parsed?.success) throw notFound();
-  return { lessonDbId: row.lesson_id, blockId: block.id, blockIds: gameBlocksOf(row.doc).map((b) => b.id), game: parsed.data };
+  return { lessonDbId: row.lesson_id, blockId: block.id, winIdx: row.win_idx, game: parsed.data };
 }
 
-async function everyBlockWon(learnerId: string, lessonDbId: string, blockIds: string[]): Promise<boolean> {
+async function everyBlockWon(learnerId: string, lessonDbId: string): Promise<boolean> {
   const {
     rows: [row],
-  } = await db.execute<{ won: number }>(sql`
-    SELECT count(DISTINCT block_id)::int AS won FROM game_completions
-    WHERE learner_id = ${learnerId} AND lesson_id = ${lessonDbId}
-      AND block_id IN (${sql.join(blockIds.map((id) => sql`${id}`), sql`, `)})`);
-  return row.won === new Set(blockIds).size;
+  } = await db.execute<{ won: boolean }>(sql`
+    SELECT ${everyGameWon(learnerId)} AS won FROM lessons l WHERE l.id = ${lessonDbId}`);
+  return row.won;
 }
 
 const hint = protectedProcedure
@@ -53,7 +52,7 @@ const check = protectedProcedure
   .input(z.object({ lessonId, gameIndex, submission: submissionSchema }))
   .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionResults: z.array(z.boolean()).optional() }))
   .mutation(async ({ ctx, input }) => {
-    const { lessonDbId, blockId, blockIds, game } = await loadGame(ctx.learnerId, input.lessonId, input.gameIndex);
+    const { lessonDbId, blockId, winIdx, game } = await loadGame(ctx.learnerId, input.lessonId, input.gameIndex);
     let verdict;
     try {
       verdict = grade(game, input.submission);
@@ -64,9 +63,9 @@ const check = protectedProcedure
     if (verdict.complete) {
       await db.execute(sql`
         INSERT INTO game_completions (learner_id, lesson_id, part_idx, block_id)
-        VALUES (${ctx.learnerId}, ${lessonDbId}, 0, ${blockId})
+        VALUES (${ctx.learnerId}, ${lessonDbId}, ${winIdx}, ${blockId})
         ON CONFLICT DO NOTHING`);
-      if (await everyBlockWon(ctx.learnerId, lessonDbId, blockIds)) {
+      if (await everyBlockWon(ctx.learnerId, lessonDbId)) {
         await db.execute(sql`
           INSERT INTO part_completions (learner_id, lesson_id) VALUES (${ctx.learnerId}, ${lessonDbId})
           ON CONFLICT DO NOTHING`);
