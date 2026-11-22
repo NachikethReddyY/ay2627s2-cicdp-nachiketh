@@ -24,25 +24,38 @@ const gameBlocks = (content: SQL) => sql`(SELECT b.value->>'id' AS id, b.value->
     THEN ${content}->'doc'->'blocks' ELSE '[]'::jsonb END) b(value)
   WHERE b.value->>'type' = 'game')`;
 
-const gameBlockWon = (learnerId: string, lessonId: SQL, blockId: SQL, props: SQL) => sql`EXISTS (
-  SELECT 1 FROM game_completions gc
-  JOIN lesson_versions earned ON earned.lesson_id = gc.lesson_id AND earned.version = gc.part_idx + 1
-  CROSS JOIN LATERAL ${gameBlocks(sql`earned.content`)} won
-  WHERE gc.learner_id = ${learnerId} AND gc.lesson_id = ${lessonId}
-    AND won.id = gc.block_id AND won.props = ${props}
-    AND (won.id = ${blockId} OR NOT EXISTS (
-      SELECT 1 FROM lesson_versions history
-      CROSS JOIN LATERAL ${gameBlocks(sql`history.content`)} same
-      WHERE history.lesson_id = gc.lesson_id AND same.props = won.props
-      GROUP BY history.id HAVING count(*) > 1)))`;
+const gameBlockWon = (learnerId: string, lessonId: SQL, version: SQL, blockId: SQL, props: SQL) => sql`EXISTS (
+  WITH RECURSIVE revisions AS (
+    SELECT history.version, row_number() OVER (ORDER BY history.version) AS position,
+      ARRAY(SELECT game.id FROM ${gameBlocks(sql`history.content`)} game WHERE game.props = ${props}) AS ids
+    FROM lesson_versions history
+    WHERE history.lesson_id = ${lessonId} AND history.version <= ${version}
+      AND (history.published_at IS NOT NULL OR history.version = ${version} OR EXISTS (
+        SELECT 1 FROM game_completions gc WHERE gc.learner_id = ${learnerId}
+          AND gc.lesson_id = history.lesson_id AND gc.part_idx = history.version - 1))
+  ), wins AS (
+    SELECT revision.position, gc.block_id
+    FROM game_completions gc JOIN revisions revision ON revision.version = gc.part_idx + 1
+    WHERE gc.learner_id = ${learnerId} AND gc.lesson_id = ${lessonId} AND gc.block_id = ANY(revision.ids)
+    UNION
+    SELECT next.position, CASE
+      WHEN wins.block_id <> ALL(next.ids)
+        AND previous.ids = ARRAY[wins.block_id] AND cardinality(next.ids) = 1 THEN next.ids[1]
+      ELSE wins.block_id END
+    FROM wins
+    JOIN revisions previous ON previous.position = wins.position
+    JOIN revisions next ON next.position = wins.position + 1
+  )
+  SELECT 1 FROM wins JOIN revisions revision ON revision.position = wins.position
+  WHERE revision.version = ${version} AND wins.block_id = ${blockId})`;
 
 export const currentGameBlockWon = (learnerId: string, lessonId: string, versionId: string, blockId: string) => sql`EXISTS (
   SELECT 1 FROM lesson_versions v CROSS JOIN LATERAL ${gameBlocks(sql`v.content`)} b
   WHERE v.id = ${versionId} AND b.id = ${blockId}
-    AND ${gameBlockWon(learnerId, sql`${lessonId}`, sql`b.id`, sql`b.props`)})`;
+    AND ${gameBlockWon(learnerId, sql`${lessonId}`, sql`v.version`, sql`b.id`, sql`b.props`)})`;
 
 export const everyGameWon = (learnerId: string) => sql`(SELECT coalesce(bool_and(
-  ${gameBlockWon(learnerId, sql`l.id`, sql`b.id`, sql`b.props`)}), false)
+  ${gameBlockWon(learnerId, sql`l.id`, sql`v.version`, sql`b.id`, sql`b.props`)}), false)
   FROM lesson_versions v CROSS JOIN LATERAL ${gameBlocks(sql`v.content`)} b
   WHERE v.id = l.current_version_id)`;
 export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
@@ -67,7 +80,8 @@ export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
 export const lastActive = (me: string) => sql`GREATEST(
   (SELECT max(sp.updated_at) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}),
-  (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}))`;
+  (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}),
+  (SELECT max(gc.created_at) FROM game_completions gc WHERE gc.lesson_id = l.id AND gc.learner_id = ${me}))`;
 export const complete = (l: { done: number; total: number }) => l.total > 0 && l.done >= l.total;
 export const listed = playableLesson();
 export const visibleCourse = (me: string) => visibleWorld(userOfLearner(me));

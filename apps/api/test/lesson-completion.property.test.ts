@@ -167,6 +167,23 @@ test("a legacy wrong-answer-then-skip predict step accepts a new answer", async 
   assert.equal(await predictDone(learnerId), 1);
 });
 
+test("a legacy skipped prediction with exhausted hints can recover after a wrong answer", async () => {
+  const email = emailOf("legacy-exhausted-hints");
+  const cookie = await signedUp(email);
+  const learnerId = await learnerOf(email);
+  const stepId = "s1";
+  const { hintCount } = out(await q(cookie, "steps.get", { id: stepId }));
+  assert.ok(hintCount > 0);
+  await db.insert(stepProgress).values({ learnerId, stepId, state: "skipped", rungsTaken: hintCount, attemptAllowed: false });
+  await db.insert(attempts).values({ learnerId, stepId, kind: "skip", observed: true });
+
+  const wrong = out(await m(cookie, "steps.attempt", { id: stepId, answer: { kind: "mcq", choice: 0 } }));
+  assert.deepEqual([wrong.correct, wrong.state, wrong.attemptAllowed], [false, "hinting", true]);
+  const right = out(await m(cookie, "steps.attempt", { id: stepId, answer: { kind: "mcq", choice: 1 } }));
+  assert.deepEqual([right.correct, right.state], [true, "revealed"]);
+  assert.equal(await predictDone(learnerId), 1);
+});
+
 const quizBlock = (id: string) => ({
   type: "game",
   id,
@@ -182,13 +199,13 @@ async function addGameLesson(blocks: unknown[]): Promise<GameLesson> {
   const slug = `games-${RUN_ID}-${lessonCounter++}`;
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
   const [lesson] = await db.insert(lessons).values({ slug, title: "Games", worldId: world!.id, sourceKind: "authored", kind: "game-practice", status: "published" }).returning();
-  const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, content: gameContent(blocks) }).returning();
+  const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, publishedAt: new Date(), content: gameContent(blocks) }).returning();
   await db.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
   return { slug, lessonId: lesson!.id };
 }
 
 async function publishVersion(lesson: GameLesson, version: number, blocks: unknown[]) {
-  const [row] = await db.insert(lessonVersions).values({ lessonId: lesson.lessonId, version, content: gameContent(blocks) }).returning();
+  const [row] = await db.insert(lessonVersions).values({ lessonId: lesson.lessonId, version, publishedAt: new Date(), content: gameContent(blocks) }).returning();
   await db.update(lessons).set({ currentVersionId: row!.id }).where(eq(lessons.id, lesson.lessonId));
 }
 
@@ -401,6 +418,33 @@ test("an unchanged block after a version bump keeps its win and awards no new XP
   assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
   await play(cookie, lesson, 0, true);
   assert.equal(await xpOf(cookie), 10);
+});
+
+test("an unchanged rename keeps its win when a later version adds an identical block", async () => {
+  const first = quizBlock("g1");
+  const renamed = { ...first, id: "renamed" };
+  const clone = { ...first, id: "g1" };
+  const lesson = await addGameLesson([first]);
+  const cookie = await signUp(app, emailOf("rename-then-duplicate"));
+  await play(cookie, lesson, 0, true);
+  await publishVersion(lesson, 2, [renamed]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 10);
+
+  const [draft] = await db.insert(lessonVersions).values({
+    lessonId: lesson.lessonId, version: 3, content: gameContent([renamed, clone]),
+  }).returning();
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  await db.transaction(async (tx) => {
+    await tx.update(lessonVersions).set({ publishedAt: new Date() }).where(eq(lessonVersions.id, draft!.id));
+    await tx.update(lessons).set({ currentVersionId: draft!.id }).where(eq(lessons.id, lesson.lessonId));
+  });
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+  await play(cookie, lesson, 1, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 20);
 });
 
 test("replaying a won block in the same version, even concurrently, stores one win and awards XP once", async () => {
