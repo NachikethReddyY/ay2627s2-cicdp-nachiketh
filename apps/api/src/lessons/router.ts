@@ -10,7 +10,8 @@ import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
 import { parseScrim } from "../parts/scrim-schema.ts";
-import { publicScrimSegments, type ScrimGateState } from "./scrim.ts";
+import { malformedScrim, publicScrimSegments, scrimGateStates, scrimStepState } from "./scrim.ts";
+import { loadScrimGates } from "./scrim-gates.ts";
 import { publicDoc } from "@learnquest/ui-catalog";
 
 const PracticeTestSummary = z.object({ id: z.string(), name: z.string(), stretch: z.boolean() });
@@ -39,21 +40,6 @@ function publicPractice(content: unknown): z.output<typeof PublicPractice> {
         : { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch },
     ),
   };
-}
-
-const malformedScrim = () => new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Scrim lesson is malformed" });
-
-function scrimGateStates(scrim: NonNullable<ReturnType<typeof parseScrim>>, rows: Array<{ id: string; idx: number; pub: { kind: string }; state: string | null }>) {
-  const gates = new Map<number, ScrimGateState>();
-  for (const segment of scrim.segments) {
-    if (segment.gate === undefined) continue;
-    const step = rows.find((row) => row.idx === segment.gate);
-    if (!step || step.pub.kind !== "mcq") throw malformedScrim();
-    const state = step.state ?? "predicting";
-    if (state !== "predicting" && state !== "hinting" && state !== "revealed" && state !== "skipped") throw malformedScrim();
-    gates.set(segment.gate, { id: step.id, state });
-  }
-  return gates;
 }
 
 const ScrimMore = z.object({
@@ -164,6 +150,7 @@ export const lessonsRouter = router({
       const content = version?.content;
       if ((lesson.kind === "scrim") !== (content?.kind === "scrim")) throw malformedScrim();
       let part: z.output<typeof Lesson>["part"] = null;
+      const servedGateIds = new Set<string>();
       switch (content?.kind) {
         case "practice":
           part = publicPractice(content);
@@ -173,6 +160,7 @@ export const lessonsRouter = router({
           if (!scrim) throw malformedScrim();
           const gates = scrimGateStates(scrim, rows);
           const visible = publicScrimSegments(scrim, gates);
+          for (const segment of visible.segments) if (segment.gate) servedGateIds.add(segment.gate);
           part = {
             kind: "scrim",
             language: scrim.language,
@@ -199,21 +187,22 @@ export const lessonsRouter = router({
         case undefined:
           break;
       }
+      const servedRows = part?.kind === "scrim" ? rows.filter((row) => servedGateIds.has(row.id)) : rows;
       return {
         id: lesson.slug,
         title: lesson.title,
         kind: lesson.kind,
         part,
-        steps: rows.map((r) => ({
+        steps: servedRows.map((r) => ({
           id: r.id,
           idx: r.idx,
           title: r.pub.title,
           hintCount: r.hintCount,
-          state: r.state ?? "predicting",
+          state: lesson.kind === "scrim" ? scrimStepState(r.state) : (r.state ?? "predicting"),
         })),
         media: await listMedia(lesson.currentVersionId).then((media) => {
           if (lesson.kind !== "scrim" || part?.kind !== "scrim") return media;
-          const revealed = new Set(rows.filter((row) => row.state === "revealed" || row.state === "skipped").map((row) => row.id));
+          const revealed = new Set(rows.filter((row) => row.state === "revealed").map((row) => row.id));
           return media.filter((item) =>
             item.segment !== null
               ? item.segment < part.segments.length
@@ -236,16 +225,8 @@ export const lessonsRouter = router({
       if (!found?.currentVersionId || found.kind !== "scrim" || (found.status !== "published" && !(found.status === "draft" && found.sourceKind === "ai"))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Scrim lesson not found" });
       }
-      const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, found.currentVersionId));
-      const scrim = parseScrim(version?.content);
-      if (!scrim) throw malformedScrim();
-      const rows = await db
-        .select({ id: steps.id, idx: steps.idx, pub: steps.public, state: stepProgress.state })
-        .from(steps)
-        .leftJoin(stepProgress, and(eq(stepProgress.stepId, steps.id), eq(stepProgress.learnerId, ctx.learnerId)))
-        .where(eq(steps.lessonVersionId, found.currentVersionId))
-        .orderBy(asc(steps.idx));
-      const visible = publicScrimSegments(scrim, scrimGateStates(scrim, rows), input.from);
+      const { scrim, gates } = await loadScrimGates(found.currentVersionId, ctx.learnerId);
+      const visible = publicScrimSegments(scrim, gates, input.from);
       if (input.from > visible.nextOffset) throw new TRPCError({ code: "CONFLICT", message: "Scrim segment is still gated" });
       const media = await listMedia(found.currentVersionId);
       return {

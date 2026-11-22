@@ -1,5 +1,6 @@
 import "./helpers.ts";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
@@ -7,6 +8,7 @@ import { lessonMedia, lessons, lessonVersions, steps, worlds } from "../src/db/s
 import { seed } from "../src/db/seed.ts";
 import { silentWav } from "../src/media/silent-wav.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
+import { LessonFile } from "../src/db/lesson-file.ts";
 import { parseScrim } from "../src/parts/scrim-schema.ts";
 
 const SLUG = "scrim-return-values";
@@ -60,6 +62,15 @@ test("the lab has two sample tests and two hidden tests", async () => {
   const tests = lab.tests ?? [];
   assert.equal(tests.filter((t) => t.visibility === "sample").length, 2);
   assert.equal(tests.filter((t) => t.visibility === "hidden").length, 2);
+});
+
+test("an authored scrim lesson must gate every step it defines", async () => {
+  const file = JSON.parse(await readFile(new URL("../../../worlds/scrim-demo/lessons/scrim-return-values.json", import.meta.url), "utf8"));
+  assert.ok(LessonFile.safeParse(file).success);
+  const extra = { ...file, steps: [...file.steps, structuredClone(file.steps[0])] };
+  const result = LessonFile.safeParse(extra);
+  assert.ok(!result.success);
+  assert.match(JSON.stringify(result.error.issues), /step 1 has no gate segment in the scrim/);
 });
 
 test("seeding twice keeps one scrim lesson, one step and one narration per segment", async () => {

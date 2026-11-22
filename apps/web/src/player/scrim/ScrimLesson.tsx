@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { trpc } from "../../lib/trpc";
 import LessonWorkbench from "../live/LessonWorkbench";
 import type { Lesson, Part } from "../live/types";
+import { resumeTime } from "./scrimModel";
 import ScrimWatch from "./ScrimWatch";
 
 type ScrimPart = Extract<Part, { kind: "scrim" }>;
@@ -12,7 +13,7 @@ export default function ScrimLesson({ lessonId, title, part, steps, media, next 
   const [loadedSteps, setLoadedSteps] = useState(steps);
   const [loadedMedia, setLoadedMedia] = useState(media);
   const [revision, setRevision] = useState(0);
-  const [resumeAt, setResumeAt] = useState(0);
+  const [resumeAt, setResumeAt] = useState(() => resumeTime(part.segments, steps));
   const [pendingGate, setPendingGate] = useState<{ stepId: string; at: number } | null>(null);
   const [loadError, setLoadError] = useState("");
   const loadMore = async (stepId: string, at: number) => {

@@ -155,7 +155,7 @@ test("scrimMore reveals only the next slice after a gate is completed", async ()
   const blocked = await t.q("lessons.scrimMore", { id: slug, from: 4 });
   assert.equal(blocked.statusCode, 409);
 
-  await t.m("steps.skip", { id: gateId });
+  assert.equal((await t.m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } })).statusCode, 200);
   const more = await t.q("lessons.scrimMore", { id: slug, from: 2 });
   assert.equal(more.statusCode, 200, more.body);
   assert.deepEqual(out(more), {
@@ -182,6 +182,19 @@ test("lessons.get fails closed for malformed scrim content and invalid gates", a
   await invalidVersion({ ...scrim, segments: [{ text: "Missing step", durationMs: 700, gate: gateIdx + 1 }] });
   await db.update(steps).set({ public: { title: gateTitle, kind: "cloze", prompt: gatePrompt } }).where(eq(steps.id, gateId));
   await invalidVersion(scrim);
+});
+
+test("lessons.get and the step routes fail closed for a step that no segment gates", async () => {
+  const t = trpc(app, await signUp(app));
+  const { versionId, gateId } = await insertScrim();
+  const [orphan] = await db.insert(steps).values({
+    lessonVersionId: versionId, idx: gateIdx + 1,
+    public: { title: "Orphan", kind: "mcq", prompt: "ORPHAN_PROMPT", options: ["a", "b"] },
+    secret: { answer: 0, hints: [], explanations: gateExplanations, beforeFiles: {}, hunks: [] },
+  }).returning({ id: steps.id });
+  assert.equal((await t.q("lessons.get", { id: slug })).statusCode, 500);
+  assert.equal((await t.q("steps.get", { id: orphan.id })).statusCode, 500);
+  assert.equal((await t.q("steps.get", { id: gateId })).statusCode, 500);
 });
 
 test("a scrim gate uses the normal MCQ attempt, hint, reveal and progress flow", async () => {
@@ -302,7 +315,12 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.deepEqual(completed, [{ learnerId: learner.id }]);
   const beforeGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
   assert.equal(beforeGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
-  await trpc(app, cookie).m("steps.skip", { id: gateId });
+  const skipped = await trpc(app, cookie).m("steps.skip", { id: gateId });
+  assert.equal(skipped.statusCode, 409, skipped.body);
+  const afterSkip = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(afterSkip.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
+  const revealed = await trpc(app, cookie).m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } });
+  assert.equal(revealed.statusCode, 200, revealed.body);
   const afterGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
   assert.equal(afterGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 1);
   const scores = await db.select({
