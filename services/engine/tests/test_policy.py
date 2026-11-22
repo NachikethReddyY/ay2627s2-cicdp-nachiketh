@@ -252,11 +252,14 @@ def test_no_reason_names_a_concept_below_threshold_as_mastered(
 
 
 @settings(deadline=None)
-@given(mastery=named_mastery_st, lessons=named_lessons_st)
-def test_finished_concept_below_unlock_is_never_advanced_past(
-    mastery: list[Mastery], lessons: list[Lesson]
-) -> None:
+@given(names=st.lists(st.sampled_from(NAMED), min_size=3, max_size=3, unique=True))
+def test_unfinished_at_point_two_beats_finished_at_point_seven(names: list[str]) -> None:
+    finished, lower, higher = names
+    lessons = [
+        Lesson("finished", [finished], "learn", True, 1),
+        Lesson("lower", [lower], "learn", False, 2),
+        Lesson("higher", [higher], "learn", False, 3),
+    ]
+    mastery = [Mastery(finished, 0.7), Mastery(lower, 0.2), Mastery(higher, 0.8)]
     r = recommend(mastery, [], lessons)
-    if r.reason_code == ReasonCode.REVIEW:
-        target = next(lesson for lesson in lessons if lesson.lesson_id == r.lesson_id)
-        assert not target.done
+    assert (r.concept_id, r.lesson_id) == (lower, "lower")
