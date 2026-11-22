@@ -205,7 +205,7 @@ def moderation_route(body: ModerationRequest) -> dict[str, Any]:
         timeout=4,
         num_retries=0,
     )
-    log.info("moderation model=%s latency_ms=%d", body.model, (time.monotonic() - started) * 1000)
+    log.info("moderation latency_ms=%d", (time.monotonic() - started) * 1000)
     return dict(result.model_dump())
 
 

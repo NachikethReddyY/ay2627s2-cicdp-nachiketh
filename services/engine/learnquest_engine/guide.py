@@ -8,6 +8,24 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .llm import GenerationError, Result, generate
 
 PROMPT = Path(__file__).resolve().parents[3] / "INSTRUCTIONS.md"
+CODE_MARKERS = re.compile(r"```|~~~|=>")
+HTML_TAG = re.compile(r"<\s*(?:/\s*)?[a-zA-Z]")
+CODE_START = re.compile(
+    r"(?:const|let|var|function|class|import|export|def|print|return)\b"
+)
+CALL_START = re.compile(r"[\w.]+\s*\(")
+
+
+def _contains_code(text: str) -> bool:
+    if CODE_MARKERS.search(text) or HTML_TAG.search(text):
+        return True
+    for raw in text.splitlines():
+        line = raw.strip()
+        if CODE_START.match(line) and any(marker in line for marker in "=({;:"):
+            return True
+        if line.rstrip(";").rstrip().endswith(")") and CALL_START.match(line):
+            return True
+    return False
 
 
 class LintFinding(BaseModel):
@@ -56,10 +74,7 @@ class GuideReply(BaseModel):
             else:
                 texts.append(widget.text)
         for text in texts:
-            if re.search(
-                r"```|~~~|<\s*/?\s*[a-zA-Z][^>]*>|(?:^|\n)\s*(?:const|let|var|function|class|import|export|def|print|return)\b.*[=({;:]|=>|(?:^|\n)\s*[\w.]+\s*\([^\n]*\)\s*;?\s*$",
-                text,
-            ):
+            if _contains_code(text):
                 raise ValueError(
                     "Give a brief conceptual clue or prediction question. "
                     "Remove code, markup and solution instructions from every field."
