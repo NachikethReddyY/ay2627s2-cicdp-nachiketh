@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LearnSlop codebase review and fix plan</title>
+<style>
+:root{--bg:#000;--fg:#fff;--mute:#a3a3a3;--line:#262626;--panel:#111;--crit:#ff5c5c;--warn:#f5b84a;--sug:#7cb7ff;--dead:#9b9b9b;--ok:#5fd38d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:18px;margin:40px 0 10px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:15px;margin:22px 0 8px}
+p,li{color:var(--fg)}
+.m{color:var(--mute)}
+code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);padding:1px 5px;border-radius:4px;word-break:break-word}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-weight:600}
+.wrap{overflow-x:auto}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:4px;border:1px solid currentColor;white-space:nowrap}
+.c{color:var(--crit)}.w{color:var(--warn)}.s{color:var(--sug)}.d{color:var(--dead)}.ok{color:var(--ok)}
+.note{background:var(--panel);border-left:3px solid var(--warn);padding:10px 12px;margin:14px 0}
+ol,ul{padding-left:20px}
+li{margin:4px 0}
+.phase{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin:12px 0}
+.phase h3{margin-top:0}
+.bar{display:inline-block;height:8px;background:var(--fg);border-radius:2px;vertical-align:middle}
+.sens{color:var(--warn);font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>LearnSlop codebase review and fix plan</h1>
+<p class="m">2026-11-20. Eight read-only reviewers: three on the scrim stack (#81, #82, #83), four on the whole codebase by area, and one dead-code sweep using knip and vulture. Each finding was checked against the source and marked confirmed or plausible. No repo files were changed.</p>
+</header>
+
+<div class="note"><strong>Scope caveat.</strong> Local <code>main</code> is 7 commits behind <code>origin/main</code>. It is also 1 commit ahead, <code>5eb3fcd</code>, which has no PR. Every review ran against the local tree, so a few findings may already be fixed upstream. Phase 0 rebases first, then rechecks each item before fixing it.</div>
+
+<h2>Scores</h2>
+<div class="wrap"><table>
+<thead><tr><th>Area</th><th>Score</th><th>Biggest reason it is not a 10</th></tr></thead>
+<tbody>
+<tr><td>Scrim: player-core timeline</td><td><span class="bar" style="width:65px"></span> 6.5</td><td>A negative edit time skips a part gate (predict-before-reveal break); <code>runCrossed</code> drops runs</td></tr>
+<tr><td>Scrim: API lesson kind</td><td><span class="bar" style="width:70px"></span> 7</td><td><code>lessons.get</code> sends post-gate code before the prediction; the lab can complete the lesson without the gate</td></tr>
+<tr><td>Scrim: tests, web, docs</td><td><span class="bar" style="width:70px"></span> 7</td><td>A published scrim lesson dead-ends in <code>/play</code>; <code>.env*</code> ignores the tracked <code>.env.example</code></td></tr>
+<tr><td>apps/api</td><td><span class="bar" style="width:60px"></span> 6</td><td>Leaderboard shows email-derived names by default; practice checks never run on Daytona</td></tr>
+<tr><td>apps/web</td><td><span class="bar" style="width:65px"></span> 6.5</td><td>No visible Run or Lint; mock UI with fake data shown to learners; two separate Sloppy instances</td></tr>
+<tr><td>Engine + sandbox</td><td><span class="bar" style="width:70px"></span> 7</td><td>AI lessons auto-publish with no human review; Sloppy's no-solution rule is enforced only by the prompt</td></tr>
+<tr><td>Packages, scripts, CI</td><td><span class="bar" style="width:65px"></span> 6.5</td><td>Merge gate runs the PR's own code; <code>--skip-local</code> bypass; review result can be forged</td></tr>
+<tr><td><strong>Product logic</strong></td><td><span class="bar" style="width:40px"></span> 4</td><td>The main entry point (AI paths) never reaches predict, BKT or adaptivity; the headline "real code change" feature isn't built</td></tr>
+<tr><td><strong>Learning logic</strong></td><td><span class="bar" style="width:40px"></span> 4</td><td>The BKT maths is right, but the recommendation never reaches the learner; no remediation; most part kinds produce no evidence</td></tr>
+</tbody></table></div>
+<p class="m">Checks that ran green: player-core 28/28, ui-catalog 193/193, <code>test:scripts</code> 97/97, web 300/300 plus build and lint, engine ruff + mypy --strict + pytest 258 (97% coverage), API <code>tsc</code> plus 72 non-database unit tests, <code>check-comments</code>, <code>check-boundaries</code>. <strong>Not run:</strong> all database-backed API tests (<code>TEST_DATABASE_URL</code> unset), <code>agent:verify</code>, e2e and a browser pass. The findings in those areas come from reading code only.</p>
+
+<h2>Critical</h2>
+<div class="wrap"><table>
+<thead><tr><th></th><th>Where</th><th>Problem and failure</th></tr></thead>
+<tbody>
+<tr><td><span class="tag c">CRIT</span></td><td><code>apps/api/src/db/schema.ts:89</code>, <code>progress/home.ts:173</code>, <code>web/pages/Login.tsx:49</code></td><td>The leaderboard defaults to opted in and its name is the email local part. Every learner sees <code>jane.doe.2011</code>, and the audience includes 13-year-olds. Confirmed.</td></tr>
+<tr><td><span class="tag c">CRIT</span></td><td><code>apps/api/src/sandbox/check.ts:41-55</code></td><td><code>/sandbox/check</code> always runs <code>docker</code>, even when the backend is Daytona. On Daytona, every check returns 503, so no practice or scrim lesson can be completed. Confirmed in code; production config not checked.</td></tr>
+<tr><td><span class="tag c">CRIT</span></td><td><code>scripts/merge-gate.ts:91,160,166</code></td><td>The gate runs the PR head's own <code>merge-gate.ts</code> and <code>bin.ts</code>, so a PR can weaken the gate that judges it. <code>--skip-local</code> drops <code>agent:verify</code>, and AGENTS.md never mentions it. Confirmed.</td></tr>
+<tr><td><span class="tag c">CRIT</span></td><td><code>scripts/merge-gate.ts:103-107</code>, <code>agent-review.ts:103,634</code></td><td>A hand-written <code>{"status":"clean","head":sha}</code> passes the gate. The rule that the reviewer must differ from the author is never checked. A diff truncated at 180k characters still counts as clean. Confirmed.</td></tr>
+<tr><td><span class="tag c">CRIT</span></td><td><code>apps/api/src/ai/service.ts:228-251</code></td><td>AI-generated lessons are written with status published and <code>publishedAt</code> set, with no human approval. This breaks the AGENTS.md rule "generated content is reviewed". Confirmed; the fix needs an owner decision.</td></tr>
+</tbody></table></div>
+
+<h2>Warnings</h2>
+<h3>Predict before reveal and answer leakage</h3>
+<ul>
+<li><span class="tag w">WARN</span> <code>apps/api/src/lessons/router.ts:128-145</code>: every scrim segment, including the <code>edit.code</code> after a gate, goes to the client before the gate is answered. The gate is held back only by the client. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>parts/practice.ts:46</code>, <code>sandbox/check.ts:181</code>: passing a scrim lab completes the lesson even if the gate step was never attempted. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>packages/player-core/src/scrim.ts:36</code>: a negative <code>at</code> places an edit before an earlier part's end gate, so the code is shown with nothing answered. Confirmed with a repro.</li>
+<li><span class="tag w">WARN</span> <code>scrim.ts:85</code>: <code>runCrossed</code> uses <code>.find</code>, so a seek or a long frame loses every run after the first. A <code>NaN</code> time locks playback. A segment out of range falls back to offset 0 silently. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>services/engine/learnquest_engine/schemas.py:103</code>: the answer-leak check skips <code>prompt</code> and <code>explanations.practice</code>, and the API has no second check. Confirmed.</li>
+</ul>
+<h3>Sloppy (AI help chat)</h3>
+<ul>
+<li><span class="tag w">WARN</span> <code>apps/api/src/dev/route.ts:115-160</code>: no kill switch, no spend reservation, no moderation, and a 400 s default timeout. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>engine/guide.py:42</code>: "Never emit code" is written only in the prompt, and nothing checks the output. The reply also sends <code>usage.model</code> to the browser. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>apps/web</code> <code>Workbench.tsx:413</code> and <code>LessonWorkbench.tsx:142</code>: two separate <code>AIGuide</code> instances with split threads and split context. Confirmed.</li>
+</ul>
+<h3>Learner flows that are broken</h3>
+<ul>
+<li><span class="tag w">WARN</span> <code>web/player/LiveLesson.tsx:56-72</code>: there is no scrim branch, so a scrim lesson shows "Try again" forever. The AI outline enum allows scrim (<code>ai/service.ts:34</code>), and the demo world is public by URL. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>LessonWorkbench.tsx:108</code>: Practice has no visible Run or Lint button. They are only in the command palette, and the empty-state copy points at buttons that don't exist. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>LessonWorkbench.tsx:239</code> <code>showPlanned</code>: learners see a fake git view, a debugger "paused on breakpoint" and "Coming soon" buttons. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>LessonWorkbench.tsx:124</code>: the Watch tab points at media files that don't exist, so it always fails and fires about 4 wasted requests. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>progress/games.ts:54</code>: winning one game marks a whole game-practice lesson complete. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>LearnView.tsx:34</code>: games inside learn docs can't be checked ("not part of a lesson"). Plausible.</li>
+<li><span class="tag w">WARN</span> <code>Account.tsx:13</code>: if <code>home.get</code> fails, the leaderboard toggle stays disabled with no message. Confirmed.</li>
+</ul>
+<h3>Reliability and cost</h3>
+<ul>
+<li><span class="tag w">WARN</span> <code>progress/mastery.ts:196-289</code>: engine calls (up to 12 s) run inside a database transaction, and the pool has 10 connections. Under load the pool runs out. Plausible.</li>
+<li><span class="tag w">WARN</span> <code>mastery.ts:161</code>: <code>/v1/next</code> is called on every attempt, but the web app never reads <code>me.next</code> or <code>me.mastery</code>. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>api/env.ts:35</code> against <code>engine/config.py:15</code>: the API gives up an outline at 90 s while the engine keeps spending for up to 300 s. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>db/seed.ts:76-102</code>: re-seeding ignores status changes, fails when a step id is renamed and keeps removed steps. Confirmed by reading.</li>
+<li><span class="tag w">WARN</span> <code>sandbox/daytona.ts:89</code>: shell sandboxes set no <code>networkBlockAll</code>, resource limits or timeouts. Plausible; needs a Daytona key to confirm.</li>
+<li><span class="tag w">WARN</span> <code>safety/moderation.ts:14</code>: moderation is tied to OpenAI's endpoint, which breaks the model-agnostic rule. Confirmed.</li>
+</ul>
+<h3>Guardrails and tooling</h3>
+<ul>
+<li><span class="tag w">WARN</span> The SENSITIVE list misses these paths:
+  <ul>
+  <li><code>games/grade.ts</code> and <code>attempts/machine.ts</code></li>
+  <li><code>dev/route.ts</code></li>
+  <li><code>engine/guide.py</code></li>
+  <li>the learner model: <code>bkt.py</code>, <code>policy.py</code> and <code>mastery.ts</code></li>
+  <li><code>app.ts</code> (CORS)</li>
+  <li>package-level <code>package.json</code> files (coverage thresholds)</li>
+  <li><code>e2e/scripts/ci.sh</code>, <code>pnpm-lock.yaml</code> and <code>apps/api/test/</code></li>
+  </ul>
+  Confirmed.</li>
+<li><span class="tag w">WARN</span> Naming a file <code>*.gen.ts</code> or <code>*.generated.ts</code> exempts it from the comment check, the boundary check and oxlint. The boundary check also skips <code>.js</code> and <code>.mjs</code> files and template-literal imports. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>scripts/</code> has no tsconfig and is never type-checked. Confirmed.</li>
+<li><span class="tag w">WARN</span> The web <code>prebuild</code> fetches GitHub releases into a tracked file that isn't listed in turbo outputs, so builds aren't reproducible. Confirmed.</li>
+<li><span class="tag w">WARN</span> <code>apps/web/.gitignore</code> <code>.env*</code> matches the tracked <code>.env.example</code>. Confirmed.</li>
+</ul>
+
+<h2>Suggestions</h2>
+<ul>
+<li><span class="tag s">SUG</span> Performance:
+  <ul>
+  <li>The <code>/play</code> chunk is 580 kB (191 kB gzip) because <code>blocks/registry.ts</code> loads every block eagerly.</li>
+  <li>Monaco ships every language (about 4 MB). Only JS, TS and Python are needed.</li>
+  <li>Every keystroke re-renders the 556-line Workbench and both AIGuides.</li>
+  </ul></li>
+<li><span class="tag s">SUG</span> API:
+  <ul>
+  <li><code>lessons.get</code> starts paid generation on a GET, which skips the origin check.</li>
+  <li><code>resolveLearnerId</code> runs once per batched call.</li>
+  <li>Games have no attempt limit or hint ladder.</li>
+  <li><code>/sandbox/check</code> trusts the language the client sends.</li>
+  <li>Missing FK cascades block account deletion.</li>
+  <li>State kept in memory rules out running more than one instance.</li>
+  </ul></li>
+<li><span class="tag s">SUG</span> player-core:
+  <ul>
+  <li>Scrim gate keys are positional, so reordering edits orphans answers.</li>
+  <li><code>SCRIM_FILE</code> is hard-coded to <code>main.py</code> although the demo is JavaScript.</li>
+  <li>The types don't match the API shape: seconds against <code>durationMs</code>, and <code>predict</code> against a gate step id.</li>
+  </ul></li>
+<li><span class="tag s">SUG</span> Tests:
+  <ul>
+  <li>No scrim negative tests: unauthenticated, another learner, a draft, the old lab shape.</li>
+  <li>The property tests don't check part gates, and the generators are too narrow.</li>
+  <li>Untested engine paths: repair, fail-closed and truncation.</li>
+  <li><code>seed-content.test.ts</code> hard-codes counts.</li>
+  </ul></li>
+<li><span class="tag s">SUG</span> Smaller items:
+  <ul>
+  <li>The sandbox output cap is checked before appending, so it can be exceeded.</li>
+  <li>docker-compose has no Postgres healthcheck.</li>
+  <li>Two different exported <code>Timeline</code> types.</li>
+  <li>Results stay "Level complete" after the code changes.</li>
+  <li><code>Notice</code> uses <code>&lt;a href&gt;</code> instead of a router link.</li>
+  </ul></li>
+</ul>
+
+<h2>Dead code</h2>
+<p class="m">Every item was checked by grep, with the <code>.claude/worktrees</code> copies excluded. About 880 lines can be removed with confidence, plus about 3 MB of images if you approve.</p>
+<div class="wrap"><table>
+<thead><tr><th>Item</th><th>Size</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td><code>apps/web/src/components/DitherField.tsx</code></td><td>707 lines</td><td>Only allowlist entries reference it</td></tr>
+<tr><td><code>apps/web/src/player/terminal/FileTree.tsx</code></td><td>79 lines</td><td>Only an allowlist entry references it</td></tr>
+<tr><td><code>apps/web/src/components/TopNav.tsx</code></td><td>45 lines</td><td>No importer; <code>DESIGN.md:265</code> is stale</td></tr>
+<tr><td>Unused exports: <code>Flame</code>, <code>Bolt</code> (home/art.tsx), <code>trpcCode</code>, <code>PreviewToHost</code>, <code>TEST_LESSON</code>, <code>LESSON_DIR</code>, <code>placeholderBody</code></td><td>~35 lines</td><td>Only their declarations exist</td></tr>
+<tr><td>AIGuide image-attach code</td><td>—</td><td>The button is hard-disabled (<code>PlannedParts.tsx:167</code>)</td></tr>
+<tr><td>Web deps <code>cn</code> and <code>radix-ui</code></td><td>2 deps</td><td>Never imported</td></tr>
+<tr><td>Engine <code>bkt.BktParams</code>, <code>Settings.PORT</code>, six folders holding only <code>.gitkeep</code></td><td>small</td><td>Never read</td></tr>
+<tr><td>Three identical <code>bin.ts</code> files (scripts, validator, repo-index)</td><td>duplication</td><td><code>diff</code> shows no differences</td></tr>
+<tr><td><code>REVIEW.md:31</code> and <code>agent-review.ts:69</code></td><td>stale ref</td><td><code>registry.gen.ts</code> and <code>gen-registry.ts</code> don't exist</td></tr>
+<tr><td>API: AI predict path (<code>validate</code>, <code>generator.lesson</code>, the <code>writeOnce</code> steps branch, <code>prefetchNext</code>)</td><td>half-wired</td><td>The outline enum never produces predict lessons</td></tr>
+<tr><td>API: <code>collections.*</code>, <code>paths.get</code>, <code>me.mastery</code>, <code>me.next</code></td><td>unused procs</td><td>No web or e2e caller</td></tr>
+<tr><td>Write-only data:
+  <ul>
+  <li><code>hint_events</code></li>
+  <li><code>attempts.response</code>, <code>.feedback</code> and <code>.missed_concepts</code></li>
+  <li><code>recommendations.reason_code</code></li>
+  <li><code>learners.kind</code></li>
+  </ul></td><td>schema</td><td>Written but never read; <code>missedConcepts</code> is always <code>[]</code></td></tr>
+<tr><td><code>public/img</code>: the <code>pip-*</code>, predict, hint, reveal, adapt, mastery and finale images, plus desktop-imac</td><td>~3.1 MB</td><td>Unreferenced, but DESIGN.md lists them (owner call)</td></tr>
+<tr><td>About 70 ui-catalog exports never imported outside the package</td><td>API surface</td><td>The blocks themselves are live; trim only the <code>export</code> keyword</td></tr>
+</tbody></table></div>
+
+<h2>What is solid</h2>
+<ul>
+<li class="ok">Step answers, hints and hidden tests stay in server-side <code>secret</code>. <code>reveal</code> checks the step state first, and <code>publicDoc</code> strips game answers.</li>
+<li class="ok">The attempt state machine locks the progress row, and a partial unique index allows one observed attempt per step.</li>
+<li class="ok">The spend ledger uses an advisory lock, and production refuses to start AI without a spend cap.</li>
+<li class="ok">Docker code runs have no network, a read-only root, all capabilities dropped, and pid, memory and CPU caps.</li>
+<li class="ok">The engine token is compared in constant time, request bodies are capped, and every LLM call has a deadline.</li>
+<li class="ok">Workflows pin actions to a SHA and use least-privilege permissions. The reviewer reads REVIEW.md and AGENTS.md from base.</li>
+<li class="ok">Migration 0023 is safe on a populated database. The xstate step machine enforces predict-before-reveal in the web app.</li>
+</ul>
+
+<h2>Product and learning logic</h2>
+<p class="m">Two more reviewers checked the idea itself against what the app does: one for product coherence, one for the adaptive learning loop. The short version: the code quality is fine, but the product does not yet do what its docs say. The predict, mastery and next-lesson loop exists, yet a learner on the main path never reaches it.</p>
+
+<h3>What doesn't make sense, ranked</h3>
+<ol>
+<li><span class="tag c">CORE</span> <strong>AI paths skip the core loop.</strong> The outline enum (<code>ai/service.ts:34</code>) never produces <code>predict</code>, and only predict lessons create steps and attempts. The Home Generator is the main way in, so its learners never predict, never use the hint ladder and never move their mastery. Confirmed.</li>
+<li><span class="tag c">CORE</span> <strong>Mastery drives nothing the learner sees.</strong> Nothing in <code>apps/web</code> calls <code>me.next</code> or <code>me.mastery</code>. Continue is the first unfinished lesson in course order (<code>home.ts:137</code>). Locks open on completion, not mastery. <code>explanationStyle</code>, <code>skipOffered</code> and hint depth exist only in the plan. <code>missedConcepts</code> is always <code>[]</code>. Even so, Landing says "the next lesson adapts to what you know". Confirmed.</li>
+<li><span class="tag c">CORE</span> <strong>"Done" is not "learned".</strong>
+  <ul>
+  <li>Learn and watch lessons complete on open (<code>LiveLesson.tsx:26</code>).</li>
+  <li>Predict lessons complete when every step is revealed <em>or skipped</em>, even if every answer was wrong.</li>
+  <li>One game completes a game-practice lesson.</li>
+  <li>A scrim lab completes without its gates.</li>
+  </ul>
+  So progress bars measure exposure, not learning. Confirmed.</li>
+<li><span class="tag w">LOGIC</span> <strong>No remediation.</strong> The policy only considers concepts in unfinished lessons (<code>policy.py:154</code>). A learner at p=0.5 on a "done" lesson gets ADVANCE with the reason "You've mastered everything so far", which is false. Confirmed with a script.</li>
+<li><span class="tag w">LOGIC</span> <strong>Most lesson kinds produce no evidence.</strong> Only predict attempts feed BKT. Games, sandbox checks, learn, watch and Sloppy record nothing. Confirmed.</li>
+<li><span class="tag w">LOGIC</span> <strong>Concepts are over-credited and prerequisites are empty.</strong> Steps fall back to every concept in their lesson, so 3 correct MCQs push two concepts from 0.2 to 0.967, past the mastered threshold. <code>edges: []</code> is always sent (<code>mastery.ts:138</code>), so unlocking and the PRACTICE branch can never run. Confirmed.</li>
+<li><span class="tag w">LOGIC</span> <strong>XP and streak disagree with mastery.</strong> A hinted correct answer earns 10 XP but counts as wrong for BKT. The streak counts only predict attempts, so a learner on an AI path can never build one. Sandbox practice earns nothing. Confirmed.</li>
+<li><span class="tag w">LOGIC</span> <strong>Observations are dropped silently.</strong> A non-transient engine error still sets <code>masteryAppliedAt</code> (<code>mastery.ts:269</code>). <code>p_guess</code> is 0.25 for 3-option MCQs where it should be 1/3. Concepts are per world, so "functions" is tracked twice. Confirmed.</li>
+<li><span class="tag w">SCOPE</span> <strong>Off-mission scope.</strong> The outline prompt says "school and practical subjects… Code is one subject among many" (<code>prompts/outline.md:1</code>), and the Generator is headed "Learn anything". Confirmed.</li>
+<li><span class="tag w">SCOPE</span> <strong>The headline feature isn't built.</strong> "Real code changes, replayed" is on Landing and in idea.md, but commit ingest throws "not available yet (WP6)" (<code>imports/ingest.ts:6</code>). Confirmed.</li>
+<li><span class="tag w">SCOPE</span> <strong>Sloppy doesn't know the lesson.</strong> Its prompt is fixed to "the Tiny Task Tracker CLI" (<code>INSTRUCTIONS.md:1</code>), and the request carries no lesson, task or concept. Confirmed.</li>
+<li><span class="tag w">AUDIENCE</span> <strong>Teen privacy and incentives.</strong> The leaderboard is public by default, there is no age gate at signup (NFR1), and the engagement layer rewards activity over learning. Confirmed.</li>
+</ol>
+
+<h3>Docs against code</h3>
+<div class="wrap"><table>
+<thead><tr><th>Claim</th><th>Source</th><th>Reality</th></tr></thead>
+<tbody>
+<tr><td>Author reviews before publish</td><td>AGENTS; plan §1, §8.1</td><td>Auto-published; learners can make a path public to the community</td></tr>
+<tr><td>Learners see published lessons only</td><td>plan §9</td><td>AI drafts are listed</td></tr>
+<tr><td>A programming tool for JS/TS</td><td>AGENTS, idea.md</td><td>The outline prompt covers any school subject</td></tr>
+<tr><td>The engine picks the mix, hint depth and skip from the learner model</td><td>AGENTS, plan §8.2</td><td>The outline LLM picks one kind per lesson, once; hints are fixed rungs</td></tr>
+<tr><td>Code runs only in the browser; sandbox is stretch</td><td>plan NFR2, §11.3</td><td>A server sandbox (Docker/Daytona) is core to practice</td></tr>
+<tr><td>Game parts "not verified end to end"</td><td>AGENTS open work #2</td><td>Wired as a lesson kind, not as steps (doc is stale)</td></tr>
+<tr><td>Non-goal: payments</td><td>plan §2</td><td>free, pro and max tiers exist (<code>config/tiers.ts</code>)</td></tr>
+<tr><td>Data limited to email, attempts and mastery</td><td>AGENTS</td><td>Also stores display name, timezone, daily goal, leaderboard flag and tier</td></tr>
+<tr><td>Lessons "built from real code changes"</td><td>Landing</td><td>Ingest is a stub</td></tr>
+<tr><td>S2a/S2b user tests gate the work</td><td>plan §2, idea.md</td><td>No results recorded</td></tr>
+</tbody></table></div>
+
+<h3>Cut, keep, change</h3>
+<div class="wrap"><table>
+<thead><tr><th>Call</th><th>Item</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td class="c">Cut</td><td>Weekly leaderboard</td><td>Public by default for teens, and it doesn't measure learning</td></tr>
+<tr><td class="c">Cut</td><td>"Coming soon" git and debug panes</td><td>Disabled IDE chrome with fake data confuses beginners</td></tr>
+<tr><td class="c">Cut</td><td><code>scrim</code> in the outline enum (for now)</td><td>It is a dead end until the player exists</td></tr>
+<tr><td class="c">Cut</td><td>Non-code subjects in the outline prompt</td><td>Off-mission</td></tr>
+<tr><td class="c">Cut</td><td>free, pro and max tiers on the product surface</td><td>The plan lists payments as a non-goal</td></tr>
+<tr><td class="w">Defer</td><td>3D scenes, community publishing, Explore and collections</td><td>Decoration, or they need review and moderation that don't exist yet</td></tr>
+<tr><td class="ok">Keep</td><td>Predict, hint, reveal machine with server-side answers</td><td>The strongest, evidence-backed part</td></tr>
+<tr><td class="ok">Keep</td><td>Practice with hidden tests</td><td>Real retrieval and transfer</td></tr>
+<tr><td class="ok">Keep</td><td>Game-practice drills</td><td>Only if they emit observations and complete on every block</td></tr>
+<tr><td class="s">Change</td><td>XP and streak</td><td>Count learning events, such as mastery gains, not page opens</td></tr>
+<tr><td class="s">Change</td><td>Real-commit lessons</td><td>An intermediate or capstone track, not the beginner entry (opinion)</td></tr>
+<tr><td class="s">Change</td><td>Sloppy</td><td>Pass it the lesson task, concept and hint rung, and filter its output against the answer key</td></tr>
+</tbody></table></div>
+
+<h3>What would most improve learning</h3>
+<ol>
+<li><strong>Put a prediction in every kind.</strong> Each learn, watch and game lesson opens with an mcq or cloze step and completes on an attempt, not on open. This alone makes BKT and the streak work for AI paths.</li>
+<li><strong>Put mastery in charge.</strong> Render <code>me.next</code> with its reason as the Continue card and on the lesson-end screen. Unlock by <code>p_known</code>. Pass real <code>missedConcepts</code> into generation.</li>
+<li><strong>Remediate.</strong> The policy includes weak concepts from finished lessons and recommends review or practice. The ADVANCE reason names only concepts that are actually mastered (as a property test).</li>
+<li><strong>Write the JS/TS concept catalogue with prerequisite edges</strong> (variables, conditionals, loops, functions). Require concepts per step, and send edges to the policy.</li>
+<li><strong>Measure an outcome.</strong> A pre-test and post-test per concept on the seeded demo set. Add a small spaced-review queue (<code>review_schedule</code>, plan §7). Run S2b.</li>
+</ol>
+<p class="m"><strong>Why 4/10 and not 10 (product):</strong>
+<ul>
+<li>−2: the core loop is unreachable from the main entry point (verified).</li>
+<li>−1: the headline feature isn't built but is advertised (verified).</li>
+<li>−1: auto-publishing breaks a principle (verified).</li>
+<li>−0.5 each:
+  <ul>
+  <li>completion loopholes (verified)</li>
+  <li>Sloppy has no lesson context (verified)</li>
+  <li>off-mission scope (verified)</li>
+  <li>teen privacy defaults (verified)</li>
+  <li>gamification ahead of learning (taste)</li>
+  <li>commits as a beginner on-ramp (taste)</li>
+  </ul></li>
+</ul>
+<strong>Learning logic, 4/10:</strong>
+<ul>
+<li>−2: the adaptive output never reaches the UI (verified).</li>
+<li>−1: no remediation, and the false ADVANCE reason (verified).</li>
+<li>−1: most kinds produce no evidence (verified).</li>
+<li>−0.5: over-crediting and empty edges (verified).</li>
+<li>−0.5: completion loopholes (verified).</li>
+<li>−0.5: progress measures activity (taste).</li>
+<li>−0.5: a hinted correct answer counts as fully wrong, and there's no Sloppy signal (taste).</li>
+</ul>
+Both reviewers agree that the BKT maths (checked against the standard posterior to 1e-4), the first-attempt rule, the hint ladder and the server-side secrets are sound.</p>
+
+<h2>Fix plan</h2>
+<p class="m">One concern per PR, as AGENTS.md requires. <span class="sens">◆ sensitive</span> marks a PR that touches a SENSITIVE path, so it needs a clean <code>pnpm review --json</code> from a model other than the author's before <code>agent:merge</code>. Every PR runs <code>pnpm agent:verify</code> against a test Postgres before it is pushed. A bug fix starts with a failing test (a property test for an invariant). Wherever a mistake could happen again, the PR adds a check before any prose rule.</p>
+
+<div class="phase">
+<h3>Phase 0: sync (before anything else)</h3>
+<ol>
+<li>Rebase local <code>main</code> on <code>origin/main</code>, which is 7 commits ahead. Move <code>5eb3fcd</code> onto a branch, add <code>!.env.example</code> to <code>apps/web/.gitignore</code>, and open it as a PR (1 PR).</li>
+<li>Recheck each finding below against the new head and drop any that are already fixed.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 1: close the merge-gate holes <span class="sens">◆</span></h3>
+<p class="m">This comes first because every later PR goes through the gate.</p>
+<ol>
+<li><strong>Gate runs from base:</strong> load <code>merge-gate.ts</code> and its imports from <code>origin/main</code>, or make it a required CI check. Remove <code>--skip-local</code>, or allow it only with <code>--dry-run</code>. Add tests for both.</li>
+<li><strong>Trust the review result:</strong> the gate checks that <code>reviewer ≠ author</code> and makes <code>--author</code> required. A truncated diff returns <code>incomplete</code>. Either the gate runs the review itself or the result is signed. Fix the example in <code>docs/agents/review-pipeline.md</code>.</li>
+<li><strong>Widen SENSITIVE:</strong> add all of <code>scripts/</code>, <code>games/grade.ts</code>, <code>attempts/machine.ts</code>, <code>dev/route.ts</code>, <code>guide.py</code>, <code>bkt.py</code>, <code>policy.py</code>, <code>learner.py</code>, <code>mastery.ts</code>, <code>app.ts</code>, <code>**/package.json</code>, <code>e2e/scripts/</code>, <code>pnpm-lock.yaml</code> and <code>apps/api/test/helpers*</code>. Add a test that lists the expected sensitive files.</li>
+<li><strong>Guardrail escapes:</strong> replace the <code>*.gen.ts</code> and <code>*.generated.ts</code> patterns with the exact generated path. Have the boundary check scan <code>.js</code> and <code>.mjs</code> and reject template-literal imports. Add <code>scripts/tsconfig.json</code> and include it in <code>lint:types</code>.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 2: privacy, safety and core principles</h3>
+<ol>
+<li><span class="sens">◆</span> <strong>Leaderboard:</strong> a migration sets <code>leaderboard_opt_in</code> to default false and backfills existing learners to false. Show a generated handle, never the email local part. Add a test that no email-derived string appears in the <code>home.get</code> leaderboard. <em>Ask the owner about the backfill.</em></li>
+<li><span class="sens">◆</span> <strong>Scrim reveal on the server:</strong> <code>lessons.get</code> returns segments only up to the first gate that isn't revealed or skipped. Lesson completion requires every gate to be revealed or skipped. Add a property test: no segment after an unrevealed gate is ever serialized.</li>
+<li><strong>player-core scrim:</strong>
+  <ul>
+  <li>Reject non-finite or out-of-range <code>at</code>, durations and segments in <code>buildScrimTimeline</code>.</li>
+  <li>Clamp <code>at</code> to the segment.</li>
+  <li><code>runCrossed</code> returns an array.</li>
+  <li>Gate keys come from the step id.</li>
+  <li>Derive the file name from the language.</li>
+  <li>Widen the generators and add a "part gate blocks later edits" invariant.</li>
+  </ul></li>
+<li><span class="sens">◆</span> <strong>Sloppy guardrails:</strong> the guide route calls <code>assertAiEnabled</code>, <code>reserveAiSpend</code> and <code>isSafeText</code> and gets a short timeout. A deterministic output check rejects code fences and code-like lines, then repairs or refuses. The reply returns only <code>guide</code>. Add tests for a jailbreak-shaped input and the kill switch.</li>
+<li><span class="sens">◆</span> <strong>Engine leak check:</strong> cover <code>prompt</code> and <code>explanations.practice</code>, and mirror the check in the API zod schema.</li>
+<li><strong>Owner decision, then fix:</strong> AI auto-publish. Either add a draft and approve flow, or record the exemption for private self-generated paths in AGENTS.md and <code>docs/plan.md</code>.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 3: broken learner flows</h3>
+<ol>
+<li><span class="sens">◆</span> <strong>Daytona checks:</strong> add <code>runChecks</code> to the sandbox backend interface and implement it for Docker and Daytona. Add a test that <code>/sandbox/check</code> uses the configured backend. Use the lesson's language, not the client's. Give Daytona shell sandboxes <code>networkBlockAll</code>, resource limits and timeouts. Truncate output after appending.</li>
+<li><strong>Scrim until the player exists:</strong> remove <code>scrim</code> from the AI outline enum, or validate gates in <code>validatePart</code>. Seed the demo world as <code>private</code>. <code>LiveLesson</code> shows "Not playable yet" with no retry.</li>
+<li><strong>Practice workbench:</strong>
+  <ul>
+  <li>Add visible Run and Lint buttons and fix the empty-state copy.</li>
+  <li>Remove <code>showPlanned</code> from the lesson route.</li>
+  <li>Keep one <code>AIGuide</code> instance that receives the selection, lint and video prompts.</li>
+  <li>Hide the Watch tab unless <code>lesson.media</code> exists.</li>
+  <li>Reset the result when the code changes.</li>
+  </ul>
+  Check it in the validator, and add or extend an e2e test.</li>
+<li><span class="sens">◆</span> <strong>Game completion:</strong> mark a game-practice lesson complete only when all its blocks are done. Strip games from learn docs, or render them read-only. Add an attempt limit and a hint ladder to <code>games.check</code> and <code>games.hint</code>.</li>
+<li><strong>Account error state:</strong> show an error and a retry when <code>home.get</code> fails. Use a router link in <code>Notice</code>.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 3b: make the learning loop real <span class="sens">◆ learner model: owner sign-off first</span></h3>
+<p class="m">AGENTS.md says changes to the learner model need the owner. Agree the direction first, then ship these as separate PRs.</p>
+<ol>
+<li><strong>Concept catalogue:</strong> variables, conditionals, loops and functions with prerequisite edges, in one shared namespace across worlds. The seed validator requires <code>concepts</code> on every step, and <code>mastery.ts</code> sends manifest edges in place of <code>[]</code>.</li>
+<li><strong>Prediction in every kind:</strong> the outline adds a leading mcq or cloze step to learn, watch and game lessons, and generation for <code>predict</code> is re-enabled. Learn and watch lessons complete on reaching the end, not on open. Add a property test that no lesson completes without an observed attempt.</li>
+<li><strong>Evidence from every kind:</strong> games, sandbox checks and scrim gates call <code>observationOf</code> on the first try, each with its own guess rate (<code>p_guess = 1/options</code>). A failed observation is retried, not marked applied.</li>
+<li><strong>Remediation:</strong> the policy considers weak concepts in finished lessons and returns REVIEW or PRACTICE. The ADVANCE reason names only mastered concepts. Add a property test.</li>
+<li><strong>Show it:</strong> <code>me.next</code> becomes the Continue card and the lesson-end screen, with its reason. Course locks use <code>p_known</code>. Real <code>missedConcepts</code> go into generation.</li>
+<li><strong>Honest progress:</strong> XP and streak follow observed learning (the hint rule, mastery gains). Sandbox passes count. Add a small spaced-review queue.</li>
+<li><strong>Sloppy with context:</strong> pass the lesson id, task, concept and hint rung, and drop the hard-coded "Tiny Task Tracker" prompt. Record Sloppy use as a hint-like signal.</li>
+<li><strong>Scope cleanup:</strong> make the outline prompt programming-only, remove "Learn anything" copy, and make Landing claim only what ships (no "real code changes" until ingest exists). Update <code>docs/plan.md</code>, the AGENTS open-work list and the feature map in the same PRs.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 4: reliability and performance</h3>
+<ol>
+<li><span class="sens">◆</span> <strong>Mastery transaction:</strong> call the engine before the transaction, then write the results in a short one. <em>Owner call:</em> wire <code>me.next</code> into Home, or stop calling <code>/v1/next</code>.</li>
+<li><strong>Timeouts:</strong> send the API's outline deadline to the engine in a header so the engine stops when the client gives up. Add one transient retry on 429 or 5xx.</li>
+<li><span class="sens">◆</span> <strong>Seed:</strong> the upsert includes <code>status</code>, steps are matched by <code>(version, idx)</code>, and removed steps are deleted. Seeding narration becomes an explicit option.</li>
+<li><span class="sens">◆</span> <strong>Schema hygiene:</strong> add FK <code>ON DELETE CASCADE</code> for learner-owned tables. Add a Postgres healthcheck in compose.</li>
+<li><strong>Bundle size:</strong> lazy-load the blocks in <code>blocks/registry.ts</code> and each view in <code>LiveLesson</code>. Limit Monaco to JS, TS and Python. Memoise the palette and context, and don't mount hidden AIGuides.</li>
+<li><span class="sens">◆</span> <strong>Reproducible build:</strong> take the changelog fetch out of <code>prebuild</code>. Make it a manual script, or declare the file as a turbo output.</li>
+<li><strong>Moderation:</strong> put an interface over the provider so it runs through LiteLLM or a pluggable endpoint.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3>Phase 5: dead code and hygiene</h3>
+<ol>
+<li><strong>Web dead files:</strong> delete <code>DitherField</code>, <code>TopNav</code> and <code>FileTree</code> with their allowlist entries, the 7 unused exports, the AIGuide image-attach code, and the <code>cn</code> and <code>radix-ui</code> deps. Fix <code>DESIGN.md:265</code>. Extend the allowlist test to fail when an allowlisted file has no importer.</li>
+<li><strong>Engine:</strong> remove <code>BktParams</code>, <code>Settings.PORT</code> and the empty <code>.gitkeep</code> folders. Cache <code>INSTRUCTIONS.md</code>. Log normal timings at info, not warning. Add the missing tests for the repair, fail-closed, truncation and streamed-cap paths.</li>
+<li><span class="sens">◆</span> <strong>Tooling:</strong> merge the three <code>bin.ts</code> files into one shared module. Remove the stale <code>REVIEW.md:31</code> line and the <code>agent-review.ts:69</code> path.</li>
+<li><strong>Owner decisions, then delete or wire:</strong>
+  <ul>
+  <li>the unreachable AI predict path and <code>missedConcepts</code> adaptivity</li>
+  <li><code>collections.*</code> and <code>paths.get</code></li>
+  <li>the write-only columns and tables</li>
+  <li>the Pip images in <code>public/img</code></li>
+  </ul></li>
+<li><strong>API surface:</strong> drop the <code>export</code> keyword from the ~70 unused ui-catalog exports. Rename one of the two <code>Timeline</code> types.</li>
+<li><strong>Tests:</strong> scrim negative tests (unauthenticated, another learner, a draft, the old lab shape). One assertion per case in <code>scrim-schema.test.ts</code>. Derive the counts in <code>seed-content.test.ts</code> instead of hard-coding them.</li>
+</ol>
+</div>
+
+<h3>Owner decisions needed</h3>
+<p class="m">Under AGENTS.md "Ask first", these items block until you decide:</p>
+<ol>
+<li>AI lessons auto-publish: add review, or record an exemption for private paths?</li>
+<li>Leaderboard backfill: set existing learners to opted out?</li>
+<li>Learn and watch lessons count as complete on open: keep that, or require reaching the end?</li>
+<li>Adaptivity: wire up <code>me.next</code> and <code>missedConcepts</code>, or remove the half-built path?</li>
+<li>Pip and marketing images in <code>public/img</code>: keep or delete?</li>
+<li>Moderation provider: keep OpenAI, or route it through LiteLLM?</li>
+<li>Scope: programming only (cut "Learn anything" and non-code subjects)?</li>
+<li>Cut the leaderboard and the tiers, and defer 3D, community publishing and collections?</li>
+<li>Real-commit lessons: a capstone track, or keep them as the headline? Until ingest ships, change the Landing copy.</li>
+<li>Hinted correct answers: keep them as fully incorrect for BKT, or give partial credit?</li>
+<li>Add an age gate at signup (NFR1)?</li>
+</ol>
+
+<p class="m">Estimated size: about 36 PRs over 7 phases, 13 or more of them sensitive. Phases 1 and 2 hold every critical code item, and Phase 3b holds every critical product item. For the presentation-day demo, the fastest visible gain is Phase 3b items 1, 2 and 5: catalogue, prediction in every kind, and <code>me.next</code> on Home.</p>
+</main>
+</body>
+</html>
