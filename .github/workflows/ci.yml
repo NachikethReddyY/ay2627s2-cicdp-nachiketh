@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+# CPU runners use the bundled ONNX Runtime binaries for the repo index.
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
+
 # Superseded PR runs are cancelled; pushes to main always finish.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
