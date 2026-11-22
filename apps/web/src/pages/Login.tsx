@@ -46,12 +46,11 @@ export default function Login() {
   async function run(action: Mode) {
     setBusy(true);
     setError(null);
-    const name = email.split("@")[0] || "Learner";
     try {
       const result =
         action === "in"
           ? await authClient.signIn.email({ email, password })
-          : await authClient.signUp.email({ email, password, name });
+          : await authClient.signUp.email({ email, password, name: "Learner" });
       if (result.error) setError(describeAuthError(result.error, action));
       else location.assign("/");
     } catch {

@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import type { HomeData } from "../../lib/api";
 import { Check } from "./art";
 import { Flame, Zap } from "lucide-react";
@@ -43,38 +42,29 @@ export default function Sidebar({ stats, leaderboard }: { stats: HomeData["stats
         </div>
         <div className="lq-week-total">
           <p className="lq-unit">Weekly XP, last 7 days</p>
-          {leaderboard.optedIn ? (
-            <>
-              <ol className="lq-board">
-                {leaderboard.rows.length === 0 && <li className="lq-board-empty">Nobody has joined yet.</li>}
-                {leaderboard.rows.map((r) => (
-                  <li key={r.rank} className={r.you ? "you" : undefined}>
-                    <span className="lq-board-rank">{r.rank}</span>
-                    <span className="lq-board-name">{r.name}</span>
-                    <span className="lq-board-xp">{r.xp} XP</span>
-                  </li>
-                ))}
-              </ol>
-              {leaderboard.rows.some((r) => r.you) ? (
-                <p className="lq-board-own">You&apos;re #{leaderboard.rows.find((r) => r.you)?.rank} this week with {leaderboard.xp} XP.</p>
-              ) : leaderboard.rank === null && (
-                <p className="lq-board-own">You&apos;re not ranked yet. Earn XP this week to get on the board.</p>
-              )}
-              {leaderboard.rank !== null && leaderboard.rank > leaderboard.rows.length && (
-                <ol className="lq-board lq-board-self">
-                  <li className="you">
-                    <span className="lq-board-rank">{leaderboard.rank}</span>
-                    <span className="lq-board-name">You</span>
-                    <span className="lq-board-xp">{leaderboard.xp} XP</span>
-                  </li>
-                </ol>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="lq-board-own">You have {leaderboard.xp} XP this week.</p>
-              <Link to="/account" className="lq-see-all" style={{ alignSelf: "flex-start" }}>Join the leaderboard</Link>
-            </>
+          <ol className="lq-board">
+            {leaderboard.rows.length === 0 && <li className="lq-board-empty">Nobody has earned XP yet.</li>}
+            {leaderboard.rows.map((r) => (
+              <li key={r.rank} className={r.you ? "you" : undefined}>
+                <span className="lq-board-rank">{r.rank}</span>
+                <span className="lq-board-name">{r.handle}</span>
+                <span className="lq-board-xp">{r.xp} XP</span>
+              </li>
+            ))}
+          </ol>
+          {leaderboard.rows.some((r) => r.you) ? (
+            <p className="lq-board-own">You&apos;re #{leaderboard.rows.find((r) => r.you)?.rank} this week with {leaderboard.xp} XP.</p>
+          ) : leaderboard.rank === null && (
+            <p className="lq-board-own">You&apos;re not ranked yet. Earn XP this week to get on the board.</p>
+          )}
+          {leaderboard.rank !== null && leaderboard.rank > leaderboard.rows.length && (
+            <ol className="lq-board lq-board-self">
+              <li className="you">
+                <span className="lq-board-rank">{leaderboard.rank}</span>
+                <span className="lq-board-name">You</span>
+                <span className="lq-board-xp">{leaderboard.xp} XP</span>
+              </li>
+            </ol>
           )}
         </div>
       </section>
