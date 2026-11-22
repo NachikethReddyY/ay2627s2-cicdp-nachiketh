@@ -21,21 +21,24 @@ type ScrimPart = Extract<Part, { kind: "scrim" }>;
 
 const SPEEDS = [0.75, 1, 1.25, 1.5] as const;
 
-type Props = { lessonId: string; title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; onLab: () => void };
+type Props = { title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; resumeAt: number; onGateDone: (stepId: string, at: number) => Promise<void>; onLab: () => void; runner: ReturnType<typeof usePracticeRunner>; panel: ReturnType<typeof usePanel> };
 
-export default function ScrimWatch({ lessonId, title, part, steps, media, onLab }: Props) {
-  const scrim = useMemo(() => scrimTimeline(part.segments), [part.segments]);
+export default function ScrimWatch({ title, part, steps, media, resumeAt, onGateDone, onLab, runner, panel }: Props) {
+  const scrim = useMemo(() => scrimTimeline(part.segments, part.language), [part.segments, part.language]);
   const plan = useMemo(() => planScrim(part.segments), [part.segments]);
   const urls = useMemo(() => narrationBySegment(media, part.segments.length), [media, part.segments.length]);
   const { clock } = scrim;
   const [state, dispatch] = useReducer(playbackReducer, null, () =>
-    initPlayback(
+    ({
+      ...initPlayback(
       scrim,
       Object.entries(plan.stepByKey).flatMap(([key, id]) => {
         const status = steps.find((s) => s.id === id)?.state;
         return status === "revealed" || status === "skipped" ? [key] : [];
       }),
-    ),
+      ),
+      t: resumeAt,
+    }),
   );
   const [failedAudio, setFailedAudio] = useState<ReadonlySet<number>>(() => new Set());
   const [muted, setMuted] = useState(false);
@@ -43,7 +46,17 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const audioRef = useRef<HTMLAudioElement>(null);
   const playRef = useRef<HTMLButtonElement>(null);
   const editorRef = useRef<EditorHandle>(null);
+  const [initialFrame] = useState(() => frameAt(scrim, state.answered, state.t));
+  const initialFrameShown = useRef(false);
+  const attachEditor = useCallback((editor: EditorHandle | null) => {
+    editorRef.current = editor;
+    if (editor && !initialFrameShown.current) {
+      initialFrameShown.current = true;
+      editor.show(initialFrame);
+    }
+  }, [initialFrame]);
   const pendingSeek = useRef<number | null>(null);
+  const dispatched = useRef(resumeAt);
   const speaker = useMemo(
     () =>
       typeof window === "undefined"
@@ -57,13 +70,9 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const overlayRef = useCallback((el: HTMLDivElement | null) => {
     if (!el) speaker?.cancel();
   }, [speaker]);
-  const panel = usePanel();
-  const { dispatch: panelDispatch } = panel;
-
   const language = monacoLanguage(part.language);
   const { fileName, languageLabel } = lessonFile(language);
   const code = codeShown(state);
-  const runner = usePracticeRunner({ lessonId, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
 
   const current = segmentAt(clock, state.t);
   const gate = heldGate(state);
@@ -112,14 +121,17 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
     }
     applyCue(speechCue(speechView(state), speechView(next), { texts, silent: silentAt(failedAudio), jumped: action.type === "seek" }));
     editorRef.current?.show(frameAt(scrim, next.answered, next.t));
+    if (action.type !== "tick") dispatched.current = next.t;
     dispatch(action);
     return next;
   };
 
   const tickTo = (t: number) => {
-    const crossed = state.playing ? runCrossed(scrim, state.t, commit({ type: "tick", t }).t) : null;
-    const edit = crossed ? scrim.edits[crossed.edit] : undefined;
-    if (edit) void runner.run(edit.code);
+    if (!state.playing) return;
+    const from = dispatched.current;
+    const reached = commit({ type: "tick", t }).t;
+    dispatched.current = Math.max(from, reached);
+    for (const crossing of runCrossed(scrim, state.answered, from, reached)) void runner.runAuthored(scrim.edits[crossing.edit].code);
   };
 
   const endSegment = () => {
@@ -174,7 +186,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       />
       {gate && gateStep && (
         <section role="region" aria-label="Predict" className="scrim-gate">
-          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => commit({ type: "answer", key: gate.key })} />
+          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => { void onGateDone(gateStep, state.t); }} />
         </section>
       )}
       {done && (
@@ -250,7 +262,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   );
 
   const actions = (
-    <button type="button" className="wb-tb wb-primary" onClick={() => void runner.run()} disabled={runner.busy || code === ""}>
+    <button type="button" className="wb-tb wb-primary" onClick={() => void runner.run(code)} disabled={runner.busy || code === ""}>
       <Play size={15} strokeWidth={1.75} aria-hidden="true" />
       {runner.busy ? "Running…" : "Run"}
     </button>
@@ -263,7 +275,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       language={language}
       languageLabel={languageLabel}
       navigator={<div className="min-w-0"><FileTreeView label="Lesson files" nodes={[{ name: fileName }]} open={new Set()} selected={fileName} onToggle={() => {}} onSelect={() => {}} /></div>}
-      editor={<WorkbenchEditor ref={editorRef} transportRef={playRef} edit={{ value: "", language, onChange: () => {}, readOnly: true }} fill />}
+      editor={<WorkbenchEditor ref={attachEditor} transportRef={playRef} edit={{ value: "", language, onChange: () => {}, readOnly: true }} fill />}
       playerOverlay={overlay}
       bottom={<RunBottom runner={runner} terminalActive={panel.state.open} />}
       bottomTitle="Terminal"

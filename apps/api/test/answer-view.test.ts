@@ -9,16 +9,14 @@ import { lessons, lessonVersions, partCompletions, stepProgress, steps, worlds, 
 const app = buildApp();
 after(() => app.close());
 
-type Kind = "learn" | "watch" | "practice" | "scrim";
+type Kind = "learn" | "watch" | "practice";
 
 const contentOf = (kind: Kind): PartSecret =>
   kind === "learn"
     ? { kind: "learn", body: "Read this first." }
     : kind === "watch"
       ? { kind: "watch", beforeFiles: { "main.js": "let x = 1;\n" }, hunks: [{ id: "h1", file: "main.js", oldStart: 1, lines: ["-let x = 1;", "+let x = 2;"] }] }
-      : kind === "practice"
-        ? { kind: "practice", instructions: "Print 17.", language: "python", starterCode: "", expectedOutput: "17\n" }
-        : ({ kind: "scrim" } as unknown as PartSecret);
+      : { kind: "practice", instructions: "Print 17.", language: "python", starterCode: "", expectedOutput: "17\n" };
 
 async function addLesson(slug: string, kind: Kind, hintCount: number) {
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
@@ -137,17 +135,4 @@ test("practice: a correct answer does not reveal the explanation before three at
   const third = out(await attempt(c, step!, RIGHT));
   assert.equal(third.state, "revealed");
   assert.equal((await reveal(c, step!)).statusCode, 200);
-});
-
-test("scrim gates keep their own rule: skip and a two-try reveal are unchanged", async () => {
-  const c = await signUp(app);
-  const [skipped, missed] = await addLesson("scrim-gates", "scrim", 0);
-
-  assert.equal((await skip(c, skipped!)).statusCode, 200);
-  assert.equal((await reveal(c, skipped!)).statusCode, 200);
-
-  out(await attempt(c, missed!, WRONG));
-  out(await attempt(c, missed!, WRONG));
-  assert.equal(await state(c, missed!), "revealed");
-  assert.equal((await reveal(c, missed!)).statusCode, 200);
 });

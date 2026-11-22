@@ -8,6 +8,8 @@ import { attempts, hintEvents, learners, lessons, lessonVersions, partCompletion
 import { withTx } from "../db/tx.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
+import { scrimGateOpen } from "../lessons/scrim.ts";
+import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { applyObservations, resolveConcepts } from "../progress/mastery.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
@@ -24,8 +26,16 @@ const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Step not fou
 
 async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
-  if (!step) throw notFound();
+  const reachable = step !== undefined && (step.lessonKind !== "scrim" || (await scrimGateReachable(step, learnerId)));
+  if (!step || !reachable) throw notFound();
+  if ((step.lessonKind === "learn" || step.lessonKind === "watch") && step.idx > 0 && !(await openingPredicted(db, learnerId, step)))
+    throw conflict("Answer the opening prediction first");
   return step;
+}
+
+async function scrimGateReachable(step: { versionId: string; idx: number }, learnerId: string) {
+  const { scrim, gates } = await loadScrimGates(step.versionId, learnerId);
+  return scrimGateOpen(scrim, gates, step.idx);
 }
 
 async function loadStep(id: string, learnerId: string) {
@@ -56,12 +66,15 @@ const hintAt = (step: Step, rung: number) => {
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
 
-async function readProgress(learnerId: string, stepId: string): Promise<Progress> {
+const scrimUnskipped = (step: Step, p: Progress): Progress =>
+  step.lessonKind === "scrim" && p.state === "skipped" ? { ...p, state: "predicting" } : p;
+
+async function readProgress(learnerId: string, step: Step): Promise<Progress> {
   const [p] = await db
     .select()
     .from(stepProgress)
-    .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId)));
-  return p ?? fresh();
+    .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, step.id)));
+  return scrimUnskipped(step, p ?? fresh());
 }
 
 const isReadLesson = (step: Step) => step.lessonKind === "learn" || step.lessonKind === "watch";
@@ -79,8 +92,8 @@ async function triesOf(tx: Db, learnerId: string, stepId: string) {
 
 async function closesReadLesson(tx: Db, step: Step) {
   if (!isReadLesson(step)) return false;
-  const [last] = await tx.select({ idx: max(steps.idx) }).from(steps).where(eq(steps.lessonVersionId, step.versionId));
-  return last?.idx === step.idx;
+  const [last] = await tx.select({ idx: max(steps.idx), total: count() }).from(steps).where(eq(steps.lessonVersionId, step.versionId));
+  return last?.total >= 2 && last.idx === step.idx;
 }
 
 async function openingPredicted(tx: Db, learnerId: string, step: Step) {
@@ -111,7 +124,7 @@ function mutate(
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
     const { made } = await triesOf(tx, learnerId, stepId);
-    const r = next(p, action, {
+    const r = next(scrimUnskipped(step, p), action, {
       hintCount: step.secret.hints.length,
       triesBeforeAnswer: triesBeforeAnswer(step),
       triesMade: made,
@@ -197,7 +210,7 @@ export const stepsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
-      const p = await readProgress(ctx.learnerId, step.id);
+      const p = await readProgress(ctx.learnerId, step);
       return {
         id: step.id,
         idx: step.idx,
@@ -256,7 +269,7 @@ export const stepsRouter = router({
     .output(z.object({ state: z.literal("skipped") }))
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
-      if (isReadLesson(step)) throw conflict("This check cannot be skipped");
+      if (isReadLesson(step) || step.lessonKind === "scrim") throw conflict("This check cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);
@@ -280,7 +293,7 @@ export const stepsRouter = router({
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
       if (isReadLesson(step)) throw conflict("Watch the lesson to see the answer");
-      const { state } = await readProgress(ctx.learnerId, step.id);
+      const { state } = await readProgress(ctx.learnerId, step);
       if (state !== "revealed" && state !== "skipped") throw conflict("Not revealed yet");
       const { made } = await triesOf(db, ctx.learnerId, step.id);
       if (made < triesBeforeAnswer(step)) throw conflict(`Try at least ${triesBeforeAnswer(step)} times to see the answer`);

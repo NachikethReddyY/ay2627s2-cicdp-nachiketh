@@ -53,7 +53,7 @@ const gamePart: PartSecret = {
   },
 };
 
-test("parts.complete: idempotent, predict is a no-op, invisible lessons are 404", async () => {
+test("parts.complete: read lessons require checks, predict is a no-op, invisible lessons are 404", async () => {
   const cookie = await signUp(app, "a@example.com");
   const otherCookie = await signUp(app, "b@example.com");
   await addLesson("learn-1", "learn", learnPart);
@@ -64,31 +64,31 @@ test("parts.complete: idempotent, predict is a no-op, invisible lessons are 404"
     .returning();
   await addLesson("b-learn", "learn", learnPart, bWorld!.id);
 
-  assert.deepEqual(out(await m(cookie, "parts.complete", { lessonId: "learn-1" })), { ok: true });
-  assert.deepEqual(out(await m(cookie, "parts.complete", { lessonId: "learn-1" })), { ok: true });
-  assert.equal((await db.select().from(partCompletions)).length, 1);
+  assert.equal((await m(cookie, "parts.complete", { lessonId: "learn-1" })).statusCode, 403);
+  assert.equal((await db.select().from(partCompletions)).length, 0);
 
   assert.deepEqual(out(await m(cookie, "parts.complete", { lessonId: "lesson-1" })), { ok: true });
-  assert.equal((await db.select().from(partCompletions)).length, 1, "predict lessons store nothing");
+  assert.equal((await db.select().from(partCompletions)).length, 0, "predict lessons store nothing");
 
   for (const lessonId of ["draft-learn", "b-learn", "nope"]) {
     const res = await m(cookie, "parts.complete", { lessonId });
     assert.equal(res.statusCode, 404);
     assert.equal(code(res), "NOT_FOUND");
   }
-  assert.deepEqual(out(await m(otherCookie, "parts.complete", { lessonId: "b-learn" })), { ok: true });
+  assert.equal((await m(otherCookie, "parts.complete", { lessonId: "b-learn" })).statusCode, 403);
 });
 
 test("a completed learn lesson counts as done in course, path and home progress", async () => {
   const cookie = await signUp(app);
   await enroll(cookie, "js-foundations");
-  await addLesson("learn-1", "learn", learnPart);
+  const lessonId = await addLesson("learn-1", "learn", learnPart);
+  const checks = await addChecks(lessonId);
 
   const lessonOf = async () => out(await trpc(app, cookie).q("courses.get", { slug: "codequest" })).lessons.find((l: { slug: string }) => l.slug === "learn-1");
   const before = await lessonOf();
   assert.deepEqual([before.done, before.total], [0, 1]);
 
-  assert.deepEqual(out(await m(cookie, "parts.complete", { lessonId: "learn-1" })), { ok: true });
+  for (const check of checks) out(await m(cookie, "steps.attempt", { id: check.id, answer: { kind: "mcq", choice: 0 } }));
 
   const after = await lessonOf();
   assert.deepEqual([after.done, after.total], [1, 1]);

@@ -6,8 +6,8 @@ import { and, asc, eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db, pool } from "../src/db/client.ts";
 import {
-  attempts, checkResults, hintEvents, learners, lessonMedia, lessons, lessonVersions,
-  partCompletions, stepProgress, steps, worlds, type PartSecret,
+  attempts, checkResults, enrollments, hintEvents, learners, lessonMedia, lessons, lessonVersions,
+  partCompletions, pathCourses, paths, stepProgress, steps, worlds, type PartSecret,
 } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
@@ -91,7 +91,7 @@ async function insertScrim() {
     },
   }).returning({ id: steps.id });
   await db.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
-  return { lessonId: lesson.id, versionId: version.id, gateId: gate.id };
+  return { lessonId: lesson.id, versionId: version.id, gateId: gate.id, worldId: world.id };
 }
 
 const narration = { kind: "narration", status: "ready", contentType: "audio/wav", bytes: 12 } as const;
@@ -114,11 +114,14 @@ test("the migrated database allows distinct ready narration segments and rejects
   ), { code: "23505", constraint: "lesson_media_one_narration" });
 });
 
-test("lessons.get returns segments, a resolved gate and sample tests with no secrets", async () => {
+test("lessons.get returns only through the first pending gate with no secrets", async () => {
   const t = trpc(app, await signUp(app));
   const { versionId, gateId } = await insertScrim();
   setStorage(memoryStorage());
-  await db.insert(lessonMedia).values({ ...narration, lessonVersionId: versionId, segment: 1, key: "scrim-segment-1.wav" });
+  await db.insert(lessonMedia).values([
+    { ...narration, lessonVersionId: versionId, segment: 1, key: "scrim-segment-1.wav" },
+    { ...narration, lessonVersionId: versionId, stepId: gateId, key: "scrim-gate.wav" },
+  ]);
 
   const res = await t.q("lessons.get", { id: slug });
   assert.equal(res.statusCode, 200, res.body);
@@ -133,15 +136,79 @@ test("lessons.get returns segments, a resolved gate and sample tests with no sec
     part: {
       kind: "scrim",
       language: "javascript",
-      segments: [scrim.segments[0], scrim.segments[1], { ...scrim.segments[2], gate: gateId }, scrim.segments[3]],
+      segments: [scrim.segments[0], scrim.segments[1], { ...scrim.segments[2], gate: gateId }],
       lab: {
         kind: "practice", instructions: scrim.lab.instructions, language: "javascript", starterCode: scrim.lab.starterCode,
         tests: publicTests,
       },
+      started: false,
     },
     steps: [{ id: gateId, idx: gateIdx, title: gateTitle, hintCount: 1, state: "predicting" }],
     completed: false,
     media: [{ stepId: null, segment: 1, kind: "narration", url: "memory://scrim-segment-1.wav" }],
+  });
+});
+
+test("lessons.get and the home preview omit narration and code for unserved gates", async () => {
+  const cookie = await signUp(app);
+  const t = trpc(app, cookie);
+  const { versionId, gateId, worldId } = await insertScrim();
+  const nextGate = gateIdx + 1;
+  const nextId = `${slug}-future-gate`;
+  const currentCode = "SERVED_GATE_PREVIEW";
+  const futureCode = "UNSERVED_GATE_PREVIEW";
+  await db.update(lessonVersions).set({ content: {
+    ...scrim,
+    segments: [...scrim.segments, { text: "A later prediction", durationMs: 800, gate: nextGate }, { text: "Later edit", durationMs: 700 }],
+  } }).where(eq(lessonVersions.id, versionId));
+  await db.update(steps).set({ public: { title: gateTitle, kind: "mcq", prompt: `${gatePrompt}\n\`\`\`js\n${currentCode}\n\`\`\``, options: ["A", "B"] } }).where(eq(steps.id, gateId));
+  await db.insert(steps).values({
+    id: nextId,
+    lessonVersionId: versionId,
+    idx: nextGate,
+    public: { title: "Future gate", kind: "mcq", prompt: `Future?\n\`\`\`js\n${futureCode}\n\`\`\``, options: ["A", "B"] },
+    secret: { answer: 0, hints: [], explanations: gateExplanations, beforeFiles: {}, hunks: [] },
+  });
+  setStorage(memoryStorage());
+  await db.insert(lessonMedia).values([
+    { ...narration, lessonVersionId: versionId, stepId: gateId, key: "served-gate.wav" },
+    { ...narration, lessonVersionId: versionId, stepId: nextId, key: "unserved-gate.wav" },
+  ]);
+  const lesson = await t.q("lessons.get", { id: slug });
+  assert.equal(lesson.statusCode, 200, lesson.body);
+  assert.deepEqual(out(lesson).media, []);
+  assert.ok(!lesson.body.includes(nextId));
+  assert.ok(!lesson.body.includes("served-gate.wav"));
+  assert.ok(!lesson.body.includes("unserved-gate.wav"));
+  const [learner] = await db.select({ id: learners.id }).from(learners);
+  const [path] = await db.insert(paths).values({ slug: "scrim-preview-path", title: "Scrim preview", visibility: "public", origin: "official" }).returning({ id: paths.id });
+  await db.insert(pathCourses).values({ pathId: path.id, worldId, position: 0 });
+  await db.insert(enrollments).values({ pathId: path.id, learnerId: learner.id });
+
+  const home = await t.q("home.get");
+  assert.equal(home.statusCode, 200, home.body);
+  assert.deepEqual(out(home).continue.snippet, [currentCode]);
+  assert.ok(!home.body.includes(nextId));
+  assert.ok(!home.body.includes(futureCode));
+});
+
+test("scrimMore reveals only the next slice after a gate is completed", async () => {
+  const t = trpc(app, await signUp(app));
+  const { gateId } = await insertScrim();
+  const initial = out(await t.q("lessons.get", { id: slug }));
+  assert.equal(initial.part.segments.length, 3);
+  const blocked = await t.q("lessons.scrimMore", { id: slug, from: 4 });
+  assert.equal(blocked.statusCode, 409);
+
+  assert.equal((await t.m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } })).statusCode, 200);
+  const more = await t.q("lessons.scrimMore", { id: slug, from: 2 });
+  assert.equal(more.statusCode, 200, more.body);
+  assert.deepEqual(out(more), {
+    from: 2,
+    segments: [{ ...scrim.segments[2], gate: gateId }, scrim.segments[3]],
+    nextOffset: 4,
+    complete: true,
+    media: [],
   });
 });
 
@@ -160,6 +227,19 @@ test("lessons.get fails closed for malformed scrim content and invalid gates", a
   await invalidVersion({ ...scrim, segments: [{ text: "Missing step", durationMs: 700, gate: gateIdx + 1 }] });
   await db.update(steps).set({ public: { title: gateTitle, kind: "cloze", prompt: gatePrompt } }).where(eq(steps.id, gateId));
   await invalidVersion(scrim);
+});
+
+test("lessons.get and the step routes fail closed for a step that no segment gates", async () => {
+  const t = trpc(app, await signUp(app));
+  const { versionId, gateId } = await insertScrim();
+  const [orphan] = await db.insert(steps).values({
+    lessonVersionId: versionId, idx: gateIdx + 1,
+    public: { title: "Orphan", kind: "mcq", prompt: "ORPHAN_PROMPT", options: ["a", "b"] },
+    secret: { answer: 0, hints: [], explanations: gateExplanations, beforeFiles: {}, hunks: [] },
+  }).returning({ id: steps.id });
+  assert.equal((await t.q("lessons.get", { id: slug })).statusCode, 500);
+  assert.equal((await t.q("steps.get", { id: orphan.id })).statusCode, 500);
+  assert.equal((await t.q("steps.get", { id: gateId })).statusCode, 500);
 });
 
 test("a scrim gate uses the normal MCQ attempt, hint, reveal and progress flow", async () => {
@@ -240,7 +320,7 @@ function fakeSandbox(stdout: string[]) {
 
 test("sandbox check grades the scrim lab and records completion without returning hidden test data", async (t) => {
   const cookie = await signUp(app);
-  const { lessonId } = await insertScrim();
+  const { lessonId, gateId } = await insertScrim();
   const previous = env.SANDBOX_ENABLED;
   env.SANDBOX_ENABLED = true;
   t.after(() => { env.SANDBOX_ENABLED = previous; });
@@ -278,6 +358,16 @@ test("sandbox check grades the scrim lab and records completion without returnin
   const [learner] = await db.select({ id: learners.id }).from(learners);
   const completed = await db.select({ learnerId: partCompletions.learnerId }).from(partCompletions).where(eq(partCompletions.lessonId, lessonId));
   assert.deepEqual(completed, [{ learnerId: learner.id }]);
+  const beforeGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(beforeGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
+  const skipped = await trpc(app, cookie).m("steps.skip", { id: gateId });
+  assert.equal(skipped.statusCode, 409, skipped.body);
+  const afterSkip = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(afterSkip.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
+  const revealed = await trpc(app, cookie).m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } });
+  assert.equal(revealed.statusCode, 200, revealed.body);
+  const afterGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(afterGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 1);
   const scores = await db.select({
     learnerId: checkResults.learnerId, bestPoints: checkResults.bestPoints, maxPoints: checkResults.maxPoints, complete: checkResults.complete,
   }).from(checkResults).where(eq(checkResults.lessonId, lessonId));

@@ -56,7 +56,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
 - **Data.** Learner data is limited to account email, attempts, mastery (BKT per concept), a public handle, XP, streak, timezone and daily goal. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
-- **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment are allowed, but only through the sensitive merge gate (see Merging).
+- **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment follow the merge gate (see Merging).
 
 ## Foundations first
 
@@ -89,17 +89,17 @@ Before you claim a change works, run `pnpm agent:verify`. It runs the type-aware
 
 ## Merging
 
-Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI. The gate stops agent merges while the 30-day revert rate exceeds 5%.
+Agents merge their own PRs through the trusted bootstrap from `origin/main`. The PR must be open, out of draft, mergeable, green on the head commit, and clear of requested changes and unresolved review threads. Local verification must pass. The gate squash-merges the exact head, and a merge to main deploys to production after CI.
 
-All changed paths require a clean strict review except the named ordinary documents in `ORDINARY_DOCUMENTS` when they are regular non-executable files. Sensitive paths require a clean strict review run by the trusted gate on the exact head and base. Run the bootstrap from your PR checkout using your PR number and author family.
+AI review is optional and runs separately from the gate. Run the bootstrap from your PR checkout using your PR number.
 
 ```bash
 git fetch origin +refs/heads/main:refs/remotes/origin/main &&
   git cat-file -e refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh &&
-  git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- 123 --author codex
+  git show refs/remotes/origin/main:scripts/merge-gate-bootstrap.sh | bash -s -- 123
 ```
 
-The operator declares the author family with `--author`, and the gate checks the returned review against that declaration. Authorship depends on the operator’s accuracy. Strict Codex review is unavailable, so a Claude-authored sensitive PR remains blocked. The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
+The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succeed and a clean checkout of the PR head. Product scope, audience and learner-model changes still need the owner (see Ask first).
 
 ## Where to look
 

@@ -11,9 +11,8 @@ const complete = protectedProcedure
   .mutation(async ({ ctx, input }) => {
     const {
       rows: [lesson],
-    } = await db.execute<{ id: string; kind: string; checks: number }>(sql`
-      SELECT l.id, l.kind,
-        (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int AS checks
+    } = await db.execute<{ id: string; kind: string }>(sql`
+      SELECT l.id, l.kind
       FROM lessons l
       JOIN worlds w ON w.id = l.world_id
       JOIN learners me ON me.id = ${ctx.learnerId}
@@ -24,7 +23,7 @@ const complete = protectedProcedure
     if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
     if (lesson.kind === "practice" || lesson.kind === "scrim" || lesson.kind === "game-practice")
       throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is completed by playing it" });
-    if (lesson.checks > 0 && (lesson.kind === "learn" || lesson.kind === "watch"))
+    if (lesson.kind === "learn" || lesson.kind === "watch")
       throw new TRPCError({ code: "FORBIDDEN", message: "This lesson is completed by its closing check" });
     if (lesson.kind !== "predict") {
       await db.execute(sql`

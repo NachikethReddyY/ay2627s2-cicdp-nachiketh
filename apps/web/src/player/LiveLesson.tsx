@@ -24,12 +24,6 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     const t = setTimeout(() => setSlow(true), 1500);
     return () => clearTimeout(t);
   }, [loading]);
-  const readKind = data?.kind === "learn" || data?.kind === "watch";
-  const lessonId = data?.id;
-  const reloadCourse = courseState.reload;
-  useEffect(() => {
-    if (lessonId && readKind && data?.steps.length === 0) void trpc.parts.complete.mutate({ lessonId }).then(reloadCourse, () => {});
-  }, [lessonId, readKind, data?.steps.length, reloadCourse]);
 
   if (error)
     return (
@@ -59,13 +53,15 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   const fallback = <Notice><p>Loading lesson…</p></Notice>;
   const checked = hasChecks(data.kind, data.steps);
   const reloadChecked = () => { reload(); courseState.reload(); };
-  if (data.kind === "learn" && part?.kind === "learn") {
-    const learn = (footer: ReactNode) => <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div>;
-    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} next={next} onFinished={reloadChecked}>{learn}</CheckedLesson> : learn(next);
-  }
-  if (data.kind === "watch" && part?.kind === "watch") {
-    const watch = (footer: ReactNode) => <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={footer} /></Suspense>;
-    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} next={next} onFinished={reloadChecked}>{watch}</CheckedLesson> : watch(next);
+  if (data.kind === "learn" || data.kind === "watch") {
+    if (!checked && !data.completed)
+      return <Notice>This lesson needs updated checks before it can be played. <a href="/" className="underline">Home</a></Notice>;
+    const read = (footer: ReactNode) => {
+      if (part?.kind === "learn") return <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div>;
+      if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={footer} /></Suspense>;
+      return fallback;
+    };
+    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} next={next} onFinished={reloadChecked}>{read}</CheckedLesson> : read(next);
   }
   if (data.kind === "practice" && part?.kind === "practice")
     return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;

@@ -4,11 +4,14 @@ import { TRPCClientError } from "@trpc/client";
 import { useApi } from "../../lib/api";
 import { trpc } from "../../lib/trpc";
 import { OutcomePanel, PredictPanel, RevealPanel } from "../LivePanels";
-import { canHint, canSkip, canSubmit, stepMachine, type Reveal, type StepPublic } from "../stepMachine";
+import { canHint, canSubmit, stepMachine, type Reveal, type StepPublic } from "../stepMachine";
+
+const noSkip = () => undefined;
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
 
-type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; skippable?: boolean; showCode?: boolean; showAnswer?: boolean };
+type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; showCode?: boolean; showAnswer?: boolean };
+
 
 function Failure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -38,7 +41,7 @@ function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: Ga
   );
 }
 
-function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, skippable = true, showCode = false, showAnswer = true }: GateProps & { step: StepPublic }) {
+function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = false, showAnswer = true }: GateProps & { step: StepPublic }) {
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: total, idx: ordinal, step } });
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
@@ -84,12 +87,12 @@ function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, skippable = 
         busy={busy}
         canSubmit={canSubmit(snap)}
         canHint={canHint(snap)}
-        canSkip={skippable && canSkip(snap)}
-        showSkip={skippable}
+        canSkip={false}
+        showSkip={false}
         showCode={showCode}
         onSubmit={(answer) => run(async () => { send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id: stepId, answer }) }); onAttempt?.(); })}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id: stepId }) }))}
-        onSkip={() => run(async () => { await trpc.steps.skip.mutate({ id: stepId }); send({ type: "SKIPPED" }); })}
+        onSkip={noSkip}
       />
     );
   return <p role="status" className="font-medium">Loading step…</p>;

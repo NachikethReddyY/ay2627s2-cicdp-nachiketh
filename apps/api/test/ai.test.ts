@@ -63,6 +63,13 @@ async function setup(email = "a@example.com") {
   return { t, slug, firstCourseSlug, lessons: course.lessons as { slug: string }[] };
 }
 
+async function predicted(t: ReturnType<typeof trpc>, slug: string) {
+  const before = out(await t.q("lessons.get", { id: slug }));
+  assert.equal(before.part, null);
+  out(await t.m("steps.attempt", { id: before.steps[0].id, answer: { kind: "mcq", choice: 0 } }));
+  return out(await t.q("lessons.get", { id: slug }));
+}
+
 test("outline creates a private path, courses, draft lessons and an enrollment", async () => {
   const { t, slug, firstCourseSlug, lessons: ls } = await setup();
   assert.equal(ls.length, 3);
@@ -222,7 +229,7 @@ test("invalid watch hunks are rejected after one retry, and a good retry succeed
 
   lessonCalls = 0;
   lessonOut = () => (lessonCalls === 1 ? withChecks(badWatch) : withChecks(parts.watch));
-  const ok = out(await t.q("lessons.get", { id: watch }));
+  const ok = await predicted(t, watch);
   assert.deepEqual([ok.kind, ok.part], ["watch", parts.watch]);
   assert.equal(lessonCalls, 2);
 });
@@ -231,7 +238,7 @@ test("a truncated learn body is regenerated", async () => {
   const { t, lessons: ls } = await setup();
   const first = ls[0]!.slug;
   lessonOut = () => (lessonCalls === 1 ? withChecks({ kind: "learn", body: "Use `let` like `" }) : withChecks(parts.learn));
-  const res = out(await t.q("lessons.get", { id: first }));
+  const res = await predicted(t, first);
   assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
   assert.equal(lessonCalls, 2);
 });
@@ -241,7 +248,7 @@ test("a looping learn body is regenerated", async () => {
   const first = ls[0]!.slug;
   const looping = withChecks({ kind: "learn", body: "Your First Python Program# ".repeat(200) });
   lessonOut = () => (lessonCalls === 1 ? looping : withChecks(parts.learn));
-  const res = out(await t.q("lessons.get", { id: first }));
+  const res = await predicted(t, first);
   assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
   assert.equal(lessonCalls, 2);
 });
@@ -271,7 +278,7 @@ test("a part generated for one learner is reused by another without a model call
   const before = lessonCalls;
 
   const second = await setup("d@example.com");
-  const res = out(await second.t.q("lessons.get", { id: second.lessons[0]!.slug }));
+  const res = await predicted(second.t, second.lessons[0]!.slug);
   assert.deepEqual(res.part, parts.learn);
   assert.equal(lessonCalls, before);
   await idle();
@@ -281,7 +288,7 @@ test("a learn part's visual document is stored and returned", async () => {
   const doc = { v: 1, blocks: [{ type: "text", id: "t", props: { md: "Ownership moves values." } }] };
   lessonOut = (kind) => withChecks(kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
   const { t, lessons: ls } = await setup();
-  const res = out(await t.q("lessons.get", { id: ls[0]!.slug }));
+  const res = await predicted(t, ls[0]!.slug);
   assert.equal(res.part.kind, "learn");
   assert.deepEqual((res.part.doc as { blocks: { id: string }[] }).blocks.map((b) => b.id), ["t"]);
 });

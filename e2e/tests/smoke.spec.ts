@@ -84,6 +84,22 @@ test("opens a scrim's lab at /editor with its starter code and no hidden answers
   await expect(page.locator(".view-lines").first()).toContainText("function double(n)");
 });
 
+test("a scrim keeps later code hidden until its prediction and shows the updated replay", async ({ page }) => {
+  await signUp(page, newEmail(), "/play?lesson=scrim-return-values&course=scrim-demo");
+  await expect(page.getByRole("heading", { name: "What a function gives back" })).toBeVisible();
+  await page.getByRole("button", { name: "Next part" }).click();
+  await expect(page.getByRole("region", { name: "Predict" })).toBeVisible();
+  await expect(page.locator(".view-lines").first()).not.toContainText("return a + b");
+  await page.getByLabel("undefined, because nothing is returned").check();
+  await page.getByRole("button", { name: "Check", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("region", { name: "Predict" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Next part" }).click();
+  await page.getByRole("button", { name: "Next part" }).click();
+  await expect(page.locator(".view-lines").first()).toContainText("return a + b");
+});
+
 test("a lesson with no lab says so at /editor", async ({ page }) => {
   await signUp(page, newEmail(), `/editor?lesson=${LESSON}`);
   await expect(page.getByText("so it has no lab", { exact: false })).toBeVisible();

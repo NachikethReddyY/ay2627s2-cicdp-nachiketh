@@ -18,8 +18,8 @@ async function call<T>(fullPath: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-export const startPython = (code: string, language: PracticeLanguage, lessonId?: string) =>
-  call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId }) });
+export const startPython = (code: string, language: PracticeLanguage, lessonId?: string, signal?: AbortSignal) =>
+  call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId }), signal });
 
 export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
@@ -29,9 +29,9 @@ export const lintPractice = (code: string, language: PracticeLanguage) =>
   call<{ findings: LintFinding[] }>("/api/practice/lint", { method: "POST", body: JSON.stringify({ code, language }) });
 
 export const checkPassed = (p: Pick<PyPoll, "error" | "passed">) => !p.error && p.passed === true;
-export const pollPython = (id: string, from: number) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`);
+export const pollPython = (id: string, from: number, signal?: AbortSignal) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`, { signal });
 export const sendPythonLine = (id: string, line: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}/input`, { method: "POST", body: JSON.stringify({ line }) });
-export const stopPython = (id: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}`, { method: "DELETE" });
+export const stopPython = (id: string, signal?: AbortSignal) => call<{ ok: boolean }>(`/api/sandbox/run/${id}`, { method: "DELETE", signal });
 
 export const putFile = (name: "solution.py" | "solution.js" | "solution.ts", content: string) =>
   call<unknown>(`/api/sandbox/files/${name}`, { method: "PUT", body: JSON.stringify({ content }) }).then(() => undefined);
