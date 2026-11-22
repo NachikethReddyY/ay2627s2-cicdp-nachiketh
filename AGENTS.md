@@ -4,7 +4,7 @@ Shared instructions for every coding agent working in this repo. `CLAUDE.md` imp
 
 ## What we are building
 
-LearnSlop is an interactive **programming learning tool**. A learner picks a programming concept or a real code change and the engine turns it into a short, adaptive lesson that mixes diagrams, code replay, quizzes, games and in-browser practice. The engine picks the mix, the hint depth and the next lesson from a learner model (BKT per learner and concept).
+LearnSlop is an interactive **programming learning tool**. A learner picks a programming concept and the engine turns it into a short, adaptive lesson. Every lesson opens with a prediction and mixes diagrams, quizzes, games, scrims and in-browser practice. The engine picks the next lesson and the review items from a learner model (BKT per learner and concept). Real code changes are the capstone track, coming soon.
 
 - **Audience**: beginners and early-career developers, 13 and over, JavaScript and TypeScript first, then other languages.
 - **Not for children.** Do not add child profiles, age bands, parental consent or kids-specific UI. The KidsQuest world (ages 4 to 10) is dropped (pivot logged at the top of `docs/plan.md`).
@@ -14,7 +14,7 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 - **Predict before reveal.** Ask for a prediction, then show the answer. Never show the answer first.
 - **Hints and answers are server-side only.** Never ship expected output or answer keys to the client.
 - **Model-agnostic AI.** Engine calls go through an OpenAI-compatible interface (LiteLLM). No provider lock-in.
-- **Generated content is reviewed.** An LLM drafts lessons, quizzes and games. A human author approves before publish.
+- **Generated paths start private to their creator.** An LLM drafts lessons, quizzes and games. The creator decides to make one public; there is no approval queue.
 - **Sloppy is the AI help chat.** It answers a learner who is stuck in practice, and it does not hand over finished solutions. Its guardrails keep the full answer out; hints and the answer key stay server-side.
 - **Learning first, demo second.** Prefer features that improve measurable learning over decoration.
 
@@ -31,7 +31,7 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 | `tools/` | Developer and agent tooling (repo index and MCP server), not shipped |
 | `scripts/` | Repo checks, merge gate, review pipeline, metrics, with tests |
 | `docs/` | Plans, ADRs, diagrams, design references. Agent guides in `docs/agents/` |
-| `DESIGN.md` | Visual design system (Geist, glass, light and dark, Pip the sprout mascot) |
+| `DESIGN.md` | Visual design system (Geist, glass, light and dark) |
 
 ## Commands
 
@@ -55,7 +55,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Before a PR push**, run the full CI (`turbo run lint test build`) against a test Postgres. No pushing on partial checks.
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
-- **Data.** Do not add learner or child data beyond account email, attempts and mastery.
+- **Data.** Stored learner data is limited to: account email, attempts, mastery (BKT per concept), timezone and daily goal (XP). Handle is public, and the column arrives with LQ-109. XP and streak are derived from attempts and shown publicly on the weekly leaderboard. Do not add learner or child data beyond these.
 - **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment are allowed, but only through the sensitive merge gate (see Merging).
 
 ## Foundations first
@@ -109,12 +109,18 @@ The operator declares the author family with `--author`, and the gate checks the
 - `README.md`: local setup and engine configuration.
 - `docs/agents/README.md`: how agents work here, the verification loop, merge and review.
 - `docs/feature-map.md`: learner-facing names for screens and features, with routes and code.
+- `docs/reviews/2026-11-20-revised-idea.html`: the restated idea, the learner-model rules and the fix plan with its demo order.
+
+## Concept catalogue and demo order
+
+- **Concept catalogue: not a document yet.** Concept names come from the `concepts` list in each `worlds/<slug>/manifest.json`. Today: `codequest` (functions, array reduce, conditionals), `loops` (loops, array map), `variables` (variables, constants) and `scrim-demo` (functions, return values). The manifests declare no prerequisite edges. The planned JavaScript and TypeScript catalogue, with edges, is in section 2 of `docs/reviews/2026-11-20-revised-idea.html`. Do not treat that table as shipped until LQ-117 lands.
+- **Demo order.** The seeded lessons live in `worlds/` and load through `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS`). The presentation-day order is section 6 of `docs/reviews/2026-11-20-revised-idea.html`.
 
 ## Open work after the pivot
 
 Done on 2026-11-06: `docs/plan.md` re-scoped (tracks, 13+ audience, game parts, second track as stretch), `docs/idea.md` rewritten, `docs/plan.html` regenerated, README, AGENTS and CLAUDE updated.
 
-1. Define the concept catalogue for the JavaScript and TypeScript track (first set: variables, conditionals, loops, functions).
-2. Wire game and diagram parts into lesson steps in the web player. The blocks exist in `packages/ui-catalog` (grid, order, match, sort, physics, quiz) and the engine has a `game_practice.md` prompt. Check end to end; this is not verified.
+1. Build the concept catalogue for the JavaScript and TypeScript track, with prerequisite edges (LQ-117). See the section above.
+2. Games: add an attempt limit and a hint ladder to `games.check` and `games.hint`, and make learn-doc games read-only (LQ-128). Game parts already render as the `game-practice` lesson kind.
 3. Decide the second track. The plan's default is Python basics; JavaScript and TypeScript stay first.
-4. Agree the presentation-day demo: a seeded set of lessons that works without live generation.
+4. Presentation-day demo: follow the order in `docs/reviews/2026-11-20-revised-idea.html` section 6.

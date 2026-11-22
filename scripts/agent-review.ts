@@ -73,7 +73,7 @@ export const MAX_CONTEXT_CHARS = 4_000;
 export const DEFAULT_CLAUDE_MODEL = "opus";
 
 const ALWAYS_SKIPPED = ["dist/", "build/", ".turbo/", "node_modules/", ".DS_Store"];
-const FALLBACK_SKIPPED = ["pnpm-lock.yaml", "docs/plan.html", "apps/web/src/worlds/registry.gen.ts"];
+const FALLBACK_SKIPPED = ["pnpm-lock.yaml", "docs/plan.html"];
 const INDEX_CLI = "tools/repo-index/src/cli.ts";
 
 export const UNTRUSTED_GUARD =

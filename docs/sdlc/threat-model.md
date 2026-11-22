@@ -53,7 +53,7 @@ Sources: `apps/web/vercel.json` (rewrites and CSP), `apps/api/src/app.ts`, `apps
 | A4 | Host and sandbox integrity | Escape from a sandbox container gives host access. | API host, Docker daemon, Daytona sandboxes |
 | A5 | AI spend budget | Unbounded model calls drive real cost. | `spend_ledger`, `AI_KILL_SWITCH`, `AI_CALL_ESTIMATE_USD` |
 | A6 | Engine token | Lets any holder call every engine endpoint. | `ENGINE_TOKEN` (env, ≥ 32 chars) |
-| A7 | Content integrity of published lessons | Learners trust published lessons; LLM output must not reach them unreviewed. | `lessons`, `lesson_versions` (published versions are not rewritten, plan §15.10) |
+| A7 | Content integrity of published lessons | Learners trust published lessons. Generated paths start private, and LLM output reaches other learners only after the creator makes it public (there is no review queue, decided 2026-11-21). | `lessons`, `lesson_versions` (published versions are not rewritten, plan §15.10) |
 
 ## 3. Threat tables by trust boundary
 
@@ -95,6 +95,7 @@ Residual risk: **Low / Med / High**, the risk left after the existing mitigation
 | B3.4 | T | Prompt injection through learner topic or chat | Topic ≤ 300 chars, moderated (`apps/api/src/ai/service.ts:80`). Moderation fails open (see B6.2). Model output is schema-validated in the engine; LLM calls have no tools (plan §15.5; tool absence not re-checked). | Med |
 | B3.5 | I | Learner data sent to providers | Guide chat sends the editor code, selection and messages to the LLM provider. See `docs/sdlc/privacy.md`. | Med |
 | B3.6 | E | Model output executes code or HTML in the browser | Client renders Markdown without raw HTML (Report A). Widgets from guide output are not validated server-side (Report A). | Low |
+| B3.7 | I | Sloppy gives the finished solution in chat | No output check exists in code. `apps/api/src/dev/route.ts` returns the model's text after the request is parsed; nothing tests the reply for code fences or code-like lines. Planned (LQ-124): a deterministic output check that rejects code fences and code-like lines, then repairs or refuses, with the lesson, task, concept and hint rung sent in the request. Until it ships, nothing in code stops a full solution from reaching the learner in chat (F27). | Med |
 
 ### B4. API to sandbox (code execution)
 
@@ -108,6 +109,7 @@ Residual risk: **Low / Med / High**, the risk left after the existing mitigation
 | B4.6 | S | Shell WebSocket opened by a different learner | Shell tickets: 32 random bytes (`apps/api/src/sandbox/ticket.ts:61`), 30 s TTL (`apps/api/src/sandbox/ticket.ts:6`), single use, bound to a learner. Origin checked on the WebSocket upgrade (`apps/api/src/sandbox/route.ts:31-41`). | Low |
 | B4.7 | I | Shell ticket leaks through URL logs or proxies | Ticket travels in the query string (`apps/api/src/sandbox/route.ts:45`). API request log URL is redacted (`apps/api/src/app.ts:40`, `redactUrl`). Proxy and Render platform logs not verified (F4); the shell WebSocket goes from the browser straight to Render, so the ticket may appear there. Ticket TTL limits the window. | Low |
 | B4.8 | I | Daytona sandbox exposes learner code to other tenants | Practice-run Daytona sandboxes use `networkBlockAll: true` and `ephemeral: true` (`apps/api/src/sandbox/daytona.ts:438-439`). The per-learner shell sandbox has network access and is auto-stopped, not deleted, when idle (`apps/api/src/sandbox/daytona.ts:96-101`). It is deleted and replaced only when its state is broken (`apps/api/src/sandbox/daytona.ts:52`, `:92`), so its files persist until then (see F6, F24). Sandbox label is SHA-256 of learner ID (Report B). Daytona retention unverified. | Med |
+| B4.9 | I | Daytona shell sandbox reaches the internet or keeps a learner's files | Per-learner shell sandboxes are found and created by labels (`apps/api/src/sandbox/daytona.ts:78-101`), auto-stop after `DAYTONA_AUTO_STOP_MINUTES` (default 3), and are not deleted when idle. Shell creation does not set `networkBlockAll`; only the practice-run path does (`apps/api/src/sandbox/daytona.ts:415`). Shell tickets and origin checks apply as in B4.6. Shell egress and file retention are unverified (F6, F24, O3). | High until verified |
 
 ### B5. API to engine (service-to-service)
 
@@ -184,11 +186,12 @@ Severity is the impact if the gap is exploited today. Follow-up titles are sugge
 | F19 | Engine-to-API transport TLS not verified. | `services/engine/learnquest_engine/server.py:62-63` (token check only) | Med | Confirm HTTPS on `ENGINE_URL` in production; record in `docs/configuration.md`. |
 | F20 | Media bucket public or private status not verified. | `apps/api/src/media/storage.ts:12`, `:43` | Med | Check the bucket policy; add a test that an unsigned URL returns 403. |
 | F21 | Security test folder `apps/api/test/security/` does not exist. Plan WP15 requires SSRF tests and a final review of WP5 answer-leak tests. | `apps/api/test/` (no `security/` folder) | Med | Create the folder with answer-leak and rate-limit tests (WP15 follow-up). |
-| F22 | No age gate or age field. The 13+ audience is not enforced at sign-up. | `apps/web/src/pages/Login.tsx:21` (no age input) | Low (privacy) | Decide the gate with the user (audience change needs approval per AGENTS). See `docs/sdlc/privacy.md`. |
+| F22 | No age gate or age field. The 13+ audience is not enforced at sign-up. | `apps/web/src/pages/Login.tsx:21` (no age input) | Low (privacy) | Decided 2026-11-20: no age gate (owner). Close this finding with a privacy note, or re-open it if the decision changes. See `docs/sdlc/privacy.md`. |
 | F23 | Sign-up name is the email local part, so it can hold a real name. | `apps/web/src/pages/Login.tsx:21` | Low (privacy) | Ask for a display name or default to a neutral label. |
 | F24 | Compute and egress abuse from the always-on, network-enabled shell. A learner can run mining, port scanning or spam from our IPs, which could lead to abuse reports against our hosting accounts. | `apps/api/src/sandbox/docker.ts:38`; `apps/api/src/sandbox/daytona.ts:96-101`; see F6 | High | Default-deny egress on shell sandboxes; cap CPU time per shell; alert on sustained CPU and outbound volume. |
 | F25 | No email verification. The `verification` table exists but no flow uses it, so one person can create unlimited free accounts. Per-learner limits (guide: 10 per minute; sandbox tabs and shells) then multiply across accounts into Daytona and LLM cost. | `apps/api/src/auth/auth.ts:9` (`emailAndPassword: { enabled: true }` only); `apps/api/src/db/schema.ts:67` (`verification`) | High | Require email verification before AI or sandbox use; add a per-account daily cap and a cap on account creation per IP. |
 | F26 | Guide endpoint relies on the API for the kill switch and budget. `/v1/guide/chat` has no engine-side budget backstop, so a leaked `ENGINE_TOKEN` allows unlimited guide spend. | `services/engine/learnquest_engine/server.py:179`; `apps/api/src/dev/route.ts:131`; API-side kill switch at `apps/api/src/config/budget.ts:15-16` | Med | Add an engine-side spend or request cap on `/v1/guide/chat`; rotate `ENGINE_TOKEN` if it may have leaked. |
+| F27 | Sloppy has no output check. A reply can contain a full solution, and nothing in code checks the reply before it is shown. | `apps/api/src/dev/route.ts` (guide route, reply path); B3.7 | Med | Deterministic output check with repair or refusal, and tests with solution fixtures (LQ-124). |
 
 Findings F1-F3, F6, F24 and F25 should be fixed before the presentation demo, since they can cost money, lock out users, or give host access. F13 and F22 need the user's decision.
 
@@ -212,7 +215,7 @@ Each item needs a check before this model is treated as complete. None was verif
 | O10 | LiteLLM advisory check (plan §15.5, WP0). The outcome is not recorded in the repo. | Check the PyPI advisory and the pinned version in `services/engine`. |
 | O11 | Whether the guide route's kill-switch gap is intentional. | Ask the user. |
 | O12 | Which runner production uses for practice checks. `docs/configuration.md:33` says Daytona, but `/sandbox/check` always runs docker (`apps/api/src/sandbox/check.ts:64`). Either production has a Docker socket on the API host (F3 is real), or practice checks fail there. | Compare `docs/configuration.md` with the Render service settings. Run a practice check on production or staging and see whether it fails. If it runs, run `docker info` on the API host. |
-| O13 | Whether AI-generated learner-published paths reach other learners without human review. AGENTS.md says a human approves generated content. Not asserted either way. | Read the path publish flow and the review and moderation steps that apply to published paths. |
+| O13 | Whether generated paths reach other learners before their creator makes them public. The decision is that they start private and there is no review queue (2026-11-21). Not yet checked in code. | Read the path visibility and publish flow, and check that a draft path is not listed or readable by other learners. |
 
 ## 7. What is not in scope
 
