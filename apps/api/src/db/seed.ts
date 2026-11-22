@@ -45,6 +45,18 @@ async function loadWorld(world: string) {
 
 type Loaded = Awaited<ReturnType<typeof loadWorld>>;
 
+async function stepsWithLearnerData(tx: Tx, stepIds: string[]) {
+  const ids = new Set<string>();
+  for (const rows of await Promise.all([
+    tx.select({ stepId: attempts.stepId }).from(attempts).where(inArray(attempts.stepId, stepIds)),
+    tx.select({ stepId: hintEvents.stepId }).from(hintEvents).where(inArray(hintEvents.stepId, stepIds)),
+    tx.select({ stepId: stepProgress.stepId }).from(stepProgress).where(inArray(stepProgress.stepId, stepIds)),
+  ])) {
+    for (const row of rows) ids.add(row.stepId);
+  }
+  return ids;
+}
+
 async function dropStaleSteps(tx: Tx, versionId: string, keep: string[]) {
   const stale = (
     await tx
@@ -53,11 +65,14 @@ async function dropStaleSteps(tx: Tx, versionId: string, keep: string[]) {
       .where(keep.length > 0 ? and(eq(steps.lessonVersionId, versionId), notInArray(steps.id, keep)) : eq(steps.lessonVersionId, versionId))
   ).map((row) => row.id);
   if (stale.length === 0) return;
-  await tx.delete(lessonMedia).where(inArray(lessonMedia.stepId, stale));
-  await tx.delete(hintEvents).where(inArray(hintEvents.stepId, stale));
-  await tx.delete(attempts).where(inArray(attempts.stepId, stale));
-  await tx.delete(stepProgress).where(inArray(stepProgress.stepId, stale));
-  await tx.delete(steps).where(inArray(steps.id, stale));
+  const protectedSteps = await stepsWithLearnerData(tx, stale);
+  const deletable = stale.filter((id) => !protectedSteps.has(id));
+  if (deletable.length === 0) return;
+  await tx.delete(lessonMedia).where(inArray(lessonMedia.stepId, deletable));
+  await tx.delete(hintEvents).where(inArray(hintEvents.stepId, deletable));
+  await tx.delete(attempts).where(inArray(attempts.stepId, deletable));
+  await tx.delete(stepProgress).where(inArray(stepProgress.stepId, deletable));
+  await tx.delete(steps).where(inArray(steps.id, deletable));
 }
 
 async function seedWorld(tx: Tx, { manifest, files }: Loaded) {

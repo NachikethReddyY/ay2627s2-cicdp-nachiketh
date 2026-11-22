@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
-import { lessonMedia, lessons, lessonVersions, steps, worlds } from "../src/db/schema.ts";
+import { attempts, hintEvents, lessonMedia, learners, lessons, lessonVersions, stepProgress, steps, user, worlds } from "../src/db/schema.ts";
 import { seed } from "../src/db/seed.ts";
 import { silentWav } from "../src/media/silent-wav.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
@@ -121,4 +121,21 @@ test("silentWav is a valid 8 kHz mono 16-bit RIFF/WAVE file of the requested len
   assert.equal(view.getUint32(40, true), 4800);
   assert.equal(bytes.byteLength, 44 + 4800);
   assert.ok(bytes.subarray(44).every((b) => b === 0), "silent");
+});
+
+test("reseeding after a removed gate keeps the learner's attempts, hints and progress", async () => {
+  await seed();
+  const { versionId } = await scrimVersionId();
+  const [gated] = await db.select().from(steps).where(eq(steps.lessonVersionId, versionId));
+  const [ghost] = await db.insert(steps).values({ ...gated!, id: "scrim-return-values-removed-gate", idx: 9 }).returning();
+  const [authUser] = await db.insert(user).values({ id: "lq112-reseed", name: "Reseed", email: "lq112-reseed@example.com" }).returning();
+  const learnerId = (await db.insert(learners).values({ userId: authUser.id }).returning({ id: learners.id }))[0]!.id;
+  await db.insert(attempts).values({ learnerId, stepId: ghost!.id, kind: "mcq", response: { option: 0 }, observed: true, correct: true, hintsUsed: 1 });
+  await db.insert(hintEvents).values({ learnerId, stepId: ghost!.id, rung: 1 });
+  await db.insert(stepProgress).values({ learnerId, stepId: ghost!.id, state: "hinting" });
+  await seed();
+  assert.equal((await db.select().from(attempts).where(eq(attempts.stepId, ghost!.id))).length, 1);
+  assert.equal((await db.select().from(hintEvents).where(eq(hintEvents.stepId, ghost!.id))).length, 1);
+  assert.equal((await db.select().from(stepProgress).where(eq(stepProgress.stepId, ghost!.id))).length, 1);
+  assert.equal((await db.select().from(steps).where(eq(steps.id, ghost!.id))).length, 1);
 });
