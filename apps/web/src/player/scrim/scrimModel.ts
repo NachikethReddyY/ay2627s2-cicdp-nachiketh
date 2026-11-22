@@ -1,6 +1,7 @@
 import {
   buildScrimTimeline,
   codeAt,
+  editGateKey,
   openGate,
   reachable,
   scrimClock,
@@ -21,15 +22,16 @@ export function planScrim(segments: readonly Segment[]): { edits: TimedEdit[]; s
   segments.forEach((segment, index) => {
     if (!segment.edit && !segment.gate) return;
     const code = segment.edit?.code ?? previous;
-    if (segment.gate) stepByKey[`edit-${edits.length}`] = segment.gate;
-    edits.push({ segment: index, at: 0, cueHeard: true, cue: "", predict: segment.gate ?? null, code, run: segment.edit?.run });
+    const id = segment.gate ?? `segment-${index}`;
+    if (segment.gate) stepByKey[editGateKey(id)] = segment.gate;
+    edits.push({ id, segment: index, at: 0, cueHeard: true, cue: "", predict: segment.gate ?? null, code, run: segment.edit?.run });
     previous = code;
   });
   return { edits, stepByKey };
 }
 
-export function scrimTimeline(segments: readonly Segment[]): ScrimTimeline {
-  return buildScrimTimeline(planScrim(segments).edits, [], scrimClock(segments.map((s) => s.durationMs / 1000)));
+export function scrimTimeline(segments: readonly Segment[], language?: string): ScrimTimeline {
+  return buildScrimTimeline(planScrim(segments).edits, [], scrimClock(segments.map((s) => s.durationMs / 1000)), language);
 }
 
 export function narrationBySegment(media: Lesson["media"], count: number): (string | null)[] {

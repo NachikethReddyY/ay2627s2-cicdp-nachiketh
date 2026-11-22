@@ -53,7 +53,7 @@ test("a gate-only segment carries the previous code", () => {
   assert.equal(plan.edits.length, 2);
   assert.equal(plan.edits[1].code, "a = 1");
   assert.equal(plan.edits[1].predict, "step-1");
-  assert.deepEqual(plan.stepByKey, { "edit-1": "step-1" });
+  assert.deepEqual(plan.stepByKey, { "edit:step-1": "step-1" });
 });
 
 test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
@@ -72,9 +72,9 @@ test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
   state = playbackReducer(state, { type: "tick", t: 5 });
   assert.equal(state.t, 2);
   assert.equal(state.playing, false);
-  assert.equal(heldGate(state)?.key, "edit-1");
+  assert.equal(heldGate(state)?.key, "edit:q");
   assert.equal(playbackReducer(state, { type: "play" }), state);
-  state = playbackReducer(state, { type: "answer", key: "edit-1" });
+  state = playbackReducer(state, { type: "answer", key: "edit:q" });
   assert.equal(state.playing, true);
   state = playbackReducer(state, { type: "tick", t: 99 });
   assert.equal(state.t, 8);

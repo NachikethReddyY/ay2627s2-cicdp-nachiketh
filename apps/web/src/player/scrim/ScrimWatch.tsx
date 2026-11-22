@@ -24,7 +24,7 @@ const SPEEDS = [0.75, 1, 1.25, 1.5] as const;
 type Props = { lessonId: string; title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; onLab: () => void };
 
 export default function ScrimWatch({ lessonId, title, part, steps, media, onLab }: Props) {
-  const scrim = useMemo(() => scrimTimeline(part.segments), [part.segments]);
+  const scrim = useMemo(() => scrimTimeline(part.segments, part.language), [part.segments, part.language]);
   const plan = useMemo(() => planScrim(part.segments), [part.segments]);
   const urls = useMemo(() => narrationBySegment(media, part.segments.length), [media, part.segments.length]);
   const { clock } = scrim;
@@ -117,9 +117,8 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   };
 
   const tickTo = (t: number) => {
-    const crossed = state.playing ? runCrossed(scrim, state.t, commit({ type: "tick", t }).t) : null;
-    const edit = crossed ? scrim.edits[crossed.edit] : undefined;
-    if (edit) void runner.run(edit.code);
+    const crossed = state.playing ? runCrossed(scrim, state.t, commit({ type: "tick", t }).t) : [];
+    for (const run of crossed) void runner.run(scrim.edits[run.edit].code);
   };
 
   const endSegment = () => {

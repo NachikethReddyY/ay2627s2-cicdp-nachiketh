@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seek } from "./seek.ts";
-import { editHunk, editTimeline, SCRIM_FILE } from "./scrim-timeline.ts";
+import { editHunk, editTimeline, scrimFile } from "./scrim-timeline.ts";
+
+const FILE = scrimFile(undefined);
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -25,18 +27,26 @@ test("replaying an edit always ends on exactly the new code", () => {
   for (let run = 0; run < 3000; run++) {
     const before = randomFile(rand);
     const after = rand() < 0.5 ? `${before}\n${randomFile(rand)}` : randomFile(rand);
-    const timeline = editTimeline(before, after);
-    assert.equal(seek(timeline, timeline.duration).files[SCRIM_FILE], after, `run ${run}: ${JSON.stringify({ before, after })}`);
-    assert.equal(seek(timeline, 0).files[SCRIM_FILE], before, `run ${run} did not start from the old code`);
+    const timeline = editTimeline(before, after, FILE);
+    assert.equal(seek(timeline, timeline.duration).files[FILE], after, `run ${run}: ${JSON.stringify({ before, after })}`);
+    assert.equal(seek(timeline, 0).files[FILE], before, `run ${run} did not start from the old code`);
   }
 });
 
 test("an appended line is one hunk that only adds, after the unchanged lines", () => {
-  assert.deepEqual(editHunk("words = []", "words = []\nwords.append(1)"), [
-    { id: "scrim-edit", file: SCRIM_FILE, oldStart: 2, lines: ["+words.append(1)"] },
+  assert.deepEqual(editHunk("words = []", "words = []\nwords.append(1)", FILE), [
+    { id: "scrim-edit", file: FILE, oldStart: 2, lines: ["+words.append(1)"] },
   ]);
 });
 
 test("the same code needs no hunk", () => {
-  assert.deepEqual(editHunk("a\nb", "a\nb"), []);
+  assert.deepEqual(editHunk("a\nb", "a\nb", FILE), []);
+});
+
+test("the scrim file takes its extension from the language", () => {
+  assert.equal(scrimFile("python"), "main.py");
+  assert.equal(scrimFile("typescript"), "main.ts");
+  assert.equal(scrimFile("javascript"), "main.js");
+  assert.equal(scrimFile(undefined), "main.js");
+  assert.equal(scrimFile("brainfuck"), "main.js");
 });

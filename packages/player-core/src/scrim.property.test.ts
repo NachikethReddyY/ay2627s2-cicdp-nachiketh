@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildScrimTimeline, codeAt, frameAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type TimedEdit } from "./scrim.ts";
-import { editTimeline, SCRIM_FILE } from "./scrim-timeline.ts";
+import { buildScrimTimeline, codeAt, editGateKey, frameAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type TimedEdit } from "./scrim.ts";
+import { editTimeline, scrimFile } from "./scrim-timeline.ts";
+
+const FILE = scrimFile(undefined);
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -15,6 +17,7 @@ function mulberry32(seed: number) {
 }
 
 const edit = (segment: number, at: number, code: string, predict: string | null = null, run = false): TimedEdit => ({
+  id: `e${segment}@${at}:${code}`,
   segment,
   at,
   cueHeard: true,
@@ -45,10 +48,11 @@ test("code at a time is the edits whose cue has passed, the newest typed partway
 test("a question holds playback at its edit and hides that edit until answered", () => {
   const scrim = buildScrimTimeline([edit(0, 1, "a = 1"), edit(0, 3, "a = 2", "What changes?")], [null], scrimClock([6]));
   const none = new Set<string>();
-  assert.equal(openGate(scrim, none)?.key, "edit-1");
+  const key = editGateKey(scrim.edits[1].id);
+  assert.equal(openGate(scrim, none)?.key, key);
   assert.equal(reachable(scrim, none, 5), 3);
   assert.equal(codeAt(scrim, none, 3), "a = 1");
-  const answered = new Set(["edit-1"]);
+  const answered = new Set([key]);
   assert.equal(reachable(scrim, answered, 5), 5);
   assert.equal(codeAt(scrim, answered, 5), "a = 2");
 });
@@ -63,9 +67,9 @@ test("a run fires once, after its edit has finished typing", () => {
   const scrim = buildScrimTimeline([edit(0, 1, "print(1)", null, true)], [null], scrimClock([10]));
   const run = scrim.runs[0];
   assert.ok(run.t > 1 + scrim.typing[0]);
-  assert.equal(runCrossed(scrim, 0, run.t - 0.01), null);
-  assert.deepEqual(runCrossed(scrim, run.t - 0.2, run.t + 0.2), run);
-  assert.equal(runCrossed(scrim, run.t, run.t + 1), null);
+  assert.deepEqual(runCrossed(scrim, 0, run.t - 0.01), []);
+  assert.deepEqual(runCrossed(scrim, run.t - 0.2, run.t + 0.2), [run]);
+  assert.deepEqual(runCrossed(scrim, run.t, run.t + 1), []);
 });
 
 test("for any scrim and any seek, no edit behind an open question ever shows, and code only grows while playing", () => {
@@ -85,7 +89,7 @@ test("for any scrim and any seek, no edit behind an open question ever shows, an
     const seekTo = reachable(scrim, answered, rand() * scrim.clock.total * 1.2);
     const shown = shownEdits(scrim, answered, seekTo);
     for (let i = 0; i < shown; i++) {
-      if (scrim.edits[i].predict) assert.ok(answered.has(`edit-${i}`), `run ${n}: edit ${i} shown before its question`);
+      if (scrim.edits[i].predict) assert.ok(answered.has(editGateKey(scrim.edits[i].id)), `run ${n}: edit ${i} shown before its question`);
     }
     const gate = openGate(scrim, answered);
     if (gate) assert.ok(seekTo <= gate.t, `run ${n}: seeked past an open question`);
@@ -130,33 +134,9 @@ test("for any scrim, every run lands between its edit and the end of the clock",
   }
 });
 
-test("edits and runs stay within the clock even when an edit has an out-of-range segment", () => {
-  const rand = mulberry32(55);
-  for (let n = 0; n < 1000; n++) {
-    const parts = 1 + Math.floor(rand() * 3);
-    const durations = Array.from({ length: parts }, () => 1 + rand() * 5);
-    const clock = scrimClock(durations);
-    const edits = Array.from({ length: 1 + Math.floor(rand() * 5) }, (_, i) => {
-      const segment = Math.floor(rand() * parts);
-      return edit(segment, rand() * durations[segment], `x${i} = ${i}`, null, rand() < 0.7);
-    });
-    const fallbackTimes = [clock.total + 1 + rand() * 5, -1 - rand() * 5, rand() * clock.total];
-    edits.push(edit(parts, fallbackTimes[n % fallbackTimes.length], "print(x0)", null, true));
-    const scrim = buildScrimTimeline(edits, durations.map(() => null), clock);
-    for (const [i, at] of scrim.times.entries()) {
-      assert.ok(scrim.typing[i] >= 0, `case ${n}, edit ${i}: negative typing duration ${scrim.typing[i]}`);
-      assert.ok(at >= 0 && at <= clock.total, `case ${n}, edit ${i}: time ${at} outside [0, ${clock.total}]`);
-    }
-    for (const run of scrim.runs) {
-      const finished = scrim.times[run.edit] + scrim.typing[run.edit];
-      assert.ok(run.t >= finished && run.t <= clock.total, `case ${n}, edit ${run.edit}: run at ${run.t} outside [${finished}, ${clock.total}]`);
-    }
-  }
-});
-
 test("a run near the end of the clock is still crossed by playing to the end", () => {
   const scrim = buildScrimTimeline([edit(0, 3.9, "print(1)", null, true)], [null], scrimClock([4]));
-  assert.notEqual(runCrossed(scrim, 0, scrim.clock.total), null);
+  assert.equal(runCrossed(scrim, 0, scrim.clock.total).length, 1);
 });
 
 test("for any scrim, a frame shows the same code as codeAt, and typing at full speed with distinct edit times adds at most two characters per 16 ms", () => {
@@ -172,12 +152,12 @@ test("for any scrim, a frame shows the same code as codeAt, and typing at full s
     const answered = new Set<string>();
     const squeezed = scrim.edits.map((e, i) => {
       const before = i > 0 ? scrim.edits[i - 1].code : "";
-      return scrim.typing[i] + 1e-9 < editTimeline(before, e.code).duration / 1000;
+      return scrim.typing[i] + 1e-9 < editTimeline(before, e.code, FILE).duration / 1000;
     });
     for (let t = 0; t <= scrim.clock.total; t += 0.016) {
       const frame = frameAt(scrim, answered, t);
-      assert.equal(frame.files[SCRIM_FILE] ?? "", codeAt(scrim, answered, t), `run ${n}: frame differs from codeAt at ${t}`);
-      assert.equal(frame.activePath, SCRIM_FILE);
+      assert.equal(frame.files[FILE] ?? "", codeAt(scrim, answered, t), `run ${n}: frame differs from codeAt at ${t}`);
+      assert.equal(frame.activePath, FILE);
       if (!distinct) continue;
       const from = shownEdits(scrim, answered, t);
       const to = shownEdits(scrim, answered, t + 0.016);
@@ -186,4 +166,141 @@ test("for any scrim, a frame shows the same code as codeAt, and typing at full s
       assert.ok(next.length - codeAt(scrim, answered, t).length <= 2, `run ${n}: 16 ms added more than two characters at ${t}`);
     }
   }
+});
+
+const HOSTILE_TIMES = [-5, -0.001, 0, 0, 0.02, 1, 1, 2.5, 9, 1e6, Infinity, -Infinity];
+const DURATIONS = [0, 0.01, 0.04, 0.05, 0.3, 1, 2.5, 6];
+
+function hostileScrim(rand: () => number, language?: string) {
+  const durations = Array.from({ length: 1 + Math.floor(rand() * 4) }, () => DURATIONS[Math.floor(rand() * DURATIONS.length)]);
+  const edits = Array.from({ length: Math.floor(rand() * 7) }, (_, i) => {
+    const at = HOSTILE_TIMES[Math.floor(rand() * HOSTILE_TIMES.length)];
+    return { ...edit(Math.floor(rand() * durations.length), at, `x${i} = ${i}`, rand() < 0.4 ? `q${i}` : null, rand() < 0.5), id: `step-${i}` };
+  });
+  const predicts = durations.map((_, s) => (rand() < 0.4 ? `part ${s}` : null));
+  return { durations, edits, predicts, clock: scrimClock(durations), language };
+}
+
+const finiteEdits = (edits: TimedEdit[]) => edits.map((e) => (Number.isFinite(e.at) ? e : { ...e, at: e.at > 0 ? 1e6 : -5 }));
+
+test("for any scrim, edit times stay in their own part, in order, and gates stay inside the clock in order", () => {
+  const rand = mulberry32(101);
+  for (let n = 0; n < 2000; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    const scrim = buildScrimTimeline(finiteEdits(edits), predicts, clock);
+    scrim.edits.forEach((e, i) => {
+      const start = clock.offsets[e.segment];
+      const end = start + clock.durations[e.segment];
+      assert.ok(scrim.times[i] >= start && scrim.times[i] <= end, `run ${n}: edit ${i} at ${scrim.times[i]} outside part [${start}, ${end}]`);
+      assert.ok(scrim.typing[i] >= 0, `run ${n}: negative typing`);
+      if (i > 0) assert.ok(scrim.times[i] >= scrim.times[i - 1], `run ${n}: times went backwards at ${i}`);
+    });
+    scrim.gates.forEach((g, i) => {
+      assert.ok(Number.isFinite(g.t) && g.t >= 0 && g.t <= clock.total, `run ${n}: gate ${g.key} at ${g.t} outside the clock`);
+      if (i > 0) assert.ok(g.t >= scrim.gates[i - 1].t, `run ${n}: gates out of order`);
+    });
+    const partGates = scrim.gates.filter((g) => g.key.startsWith("part-"));
+    for (const g of partGates) {
+      const s = Number(g.key.slice("part-".length));
+      assert.ok(g.t >= clock.offsets[s], `run ${n}: part ${s} gate before its part starts`);
+    }
+  }
+});
+
+test("for any scrim, a part's question hides every later edit until it is answered, wherever the playhead is", () => {
+  const rand = mulberry32(202);
+  for (let n = 0; n < 2000; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    const scrim = buildScrimTimeline(finiteEdits(edits), predicts, clock);
+    const answered = new Set<string>();
+    for (const g of scrim.gates) if (rand() < 0.5) answered.add(g.key);
+    const gate = openGate(scrim, answered);
+    if (!gate) continue;
+    for (const t of [gate.t, gate.t + 0.01, clock.total, clock.total * 2, 1e9]) {
+      const shown = shownEdits(scrim, answered, t);
+      for (let i = 0; i < shown; i++) {
+        assert.ok(scrim.times[i] <= gate.t, `run ${n}: edit ${i} at ${scrim.times[i]} shown past open gate ${gate.key} at ${gate.t}`);
+      }
+    }
+  }
+});
+
+test("a negative or past-the-end cue time stays inside its own part and never skips an earlier part's question", () => {
+  const clock = scrimClock([4, 4]);
+  const early = buildScrimTimeline([edit(0, 1, "a = 1"), edit(1, -3, "a = 2")], ["Guess?", null], clock);
+  assert.equal(early.times[1], clock.offsets[1]);
+  assert.equal(codeAt(early, new Set(), 7), "a = 1");
+  assert.equal(codeAt(early, new Set(["part-0"]), 7), "a = 2");
+  const late = buildScrimTimeline([edit(0, 99, "a = 1")], [null], scrimClock([4]));
+  assert.equal(late.times[0], 4);
+});
+
+test("a cue time that is not a number, or a part that does not exist, is rejected instead of building a timeline", () => {
+  const clock = scrimClock([4, 4]);
+  for (const at of [NaN, Infinity, -Infinity]) {
+    assert.throws(() => buildScrimTimeline([edit(0, at, "a = 1")], [null, null], clock), RangeError, `at ${at}`);
+  }
+  for (const segment of [-1, 2, 0.5, NaN]) {
+    assert.throws(() => buildScrimTimeline([edit(segment, 1, "a = 1")], [null, null], clock), RangeError, `segment ${segment}`);
+  }
+  for (const bad of [NaN, -1, Infinity]) {
+    assert.throws(() => buildScrimTimeline([], [null], scrimClock([bad])), RangeError, `duration ${bad}`);
+  }
+  const twin = edit(0, 1, "a = 1", "q");
+  assert.throws(() => buildScrimTimeline([twin, { ...twin, at: 2 }], [null], scrimClock([4])), RangeError);
+});
+
+test("for any time, even NaN or past the end, the playhead and part lookup stay finite and inside the clock", () => {
+  const rand = mulberry32(303);
+  for (let n = 0; n < 1000; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    const scrim = buildScrimTimeline(finiteEdits(edits), predicts, clock);
+    const answered = new Set<string>();
+    for (const g of scrim.gates) if (rand() < 0.5) answered.add(g.key);
+    for (const t of [NaN, -1, 0, clock.total, clock.total + 3, Infinity, -Infinity, rand() * clock.total]) {
+      const at = reachable(scrim, answered, t);
+      assert.ok(Number.isFinite(at) && at >= 0 && at <= clock.total, `run ${n}: reachable(${t}) = ${at}`);
+      const part = segmentAt(clock, t);
+      assert.ok(part.index >= 0 && part.index < clock.durations.length, `run ${n}: segmentAt(${t}).index = ${part.index}`);
+      assert.ok(part.local >= 0 && part.local <= clock.durations[part.index], `run ${n}: segmentAt(${t}).local = ${part.local}`);
+    }
+  }
+});
+
+test("for any scrim, crossing a window reports every run in it, in time order, and windows that tile the clock report each run once", () => {
+  const rand = mulberry32(404);
+  for (let n = 0; n < 1000; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    const scrim = buildScrimTimeline(finiteEdits(edits), predicts, clock);
+    const inWindow = (from: number, to: number) => scrim.runs.filter((r) => from < r.t && r.t <= to);
+    const from = rand() * clock.total;
+    const to = from + rand() * clock.total;
+    assert.deepEqual(runCrossed(scrim, from, to), inWindow(from, to), `run ${n}`);
+    const cuts = [-1, ...Array.from({ length: 4 }, () => rand() * clock.total).sort((a, b) => a - b), clock.total];
+    const tiled = cuts.slice(1).flatMap((cut, i) => runCrossed(scrim, cuts[i], cut));
+    assert.deepEqual(tiled, runCrossed(scrim, -1, clock.total), `run ${n}: tiled windows lost or doubled a run`);
+    assert.equal(runCrossed(scrim, -1, clock.total).length, scrim.runs.length, `run ${n}: whole clock missed a run`);
+  }
+});
+
+test("for any order the edits are listed in, each question keeps its own gate key", () => {
+  const rand = mulberry32(505);
+  for (let n = 0; n < 500; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    const base = finiteEdits(edits);
+    const shuffled = [...base].sort(() => rand() - 0.5);
+    const questions = (list: TimedEdit[]) => buildScrimTimeline(list, predicts, clock).gates.map((g) => `${g.key}=${g.question}`).sort();
+    assert.deepEqual(questions(shuffled), questions(base), `run ${n}`);
+    for (const e of base.filter((x) => x.predict?.trim())) {
+      assert.ok(buildScrimTimeline(shuffled, predicts, clock).gates.some((g) => g.key === editGateKey(e.id) && g.question === e.predict), `run ${n}: ${e.id} lost its key`);
+    }
+  }
+});
+
+test("the scrim names its file after the language", () => {
+  const clock = scrimClock([4]);
+  const scrim = buildScrimTimeline([edit(0, 1, "let a = 1")], [null], clock, "typescript");
+  assert.equal(scrim.file, "main.ts");
+  assert.deepEqual(Object.keys(frameAt(scrim, new Set(), 3).files), ["main.ts"]);
+  assert.equal(frameAt(scrim, new Set(), 3).activePath, "main.ts");
 });
