@@ -11,7 +11,8 @@ import {
 } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
-import { setCheckSpawnForTests, type RawResult } from "../src/sandbox/check.ts";
+import { setCheckSpawnForTests } from "../src/sandbox/dockerChecks.ts";
+import type { RawResult } from "../src/sandbox/checkRunner.ts";
 
 const app = buildApp();
 after(() => app.close());

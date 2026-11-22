@@ -39,16 +39,17 @@ export default function Shell({ title, goalText, alt, hintCount, onHint, lives, 
       <h3 className="break-words text-lg font-semibold tracking-tight">{title}</h3>
       <p className="break-words text-sm font-medium">{goalText}</p>
       <p className="break-words text-sm text-[var(--mu)]">{alt}</p>
-      {lives !== undefined && <p className="text-sm font-semibold">Lives: {lives} of {maxLives}</p>}
+      {lives !== undefined && <p className="text-sm font-semibold">Attempts left today: {lives} of {maxLives}</p>}
       {children}
       <p role="status" aria-live="polite" className="min-h-6 break-words text-sm font-medium">{live}</p>
       {over && (
         <div role="group" aria-label={outcome === "win" ? "You win" : "Game over"} className={`rounded-xl border p-3 ${outcome === "win" ? "border-[var(--ok)] bg-[color-mix(in_srgb,var(--ok)_14%,transparent)]" : "border-[var(--bad)] bg-[color-mix(in_srgb,var(--bad)_14%,transparent)]"}`}>
-          <p className="text-lg font-semibold">{outcome === "win" ? "You win!" : "Game over"}</p>
+          <p className="text-lg font-semibold">{outcome === "win" ? "You win!" : "No attempts left today"}</p>
+          {outcome === "lose" && <p className="text-sm">Attempts reset at midnight UTC.</p>}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={btn} disabled={busy} onClick={onRetry}>Retry</button>
+        <button type="button" className={btn} disabled={busy || outcome === "lose"} onClick={onRetry}>Retry</button>
         {hintCount > 0 && (
           <button type="button" className={btn} disabled={hints.length >= hintCount || hintBusy} onClick={showHint}>
             Show hint ({hints.length} of {hintCount})

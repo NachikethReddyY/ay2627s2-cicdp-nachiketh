@@ -11,7 +11,7 @@ export const submissionSchema = z.discriminatedUnion("kind", [
 ]);
 export type Submission = z.infer<typeof submissionSchema>;
 
-export type Verdict = { correct: boolean; complete: boolean; questionResults?: boolean[] };
+export type Verdict = { correct: boolean; complete: boolean; questionCorrect?: boolean };
 
 export class BadSubmission extends Error {}
 
@@ -23,9 +23,9 @@ export function grade(game: GameProps, s: Submission): Verdict {
   if (s.kind === "quiz") {
     const qs = (k as QuizProps).questions;
     if (s.answers.length > qs.length) throw new BadSubmission("More answers than questions");
-    const questionResults = s.answers.map((a, i) => a === qs[i].answer);
-    const correct = questionResults.length === qs.length && questionResults.every(Boolean);
-    return { correct, complete: correct, questionResults };
+    const questionCorrect = s.answers.every((answer, i) => answer === qs[i].answer);
+    const correct = questionCorrect && s.answers.length === qs.length;
+    return { correct, complete: correct, questionCorrect };
   }
   if (s.kind === "order") {
     const items = (k as OrderProps).items;

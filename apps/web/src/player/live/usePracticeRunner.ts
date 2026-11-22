@@ -43,6 +43,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
   const shellUnreachable = useRef(false);
   const readyTimeouts = useRef(0);
   const lintSeq = useRef(0);
+  const codeRevision = useRef(0);
   const runNow = useRef<(job: RunJob) => Promise<void>>(async () => {});
   const [runGate] = useState(createRunGate);
   const [enqueue] = useState(() => createRunQueue<RunJob>((job) => runNow.current(job), { isLive: () => live.current }));
@@ -143,12 +144,15 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
   };
   const actionsFor = (enabled: boolean, source: string = code, authored = false) => practiceActions({ language, code: source, lessonId, versionId, revision, sandboxEnabled: enabled, authored });
 
-  useEffect(() => {
+  const resetResults = () => {
+    codeRevision.current++;
     lintSeq.current++;
+    setResult(null);
+    setCheckError("");
     setFindings(null);
     setLintError("");
     setLintBusy(false);
-  }, [code]);
+  };
   const lint = async () => {
     const seq = ++lintSeq.current;
     setLintBusy(true);
@@ -162,6 +166,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     if (live.current && seq === lintSeq.current) setLintBusy(false);
   };
   const check = async () => {
+    const revisionAtSubmit = codeRevision.current;
     void lint();
     setCheckBusy(true);
     setCheckError("");
@@ -169,10 +174,10 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
       const res = await checkPractice(...actionsFor(sandboxEnabled).check.args);
       if (live.current) {
         setAttemptCount(res.attemptCount);
-        setResult(res);
+        if (revisionAtSubmit === codeRevision.current) setResult(res);
       }
     } catch (e) {
-      if (live.current) { setResult(null); setCheckError(msg(e)); }
+      if (live.current && revisionAtSubmit === codeRevision.current) { setResult(null); setCheckError(msg(e)); }
     }
     if (live.current) setCheckBusy(false);
   };
@@ -239,6 +244,6 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     result, attemptCount, checkBusy, checkError, findings, lintBusy, lintError,
     busy: starting || sid !== null || shellRun,
     showOutput: sid !== null || starting || shellRun || term !== "",
-    run, runAuthored, check, lint, stop, answer,
+    run, runAuthored, check, lint, stop, answer, resetResults,
   };
 }

@@ -91,7 +91,7 @@ export default function LessonResults({ children, result, tests, checkError, fin
           )}
         </section>
       )}
-      {rows.length === 0 && findings === null && !checkError && !lintError && <p className="m-0 text-xs text-[var(--mu)]">Press Check to run the tests, or Lint for style findings.</p>}
+      {rows.length === 0 && findings === null && !checkError && !lintError && <p className="m-0 text-xs text-[var(--mu)]">Choose Submit to run the tests, or Lint to check code style.</p>}
     </div>
   );
 }

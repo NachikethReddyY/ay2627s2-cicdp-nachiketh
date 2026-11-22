@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { gameCompletions, lessons, lessonVersions, partCompletions, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { gameAttempts, gameCompletions, lessons, lessonVersions, partCompletions, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
 import { toPublicGame, type GameProps } from "@learnquest/ui-catalog";
 
 const app = buildApp();
@@ -125,10 +125,10 @@ test("games.check grades every kind on the server", async () => {
   await addGame("games-1");
   const verdict = async (i: number, s: unknown) => out(await check(cookie, i, s));
 
-  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1] }), { correct: false, complete: false, questionResults: [true] });
-  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [0] }), { correct: false, complete: false, questionResults: [false] });
-  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1, 0] }), { correct: false, complete: false, questionResults: [true, false] });
-  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1, 2] }), { correct: true, complete: true, questionResults: [true, true] });
+  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1] }), { correct: false, complete: false, questionCorrect: true, remainingAttempts: 3 });
+  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [0] }), { correct: false, complete: false, questionCorrect: false, remainingAttempts: 2 });
+  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1, 0] }), { correct: false, complete: false, questionCorrect: false, remainingAttempts: 1 });
+  assert.deepEqual(await verdict(0, { kind: "quiz", answers: [1, 2] }), { correct: true, complete: true, questionCorrect: true, remainingAttempts: 1 });
   assert.equal((await check(cookie, 0, { kind: "quiz", answers: [1, 2, 0] })).statusCode, 400, "more answers than questions");
 
   const good = ["forward", "forward", "forward", "pick", "right", "forward", "forward"];
@@ -170,8 +170,11 @@ test("games.hint returns the stored hint, 404 out of range and for lessons the c
   const cookie = await signUp(app, "a@example.com");
   const other = await signUp(app, "b@example.com");
   await addGame("games-1");
-  const hint = async (c: string, gameIndex: number, hintIndex: number, lessonId = "games-1") => q(c, "games.hint", { lessonId, versionId: await versionOf(lessonId), gameIndex, hintIndex });
+  const hint = async (c: string, gameIndex: number, hintIndex: number, lessonId = "games-1") => m(c, "games.hint", { lessonId, versionId: await versionOf(lessonId), gameIndex, hintIndex });
+  assert.equal(code(await hint(cookie, 0, 1)), "PRECONDITION_FAILED");
   assert.deepEqual(out(await hint(cookie, 0, 0)), { text: "quiz hint 1" });
+  assert.deepEqual(out(await hint(cookie, 0, 0)), { text: "quiz hint 1" });
+  assert.equal(code(await hint(other, 0, 1)), "PRECONDITION_FAILED");
   assert.deepEqual(out(await hint(cookie, 0, 1)), { text: "quiz hint 2" });
   for (const res of [await hint(cookie, 0, 2), await hint(cookie, 2, 0), await hint(cookie, 9, 0), await hint(cookie, 0, 0, "nope")]) {
     assert.equal(res.statusCode, 404);
@@ -186,6 +189,24 @@ test("games.hint returns the stored hint, 404 out of range and for lessons the c
   assert.equal((await hint(cookie, 0, 0, "b-games")).statusCode, 404, "private course of someone else");
   assert.equal((await check(cookie, 0, { kind: "quiz", answers: [1, 2] }, "b-games")).statusCode, 404);
   assert.deepEqual(out(await hint(other, 0, 0, "b-games")), { text: "quiz hint 1" });
+});
+
+test("wrong guesses spend a shared daily budget across concurrent requests for the same block", async () => {
+  const cookie = await signUp(app);
+  await addGame("games-1");
+  const versionId = await versionOf("games-1");
+  const status = async (gameIndex: number) => out(await q(cookie, "games.status", { lessonId: "games-1", gameIndex, versionId }));
+  const guess = { kind: "quiz", answers: [0] };
+  const misses = await Promise.all([0, 1, 2, 3].map(async () => out(await check(cookie, 0, guess))));
+  assert.deepEqual(misses.map((res) => res.remainingAttempts).sort(), [0, 0, 1, 2]);
+  assert.deepEqual(await status(0), { remainingAttempts: 0, maxAttempts: 3 });
+  assert.deepEqual(await status(1), { remainingAttempts: 3, maxAttempts: 3 });
+  const solution = { kind: "quiz", answers: [1, 2] };
+  assert.deepEqual(out(await check(cookie, 0, solution)), { correct: false, complete: false, remainingAttempts: 0 });
+  assert.equal((await db.select().from(gameCompletions)).length, 0);
+  await db.update(gameAttempts).set({ attemptDay: "2000-01-01" }).where(eq(gameAttempts.lessonVersionId, versionId));
+  assert.deepEqual(await status(0), { remainingAttempts: 3, maxAttempts: 3 });
+  assert.equal(out(await check(cookie, 0, solution)).complete, true);
 });
 
 test("a win is recorded only when the server says the game is complete", async () => {

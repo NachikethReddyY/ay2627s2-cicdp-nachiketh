@@ -5,6 +5,7 @@ import type { GeneratedMcqStep } from "../ai/step-schema.ts";
 import {
   boolean,
   check,
+  date,
   index,
   numeric,
   integer,
@@ -435,6 +436,19 @@ export const gameCompletions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId, t.partIdx, t.blockId] })],
+);
+
+export const gameAttempts = pgTable(
+  "game_attempts",
+  {
+    learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
+    lessonVersionId: text("lesson_version_id").notNull().references(() => lessonVersions.id, { onDelete: "cascade" }),
+    blockId: text("block_id").notNull(),
+    attemptDay: date("attempt_day").notNull(),
+    misses: integer("misses").notNull(),
+    hintsRevealed: integer("hints_revealed").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.lessonVersionId, t.blockId] })],
 );
 
 export const partCompletions = pgTable(

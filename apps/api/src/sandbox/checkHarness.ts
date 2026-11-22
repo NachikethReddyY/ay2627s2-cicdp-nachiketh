@@ -17,7 +17,7 @@ const COMMANDS = {
 // Drops root before exec: uid/gid 1001, no supplementary groups, and no effective, permitted or inheritable capabilities.
 // --bounding-set=-all needs CAP_SETPCAP, which the harness does not hold, so the bounding set keeps KILL, SETGID and SETUID.
 // That is harmless: the learner cannot raise them, because no-new-privileges is set and its own sets are empty.
-const DROP = ["--reuid=1001", "--regid=1001", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
+const DROP = ["--no-new-privs", "--reuid=1001", "--regid=1001", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
 
 function runOne(deps, cmd, args, cwd, stdin) {
   return new Promise((resolve) => {

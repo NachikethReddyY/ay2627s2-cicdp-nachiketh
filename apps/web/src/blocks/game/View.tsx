@@ -1,13 +1,14 @@
 import { useMemo, useRef, useState, type ReactElement } from "react";
 import { DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type PublicGameProps, type GridCommand, type GridProgram, type GridProps, type GridRun } from "@learnquest/ui-catalog";
-import type { BlockViewProps } from "../registry.ts";
+import { useApi } from "../../lib/api.ts";
+import type { BlockViewProps, GameCompletionContext } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
-import { gameApi, type GameApi } from "./api.ts";
+import { gameApi, type ActiveGameApi } from "./api.ts";
 import Shell, { btn, btnPrimary } from "./Shell.tsx";
 import DragGame from "./DragGame.tsx";
 import PhysicsGame from "./PhysicsGame.tsx";
 import QuizGame from "./QuizGame.tsx";
-import { announceRun, announceStep, controls, edit, keyIntent, stepText, verdict, type Intent, type Outcome } from "./model.ts";
+import { announceRun, announceStep, controls, edit, keyIntent, stepText, type Intent, type Outcome } from "./model.ts";
 
 const C = 40;
 const LABEL: Record<GridCommand, string> = { forward: "Forward", left: "Turn left", right: "Turn right", pick: "Pick" };
@@ -51,28 +52,29 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
   );
 }
 
-function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameApi }) {
+function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: ActiveGameApi }) {
   const reduced = useReducedMotion();
   const c = controls(g.mode);
   const start: At = { x: g.start.x, y: g.start.y, dir: g.start.dir, collected: [] };
   const init = useMemo<GridProgram>(() => (g.mode === "debug" ? g.starter ?? [] : []), [g]);
   const watch = useMemo(() => (g.mode === "watch" && g.solution ? simulate(g.solution, g) : null), [g]);
-  const maxLives = p.shell.lives;
+  const maxLives = api.maxAttempts;
   const [program, setProgram] = useState(init);
   const [draft, setDraft] = useState<{ times: number; body: GridCommand[] }>({ times: 2, body: [] });
   const [ran, setRan] = useState<GridRun | null>(null);
   const [idx, setIdx] = useState(0);
-  const [outcome, setOutcome] = useState<Outcome>("play");
-  const [lives, setLives] = useState(maxLives);
+  const [outcome, setOutcome] = useState<Outcome>(api.remainingAttempts > 0 ? "play" : "lose");
+  const [lives, setLives] = useState(api.remainingAttempts);
   const [live, setLive] = useState("");
   const [busy, setBusy] = useState(false);
   const gen = useRef(0);
+  const over = outcome === "win" || outcome === "lose";
   const run = watch ?? ran;
   const at: At = idx > 0 && run ? run.trace[idx - 1] : start;
   const max = g.maxBlocks ?? MAX_PROGRAM_STEPS;
 
   const dispatch = (i: Intent) => {
-    if (outcome === "win" || outcome === "lose") return;
+    if (over) return;
     if (busy) return;
     if (i.type === "step") {
       if (!watch || !g.solution) return setLive("");
@@ -86,7 +88,9 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
       api.check({ kind: "grid", program: solution })
         .then((r) => {
           if (mine !== gen.current) return;
+          setLives(r.remainingAttempts);
           if (r.complete) return (setOutcome("win"), setLive(`${text} End of the solution.`.trim()));
+          if (r.remainingAttempts === 0) return setOutcome("lose");
           setLive(atEnd ? "Couldn't confirm the run. Step again to retry." : text);
         })
         .catch(() => { if (mine === gen.current) setLive(`${text} Couldn't check the run. Step again to retry.`.trim()); })
@@ -103,8 +107,8 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
         .then((res) => {
           if (mine !== gen.current) return;
           const shown = { ...r, ok: res.correct };
-          const v = verdict(shown, lives);
-          setRan(shown), setIdx(shown.trace.length), setLives(v.lives), setOutcome(v.state), setLive(announceRun(shown, v.state));
+          const state = res.correct ? "win" : res.remainingAttempts > 0 ? "retry" : "lose";
+          setRan(shown), setIdx(shown.trace.length), setLives(res.remainingAttempts), setOutcome(state), setLive(announceRun(shown, state));
         })
         .catch(() => { if (mine === gen.current) setLive("Couldn't check the run. Try again."); })
         .finally(() => setBusy(false));
@@ -118,7 +122,6 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
   const retry = () => {
     gen.current++;
     setProgram(init), setRan(null), setIdx(0), setDraft({ times: 2, body: [] });
-    if (outcome === "win" || outcome === "lose") setLives(maxLives);
     setOutcome("play"), setLive("Back at the start.");
   };
 
@@ -134,13 +137,13 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
         }}
       >
         <Board g={g} at={at} reduced={reduced} />
-        {c.step && (
+        {c.step && !over && (
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btn} onClick={() => dispatch({ type: "step" })}>Step</button>
             <button type="button" className={btn} disabled={reduced} onClick={() => dispatch({ type: "step" })}>Play</button>
           </div>
         )}
-        {c.build && (
+        {c.build && !over && (
           <>
             <ol aria-label="Your program" className="list-decimal pl-5 text-sm">
               {program.length ? program.map((s, i) => <li key={i}>{stepText(s)}</li>) : <li className="list-none">No steps yet.</li>}
@@ -166,7 +169,7 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
               </fieldset>
             )}
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={btnPrimary} onClick={() => dispatch({ type: "run" })}>Run</button>
+              <button type="button" className={btnPrimary} disabled={busy} onClick={() => dispatch({ type: "run" })}>Run</button>
               <button type="button" className={btn} onClick={() => dispatch({ type: "undo" })}>Undo</button>
               <button type="button" className={btn} onClick={() => dispatch({ type: "clear" })}>Clear</button>
             </div>
@@ -183,12 +186,27 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: GameAp
   );
 }
 
-export default function GameView({ block, gameCompletion }: BlockViewProps<PublicGameProps>) {
-  const p = block.props;
-  const api = useMemo(() => gameApi(gameCompletion, p.gameIndex), [gameCompletion, p.gameIndex]);
+function ActiveGame({ p, context }: { p: PublicGameProps; context: GameCompletionContext }) {
+  const client = gameApi(context, p.gameIndex);
+  const { data, error, reload } = useApi(`game:${context.versionId}:${p.gameIndex}`, client.status);
+  if (error) return <div role="alert">Couldn't load the game. <button type="button" className={btn} onClick={reload}>Try again</button></div>;
+  if (!data) return <p role="status">Loading game…</p>;
+  const api = { ...client, ...data };
   if (p.kind.kind === "grid") return <GridGame p={p} g={p.kind} api={api} />;
   if (p.kind.kind === "order" || p.kind.kind === "match" || p.kind.kind === "sort") return <DragGame p={p} kind={p.kind} api={api} />;
   if (p.kind.kind === "physics") return <PhysicsGame p={p} kind={p.kind} api={api} />;
   if (p.kind.kind === "quiz") return <QuizGame p={p} kind={p.kind} api={api} />;
   return <p className="break-words rounded-xl border border-[var(--line)] bg-[var(--glass)] p-3 text-sm">{p.alt}</p>;
+}
+
+export default function GameView({ block, gameCompletion }: BlockViewProps<PublicGameProps>) {
+  const p = block.props;
+  if (gameCompletion) return <ActiveGame p={p} context={gameCompletion} />;
+  return (
+    <section className="flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--line)] bg-[var(--glass)] p-3">
+      <h3 className="break-words text-lg font-semibold">{p.title}</h3>
+      <p className="break-words text-sm">{p.goalText}</p>
+      <p className="break-words text-sm text-[var(--mu)]">{p.alt}</p>
+    </section>
+  );
 }
