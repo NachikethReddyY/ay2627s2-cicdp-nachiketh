@@ -32,6 +32,16 @@ def test_leak_mcq_option_in_title() -> None:
         lesson(lambda s: s[0].update(title="Use reduce, with the  sum starting at 0"))
 
 
+def test_leak_cloze_answer_in_prompt() -> None:
+    with pytest.raises(ValidationError, match="leak"):
+        lesson(lambda s: s[1].update(prompt="Type the parameter exactly: discount = 0"))
+
+
+def test_leak_cloze_answer_in_practice_explanation() -> None:
+    with pytest.raises(ValidationError, match="leak"):
+        lesson(lambda s: s[1]["explanations"].update(practice="Now write discount = 0."))
+
+
 def test_bad_eliminate() -> None:
     with pytest.raises(ValidationError, match="bad eliminate"):
         lesson(lambda s: s[0]["hints"][0].update(eliminate=1))

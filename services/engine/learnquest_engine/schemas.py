@@ -97,11 +97,16 @@ class _Step(BaseModel):
         if not 1 <= len(self.beforeFiles) <= 4:
             raise ValueError("beforeFiles needs 1 to 4 files")
         haystack = [_norm(h.text) for h in self.hints]
-        haystack += [_norm(self.title), _norm(self.explanations.workedExample)]
+        haystack += [
+            _norm(self.title),
+            _norm(self.prompt),
+            _norm(self.explanations.workedExample),
+            _norm(self.explanations.practice),
+        ]
         for a in map(_norm, self._answers()):
             if len(a) >= 3 and any(a in h for h in haystack):
                 raise ValueError(
-                    f"step {self.title!r}: hints, title or workedExample leak the answer"
+                    f"step {self.title!r}: hints, title, prompt or explanations leak the answer"
                 )
         return self
 
