@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Hint, Reveal, StepPublic } from "./stepMachine";
 import { FOCUS } from "./ui";
+import { outcomeCopy } from "./live/readFlow";
 
 type Answer = { kind: "mcq"; choice: number } | { kind: "cloze"; text: string };
 
@@ -10,6 +11,19 @@ const Head = ({ idx, total, title }: { idx: number; total: number; title: string
     <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
   </>
 );
+
+function CodeFiles({ files }: { files: Record<string, string> }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {Object.entries(files).map(([name, code]) => (
+        <figure key={name}>
+          <figcaption className="text-xs font-semibold text-[var(--mu)]">{name}</figcaption>
+          <pre className="mt-1 overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--code)] px-3 py-2 font-mono text-sm"><code>{code}</code></pre>
+        </figure>
+      ))}
+    </div>
+  );
+}
 
 type PredictProps = {
   idx: number;
@@ -22,6 +36,8 @@ type PredictProps = {
   canSubmit: boolean;
   canHint: boolean;
   canSkip?: boolean;
+  showSkip?: boolean;
+  showCode?: boolean;
   onSubmit: (a: Answer) => void;
   onHint: () => void;
   onSkip?: () => void;
@@ -41,6 +57,7 @@ export function PredictPanel(p: PredictProps) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <Head idx={p.idx} total={p.total} title={step.title} />
+      {p.showCode && <CodeFiles files={step.beforeFiles} />}
       <fieldset className="mt-3">
         <legend className="font-semibold">{step.prompt}</legend>
         {step.kind === "mcq" ? (
@@ -72,7 +89,7 @@ export function PredictPanel(p: PredictProps) {
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="submit" disabled={!p.canSubmit || !ready || p.busy} className={`btn !px-5 !py-1.5 text-sm disabled:opacity-50 ${FOCUS}`}>Check</button>
         <button type="button" disabled={!p.canHint || p.busy} onClick={p.onHint} className={btn}>Hint</button>
-        {p.onSkip && <button type="button" disabled={!p.canSkip || p.busy} onClick={p.onSkip} className={btn}>Skip</button>}
+        {p.onSkip && p.showSkip !== false && <button type="button" disabled={!p.canSkip || p.busy} onClick={p.onSkip} className={btn}>Skip</button>}
       </div>
     </form>
   );
@@ -116,6 +133,29 @@ export function RevealPanel({ idx, total, state, correct, step, reveal, last, ne
           <button type="button" onClick={onNext} className={`btn mt-4 !px-5 !py-1.5 text-sm ${FOCUS}`}>{nextLabel ?? (last ? "Finish lesson" : "Next step")}</button>
         </>
       )}
+    </div>
+  );
+}
+
+type OutcomeProps = {
+  idx: number;
+  total: number;
+  correct: boolean | null;
+  step: StepPublic;
+  nextLabel: string;
+  onNext: () => void;
+};
+
+const focusOnMount = (el: HTMLElement | null) => el?.focus();
+
+export function OutcomePanel({ idx, total, correct, step, nextLabel, onNext }: OutcomeProps) {
+  const { heading, note } = outcomeCopy(correct);
+  return (
+    <div>
+      <Head idx={idx} total={total} title={step.title} />
+      <h4 ref={focusOnMount} tabIndex={-1} className="mt-3 text-lg font-semibold tracking-tight outline-none">{heading}</h4>
+      <p className="mt-2 text-sm">{note}</p>
+      <button type="button" onClick={onNext} className={`btn mt-4 !px-5 !py-1.5 text-sm ${FOCUS}`}>{nextLabel}</button>
     </div>
   );
 }

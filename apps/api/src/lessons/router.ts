@@ -1,11 +1,11 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { lessonRef, playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
-import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
-import { ensureLesson, prefetchNext } from "../ai/service.ts";
+import { attempts, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
+import { ensureLesson, prefetchNext, upgradeReadChecks } from "../ai/service.ts";
 import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
@@ -57,6 +57,7 @@ const ScrimMore = z.object({
 
 const Lesson = z.object({
   id: z.string(),
+  versionId: z.string(),
   title: z.string(),
   kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]),
   part: z
@@ -92,6 +93,8 @@ const Lesson = z.object({
       state: z.enum(["predicting", "hinting", "revealed", "skipped"]),
     }),
   ),
+  completed: z.boolean(),
+  canUpgradeReadChecks: z.boolean(),
   media: z.array(z.object({ stepId: z.string().nullable(), segment: z.number().nullable(), kind: z.literal("narration"), url: z.string() })),
 });
 
@@ -112,13 +115,20 @@ const write = protectedProcedure
 
 export const lessonsRouter = router({
   write,
+  upgradeReadChecks: protectedProcedure
+    .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/), versionId: z.uuid() }))
+    .output(z.object({ ok: z.literal(true) }))
+    .mutation(async ({ ctx, input }) => {
+      await upgradeReadChecks(input.id, input.versionId, ctx.learnerId);
+      return { ok: true as const };
+    }),
   get: protectedProcedure
     .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/) }))
     .output(Lesson)
     .query(async ({ ctx, input }) => {
       const { id } = input;
       const [found] = await db
-        .select({ lesson: lessons })
+        .select({ lesson: lessons, isOwner: sql<boolean>`coalesce(${worlds.ownerId} = ${learners.userId}, false)` })
         .from(lessons)
         .innerJoin(worlds, eq(worlds.id, lessons.worldId))
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
@@ -148,8 +158,18 @@ export const lessonsRouter = router({
         )
         .where(eq(steps.lessonVersionId, lesson.currentVersionId))
         .orderBy(asc(steps.idx));
-      const content = version?.content;
-      if ((lesson.kind === "scrim") !== (content?.kind === "scrim")) throw malformedScrim();
+      const [completion] = await db
+        .select({ lessonId: partCompletions.lessonId })
+        .from(partCompletions)
+        .where(and(eq(partCompletions.learnerId, ctx.learnerId), eq(partCompletions.lessonId, lesson.id)));
+      const readLesson = lesson.kind === "learn" || lesson.kind === "watch";
+      const opening = rows.find((row) => row.idx === 0);
+      const [prediction] = readLesson && rows.length >= 2 && opening
+        ? await db.select({ id: attempts.id }).from(attempts).where(and(eq(attempts.learnerId, ctx.learnerId), eq(attempts.stepId, opening.id), ne(attempts.kind, "skip"))).limit(1)
+        : [];
+      const readAllowed = !readLesson || completion !== undefined || prediction !== undefined;
+      if ((lesson.kind === "scrim") !== (version?.content?.kind === "scrim")) throw malformedScrim();
+      const content = readAllowed ? version?.content : undefined;
       let part: z.output<typeof Lesson>["part"] = null;
       const served = new Set<string>();
       switch (content?.kind) {
@@ -192,6 +212,7 @@ export const lessonsRouter = router({
       const servedRows = part?.kind === "scrim" ? rows.filter((row) => served.has(row.id)) : rows;
       return {
         id: lesson.slug,
+        versionId: lesson.currentVersionId,
         title: lesson.title,
         kind: lesson.kind,
         part,
@@ -200,9 +221,15 @@ export const lessonsRouter = router({
           idx: r.idx,
           title: r.pub.title,
           hintCount: r.hintCount,
-          state: lesson.kind === "scrim" ? scrimStepState(r.state) : lesson.kind === "predict" && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
+          state: lesson.kind === "scrim" ? scrimStepState(r.state) : (readLesson || lesson.kind === "predict") && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
         })),
-        media: await listMedia(lesson.currentVersionId).then((media) => {
+        completed: completion !== undefined,
+        canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.isOwner === true,
+        media: !readAllowed ? [] : await listMedia(lesson.currentVersionId).then((media) => {
+          if (readLesson) {
+            const revealed = new Set(rows.filter((row) => row.state === "revealed").map((row) => row.id));
+            return media.filter((item) => item.stepId === null || revealed.has(item.stepId));
+          }
           if (lesson.kind !== "scrim" || part?.kind !== "scrim") return media;
           const revealedStepIds = new Set(servedRows.filter((row) => row.state === "revealed").map((row) => row.id));
           return publicScrimMedia(media, { from: 0, to: part.segments.length, revealedStepIds });
@@ -231,6 +258,7 @@ export const lessonsRouter = router({
         from: input.from,
         ...visible,
         media: publicScrimMedia(media, { from: input.from, to: visible.nextOffset, revealedStepIds: new Set() }),
+
       };
     }),
 });

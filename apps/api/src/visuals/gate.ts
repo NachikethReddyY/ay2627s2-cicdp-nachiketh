@@ -1,17 +1,20 @@
 import { z } from "zod";
 import { parseSpec } from "@learnquest/ui-catalog";
 import { buildTimeline, seek } from "@learnquest/player-core";
-import { checkStep, Hunk, text } from "../ai/step-schema.ts";
+import { checkStep, Hunk, McqStep, text } from "../ai/step-schema.ts";
 import { GeneratedScrim } from "../parts/scrim-schema.ts";
 import { PracticeContent } from "../parts/practice-schema.ts";
 import type { GeneratedPart } from "../db/schema.ts";
 
+const ReadSteps = z.array(McqStep).length(2);
+
 const Part = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("learn"), body: text(4000), doc: z.unknown().optional() }),
+  z.object({ kind: z.literal("learn"), body: text(4000), doc: z.unknown().optional(), steps: ReadSteps }),
   z.object({
     kind: z.literal("watch"),
     beforeFiles: z.record(text(200), z.string().max(6000)).refine((f) => Object.keys(f).length >= 1 && Object.keys(f).length <= 4),
     hunks: z.array(Hunk).min(1).max(6),
+    steps: ReadSteps,
   }),
   PracticeContent,
   GeneratedScrim,
@@ -36,14 +39,16 @@ export function validatePart(raw: unknown): GeneratedPart {
   switch (part.kind) {
     case "learn": {
       checkBody(part.body);
+      for (const step of part.steps) checkStep(step);
       const parsed = part.doc === undefined ? null : parseSpec(part.doc);
-      if (!parsed?.ok) return { kind: "learn", body: part.body };
-      return { kind: "learn", body: part.body, doc: dropClientImages(parsed.spec) };
+      if (!parsed?.ok) return { kind: "learn", body: part.body, steps: part.steps };
+      return { kind: "learn", body: part.body, doc: dropClientImages(parsed.spec), steps: part.steps };
     }
     case "watch": {
       const tl = buildTimeline([{ beforeFiles: part.beforeFiles, hunks: part.hunks }]);
       if (JSON.stringify(seek(tl, tl.duration).files) === JSON.stringify(part.beforeFiles)) throw new Error("watch part changes nothing");
-      return { kind: "watch", beforeFiles: part.beforeFiles, hunks: part.hunks };
+      for (const step of part.steps) checkStep(step);
+      return { kind: "watch", beforeFiles: part.beforeFiles, hunks: part.hunks, steps: part.steps };
     }
     case "practice":
       return part;

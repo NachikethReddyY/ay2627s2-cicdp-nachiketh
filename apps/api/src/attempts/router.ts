@@ -1,10 +1,10 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, max, ne } from "drizzle-orm";
 import { playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
-import { db } from "../db/client.ts";
-import { attempts, hintEvents, learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
+import { db, type Db } from "../db/client.ts";
+import { attempts, hintEvents, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
@@ -29,6 +29,8 @@ async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
   const reachable = step !== undefined && (step.lessonKind !== "scrim" || (await scrimGateReachable(step, learnerId)));
   if (!step || !reachable) throw notFound();
+  if ((step.lessonKind === "learn" || step.lessonKind === "watch") && step.idx > 0 && !(await openingPredicted(db, learnerId, step)))
+    throw conflict("Answer the opening prediction first");
   return step;
 }
 
@@ -39,7 +41,7 @@ async function scrimGateReachable(step: { versionId: string; idx: number }, lear
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, versionId: steps.lessonVersionId, lessonKind: lessons.kind, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
+    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -65,9 +67,11 @@ const hintAt = (step: Step, rung: number) => {
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
 
+const isReadLesson = (step: Step) => step.lessonKind === "learn" || step.lessonKind === "watch";
+
 const recoverSkipped = (step: Step, p: Progress): Progress => {
   if (p.state !== "skipped") return p;
-  if (step.lessonKind === "predict") return { ...p, state: "predicting", attemptAllowed: true, retryAllowed: false };
+  if (step.lessonKind === "predict" || isReadLesson(step)) return { ...p, state: "predicting", attemptAllowed: true, retryAllowed: false };
   if (step.lessonKind === "scrim") return { ...p, state: "predicting" };
   return p;
 };
@@ -78,6 +82,39 @@ async function readProgress(learnerId: string, step: Step): Promise<Progress> {
     .from(stepProgress)
     .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, step.id)));
   return recoverSkipped(step, p ?? fresh());
+}
+
+const TRIES_BEFORE_ANSWER = 3;
+const triesBeforeAnswer = (step: Step) => (isReadLesson(step) || step.lessonKind === "practice" ? TRIES_BEFORE_ANSWER : 0);
+
+async function triesOf(tx: Db, learnerId: string, stepId: string) {
+  const [row] = await tx
+    .select({ made: count() })
+    .from(attempts)
+    .where(and(eq(attempts.learnerId, learnerId), eq(attempts.stepId, stepId), ne(attempts.kind, "skip")));
+  return { made: row.made };
+}
+
+async function closesReadLesson(tx: Db, step: Step) {
+  if (!isReadLesson(step)) return false;
+  const [last] = await tx.select({ idx: max(steps.idx), total: count() }).from(steps).where(eq(steps.lessonVersionId, step.versionId));
+  return last?.total >= 2 && last.idx === step.idx;
+}
+
+async function openingPredicted(tx: Db, learnerId: string, step: Step) {
+  const [{ n }] = await tx
+    .select({ n: count() })
+    .from(attempts)
+    .innerJoin(steps, eq(steps.id, attempts.stepId))
+    .where(
+      and(
+        eq(attempts.learnerId, learnerId),
+        eq(steps.lessonVersionId, step.versionId),
+        eq(steps.idx, 0),
+        ne(attempts.kind, "skip"),
+      ),
+    );
+  return n > 0;
 }
 
 function mutate(
@@ -91,8 +128,17 @@ function mutate(
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
-    const r = next(recoverSkipped(step, p), action, { hintCount: step.secret.hints.length });
+    const { made } = await triesOf(tx, learnerId, stepId);
+    const r = next(recoverSkipped(step, p), action, {
+      hintCount: step.secret.hints.length,
+      triesBeforeAnswer: triesBeforeAnswer(step),
+      triesMade: made,
+      correctFinishesEarly: step.lessonKind !== "practice",
+    });
     if ("conflict" in r) return r;
+    if (action.type === "attempt" && (await closesReadLesson(tx, step)) && step.idx > 0 && !(await openingPredicted(tx, learnerId, step))) {
+      return { conflict: "Answer the opening prediction first" };
+    }
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
     const o = r.outcome;
@@ -121,6 +167,9 @@ function mutate(
         .returning({ id: attempts.id });
       attemptId = row.id;
       observedFirst = n === 0;
+      if (o.type === "attempt" && (await closesReadLesson(tx, step))) {
+        await tx.insert(partCompletions).values({ learnerId, lessonId: step.lessonId }).onConflictDoNothing();
+      }
     }
     return { ...r, attemptId, observed: attemptId !== undefined && observedFirst };
   });
@@ -202,7 +251,7 @@ export const stepsRouter = router({
       return {
         attemptId: out.attemptId!,
         correct,
-        feedback: correct ? "Correct!" : "Not quite.",
+        feedback: correct ? (out.progress.state === "revealed" ? "Correct!" : "Correct! Try again to unlock the explanation.") : "Not quite.",
         missedConcepts: correct ? [] : missedOf(step),
         hintsUsed: out.progress.rungsTaken,
         state: out.progress.state,
@@ -226,7 +275,7 @@ export const stepsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
       if (step.lessonKind === "predict") throw predictSkip();
-      if (step.lessonKind === "scrim") throw conflict("Scrim gates cannot be skipped");
+      if (isReadLesson(step) || step.lessonKind === "scrim") throw conflict("This check cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);
@@ -249,8 +298,11 @@ export const stepsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
+      if (isReadLesson(step)) throw conflict("Watch the lesson to see the answer");
       const { state } = await readProgress(ctx.learnerId, step);
       if (state !== "revealed" && state !== "skipped") throw conflict("Not revealed yet");
+      const { made } = await triesOf(db, ctx.learnerId, step.id);
+      if (made < triesBeforeAnswer(step)) throw conflict(`Try at least ${triesBeforeAnswer(step)} times to see the answer`);
       const s = step.secret;
       return {
         answer:

@@ -86,3 +86,23 @@ def test_game_doc_without_a_game_block_gets_repaired(fake_llm: FakeLLM, monkeypa
         pipeline.lesson(ctx("game-practice"))
     assert len(calls) == 2
     assert "needs a block with type" in calls[1]["messages"][1]["content"]
+
+
+def test_learn_and_watch_parts_carry_an_opening_and_a_closing_check(fake_llm: FakeLLM) -> None:
+    from learnquest_engine.schemas import WatchPart
+
+    fake_llm("part_learn_1")
+    learn = pipeline.lesson(ctx("learn")).value
+    fake_llm("part_watch_1")
+    watch = pipeline.lesson(ctx("watch")).value
+    assert isinstance(learn, LearnPart) and isinstance(watch, WatchPart)
+    assert [s.kind for s in learn.steps] == ["mcq", "mcq"]
+    assert [s.kind for s in watch.steps] == ["mcq", "mcq"]
+
+
+def test_learn_part_without_two_checks_is_rejected() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        LearnPart.model_validate({"kind": "learn", "body": "x", "steps": []})

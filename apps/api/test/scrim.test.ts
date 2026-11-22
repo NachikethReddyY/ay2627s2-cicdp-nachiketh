@@ -131,6 +131,8 @@ test("lessons.get returns only through the first pending gate with no secrets", 
   ]);
   assert.deepEqual(out(res), {
     id: slug,
+    versionId,
+    canUpgradeReadChecks: false,
     title: "Scrim echo",
     kind: "scrim",
     part: {
@@ -144,6 +146,7 @@ test("lessons.get returns only through the first pending gate with no secrets", 
       started: false,
     },
     steps: [{ id: gateId, idx: gateIdx, title: gateTitle, hintCount: 1, state: "predicting" }],
+    completed: false,
     media: [{ stepId: null, segment: 1, kind: "narration", url: "memory://scrim-segment-1.wav" }],
   });
 });

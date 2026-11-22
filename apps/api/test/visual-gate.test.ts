@@ -2,21 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { validatePart } from "../src/visuals/gate.ts";
 import type { PartSecret } from "../src/db/schema.ts";
+import { readSteps, withChecks } from "./read-steps.ts";
 
 type LearnPart = Extract<PartSecret, { kind: "learn" }>;
 
 test("invalid visual document is dropped while lesson body survives", () => {
-  const part = validatePart({
+  const part = validatePart(withChecks({
     kind: "learn",
     body: "Fractions describe parts of a whole.",
     doc: { v: 1, blocks: [{ type: "run", id: "bad", props: {} }] },
-  });
+  }));
 
-  assert.deepEqual(part, { kind: "learn", body: "Fractions describe parts of a whole." });
+  assert.deepEqual(part, { kind: "learn", body: "Fractions describe parts of a whole.", steps: readSteps });
 });
 
 test("valid blocks survive while unknown blocks are dropped", () => {
-  const part = validatePart({
+  const part = validatePart(withChecks({
     kind: "learn",
     body: "A chart compares values.",
     doc: {
@@ -26,14 +27,14 @@ test("valid blocks survive while unknown blocks are dropped", () => {
         { type: "text", id: "good", props: { md: "Values" } },
       ],
     },
-  }) as LearnPart;
+  })) as LearnPart;
 
   assert.equal(part.body, "A chart compares values.");
   assert.deepEqual(part.doc?.blocks.map((block) => block.id), ["good"]);
 });
 
 test("a truncated learn body is rejected so the caller retries", () => {
-  assert.throws(() => validatePart({ kind: "learn", body: "Use `print(" }), /truncated/);
+  assert.throws(() => validatePart(withChecks({ kind: "learn", body: "Use `print(" })), /truncated/);
 });
 
 test("a game-practice part needs a valid document", () => {
@@ -67,7 +68,7 @@ test("a game-practice document with a game block is accepted", () => {
 });
 
 test("a model-written generated image block is stripped from a learn doc", () => {
-  const part = validatePart({
+  const part = validatePart(withChecks({
     kind: "learn",
     body: "A cell has parts.",
     doc: { v: 1, blocks: [
@@ -75,6 +76,13 @@ test("a model-written generated image block is stripped from a learn doc", () =>
       { type: "image", id: "p", props: { source: "generated-pending", alt: "pending" } },
       { type: "text", id: "t", props: { md: "ok" } },
     ] },
-  }) as LearnPart;
+  })) as LearnPart;
   assert.deepEqual(part.doc?.blocks.map((b) => b.id), ["t"]);
+});
+
+test("learn and watch parts need exactly an opening and a closing check", () => {
+  const learn = { kind: "learn", body: "Fractions describe parts of a whole." };
+  assert.throws(() => validatePart(learn));
+  assert.throws(() => validatePart({ ...learn, steps: readSteps.slice(0, 1) }));
+  assert.throws(() => validatePart({ kind: "watch", beforeFiles: { "a.js": "let x = 1;\n" }, hunks: [{ id: "h", file: "a.js", oldStart: 1, lines: ["-let x = 1;", "+let x = 2;"] }] }));
 });

@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { lessonRef, playableLesson } from "../access.ts";
 import { db, type Db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
@@ -155,13 +156,16 @@ function partCacheKey(ctx: LessonContext) {
   return createHash("sha256").update(`v${PART_CACHE_VERSION}:${JSON.stringify({ ...ctx, missedConcepts: [] })}`).digest("hex");
 }
 
-async function cachedPart(key: string): Promise<GeneratedPart | null> {
+type PartCache = { part?: GeneratedPart; obsolete?: GeneratedPart };
+
+async function cachedPart(key: string, kind: LessonRow["kind"]): Promise<PartCache> {
   const [hit] = await db.select({ content: generationCache.content }).from(generationCache).where(eq(generationCache.key, key)).limit(1);
-  if (!hit) return null;
+  if (!hit) return {};
   try {
-    return validatePart(hit.content);
+    const part = validatePart(hit.content);
+    return part.kind === kind ? { part } : { obsolete: hit.content };
   } catch {
-    return null;
+    return { obsolete: hit.content };
   }
 }
 
@@ -184,12 +188,22 @@ async function lessonContext(l: LessonRow): Promise<LessonContext> {
 
 type Generated = { part: GeneratedPart | null; generated: GeneratedStep[] };
 
-async function generate(ctx: LessonContext, key: string | null, cached: GeneratedPart | null, isPublic: boolean): Promise<Generated> {
-  let part = cached && isPublic ? await moderated(cached, true) : cached;
+async function generate(ctx: LessonContext, key: string | null, cached: PartCache, isPublic: boolean): Promise<Generated> {
+  let part = cached.part && isPublic ? await moderated(cached.part, true) : (cached.part ?? null);
   if (key && !part) {
     const partCtx: PartContext = { ...ctx, missedConcepts: [] };
-    part = await moderated(validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx))), isPublic);
-    await db.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
+    const next = validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx)));
+    if (next.kind !== ctx.lesson.kind) throw new Error("The generated part has the wrong lesson kind");
+    part = await moderated(next, isPublic);
+    const entry = { kind: part.kind, content: part };
+    const insert = db.insert(generationCache).values({ key, ...entry });
+    if (cached.obsolete) {
+      await insert.onConflictDoUpdate({
+        target: generationCache.key,
+        set: entry,
+        setWhere: eq(generationCache.content, cached.obsolete),
+      });
+    } else await insert.onConflictDoNothing();
   }
   const generated = key ? [] : await moderated(validate(await measureGeneration("lesson", () => generator.lesson(ctx))), isPublic);
   return { part, generated };
@@ -296,13 +310,13 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   assertAiEnabled();
   const ctx = await lessonContext(pre);
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
-  const cached = key ? await cachedPart(key) : null;
+  const cached = key ? await cachedPart(key, pre.kind) : {};
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
     const isPublic = world?.visibility === "public";
-    if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
+    if (!cached.part) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
       const written = await withTx((tx) => writeOnce(tx, lessonId, isPublic, result));
@@ -321,6 +335,81 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
     }
   }
   throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't write this lesson. Try again.", cause: last });
+}
+
+function ownedReadLesson(tx: Db, ref: string, learnerId: string) {
+  return tx.select({ lesson: lessons, visibility: worlds.visibility })
+    .from(lessons)
+    .innerJoin(worlds, eq(worlds.id, lessons.worldId))
+    .innerJoin(learners, eq(learners.id, learnerId))
+    .where(and(
+      lessonRef(ref, lessons),
+      playableLesson(lessons),
+      eq(lessons.sourceKind, "ai"),
+      inArray(lessons.kind, ["learn", "watch"]),
+      eq(worlds.ownerId, learners.userId),
+    ));
+}
+
+async function hasReadChecks(tx: Db, versionId: string) {
+  const [{ total }] = await tx.select({ total: count() }).from(steps).where(eq(steps.lessonVersionId, versionId));
+  return total >= 2;
+}
+
+const upgradeUnavailable = () => new TRPCError({ code: "NOT_FOUND", message: "Lesson upgrade is unavailable" });
+const staleUpgrade = () => new TRPCError({ code: "CONFLICT", message: "This lesson changed during the update. Reload and try again." });
+
+const readUpgrades = new Map<string, Promise<void>>();
+
+export async function upgradeReadChecks(ref: string, versionId: string, learnerId: string) {
+  const [owned] = await ownedReadLesson(db, ref, learnerId);
+  if (!owned?.lesson.currentVersionId) throw upgradeUnavailable();
+  const { lesson, visibility } = owned;
+  if (lesson.currentVersionId !== versionId) throw staleUpgrade();
+  if (await hasReadChecks(db, versionId)) return;
+
+  assertAiEnabled();
+  const key = `${learnerId}:${versionId}:${visibility}`;
+  const running = readUpgrades.get(key);
+  if (running) return running;
+  const pending = replaceReadVersion(lesson, visibility, versionId, learnerId).finally(() => readUpgrades.delete(key));
+  readUpgrades.set(key, pending);
+  return pending;
+}
+
+async function replaceReadVersion(lesson: LessonRow, visibility: typeof worlds.$inferSelect.visibility, previousId: string, learnerId: string) {
+  const ctx = await lessonContext(lesson);
+  const key = partCacheKey(ctx);
+  const cached = await cachedPart(key, lesson.kind);
+  if (!cached.part) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_PART);
+  let part: GeneratedPart | null;
+  try {
+    ({ part } = await generate(ctx, key, cached, visibility === "public"));
+  } catch (cause) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't update this lesson. Try again.", cause });
+  }
+  const { content, gateSteps } = splitPart(part);
+  if (!content || gateSteps?.length !== 2) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The replacement needs two checks" });
+
+  await withTx(async (tx) => {
+    await tx.select({ id: lessons.id }).from(lessons).where(eq(lessons.id, lesson.id)).for("update");
+    const [owned] = await ownedReadLesson(tx, lesson.id, learnerId).for("update", { of: worlds });
+    if (!owned?.lesson.currentVersionId) throw upgradeUnavailable();
+    const current = owned.lesson;
+    if (current.worldId !== lesson.worldId || current.kind !== lesson.kind) throw upgradeUnavailable();
+    if (current.currentVersionId !== previousId || owned.visibility !== visibility) throw staleUpgrade();
+    if (await hasReadChecks(tx, previousId)) return;
+
+    const [{ latest }] = await tx.select({ latest: max(lessonVersions.version) }).from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id));
+    const [version] = await tx.insert(lessonVersions).values({
+      lessonId: lesson.id,
+      version: (latest ?? 0) + 1,
+      content,
+      publishedAt: current.status === "published" ? new Date() : null,
+    }).returning({ id: lessonVersions.id });
+    await tx.insert(steps).values(stepRows(version.id, gateSteps));
+    await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
+  });
 }
 
 const background = new Set<Promise<unknown>>();

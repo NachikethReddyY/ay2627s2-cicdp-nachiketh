@@ -68,3 +68,5 @@ export function trpc(app: FastifyInstance, cookie = "") {
 }
 export const out = (res: { json(): any }) => res.json().result.data;
 export const code = (res: { json(): any }) => res.json().error.data.code as string;
+
+export { readSteps, withChecks } from "./read-steps.ts";
