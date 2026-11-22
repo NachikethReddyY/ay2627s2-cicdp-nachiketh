@@ -285,6 +285,27 @@ test("wins recorded before content identities read as wins of the block in versi
   assert.equal(await xpOf(cookie), 40);
 });
 
+test("version-indexed wins use the content of the version where they were earned", async () => {
+  const original = quizBlock("g1");
+  const changed = { ...original, props: { ...original.props, title: "Changed" } };
+  const lesson = await addGameLesson([original]);
+  await publishVersion(lesson, 2, [changed, quizBlock("g2")]);
+  const email = emailOf("versioned-legacy");
+  const cookie = await signedUp(email);
+  const learnerId = await learnerOf(email);
+  await db.insert(gameCompletions).values([
+    { learnerId, lessonId: lesson.lessonId, partIdx: 1, blockId: "g1" },
+    { learnerId, lessonId: lesson.lessonId, partIdx: 1, blockId: "g2" },
+  ]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 20);
+  await play(cookie, lesson, 0, true);
+  await play(cookie, lesson, 1, true);
+  assert.equal(await xpOf(cookie), 20);
+  await publishVersion(lesson, 3, [original]);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+});
+
 test("a game lesson completes only when every game block has been won", async () => {
   const lesson = await addTwoGameLesson();
   const rand = mulberry32(116);

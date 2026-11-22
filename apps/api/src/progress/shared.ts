@@ -33,7 +33,7 @@ export const gameWins = sql`(SELECT w.learner_id, w.lesson_id, w.hash, min(w.cre
   UNION ALL
   SELECT gc.learner_id, gc.lesson_id,
     COALESCE((SELECT k.hash FROM lesson_versions v1 CROSS JOIN LATERAL ${gameBlockKeys(sql`v1.content`)} k
-      WHERE v1.lesson_id = gc.lesson_id AND v1.version = 1 AND k.block_id = gc.block_id
+      WHERE v1.lesson_id = gc.lesson_id AND v1.version = gc.part_idx + 1 AND k.block_id = gc.block_id
       ORDER BY k.ord LIMIT 1), 'id:' || gc.block_id) AS hash,
     gc.created_at
   FROM game_completions gc WHERE gc.block_id NOT LIKE ${`${WIN_PREFIX}%`}) w
