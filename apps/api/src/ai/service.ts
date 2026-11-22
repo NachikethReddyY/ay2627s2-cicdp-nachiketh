@@ -12,7 +12,7 @@ import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
-import { tiers } from "../config/tiers.ts";
+import { mvpLimits } from "../config/limits.ts";
 import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
 import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
@@ -52,18 +52,18 @@ export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
   if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
   if (!env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
-  const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
+  const [me] = await db.select({ userId: learners.userId }).from(learners).where(eq(learners.id, learnerId));
   const slot = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me.userId}))`);
     const {
       rows: [{ n }],
     } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= tiers[me.tier].aiPathsPerDay) return null;
+    if (n >= mvpLimits.aiPathsPerDay) return null;
     const [row] = await tx.insert(aiGenerations).values({ userId: me.userId }).returning({ id: aiGenerations.id });
     return row.id;
   });
-  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me.tier].aiPathsPerDay} AI paths for today` });
+  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${mvpLimits.aiPathsPerDay} AI paths for today` });
   try {
     await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_REPLY);
   } catch (e) {
@@ -220,7 +220,7 @@ function stepRows(lessonVersionId: string, list: readonly GeneratedStep[]) {
   }));
 }
 
-async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, generated }: Generated) {
+async function writeOnce(tx: Db, lessonId: string, { part, generated }: Generated) {
   const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
   if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
 
@@ -230,11 +230,10 @@ async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, ge
     .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content })
     .returning();
   const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
-  const [learner] = prewarm ? await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId)) : [];
   const stepList = part ? (gateSteps ?? []) : generated;
   if (stepList.length) await tx.insert(steps).values(stepRows(version.id, stepList));
   await tx.update(lessons).set({ currentVersionId: version.id, status: "published" }).where(eq(lessons.id, l.id));
-  return { lessonVersionId: version.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
+  return { lessonVersionId: version.id, prewarm };
 }
 
 const inflight = new Map<string, Promise<boolean>>();
@@ -301,10 +300,10 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
     if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
-      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));
+      const written = await withTx((tx) => writeOnce(tx, lessonId, result));
       if (!written) return false;
       if (written.prewarm) {
-        const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
+        const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId })
           .catch((e) => console.error("prewarm of lesson images failed", e))
           .finally(() => background.delete(p));
         background.add(p);

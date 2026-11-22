@@ -18,7 +18,6 @@ const schema = z
     IMAGE_MODEL: z.string().min(1).optional(),
     IMAGE_API_STYLE: z.enum(["images", "chat"]).default("images"),
     IMAGE_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0.04)),
-    TIERS_JSON: z.string().optional(),
     AI_DAILY_BUDGET_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     AI_MONTHLY_BUDGET_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     AI_CALL_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0.01)),
