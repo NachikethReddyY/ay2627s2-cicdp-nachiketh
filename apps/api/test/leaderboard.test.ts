@@ -13,6 +13,7 @@ after(() => app.close());
 test("weekly leaderboard rows expose only generated handles and XP, even for legacy opt-outs", async () => {
   const cookie = await signUp(app, "hidden-local-part@example.com");
   const learnerId = await resolveLearnerId({ cookie });
+  assert.ok(learnerId);
   const [learner] = await db.update(learners)
     .set({ leaderboardOptIn: false })
     .where(eq(learners.id, learnerId))
