@@ -2,9 +2,11 @@ import { out, signUp, trpc } from "./helpers.ts";
 import { randomUUID } from "node:crypto";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 import { and, eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
-import { db } from "../src/db/client.ts";
+import { db, pool } from "../src/db/client.ts";
+import { withTx } from "../src/db/tx.ts";
 import { attempts, gameCompletions, learners, lessons, lessonVersions, stepProgress, user, worlds, type PartSecret } from "../src/db/schema.ts";
 import { lessonDone } from "../src/progress/shared.ts";
 import { seed } from "../src/db/seed.ts";
@@ -232,6 +234,97 @@ test("a submission from an older lesson version cannot win the new game", async 
   assert.equal(out(await play(cookie, lesson, 0, true)).complete, true);
 });
 
+test("a versionless client can play the first version and receives a reload conflict after publication", async () => {
+  const block = quizBlock("g1");
+  const original = { ...block, props: { ...block.props, hints: ["Original hint"] } };
+  const lesson = await addGameLesson([original]);
+  const cookie = await signUp(app, emailOf("versionless"));
+  const game = { lessonId: lesson.slug, gameIndex: 0 };
+  const submission = { ...game, submission: { kind: "quiz", answers: [1] } };
+  assert.deepEqual(out(await q(cookie, "games.hint", { ...game, hintIndex: 0 })), { text: "Original hint" });
+  assert.equal(out(await m(cookie, "games.check", submission)).complete, true);
+
+  await publishVersion(lesson, 2, [{ ...original, props: { ...original.props, hints: ["Updated hint"] } }]);
+  const rejected = [
+    await m(cookie, "games.check", submission),
+    await q(cookie, "games.hint", { ...game, hintIndex: 0 }),
+  ];
+  for (const response of rejected) {
+    assert.equal(response.statusCode, 409);
+    assert.match(response.body, /Reload it to continue/);
+  }
+  assert.equal(await xpOf(cookie), 10);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+});
+
+test("a submission waiting for publication rechecks the lesson version before granting a win", { timeout: 8000 }, async () => {
+  const block = quizBlock("g1");
+  const lesson = await addGameLesson([block]);
+  const cookie = await signUp(app, emailOf("publish-race"));
+  const versionId = out(await q(cookie, "lessons.get", { id: lesson.slug })).part.versionId;
+  const [next] = await db.insert(lessonVersions).values({
+    lessonId: lesson.lessonId, version: 2, content: gameContent([quizBlock("g2")]),
+  }).returning();
+  let pending: Promise<Awaited<ReturnType<typeof m>>> | undefined;
+
+  await withTx(async (tx, publisher) => {
+    await tx.update(lessons).set({ currentVersionId: next!.id }).where(eq(lessons.id, lesson.lessonId));
+    const { rows: [publication] } = await publisher.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+    pending = m(cookie, "games.check", { lessonId: lesson.slug, versionId, gameIndex: 0, submission: { kind: "quiz", answers: [1] } }).then((response) => response);
+    for (let i = 0; i < 100; i++) {
+      const { rows: [row] } = await pool.query<{ blocked: boolean }>(
+        "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND $1 = ANY(pg_blocking_pids(pid))) AS blocked",
+        [publication.pid],
+      );
+      if (row.blocked) return;
+      await delay(10);
+    }
+    assert.fail("The game check did not wait for the lesson publication");
+  });
+
+  assert.equal((await pending!).statusCode, 409);
+  assert.deepEqual(await winRows(lesson), []);
+  assert.equal(await xpOf(cookie), 0);
+});
+
+test("identical games keep independent wins and XP when they are reordered", async () => {
+  const first = quizBlock("g1");
+  const second = { ...first, id: "g2" };
+  const lesson = await addGameLesson([first, second]);
+  const cookie = await signUp(app, emailOf("identical-games"));
+  await play(cookie, lesson, 0, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  assert.equal(await xpOf(cookie), 10);
+
+  await publishVersion(lesson, 2, [second, first]);
+  await play(cookie, lesson, 1, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  assert.equal(await xpOf(cookie), 10);
+  await play(cookie, lesson, 0, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 20);
+});
+
+test("existing wins of identical games and prior versions each retain the XP already awarded", async () => {
+  const first = quizBlock("g1");
+  const second = { ...first, id: "g2" };
+  const lesson = await addGameLesson([first, second]);
+  await publishVersion(lesson, 2, [second, first]);
+  const email = emailOf("legacy-identical-games");
+  const cookie = await signedUp(email);
+  const learnerId = await learnerOf(email);
+  await db.insert(gameCompletions).values([
+    { learnerId, lessonId: lesson.lessonId, partIdx: 0, blockId: "g1" },
+    { learnerId, lessonId: lesson.lessonId, partIdx: 0, blockId: "g2" },
+    { learnerId, lessonId: lesson.lessonId, partIdx: 1, blockId: "g1" },
+  ]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 30);
+  await play(cookie, lesson, 0, true);
+  await play(cookie, lesson, 1, true);
+  assert.equal(await xpOf(cookie), 30);
+});
+
 test("a block added in a new version keeps old wins, needs its own win, and awards no XP for old blocks", async () => {
   const lesson = await addTwoGameLesson();
   const cookie = await signUp(app, emailOf("added"));
@@ -320,7 +413,7 @@ test("replaying a won block in the same version, even concurrently, stores one w
   const rows = await winRows(lesson);
   assert.equal(rows.length, 1);
   assert.equal(rows[0]!.partIdx, 0);
-  assert.match(rows[0]!.blockId, /^md5:[0-9a-f]{32}$/);
+  assert.equal(rows[0]!.blockId, "g1");
 });
 
 test("wins recorded before content identities read as wins of the block in version 1", async () => {
