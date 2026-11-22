@@ -82,7 +82,7 @@ test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
   assert.equal(playbackReducer(state, { type: "play" }).t, 0);
 });
 
-test("a reopened scrim resumes at the first unrevealed gate, or the start when none is open", () => {
+test("a fresh learner starts at the beginning; a learner with progress resumes at the first unrevealed gate", () => {
   const segments = [
     seg({ edit: { code: "a = 1", run: false } }),
     seg({ gate: "step-1" }),
@@ -91,9 +91,9 @@ test("a reopened scrim resumes at the first unrevealed gate, or the start when n
   ];
   const step = (id: string, state: Lesson["steps"][number]["state"]) => ({ id, idx: 0, title: id, hintCount: 1, state });
   const { clock } = scrimTimeline(segments);
-  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")]), clock.offsets[1]);
-  assert.equal(resumeTime(segments, [step("step-1", "hinting"), step("step-2", "predicting")]), clock.offsets[1]);
-  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "predicting")]), clock.offsets[3]);
-  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "revealed")]), 0);
-  assert.equal(resumeTime(segments, [step("step-1", "skipped"), step("step-2", "predicting")]), clock.offsets[1]);
+  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], false), 0);
+  assert.equal(resumeTime(segments, [step("step-1", "hinting"), step("step-2", "predicting")], true), clock.offsets[1]);
+  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "predicting")], true), clock.offsets[3]);
+  assert.equal(resumeTime(segments, [step("step-1", "revealed"), step("step-2", "revealed")], true), 0);
+  assert.equal(resumeTime(segments, [step("step-1", "predicting"), step("step-2", "predicting")], true), clock.offsets[1]);
 });

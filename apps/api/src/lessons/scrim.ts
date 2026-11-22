@@ -30,6 +30,20 @@ export function scrimGateOpen(scrim: Scrim, gates: ReadonlyMap<number, ScrimGate
   return segment >= 0 && (pending < 0 || segment <= pending);
 }
 
+export const servedGateIds = (segments: ReadonlyArray<{ gate?: string }>) => segments.flatMap((segment) => (segment.gate ? [segment.gate] : []));
+
+export function publicScrimMedia<T extends { stepId: string | null; segment: number | null }>(
+  media: readonly T[],
+  served: { from: number; to: number; revealedStepIds: ReadonlySet<string> },
+) {
+  return media.filter(
+    (item) =>
+      (item.stepId !== null || item.segment !== null) &&
+      (item.stepId === null || served.revealedStepIds.has(item.stepId)) &&
+      (item.segment === null || (item.segment >= served.from && item.segment < served.to)),
+  );
+}
+
 export function publicScrimSegments(scrim: Scrim, gates: ReadonlyMap<number, ScrimGateState>, from = 0) {
   const pending = pendingSegment(scrim, gates);
   const end = pending < 0 ? scrim.segments.length : pending + 1;

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { saveMedia } from "../media/service.ts";
@@ -7,7 +7,7 @@ import { storage } from "../media/storage.ts";
 import { slugOf } from "../progress/mastery.ts";
 import { db, pool } from "./client.ts";
 import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
-import { collectionPaths, collections, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
+import { attempts, collectionPaths, collections, concepts, hintEvents, lessonMedia, lessons, lessonVersions, pathCourses, paths, stepProgress, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
 
@@ -44,6 +44,21 @@ async function loadWorld(world: string) {
 }
 
 type Loaded = Awaited<ReturnType<typeof loadWorld>>;
+
+async function dropStaleSteps(tx: Tx, versionId: string, keep: string[]) {
+  const stale = (
+    await tx
+      .select({ id: steps.id })
+      .from(steps)
+      .where(keep.length > 0 ? and(eq(steps.lessonVersionId, versionId), notInArray(steps.id, keep)) : eq(steps.lessonVersionId, versionId))
+  ).map((row) => row.id);
+  if (stale.length === 0) return;
+  await tx.delete(lessonMedia).where(inArray(lessonMedia.stepId, stale));
+  await tx.delete(hintEvents).where(inArray(hintEvents.stepId, stale));
+  await tx.delete(attempts).where(inArray(attempts.stepId, stale));
+  await tx.delete(stepProgress).where(inArray(stepProgress.stepId, stale));
+  await tx.delete(steps).where(inArray(steps.id, stale));
+}
 
 async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
   const course = { title: manifest.title, description: manifest.description };
@@ -90,9 +105,15 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
     await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
     await tx.update(lessonVersions).set({ content: file.scrim ?? null }).where(eq(lessonVersions.id, version.id));
 
+    const stepId = (s: { id?: string }, idx: number) => s.id ?? `${file.slug}-${idx}`;
+    if (file.scrim) {
+      const served = file.scrim.segments.flatMap(({ gate }) => gate === undefined ? [] : [stepId(file.steps[gate], gate)]);
+      await dropStaleSteps(tx, version.id, served);
+    }
+
     for (const [idx, s] of file.steps.entries()) {
       const row = {
-        id: s.id ?? `${file.slug}-${idx}`,
+        id: stepId(s, idx),
         lessonVersionId: version.id,
         idx,
         public: s.public,

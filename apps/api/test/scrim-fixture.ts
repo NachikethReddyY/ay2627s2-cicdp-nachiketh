@@ -8,9 +8,10 @@ export type SegmentPlan = { gate?: number; edit?: boolean };
 
 export const segmentText = (index: number) => `SEG_TEXT_${index}`;
 export const segmentCode = (index: number) => `SEG_CODE_${index}`;
+export const stepCode = (gate: number) => `STEP_CODE_${gate}`;
 export const secrets = (gate: number) => ({
   title: `STEP_TITLE_${gate}`,
-  prompt: `STEP_PROMPT_${gate}`,
+  prompt: `STEP_PROMPT_${gate}\n\`\`\`js\n${stepCode(gate)}\n\`\`\``,
   before: `STEP_BEFORE_${gate}`,
   hint: `STEP_HINT_${gate}`,
   hunk: `STEP_HUNK_${gate}`,

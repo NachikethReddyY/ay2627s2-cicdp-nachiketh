@@ -25,17 +25,22 @@ async function setup() {
 
 const allOf = (gate: number) => Object.values(secrets(gate));
 
-test("every step route refuses a gate behind the first unrevealed gate and leaks nothing", async () => {
+test("every step route answers a gate behind the first unrevealed gate exactly as an unknown id, and leaks nothing", async () => {
   const { t, second } = await setup();
-  for (const res of [
-    await t.q("steps.get", { id: second }),
-    await t.q("steps.reveal", { id: second }),
-    await t.m("steps.attempt", { id: second, answer: right }),
-    await t.m("steps.hint", { id: second }),
-    await t.m("steps.skip", { id: second }),
-  ]) {
-    assert.equal(res.statusCode, 409, res.body);
-    assert.equal(code(res), "CONFLICT");
+  const call = (id: string) => [
+    ["steps.get", () => t.q("steps.get", { id })],
+    ["steps.reveal", () => t.q("steps.reveal", { id })],
+    ["steps.attempt", () => t.m("steps.attempt", { id, answer: right })],
+    ["steps.hint", () => t.m("steps.hint", { id })],
+    ["steps.skip", () => t.m("steps.skip", { id })],
+  ] as const;
+  for (const [index, [name, locked]] of call(second).entries()) {
+    const res = await locked();
+    const unknown = await call("no-such-step")[index]![1]();
+    assert.equal(res.statusCode, 404, `${name}: ${res.body}`);
+    assert.equal(code(res), "NOT_FOUND");
+    assert.equal(res.statusCode, unknown.statusCode, name);
+    assert.equal(res.body, unknown.body, name);
     for (const marker of [...allOf(1), segmentText(4), segmentCode(3)]) assert.ok(!res.body.includes(marker), `leaked ${marker}`);
   }
   const rows = await db.select().from(stepProgress);
@@ -52,7 +57,7 @@ test("the first gate works, and the next gate opens only after it is revealed", 
   assert.equal(step.statusCode, 200, step.body);
   assert.deepEqual(out(step).beforeFiles, { "src/main.js": secrets(0).before });
   assert.equal((await t.q("steps.reveal", { id: first })).statusCode, 409);
-  assert.equal((await t.q("steps.get", { id: second })).statusCode, 409);
+  assert.equal((await t.q("steps.get", { id: second })).statusCode, 404);
 
   const done = await t.m("steps.attempt", { id: first, answer: right });
   assert.equal(out(done).state, "revealed");

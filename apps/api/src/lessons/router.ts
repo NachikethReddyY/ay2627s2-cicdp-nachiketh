@@ -10,7 +10,7 @@ import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
 import { parseScrim } from "../parts/scrim-schema.ts";
-import { malformedScrim, publicScrimSegments, scrimGateStates, scrimStepState } from "./scrim.ts";
+import { malformedScrim, publicScrimMedia, publicScrimSegments, scrimGateStates, scrimStepState, servedGateIds } from "./scrim.ts";
 import { loadScrimGates } from "./scrim-gates.ts";
 import { publicDoc } from "@learnquest/ui-catalog";
 
@@ -77,6 +77,7 @@ const Lesson = z.object({
           gate: z.string().optional(),
         })),
         lab: PublicPractice,
+        started: z.boolean(),
       }),
       PublicPractice,
       z.object({ kind: z.literal("game-practice"), intro: z.string(), doc: z.unknown() }),
@@ -150,7 +151,7 @@ export const lessonsRouter = router({
       const content = version?.content;
       if ((lesson.kind === "scrim") !== (content?.kind === "scrim")) throw malformedScrim();
       let part: z.output<typeof Lesson>["part"] = null;
-      const servedGateIds = new Set<string>();
+      const served = new Set<string>();
       switch (content?.kind) {
         case "practice":
           part = publicPractice(content);
@@ -160,12 +161,13 @@ export const lessonsRouter = router({
           if (!scrim) throw malformedScrim();
           const gates = scrimGateStates(scrim, rows);
           const visible = publicScrimSegments(scrim, gates);
-          for (const segment of visible.segments) if (segment.gate) servedGateIds.add(segment.gate);
+          for (const id of servedGateIds(visible.segments)) served.add(id);
           part = {
             kind: "scrim",
             language: scrim.language,
             segments: visible.segments,
             lab: publicPractice(scrim.lab),
+            started: rows.some((row) => row.state !== null),
           };
           break;
         }
@@ -187,7 +189,7 @@ export const lessonsRouter = router({
         case undefined:
           break;
       }
-      const servedRows = part?.kind === "scrim" ? rows.filter((row) => servedGateIds.has(row.id)) : rows;
+      const servedRows = part?.kind === "scrim" ? rows.filter((row) => served.has(row.id)) : rows;
       return {
         id: lesson.slug,
         title: lesson.title,
@@ -202,12 +204,8 @@ export const lessonsRouter = router({
         })),
         media: await listMedia(lesson.currentVersionId).then((media) => {
           if (lesson.kind !== "scrim" || part?.kind !== "scrim") return media;
-          const revealed = new Set(rows.filter((row) => row.state === "revealed").map((row) => row.id));
-          return media.filter((item) =>
-            item.segment !== null
-              ? item.segment < part.segments.length
-              : item.stepId !== null && revealed.has(item.stepId),
-          );
+          const revealedStepIds = new Set(servedRows.filter((row) => row.state === "revealed").map((row) => row.id));
+          return publicScrimMedia(media, { from: 0, to: part.segments.length, revealedStepIds });
         }),
       };
     }),
@@ -232,7 +230,7 @@ export const lessonsRouter = router({
       return {
         from: input.from,
         ...visible,
-        media: media.filter((item) => item.segment !== null && item.segment >= input.from && item.segment < visible.nextOffset),
+        media: publicScrimMedia(media, { from: input.from, to: visible.nextOffset, revealedStepIds: new Set() }),
       };
     }),
 });

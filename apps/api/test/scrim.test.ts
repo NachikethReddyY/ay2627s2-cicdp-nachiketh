@@ -6,8 +6,8 @@ import { and, asc, eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db, pool } from "../src/db/client.ts";
 import {
-  attempts, checkResults, hintEvents, learners, lessonMedia, lessons, lessonVersions,
-  partCompletions, stepProgress, steps, worlds, type PartSecret,
+  attempts, checkResults, enrollments, hintEvents, learners, lessonMedia, lessons, lessonVersions,
+  partCompletions, pathCourses, paths, stepProgress, steps, worlds, type PartSecret,
 } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
@@ -91,7 +91,7 @@ async function insertScrim() {
     },
   }).returning({ id: steps.id });
   await db.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
-  return { lessonId: lesson.id, versionId: version.id, gateId: gate.id };
+  return { lessonId: lesson.id, versionId: version.id, gateId: gate.id, worldId: world.id };
 }
 
 const narration = { kind: "narration", status: "ready", contentType: "audio/wav", bytes: 12 } as const;
@@ -141,10 +141,54 @@ test("lessons.get returns only through the first pending gate with no secrets", 
         kind: "practice", instructions: scrim.lab.instructions, language: "javascript", starterCode: scrim.lab.starterCode,
         tests: publicTests,
       },
+      started: false,
     },
     steps: [{ id: gateId, idx: gateIdx, title: gateTitle, hintCount: 1, state: "predicting" }],
     media: [{ stepId: null, segment: 1, kind: "narration", url: "memory://scrim-segment-1.wav" }],
   });
+});
+
+test("lessons.get and the home preview omit narration and code for unserved gates", async () => {
+  const cookie = await signUp(app);
+  const t = trpc(app, cookie);
+  const { versionId, gateId, worldId } = await insertScrim();
+  const nextGate = gateIdx + 1;
+  const nextId = `${slug}-future-gate`;
+  const currentCode = "SERVED_GATE_PREVIEW";
+  const futureCode = "UNSERVED_GATE_PREVIEW";
+  await db.update(lessonVersions).set({ content: {
+    ...scrim,
+    segments: [...scrim.segments, { text: "A later prediction", durationMs: 800, gate: nextGate }, { text: "Later edit", durationMs: 700 }],
+  } }).where(eq(lessonVersions.id, versionId));
+  await db.update(steps).set({ public: { title: gateTitle, kind: "mcq", prompt: `${gatePrompt}\n\`\`\`js\n${currentCode}\n\`\`\``, options: ["A", "B"] } }).where(eq(steps.id, gateId));
+  await db.insert(steps).values({
+    id: nextId,
+    lessonVersionId: versionId,
+    idx: nextGate,
+    public: { title: "Future gate", kind: "mcq", prompt: `Future?\n\`\`\`js\n${futureCode}\n\`\`\``, options: ["A", "B"] },
+    secret: { answer: 0, hints: [], explanations: gateExplanations, beforeFiles: {}, hunks: [] },
+  });
+  setStorage(memoryStorage());
+  await db.insert(lessonMedia).values([
+    { ...narration, lessonVersionId: versionId, stepId: gateId, key: "served-gate.wav" },
+    { ...narration, lessonVersionId: versionId, stepId: nextId, key: "unserved-gate.wav" },
+  ]);
+  const lesson = await t.q("lessons.get", { id: slug });
+  assert.equal(lesson.statusCode, 200, lesson.body);
+  assert.deepEqual(out(lesson).media, []);
+  assert.ok(!lesson.body.includes(nextId));
+  assert.ok(!lesson.body.includes("served-gate.wav"));
+  assert.ok(!lesson.body.includes("unserved-gate.wav"));
+  const [learner] = await db.select({ id: learners.id }).from(learners);
+  const [path] = await db.insert(paths).values({ slug: "scrim-preview-path", title: "Scrim preview", visibility: "public", origin: "official" }).returning({ id: paths.id });
+  await db.insert(pathCourses).values({ pathId: path.id, worldId, position: 0 });
+  await db.insert(enrollments).values({ pathId: path.id, learnerId: learner.id });
+
+  const home = await t.q("home.get");
+  assert.equal(home.statusCode, 200, home.body);
+  assert.deepEqual(out(home).continue.snippet, [currentCode]);
+  assert.ok(!home.body.includes(nextId));
+  assert.ok(!home.body.includes(futureCode));
 });
 
 test("scrimMore reveals only the next slice after a gate is completed", async () => {

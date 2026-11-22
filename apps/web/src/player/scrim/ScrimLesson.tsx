@@ -13,7 +13,7 @@ export default function ScrimLesson({ lessonId, title, part, steps, media, next 
   const [loadedSteps, setLoadedSteps] = useState(steps);
   const [loadedMedia, setLoadedMedia] = useState(media);
   const [revision, setRevision] = useState(0);
-  const [resumeAt, setResumeAt] = useState(() => resumeTime(part.segments, steps));
+  const [resumeAt, setResumeAt] = useState(() => resumeTime(part.segments, steps, part.started));
   const [pendingGate, setPendingGate] = useState<{ stepId: string; at: number } | null>(null);
   const [loadError, setLoadError] = useState("");
   const loadMore = async (stepId: string, at: number) => {

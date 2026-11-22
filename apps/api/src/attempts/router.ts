@@ -26,12 +26,14 @@ const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Step not fou
 
 async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
-  if (!step) throw notFound();
-  if (step.lessonKind === "scrim") {
-    const { scrim, gates } = await loadScrimGates(step.versionId, learnerId);
-    if (!scrimGateOpen(scrim, gates, step.idx)) throw conflict("Scrim gate is not open yet");
-  }
+  const reachable = step !== undefined && (step.lessonKind !== "scrim" || (await scrimGateReachable(step, learnerId)));
+  if (!step || !reachable) throw notFound();
   return step;
+}
+
+async function scrimGateReachable(step: { versionId: string; idx: number }, learnerId: string) {
+  const { scrim, gates } = await loadScrimGates(step.versionId, learnerId);
+  return scrimGateOpen(scrim, gates, step.idx);
 }
 
 async function loadStep(id: string, learnerId: string) {

@@ -155,7 +155,7 @@ test("over generated scrims, lessons.get, scrimMore and every step route never e
         const attempt = await t.m("steps.attempt", { ...input, answer: { kind: "mcq", choice: 1 } });
         const hint = await t.m("steps.hint", input);
         for (const res of [get, reveal, attempt, hint, skip]) {
-          assert.equal(res.statusCode, 409, `${where}: ${res.body}`);
+          assert.equal(res.statusCode, 404, `${where}: ${res.body}`);
           assertNoMarkers(res.body, Object.values(secrets(gate)), where);
         }
         continue;
