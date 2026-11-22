@@ -72,7 +72,6 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     return shell.onState((st) => {
       track();
       if (st.kind === "open" && st.ready) {
-        shellUnreachable.current = false;
         readyTimeouts.current = 0;
         setRunNote(undefined);
       }
@@ -111,8 +110,8 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
       from = p.next;
       if (p.output) { stdout.current += p.output; append(p.output); }
       if (!p.done) { timer = setTimeout(poll, 300); return; }
-      if (p.error) setTerm((t) => `${t}${t && !t.endsWith("\n") ? "\n" : ""}${p.error}\n`);
-      else if (!stdout.current) setTerm((t) => t || "The program ran and printed nothing.");
+      if (p.error) append(`${p.error}\n`);
+      else if (!stdout.current) append("The program ran and printed nothing.\n");
       setSid(null);
       runGate.release();
     };
@@ -123,7 +122,8 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const oneShot = async (args: Parameters<typeof startPython>) => {
     if (!live.current) return;
     stdout.current = "";
-    setTerm("");
+    openTerminal();
+    setTerm((current) => outputTail(`${current}${current ? "\n" : ""}[Run]\n`, MAX_OUTPUT));
     setStarting(true);
     let id: string;
     try {
@@ -131,7 +131,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     } catch (e) {
       if (!live.current) return;
       setStarting(false);
-      setTerm(msg(e));
+      append(`${msg(e)}\n`);
       return;
     }
     if (!live.current) { void stopPython(id).catch(() => {}); return; }
@@ -176,7 +176,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     const a = actionsFor(sandboxEnabled, source, authored).run;
     if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
-    if (skipShellWait(shellUnreachable.current, shell.state())) {
+    if (shellUnreachable.current || skipShellWait(false, shell.state())) {
       setRunNote(undefined);
       const fb = actionsFor(false, source).run;
       if (fb.via === "oneshot") await oneShot(fb.args);
@@ -184,8 +184,6 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     setRunNote(undefined);
     setShellRun(true);
-    stdout.current = "";
-    setTerm("");
     try {
       const end = await runInShell({
         language: language === "python" ? "python" : "javascript",
@@ -194,11 +192,13 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
         socket: shell,
         putFile,
         refreshTree: () => {},
+        onTimeout: () => live.current && setRunNote(STILL_RUNNING),
       });
-      if (end === "timeout" && live.current) setRunNote(STILL_RUNNING);
+      if (end === "timeout" && live.current) setRunNote(undefined);
     } catch (e) {
       if (!live.current) return;
       if (e instanceof RunInShellError && e.kind === "starting") readyTimeouts.current += 1;
+      if (e instanceof RunInShellError && e.kind === "unavailable") shellUnreachable.current = true;
       if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state(), readyTimeouts.current)) {
         shellUnreachable.current = true;
         setShellRun(false);
@@ -213,10 +213,13 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const run = (source: string = code) => enqueue({ source, authored: false });
   const runAuthored = (source: string) => enqueue({ source, authored: true });
   const stop = () => {
-    if (!sid) return;
-    stopThenRelease(sid);
-    setSid(null);
-    append("\n[stopped]\n");
+    if (sid) {
+      stopThenRelease(sid);
+      setSid(null);
+      append("\n[stopped]\n");
+      return;
+    }
+    if (shellRun && shell) shell.send("\u0003");
   };
   const answer = (e: FormEvent) => {
     e.preventDefault();
@@ -231,7 +234,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     shell, shellState, term, sid, starting, shellRun, runNote, typed, setTyped,
     result, checkBusy, checkError, findings, lintBusy, lintError,
     busy: starting || sid !== null || shellRun,
-    showOutput: sid !== null || starting || term !== "",
+    showOutput: sid !== null || starting || shellRun || term !== "",
     run, runAuthored, check, lint, stop, answer,
   };
 }
