@@ -59,6 +59,15 @@ test("only learn and watch lessons with two checks use the flow", () => {
   assert.equal(hasChecks("predict", [open, open]), false);
 });
 
+test("legacy learn and watch lessons with fewer than two checks stay on the plain flow", () => {
+  assert.equal(hasChecks("learn", []), false);
+  assert.equal(hasChecks("learn", [done]), false);
+  assert.equal(hasChecks("watch", [open]), false);
+  assert.equal(hasChecks("learn", [open]), false);
+  assert.equal(startStage([done], false), "reading");
+  assert.equal(startStage([open], false), "opening");
+});
+
 test("the closing page stays up while the learner is on it, even after the server reports completion", () => {
   assert.equal(stageFor([done, wrong], true, "on", false), "closing");
   assert.equal(stageFor([done, open], false, "on", true), "closing");
