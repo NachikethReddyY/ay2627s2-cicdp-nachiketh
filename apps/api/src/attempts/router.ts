@@ -1,4 +1,4 @@
-import { and, count, eq, max } from "drizzle-orm";
+import { and, count, eq, max, ne } from "drizzle-orm";
 import { playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -64,10 +64,28 @@ async function readProgress(learnerId: string, stepId: string): Promise<Progress
   return p ?? fresh();
 }
 
+const isReadLesson = (step: Step) => step.lessonKind === "learn" || step.lessonKind === "watch";
+
 async function closesReadLesson(tx: Db, step: Step) {
-  if (step.lessonKind !== "learn" && step.lessonKind !== "watch") return false;
+  if (!isReadLesson(step)) return false;
   const [last] = await tx.select({ idx: max(steps.idx) }).from(steps).where(eq(steps.lessonVersionId, step.versionId));
   return last?.idx === step.idx;
+}
+
+async function openingPredicted(tx: Db, learnerId: string, step: Step) {
+  const [{ n }] = await tx
+    .select({ n: count() })
+    .from(attempts)
+    .innerJoin(steps, eq(steps.id, attempts.stepId))
+    .where(
+      and(
+        eq(attempts.learnerId, learnerId),
+        eq(steps.lessonVersionId, step.versionId),
+        eq(steps.idx, 0),
+        ne(attempts.kind, "skip"),
+      ),
+    );
+  return n > 0;
 }
 
 function mutate(
@@ -83,6 +101,9 @@ function mutate(
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
     const r = next(p, action, { hintCount: step.secret.hints.length });
     if ("conflict" in r) return r;
+    if (action.type === "attempt" && (await closesReadLesson(tx, step)) && step.idx > 0 && !(await openingPredicted(tx, learnerId, step))) {
+      return { conflict: "Answer the opening prediction first" };
+    }
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
     const o = r.outcome;
@@ -218,6 +239,7 @@ export const stepsRouter = router({
     .output(z.object({ state: z.literal("skipped") }))
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
+      if (isReadLesson(step)) throw conflict("This check cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);
       await applyMastery(ctx.learnerId, out);

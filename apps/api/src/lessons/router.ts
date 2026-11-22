@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
-import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
+import { learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { ensureLesson, prefetchNext } from "../ai/service.ts";
 import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
@@ -78,6 +78,7 @@ const Lesson = z.object({
       state: z.enum(["predicting", "hinting", "revealed", "skipped"]),
     }),
   ),
+  completed: z.boolean(),
   media: z.array(z.object({ stepId: z.string().nullable(), segment: z.number().nullable(), kind: z.literal("narration"), url: z.string() })),
 });
 
@@ -134,6 +135,10 @@ export const lessonsRouter = router({
         )
         .where(eq(steps.lessonVersionId, lesson.currentVersionId))
         .orderBy(asc(steps.idx));
+      const [completion] = await db
+        .select({ lessonId: partCompletions.lessonId })
+        .from(partCompletions)
+        .where(and(eq(partCompletions.learnerId, ctx.learnerId), eq(partCompletions.lessonId, lesson.id)));
       const content = version?.content;
       if ((lesson.kind === "scrim") !== (content?.kind === "scrim")) throw malformedScrim();
       let part: z.output<typeof Lesson>["part"] = null;
@@ -191,6 +196,7 @@ export const lessonsRouter = router({
           hintCount: r.hintCount,
           state: r.state ?? "predicting",
         })),
+        completed: completion !== undefined,
         media: await listMedia(lesson.currentVersionId),
       };
     }),

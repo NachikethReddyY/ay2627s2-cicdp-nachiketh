@@ -140,6 +140,7 @@ test("lessons.get returns segments, a resolved gate and sample tests with no sec
       },
     },
     steps: [{ id: gateId, idx: gateIdx, title: gateTitle, hintCount: 1, state: "predicting" }],
+    completed: false,
     media: [{ stepId: null, segment: 1, kind: "narration", url: "memory://scrim-segment-1.wav" }],
   });
 });

@@ -216,17 +216,46 @@ for (const [kind, part] of [["learn", learnPart], ["watch", watchPart]] as const
     assert.equal(wrong.correct, false);
     assert.equal((await done()).length, 0, "the opening prediction is not the closing check");
 
-    out(await trpc(app, cookie).m("steps.skip", { id: closing!.id }));
-    assert.equal((await done()).length, 0, "skipping the closing check is not an attempt");
+    const skipClosing = await m(cookie, "steps.skip", { id: closing!.id });
+    assert.equal(skipClosing.statusCode, 409, "the closing check cannot be skipped");
+    const skipOpening = await m(cookie, "steps.skip", { id: opening!.id });
+    assert.equal(skipOpening.statusCode, 409, "the opening prediction cannot be skipped");
+    assert.equal((await done()).length, 0, "skipping completes nothing");
+    assert.equal(out(await trpc(app, cookie).q("lessons.get", { id: `${kind}-checked` })).completed, false);
+  });
+
+  test(`a ${kind} closing check is refused until the opening prediction is attempted`, async () => {
+    const cookie = await signUp(app);
+    const lessonId = await addLesson(`${kind}-checked`, kind as "learn", part);
+    const [opening, closing] = await addChecks(lessonId);
+    const answer = { kind: "mcq", choice: 0 };
+
+    const early = await m(cookie, "steps.attempt", { id: closing!.id, answer });
+    assert.equal(early.statusCode, 409);
+    assert.equal((await db.select().from(partCompletions)).length, 0);
+
+    out(await trpc(app, cookie).m("steps.hint", { id: opening!.id }));
+    const afterHint = await m(cookie, "steps.attempt", { id: closing!.id, answer });
+    assert.equal(afterHint.statusCode, 409, "a hint is not a prediction");
+
+    out(await trpc(app, cookie).m("steps.attempt", { id: opening!.id, answer: { kind: "mcq", choice: 1 } }));
+    out(await trpc(app, cookie).m("steps.attempt", { id: closing!.id, answer }));
+    assert.equal((await db.select().from(partCompletions)).length, 1);
+    assert.equal(out(await trpc(app, cookie).q("lessons.get", { id: `${kind}-checked` })).completed, true);
   });
 
   test(`attempting the closing check of a ${kind} lesson completes it on a wrong answer`, async () => {
     const cookie = await signUp(app);
     const lessonId = await addLesson(`${kind}-checked`, kind as "learn", part);
-    const [, closing] = await addChecks(lessonId);
+    const [opening, closing] = await addChecks(lessonId);
 
-    out(await trpc(app, cookie).m("steps.attempt", { id: closing!.id, answer: { kind: "mcq", choice: 1 } }));
+    out(await trpc(app, cookie).m("steps.attempt", { id: opening!.id, answer: { kind: "mcq", choice: 0 } }));
+    const wrong = out(await trpc(app, cookie).m("steps.attempt", { id: closing!.id, answer: { kind: "mcq", choice: 1 } }));
+    assert.equal(wrong.state, "hinting");
     assert.equal((await db.select().from(partCompletions)).length, 1);
+    const reopened = out(await trpc(app, cookie).q("lessons.get", { id: `${kind}-checked` }));
+    assert.equal(reopened.completed, true, "a wrong closing answer still reads as complete on reopen");
+    assert.equal(reopened.steps[1].state, "hinting");
 
     const lesson = out(await trpc(app, cookie).q("courses.get", { slug: "codequest" })).lessons.find((l: { slug: string }) => l.slug === `${kind}-checked`);
     assert.deepEqual([lesson.done, lesson.total], [1, 1]);

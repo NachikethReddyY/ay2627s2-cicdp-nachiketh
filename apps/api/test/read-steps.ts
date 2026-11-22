@@ -2,7 +2,7 @@ const checkBefore = "let total = 1;\nconsole.log(total);\n";
 const checkStep = (title: string) => ({
   kind: "mcq" as const,
   title,
-  prompt: "What does this program print after the change?",
+  prompt: "What does this program print if `let total = 1;` becomes `let total = 2;`?",
   beforeFiles: { "main.js": checkBefore },
   hunks: [{ id: "h1", file: "main.js", oldStart: 1, lines: ["-let total = 1;", "+let total = 2;", " console.log(total);"] }],
   options: ["READ_ANSWER_OPTION_PRIVATE", "one", "undefined", "an error"],

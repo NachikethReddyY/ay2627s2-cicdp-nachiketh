@@ -11,6 +11,19 @@ const Head = ({ idx, total, title }: { idx: number; total: number; title: string
   </>
 );
 
+function CodeFiles({ files }: { files: Record<string, string> }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {Object.entries(files).map(([name, code]) => (
+        <figure key={name}>
+          <figcaption className="text-xs font-semibold text-[var(--mu)]">{name}</figcaption>
+          <pre className="mt-1 overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--code)] px-3 py-2 font-mono text-sm"><code>{code}</code></pre>
+        </figure>
+      ))}
+    </div>
+  );
+}
+
 type PredictProps = {
   idx: number;
   total: number;
@@ -22,6 +35,7 @@ type PredictProps = {
   canSubmit: boolean;
   canHint: boolean;
   canSkip: boolean;
+  showCode?: boolean;
   onSubmit: (a: Answer) => void;
   onHint: () => void;
   onSkip: () => void;
@@ -41,6 +55,7 @@ export function PredictPanel(p: PredictProps) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <Head idx={p.idx} total={p.total} title={step.title} />
+      {p.showCode && <CodeFiles files={step.beforeFiles} />}
       <fieldset className="mt-3">
         <legend className="font-semibold">{step.prompt}</legend>
         {step.kind === "mcq" ? (
