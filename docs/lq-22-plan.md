@@ -185,12 +185,9 @@ Every output carries a `reasonCode` from a fixed enum and a learner-facing `reas
 **Write path without pg-boss**
 
 1. After `mutate()` commits (`attempts/router.ts:76`), if the attempt was observed, call `applyObservations(learnerId)`. Errors are caught and logged; the attempt response never fails because of mastery.
-2. `applyObservations` runs one transaction:
-   - `SELECT … FROM learners WHERE id = $1 FOR NO KEY UPDATE`. It serialises calls per learner and does not block the locks that attempt inserts take.
-   - Select observed attempts with `mastery_applied_at IS NULL`, limit 50.
-   - For each: call the engine update, upsert `mastery` (`n_obs + 1`), set `mastery_applied_at`.
-   - Call `/v1/next` and insert one `recommendations` row. Its lessons are the ones the course lists show: published lessons and AI drafts. A draft is never `done`.
-   - Engine calls inside the transaction time out after 8 s (`ENGINE_CALL_TIMEOUT_MS`). That is below the 30 s `idle_in_transaction_session_timeout` in `db/client.ts`, which would otherwise close the transaction. The catch-up stops starting new rows or worlds after 12 s (`CATCH_UP_BUDGET_MS`). Rows left pending are applied by a later call.
+2. `applyObservations` reads the oldest pending observation and its mastery versions in a short transaction. It calls the engine outside the transaction, then locks the learner in a second short transaction and applies the result only if the observation is still pending and the mastery versions match. A conflicting worker retries from the current state. At most 50 observations are processed per call.
+   - `/v1/next` also runs outside a transaction; its result is saved only if its inputs are still current. Its lessons are the ones the course lists show: published lessons and AI drafts. A draft is never `done`.
+   - Engine calls time out after 8 s. Catch-up stops starting new observations or recommendations after 12 s; later calls process pending rows.
 3. `me.mastery` and `me.next` run `applyObservations` first, so an engine outage earlier is caught up on read.
 
 ---
@@ -254,4 +251,4 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 
 - Concept slugs drift without a catalogue, so mastery can split across near-duplicates (decision 3).
 - Without prerequisite edges, the policy may recommend concepts a learner has not reached. Acceptable for the first cut only.
-- `applyObservations` holds a row lock on the learner while it calls the engine (§5). Each call is capped at 8 s and the catch-up at 12 s, so the lock is held for seconds at most. If latency still shows up, compute the updates outside the lock and write them in a second step.
+- The inline engine call can still delay the attempt response, although it no longer holds a transaction open. Each call is capped at 8 s and catch-up at 12 s.

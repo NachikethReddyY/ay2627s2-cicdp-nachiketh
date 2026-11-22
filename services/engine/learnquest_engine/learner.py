@@ -85,6 +85,7 @@ class NextRequest(BaseModel):
 
 
 class NextResponse(BaseModel):
+    policyVersion: str
     action: policy.Action
     lessonId: str | None
     conceptId: str | None
@@ -105,6 +106,7 @@ def next_step(req: NextRequest) -> NextResponse:
         world_title=req.worldTitle,
     )
     return NextResponse(
+        policyVersion=policy.POLICY_VERSION,
         action=rec.action,
         lessonId=rec.lesson_id,
         conceptId=rec.concept_id,

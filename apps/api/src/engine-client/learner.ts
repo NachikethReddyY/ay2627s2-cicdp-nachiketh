@@ -23,6 +23,7 @@ export type NextRequest = {
 };
 export const ACTIONS = ["start", "learn", "practice", "advance", "done"] as const;
 const NextResponse = z.object({
+  policyVersion: z.string().min(1),
   action: z.enum(ACTIONS),
   lessonId: z.string().nullable(),
   conceptId: z.string().nullable(),
