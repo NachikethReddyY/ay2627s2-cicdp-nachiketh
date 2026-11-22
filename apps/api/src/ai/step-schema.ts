@@ -16,8 +16,10 @@ const Common = {
 };
 
 type LeakCheckStep = {
+  kind: "mcq" | "cloze";
   title: string;
   prompt: string;
+  beforeFiles: Readonly<Record<string, string>>;
   hints: ReadonlyArray<{ text: string }>;
   explanations: { workedExample: string; practice: string };
   answer: number | string;
@@ -25,27 +27,41 @@ type LeakCheckStep = {
   accepted?: ReadonlyArray<string>;
 };
 
-const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+const WHITESPACE = "\\t-\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff";
+const WHITESPACE_RUN = new RegExp(`[${WHITESPACE}]+`, "g");
+const WHITESPACE_EDGE = new RegExp(`^[${WHITESPACE}]+|[${WHITESPACE}]+$`, "g");
+const IDENTIFIER = /^[a-z0-9_]+$/;
+const MIN_ANSWER_LENGTH = 3;
+
+const codePoints = (s: string) => Array.from(s).length;
+
+export function containsAnswer(text: string, answer: string): boolean {
+  const haystack = text.toLowerCase();
+  const needle = answer.toLowerCase().replace(WHITESPACE_EDGE, "");
+  if (IDENTIFIER.test(needle)) {
+    return codePoints(needle) >= MIN_ANSWER_LENGTH && new RegExp(`(?<![a-z0-9_])${needle}(?![a-z0-9_])`).test(haystack);
+  }
+  const squashed = needle.replace(WHITESPACE_RUN, "");
+  return codePoints(squashed) >= MIN_ANSWER_LENGTH && haystack.replace(WHITESPACE_RUN, "").includes(squashed);
+}
 
 function answerLeaks(step: LeakCheckStep): boolean {
   const answers = step.options
     ? [step.options[typeof step.answer === "number" ? step.answer : Number(step.answer)] ?? ""]
     : [String(step.answer), ...(step.accepted ?? []).map(String)];
-  const haystack = [
+  const surfaces = [
     step.title,
     step.prompt,
     step.explanations.workedExample,
     step.explanations.practice,
     ...step.hints.map((h) => h.text),
-  ].map(norm);
-  return answers.some((raw) => {
-    const a = norm(raw);
-    return a.length >= 3 && haystack.some((h) => h.includes(a));
-  });
+    ...(step.kind === "cloze" ? Object.values(step.beforeFiles) : []),
+  ];
+  return answers.some((answer) => surfaces.some((surface) => containsAnswer(surface, answer)));
 }
 
 const leakMessage = (step: LeakCheckStep) =>
-  `step "${step.title}": hints, title, prompt or explanations leak the answer`;
+  `step "${step.title}": hints, title, prompt, explanations or starter code leak the answer`;
 
 function noLeak(step: LeakCheckStep, ctx: z.RefinementCtx) {
   if (answerLeaks(step)) ctx.addIssue({ code: "custom", message: leakMessage(step) });

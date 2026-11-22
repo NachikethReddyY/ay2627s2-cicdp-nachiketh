@@ -1,5 +1,6 @@
 """Pydantic ports of the zod models in apps/api/src/ai/service.ts, plus the leak check."""
 
+import re
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
@@ -80,6 +81,25 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+_WHITESPACE = "\t-\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+_WHITESPACE_RUN = re.compile(f"[{_WHITESPACE}]+")
+_WHITESPACE_EDGE = re.compile(f"^[{_WHITESPACE}]+|[{_WHITESPACE}]+\\Z")
+_IDENTIFIER = re.compile("[a-z0-9_]+")
+_MIN_ANSWER_LENGTH = 3
+
+
+def contains_answer(text: str, answer: str) -> bool:
+    """Whether `text` gives `answer` away; kept in step with containsAnswer in step-schema.ts."""
+    haystack = text.lower()
+    needle = _WHITESPACE_EDGE.sub("", answer.lower())
+    if _IDENTIFIER.fullmatch(needle):
+        return len(needle) >= _MIN_ANSWER_LENGTH and bool(
+            re.search(f"(?<![a-z0-9_]){needle}(?![a-z0-9_])", haystack)
+        )
+    squashed = _WHITESPACE_RUN.sub("", needle)
+    return len(squashed) >= _MIN_ANSWER_LENGTH and squashed in _WHITESPACE_RUN.sub("", haystack)
+
+
 class _Step(BaseModel):
     title: T100
     prompt: T500
@@ -92,21 +112,25 @@ class _Step(BaseModel):
     def _answers(self) -> list[str]:
         raise NotImplementedError
 
+    def _leak_surfaces(self) -> list[str]:
+        return [
+            self.title,
+            self.prompt,
+            self.explanations.workedExample,
+            self.explanations.practice,
+            *(h.text for h in self.hints),
+        ]
+
     @model_validator(mode="after")
     def _check(self) -> "_Step":
         if not 1 <= len(self.beforeFiles) <= 4:
             raise ValueError("beforeFiles needs 1 to 4 files")
-        haystack = [_norm(h.text) for h in self.hints]
-        haystack += [
-            _norm(self.title),
-            _norm(self.prompt),
-            _norm(self.explanations.workedExample),
-            _norm(self.explanations.practice),
-        ]
-        for a in map(_norm, self._answers()):
-            if len(a) >= 3 and any(a in h for h in haystack):
+        surfaces = self._leak_surfaces()
+        for answer in self._answers():
+            if any(contains_answer(surface, answer) for surface in surfaces):
                 raise ValueError(
-                    f"step {self.title!r}: hints, title, prompt or explanations leak the answer"
+                    f"step {self.title!r}: hints, title, prompt, explanations or starter code "
+                    "leak the answer"
                 )
         return self
 
@@ -133,6 +157,9 @@ class ClozeStep(_Step):
 
     def _answers(self) -> list[str]:
         return [self.answer, *self.accepted]
+
+    def _leak_surfaces(self) -> list[str]:
+        return [*super()._leak_surfaces(), *self.beforeFiles.values()]
 
 
 Step = Annotated[McqStep | ClozeStep, Field(discriminator="kind")]

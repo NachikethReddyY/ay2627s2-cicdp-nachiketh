@@ -7,9 +7,11 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from learnquest_engine.schemas import Lesson, Outline, json_schema
+from learnquest_engine.schemas import Lesson, Outline, contains_answer, json_schema
 
-RAW = json.loads((Path(__file__).parent / "fixtures" / "lesson1.json").read_text())
+FIXTURES = Path(__file__).parent / "fixtures"
+RAW = json.loads((FIXTURES / "lesson1.json").read_text())
+LEAK_VECTORS = json.loads((FIXTURES / "leak_vectors.json").read_text())
 
 
 def lesson(mutate: Callable[[list[dict[str, Any]]], object]) -> Lesson:
@@ -40,6 +42,47 @@ def test_leak_cloze_answer_in_prompt() -> None:
 def test_leak_cloze_answer_in_practice_explanation() -> None:
     with pytest.raises(ValidationError, match="leak"):
         lesson(lambda s: s[1]["explanations"].update(practice="Now write discount = 0."))
+
+
+def test_leak_cloze_answer_with_other_spacing_in_prompt() -> None:
+    def spaced_prompt(steps: list[dict[str, Any]]) -> None:
+        steps[1].update(accepted=[], prompt="Fill in the blank with `discount=0`.")
+
+    with pytest.raises(ValidationError, match="leak"):
+        lesson(spaced_prompt)
+
+
+def test_leak_cloze_answer_in_starter_code_comment() -> None:
+    def put_hint_in_starter(steps: list[dict[str, Any]]) -> None:
+        files = steps[1]["beforeFiles"]
+        files["src/cart.js"] = "// Enter discount = 0 in the blank\n" + files["src/cart.js"]
+
+    with pytest.raises(ValidationError, match="leak"):
+        lesson(put_hint_in_starter)
+
+
+def test_leak_cloze_keyword_whole_word_in_prompt() -> None:
+    def keyword_cloze(steps: list[dict[str, Any]]) -> None:
+        steps[1].update(answer="let", accepted=[], prompt="Use the let keyword to declare it.")
+
+    with pytest.raises(ValidationError, match="leak"):
+        lesson(keyword_cloze)
+
+
+def test_cloze_keyword_inside_longer_word_passes() -> None:
+    def keyword_cloze(steps: list[dict[str, Any]]) -> None:
+        steps[1].update(
+            answer="let",
+            accepted=[],
+            prompt="Complete the declaration using the block-scoped keyword",
+        )
+
+    assert len(lesson(keyword_cloze).steps) == 3
+
+
+@pytest.mark.parametrize("vector", LEAK_VECTORS, ids=[v["name"] for v in LEAK_VECTORS])
+def test_contains_answer_vectors(vector: dict[str, Any]) -> None:
+    assert contains_answer(vector["text"], vector["answer"]) is vector["leaks"]
 
 
 def test_bad_eliminate() -> None:
