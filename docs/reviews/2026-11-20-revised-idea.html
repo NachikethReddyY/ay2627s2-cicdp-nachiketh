@@ -50,6 +50,7 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
 <tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-100" target="_blank" rel="noopener noreferrer">LQ-100</a> P5 Sloppy and AI safety</td><td>LQ-123 kill switch, spend cap and moderation · LQ-124 output check and context · LQ-125 moderation, timeouts and GET</td></tr>
 <tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-101" target="_blank" rel="noopener noreferrer">LQ-101</a> P6 flows and sandbox</td><td>LQ-126 <code>/sandbox/check</code> on Daytona · LQ-127 practice workbench · LQ-128 games</td></tr>
 <tr><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-102" target="_blank" rel="noopener noreferrer">LQ-102</a> P7 reliability and dead code</td><td>LQ-129 seed and schema · LQ-130 bundle and build · LQ-131 Pip and dead code · LQ-132 write-only data · LQ-133 test gaps · LQ-134 verification</td></tr>
+<tr><td>No epic yet: P8 admin and analytics</td><td><a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-135" target="_blank" rel="noopener noreferrer">LQ-135</a> mini admin dashboard (generation cost) and PostHog · <a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-136" target="_blank" rel="noopener noreferrer">LQ-136</a> onboarding: pick a public handle</td></tr>
 </tbody></table></div>
 <p class="m">Overlap with existing tickets: LQ-93 (workbench into lesson practice) is related to LQ-127. LQ-94 and LQ-95 (scrim play and generation) are related to LQ-112 and LQ-113. LQ-91 (game answers on the client) is related to LQ-128.</p>
 
@@ -58,15 +59,17 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
 <thead><tr><th>Question</th><th>Decision</th><th>Who decided</th></tr></thead>
 <tbody>
 <tr><td>Scope</td><td><strong>Programming only.</strong> Cut the "school and practical subjects" outline prompt, <code>subject: "other"</code> and the "Learn anything" copy.</td><td>Owner</td></tr>
-<tr><td>Leaderboard</td><td><strong>Keep it.</strong> Show a generated handle, never the email local part or display name.</td><td>Owner (handle rule is the review's privacy fix)</td></tr>
+<tr><td>Leaderboard</td><td><strong>Everyone is on it, and nobody can switch it off.</strong> Remove the opt-out flag. The crowd is the motivation. Rows show a generated handle, never the email local part or display name.</td><td>Owner (2026-11-21). The learner picks the handle at onboarding (LQ-136).</td></tr>
 <tr><td>Paid tiers</td><td><strong>Remove for the MVP.</strong> Every learner gets one generous limit. The landing page shows "Pro, coming soon".</td><td>Owner</td></tr>
 <tr><td>Real-commit lessons</td><td><strong>An advanced capstone track, "coming soon".</strong> Beginners start from concepts, not diffs. Landing stops claiming lessons are built from real commits until ingest ships.</td><td>Owner delegated; recommended</td></tr>
 <tr><td>Hinted correct answer</td><td><strong>No partial credit.</strong> It counts as incorrect evidence for BKT, as it does now. XP follows the same rule.</td><td>Owner</td></tr>
 <tr><td>Age gate</td><td><strong>None.</strong> Drop NFR1's age gate from <code>docs/plan.md</code> so docs match.</td><td>Owner</td></tr>
 <tr><td>Adaptivity</td><td><strong>Finish it</strong>, don't delete it. The owner asked for the core logic to be fixed.</td><td>Owner ("fix the core logic")</td></tr>
-<tr><td>AI publish review</td><td>A generated path is a <strong>private draft for its creator</strong>, who can play it straight away. Sharing it with the community needs author approval in a review queue. This keeps "generated content is reviewed" true for anything other people see.</td><td>Recommended; confirm</td></tr>
-<tr><td>Learn and watch completion</td><td>Complete on the closing check, not on open (see §3).</td><td>Recommended; confirm</td></tr>
-<tr><td>Moderation provider</td><td>Route it through the LiteLLM interface, as the rest of the AI calls are.</td><td>Recommended; confirm</td></tr>
+<tr><td>AI publish review</td><td>A generated path starts <strong>private to its creator</strong>, who can play it straight away. The creator makes it public themselves. <strong>There is no review queue</strong>, for any agent or person. AGENTS.md's "a human author approves before publish" is reworded or removed in LQ-111.</td><td>Owner (2026-11-21, confirmed)</td></tr>
+<tr><td>Learn and watch completion</td><td><strong>Complete on the closing check</strong>, not on open (see §3).</td><td>Owner (2026-11-21)</td></tr>
+<tr><td>Moderation provider</td><td>Route it through the LiteLLM interface, as the rest of the AI calls are. One path gives one place for the spend cap, logs and cost dashboard. Go direct to OpenAI only if LiteLLM cannot proxy it.</td><td>Owner (2026-11-21): yes, as long as the AI bill stays low. Use the cheapest moderation model, moderate learner input only, and log each call to the cost dashboard.</td></tr>
+<tr><td>Onboarding</td><td>A new learner picks a public handle (a generated one is pre-filled) and is told that handle, XP and streak are visible to everyone. The handle can be changed later, with a rate limit. Ticket <a href="https://nachikethsworkspace-45811689.atlassian.net/browse/LQ-136" target="_blank" rel="noopener noreferrer">LQ-136</a>.</td><td>Owner (2026-11-21)</td></tr>
+<tr><td>Admin dashboard and analytics</td><td><strong>Split it.</strong> Generation cost is a first-party admin page on Postgres (LQ-135), because cost is server-side truth. Product analytics (funnels, retention, drop-off) goes to PostHog, identified by handle or learner id with autocapture off. Both add learner data, so the AGENTS.md data rule changes in the same PR.</td><td>Owner asked; recommended</td></tr>
 <tr><td>Pip the mascot</td><td><strong>Remove entirely.</strong> No code uses Pip. Delete <code>apps/web/public/img/pip-*.png</code> (5 files), the <code>## Pip</code> section and the mention in DESIGN.md's description, and the AGENTS.md repo-map mention. The old release note in <code>changelog-releases.generated.ts</code> stays as history.</td><td>Owner</td></tr>
 </tbody></table></div>
 
@@ -172,6 +175,21 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
 </div>
 
 <div class="phase">
+<h3>Phase 1 delivery: PRs and stack</h3>
+<p class="m">Started 2026-11-21 in its own thread. One ticket is one PR. PR titles, branch names and commit footers carry the ticket key so Jira's GitHub automation links them. No PR is merged until the owner says so.</p>
+<div class="wrap"><table>
+<thead><tr><th>PR</th><th>Ticket</th><th>Base</th></tr></thead>
+<tbody>
+<tr><td>A</td><td>LQ-103 self-run gate and <code>--skip-local</code></td><td><code>main</code></td></tr>
+<tr><td>B</td><td>LQ-104 forged review result</td><td>PR A</td></tr>
+<tr><td>C</td><td>LQ-105 SENSITIVE list</td><td><code>main</code></td></tr>
+<tr><td>D</td><td>LQ-106 guardrail escapes</td><td>PR C</td></tr>
+<tr><td>E</td><td>LQ-96 docs for the whole phase</td><td>top of both stacks (B plus D)</td></tr>
+</tbody></table></div>
+<p class="m">Two stacks touch <code>scripts/merge-gate.ts</code>, so expect a conflict when the second one lands. Fix it by rebasing, not by merging the stacks early.</p>
+</div>
+
+<div class="phase">
 <h3>Phase 2: scope and decisions</h3>
 <ol>
 <li><span class="sens">◆</span> Programming-only outline:
@@ -187,11 +205,11 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
   <li>Landing gets "Pro, coming soon" and "Real code changes: advanced track, coming soon".</li>
   <li>Remove Landing's adaptivity claim until Phase 4 ships it.</li>
   </ul></li>
-<li><span class="sens">◆</span> Leaderboard handle: a migration adds a generated <code>handle</code>, the leaderboard shows only that, and a test checks that no email-derived string reaches <code>home.get</code>.</li>
+<li><span class="sens">◆</span> Leaderboard handle: a migration adds a generated <code>handle</code>, the leaderboard shows only that, and a test checks that no email-derived string reaches <code>home.get</code>. Every learner is listed and the opt-out flag is removed (owner, 2026-11-21).</li>
 <li><span class="sens">◆</span> AI drafts:
   <ul>
   <li>Generated lessons are <code>draft</code>, visible only to their creator.</li>
-  <li><code>paths.publish</code> moves them into an author review queue instead of making them public.</li>
+  <li>The creator makes a path public in one step. There is no review queue (owner, 2026-11-21); reword or remove the AGENTS.md approval line in LQ-111.</li>
   <li>Listings show other learners only published lessons (plan §9).</li>
   </ul></li>
 <li>Docs in the same PRs:
@@ -199,7 +217,7 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
   <li><code>docs/idea.md</code> and <code>docs/plan.md</code> (scope, tiers, no age gate, capstone track, sandbox is core)</li>
   <li><code>AGENTS.md</code> open work</li>
   <li><code>docs/feature-map.md</code></li>
-  <li>the data rule (handle, timezone, daily goal)</li>
+  <li>the data rule (handle, timezone, daily goal; handle, XP and streak are public)</li>
   </ul></li>
 </ol>
 </div>
@@ -316,6 +334,17 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
 </ol>
 </div>
 
+<div class="phase">
+<h3>Phase 8: admin dashboard and analytics <span class="sens">◆</span></h3>
+<p class="m">LQ-135. Not part of the merge-gate work; it needs the cost record from Phase 5 first.</p>
+<ol>
+<li>Record every LiteLLM call: model, tokens, cost, learner, lesson or course, kind, outcome, latency.</li>
+<li>Admin-only page on that table: spend per day, course, learner and model, failed or half-finished generations, and share of the spend cap used. A non-admin gets 403. The page never shows answers, hints or keys.</li>
+<li>PostHog for product analytics: named events only (lesson start, prediction, completion, Continue), identified by handle or learner id, autocapture off.</li>
+<li>Update the AGENTS.md data rule for the cost table and the PostHog events.</li>
+</ol>
+</div>
+
 <h2>6. Demo-day order</h2>
 <p>For the presentation, the shortest path to a demo that shows adaptivity:</p>
 <ol>
@@ -379,8 +408,8 @@ svg text{font:12px ui-sans-serif,system-ui,sans-serif;fill:#fff}
 
 <h3>Decisions still open</h3>
 <ul>
-<li>Confirm the three recommended decisions in §1: AI drafts, learn and watch completion, moderation.</li>
-<li>Is the leaderboard opt-in by default (on today) or opt-out? With a generated handle it carries no personal data either way, so it stays on unless you say otherwise.</li>
+<li>Moderation, AI drafts and the leaderboard handle are now decided (see §1). The data rule in AGENTS.md must say that handle, XP and streak are public (LQ-111).</li>
+<li>Admin dashboard: confirm the split (own page for cost, PostHog for product analytics) and that PostHog is acceptable under the data rule.</li>
 <li>Pushing this commit: <code>main</code> deploys to production after CI, so it stays local until you approve.</li>
 </ul>
 </main>
