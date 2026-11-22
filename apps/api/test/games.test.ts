@@ -196,7 +196,7 @@ test("a win is recorded only when the server says the game is complete", async (
   await check(cookie, 2, { kind: "order", order: ["first", "second", "third", "fourth"] });
   assert.deepEqual(await count(), [1, 0], "idempotent");
   const [row] = await db.select().from(gameCompletions);
-  assert.equal(row!.blockId, "order");
+  assert.match(row!.blockId, /^md5:[0-9a-f]{32}$/);
 });
 
 test("a game lesson completes only when its last game block is won", async () => {

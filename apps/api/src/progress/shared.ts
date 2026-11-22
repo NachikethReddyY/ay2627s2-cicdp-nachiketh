@@ -19,14 +19,31 @@ export const Slug = z.object({ slug: z.string().regex(/^[\w-]{1,64}$/) });
 
 export const lessonTotal = sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int ELSE 1 END)`;
-export const everyGameWon = (me: string) => sql`(SELECT count(*) > 0 AND count(*) = count(gc.block_id)
-  FROM (SELECT DISTINCT v.version, b.value->>'id' AS block_id
-    FROM lesson_versions v
-    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(v.content->'doc'->'blocks') = 'array'
-      THEN v.content->'doc'->'blocks' ELSE '[]'::jsonb END) b
-    WHERE v.id = l.current_version_id AND b.value->>'type' = 'game') blocks
-  LEFT JOIN game_completions gc ON gc.learner_id = ${me} AND gc.lesson_id = l.id
-    AND gc.part_idx = blocks.version - 1 AND gc.block_id = blocks.block_id)`;
+const WIN_PREFIX = "md5:";
+export const gameWinKey = (hash: string) => `${WIN_PREFIX}${hash}`;
+
+export const gameBlockKeys = (content: SQL) => sql`(SELECT b.value->>'id' AS block_id, md5((b.value->'props')::text) AS hash, b.ord
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${content}->'doc'->'blocks') = 'array'
+    THEN ${content}->'doc'->'blocks' ELSE '[]'::jsonb END) WITH ORDINALITY b(value, ord)
+  WHERE b.value->>'type' = 'game')`;
+
+export const gameWins = sql`(SELECT w.learner_id, w.lesson_id, w.hash, min(w.created_at) AS created_at FROM (
+  SELECT gc.learner_id, gc.lesson_id, substr(gc.block_id, ${WIN_PREFIX.length + 1}) AS hash, gc.created_at
+  FROM game_completions gc WHERE gc.block_id LIKE ${`${WIN_PREFIX}%`}
+  UNION ALL
+  SELECT gc.learner_id, gc.lesson_id,
+    COALESCE((SELECT k.hash FROM lesson_versions v1 CROSS JOIN LATERAL ${gameBlockKeys(sql`v1.content`)} k
+      WHERE v1.lesson_id = gc.lesson_id AND v1.version = 1 AND k.block_id = gc.block_id
+      ORDER BY k.ord LIMIT 1), 'id:' || gc.block_id) AS hash,
+    gc.created_at
+  FROM game_completions gc WHERE gc.block_id NOT LIKE ${`${WIN_PREFIX}%`}) w
+  GROUP BY w.learner_id, w.lesson_id, w.hash)`;
+
+export const everyGameWon = (me: string) => sql`(SELECT count(*) > 0 AND count(*) = count(gw.hash)
+  FROM (SELECT DISTINCT k.hash
+    FROM lesson_versions v CROSS JOIN LATERAL ${gameBlockKeys(sql`v.content`)} k
+    WHERE v.id = l.current_version_id) blocks
+  LEFT JOIN ${gameWins} gw ON gw.learner_id = ${me} AND gw.lesson_id = l.id AND gw.hash = blocks.hash)`;
 export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}

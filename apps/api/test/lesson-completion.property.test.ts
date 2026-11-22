@@ -166,48 +166,123 @@ test("winning one of two games does not complete a game lesson", async () => {
   assert.equal((await codequestLesson(cookie, lesson.slug)).done, 1);
 });
 
-test("a block added in a new version reopens a completed game lesson until it is won", async () => {
+const xpOf = async (cookie: string): Promise<number> => out(await q(cookie, "home.get")).stats.xp;
+
+const winRows = async (lesson: GameLesson) => db.select().from(gameCompletions).where(eq(gameCompletions.lessonId, lesson.lessonId));
+
+test("a block added in a new version keeps old wins, needs its own win, and awards no XP for old blocks", async () => {
   const lesson = await addTwoGameLesson();
   const cookie = await signUp(app, emailOf("added"));
   await play(cookie, lesson, 0, true);
   await play(cookie, lesson, 1, true);
   assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 20);
 
   await publishVersion(lesson, 2, [quizBlock("g1"), quizBlock("g2"), quizBlock("g3")]);
-  assert.deepEqual(await progressOf(cookie, lesson), [0, 1], "wins from version 1 do not count in version 2");
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1], "the new block is unwon");
+  assert.equal(await xpOf(cookie), 20);
+  await play(cookie, lesson, 2, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1], "the unchanged blocks did not need a replay");
+  assert.equal(await xpOf(cookie), 30);
   await play(cookie, lesson, 0, true);
   await play(cookie, lesson, 1, true);
-  assert.deepEqual(await progressOf(cookie, lesson), [0, 1], "the new block is still unwon");
-  await play(cookie, lesson, 2, true);
-  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 30, "replaying the old blocks in the new version awards nothing");
 });
 
 test("removing a block lets the remaining blocks of the new version decide", async () => {
   const lesson = await addTwoGameLesson();
-  const cookie = await signUp(app, emailOf("removed"));
-  await play(cookie, lesson, 1, true);
-  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  const both = await signUp(app, emailOf("removed-both"));
+  const second = await signUp(app, emailOf("removed-second"));
+  await play(both, lesson, 0, true);
+  await play(both, lesson, 1, true);
+  await play(second, lesson, 1, true);
+  assert.deepEqual(await progressOf(both, lesson), [1, 1]);
+  assert.deepEqual(await progressOf(second, lesson), [0, 1]);
 
   await publishVersion(lesson, 2, [quizBlock("g1")]);
-  assert.deepEqual(await progressOf(cookie, lesson), [0, 1], "the version 1 win of g2 is not a win of g1");
-  assert.equal(out(await play(cookie, lesson, 0, true)).complete, true);
-  assert.deepEqual(await progressOf(cookie, lesson), [1, 1], "the removed g2 no longer blocks completion");
+  assert.deepEqual(await progressOf(both, lesson), [1, 1], "the win of g1 carries and the removed g2 no longer blocks");
+  assert.equal(await xpOf(both), 20);
+  assert.deepEqual(await progressOf(second, lesson), [0, 1], "the win of the removed g2 does not stand in for g1");
+  assert.equal(out(await play(second, lesson, 0, true)).complete, true);
+  assert.deepEqual(await progressOf(second, lesson), [1, 1]);
+  assert.equal(await xpOf(second), 20);
 });
 
-test("a changed block that reuses its id does not inherit the old win", async () => {
-  const lesson = await addGameLesson([quizBlock("g1")]);
+test("a changed block that reuses its id needs a new win, awards XP once, and a restored block carries its old win", async () => {
+  const original = quizBlock("g1");
+  const lesson = await addGameLesson([original]);
   const cookie = await signUp(app, emailOf("changed"));
   await play(cookie, lesson, 0, true);
   assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 10);
 
-  const harder = { ...quizBlock("g1"), props: { ...quizBlock("g1").props, kind: { kind: "quiz", questions: [{ prompt: "3 + 3?", options: ["5", "6"], answer: 1 }] } } };
+  const harder = { ...original, props: { ...original.props, kind: { kind: "quiz", questions: [{ prompt: "3 + 3?", options: ["5", "6"], answer: 1 }] } } };
   await publishVersion(lesson, 2, [harder]);
-  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1], "the changed content does not inherit the win");
+  assert.equal(await xpOf(cookie), 10);
   assert.equal(out(await play(cookie, lesson, 0, true)).complete, true);
   assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 20);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 20);
 
-  const wins = await db.select().from(gameCompletions).where(eq(gameCompletions.lessonId, lesson.lessonId));
-  assert.deepEqual(wins.map((w) => [w.partIdx, w.blockId]).sort(), [[0, "g1"], [1, "g1"]], "one win per version");
+  await publishVersion(lesson, 3, [original]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1], "content that was already won stays won");
+  assert.equal(await xpOf(cookie), 20);
+});
+
+test("an unchanged block after a version bump keeps its win and awards no new XP, even under another id", async () => {
+  const lesson = await addGameLesson([quizBlock("g1")]);
+  const cookie = await signUp(app, emailOf("unchanged"));
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+
+  await publishVersion(lesson, 2, [quizBlock("g1")]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+
+  await publishVersion(lesson, 3, [{ ...quizBlock("g1"), id: "renamed" }]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+});
+
+test("replaying a won block in the same version, even concurrently, stores one win and awards XP once", async () => {
+  const lesson = await addTwoGameLesson();
+  const cookie = await signUp(app, emailOf("replay"));
+  const results = await Promise.all([0, 1, 2, 3, 4].map(() => play(cookie, lesson, 0, true)));
+  for (const res of results) assert.equal(out(res).complete, true);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+  const rows = await winRows(lesson);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.partIdx, 0);
+  assert.match(rows[0]!.blockId, /^md5:[0-9a-f]{32}$/);
+});
+
+test("wins recorded before content identities read as wins of the block in version 1", async () => {
+  const lesson = await addTwoGameLesson();
+  const email = emailOf("legacy");
+  const cookie = await signedUp(email);
+  const learnerId = await learnerOf(email);
+  await db.insert(gameCompletions).values([
+    { learnerId, lessonId: lesson.lessonId, partIdx: 0, blockId: "g1" },
+    { learnerId, lessonId: lesson.lessonId, partIdx: 0, blockId: "gone" },
+  ]);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  assert.equal(await xpOf(cookie), 20, "every existing row keeps its XP");
+  assert.equal(out(await play(cookie, lesson, 1, true)).complete, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 30);
+
+  await publishVersion(lesson, 2, [quizBlock("g1"), quizBlock("g2"), quizBlock("g3")]);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 30, "the legacy win of g1 is not paid again");
+  await play(cookie, lesson, 2, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 40);
 });
 
 test("a game lesson completes only when every game block has been won", async () => {
@@ -221,9 +296,9 @@ test("a game lesson completes only when every game block has been won", async ()
       assert.ok(res.statusCode < 500, `run ${run} action ${i}: ${res.body}`);
       const learnerId = await learnerOf(email);
 
-      const won = new Set((await db.select().from(gameCompletions).where(and(eq(gameCompletions.learnerId, learnerId), eq(gameCompletions.lessonId, lesson.lessonId), eq(gameCompletions.partIdx, 0)))).map((g) => g.blockId));
+      const won = (await db.select().from(gameCompletions).where(and(eq(gameCompletions.learnerId, learnerId), eq(gameCompletions.lessonId, lesson.lessonId)))).length;
       const progress = await codequestLesson(cookie, lesson.slug);
-      assert.equal(progress.done >= progress.total, won.has("g1") && won.has("g2"), `run ${run} action ${i}: won ${[...won].join(",")}`);
+      assert.equal(progress.done >= progress.total, won === 2, `run ${run} action ${i}: won ${won} of 2`);
     }
   }
 });

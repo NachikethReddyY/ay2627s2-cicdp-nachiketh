@@ -3,7 +3,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { streak, week } from "./streak.ts";
-import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, visibleCourse } from "./shared.ts";
+import { complete, gameWins, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, visibleCourse } from "./shared.ts";
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
 
@@ -94,7 +94,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         UNION ALL
         SELECT to_char((gc.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
           0::int AS solved, (count(*) * 10)::int AS xp
-        FROM game_completions gc JOIN learners l ON l.id = gc.learner_id
+        FROM ${gameWins} gc JOIN learners l ON l.id = gc.learner_id
         WHERE gc.learner_id = ${me} GROUP BY 1
       ) activity GROUP BY day`);
     const { rows: [clock] } = await db.execute<{ today: string; goal: number; timezone: string }>(sql`
@@ -161,7 +161,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       WITH x AS (
         SELECT a.learner_id, ${XP} AS xp, a.created_at FROM attempts a WHERE a.observed
         UNION ALL
-        SELECT gc.learner_id, 10 AS xp, gc.created_at FROM game_completions gc
+        SELECT gc.learner_id, 10 AS xp, gc.created_at FROM ${gameWins} gc
       ),
       totals AS (
         SELECT l.id, l.handle, coalesce(sum(x.xp), 0)::int AS xp
