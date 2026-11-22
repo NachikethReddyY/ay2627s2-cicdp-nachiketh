@@ -2,10 +2,10 @@ import { z } from "zod";
 import { THEME_COLORS, alt, color, id } from "../../core/caps.ts";
 import type { BlockModule, Issue } from "../../core/parse.ts";
 import { text } from "../../core/sanitize.ts";
-import { EASES, MAX_STEPS, timelineSchema, type Timeline } from "../../core/timeline.ts";
+import { EASES, MAX_STEPS, timelineSchema, type BlockTimeline } from "../../core/timeline.ts";
 import { bodyBelow } from "./bounce.ts";
 
-export const MAX_SHAPES = 60;
+const MAX_SHAPES = 60;
 const KINDS = ["rect", "circle", "ellipse", "line", "text", "path"] as const;
 export const ANIMATABLE = ["x", "y", "opacity", "fill", "stroke", "w", "h", "r", "rotation", "scale", "draw"] as const;
 
@@ -27,7 +27,7 @@ type Shape = {
   label?: string;
 };
 type StagePhysics = { kind: "bounce"; body: string; floor: number; restitution: number; autoplay?: boolean };
-export type StageProps = { alt: string; shapes: Shape[]; timeline?: Timeline; physics?: StagePhysics };
+export type StageProps = { alt: string; shapes: Shape[]; timeline?: BlockTimeline; physics?: StagePhysics };
 
 const GEOMETRY: Record<Kind, readonly ("w" | "h" | "r" | "x2" | "y2" | "d" | "arrow" | "label")[]> = {
   rect: ["w", "h"],

@@ -1,20 +1,3 @@
-export function Flame({ w, h, cls = "" }: { w: number; h: number; cls?: string }) {
-  return (
-    <svg className={cls} width={w} height={h} viewBox="0 0 32 40" aria-hidden="true">
-      <path d="M16 2c1 8 11 12 11 23a11 11 0 0 1-22 0c0-6 3-10 6-13 0 4 2 7 5 7-2-6-1-12 0-17z" className="lq-flame-body" />
-      <path d="M16 21c1 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-6 4-7 0 2 1 3 2 3z" className="lq-flame-core" />
-    </svg>
-  );
-}
-
-export function Bolt({ w, h }: { w: number; h: number }) {
-  return (
-    <svg width={w} height={h} viewBox="0 0 24 28" aria-hidden="true">
-      <path d="M14 1 3 16h8l-2 11 12-16h-8z" className="lq-bolt" />
-    </svg>
-  );
-}
-
 export function Arrow() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">

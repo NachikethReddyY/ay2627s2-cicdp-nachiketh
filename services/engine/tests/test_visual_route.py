@@ -1,4 +1,5 @@
 import json
+import subprocess
 from collections.abc import Callable
 from typing import Any
 
@@ -117,6 +118,31 @@ def test_repair_call_sends_previous_document(fake_llm: FakeLLM) -> None:
 
 def test_needs_token(client: TestClient) -> None:
     assert client.post("/v1/pipeline/visual", json={"prompt": "x"}).status_code == 401
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        subprocess.CalledProcessError(1, "node"),
+        subprocess.TimeoutExpired("node", 10),
+    ],
+)
+def test_checker_process_failure_fails_closed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, failure: subprocess.SubprocessError
+) -> None:
+    with monkeypatch.context() as setup:
+        _fake_generate(setup, [_stage(path_y=50)])
+        fake_generate = visual.generate_visual
+    monkeypatch.setattr(visual, "generate_visual", fake_generate)
+    monkeypatch.setattr(visual.shutil, "which", lambda _name: "/usr/bin/node")
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise failure
+
+    monkeypatch.setattr(visual.subprocess, "run", fail)
+    r = client.post("/v1/pipeline/visual", json={"prompt": "dot on a curve"}, headers=TOKEN)
+    assert r.status_code == 503
+    assert "doc" not in r.json()
 
 
 def test_checker_unavailable_fails_closed(

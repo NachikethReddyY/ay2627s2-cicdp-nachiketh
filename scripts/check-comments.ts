@@ -82,7 +82,7 @@ const SOURCE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 function* walk(dir: string): Generator<string> {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(e.name)) continue;
+    if (SKIP_DIRS.has(e.name) || (dir.endsWith(`${sep}e2e`) && ["playwright-report", "test-results"].includes(e.name))) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) yield* walk(p);
     else if (SOURCE.test(e.name) && !/\.d\.[cm]?ts$/.test(e.name)) yield p;

@@ -54,11 +54,14 @@ services:
       retries: 30
 
   api:
+    ports: !override
+      - "127.0.0.1:${E2E_API_PORT:-3000}:3000"
     # The tag CI's build step gives the image (see .github/workflows/ci.yml, e2e), so `--no-build` finds it.
     image: learnquest-ci-api:e2e
     # The API image runs as production, which refuses to start with AI on and no spend cap. The model is
     # fake, so these caps only satisfy that check.
     environment:
+      PUBLIC_ORIGIN: http://localhost:${E2E_WEB_PORT:-5173}
       AI_DAILY_BUDGET_USD: "1"
       AI_MONTHLY_BUDGET_USD: "10"
     # The API stays on the default network (Postgres, host port) and joins llm to reach the engine.

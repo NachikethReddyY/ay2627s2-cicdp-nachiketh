@@ -27,4 +27,3 @@ export const trpcUnbatched = createTRPCClient<AppRouter>({
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export const isNotFound = (e: unknown) => e instanceof TRPCClientError && e.data?.code === "NOT_FOUND";
-export const trpcCode = (e: unknown) => (e instanceof TRPCClientError ? (e.data?.code as string | undefined) : undefined);

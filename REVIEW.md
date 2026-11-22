@@ -28,7 +28,6 @@ Owner decisions 2026-11-21 and 2026-11-22 supersede the earlier human-review and
 
 ## Skip
 
-- `pnpm-lock.yaml` (review the dependency change in `package.json` instead)
 - `docs/plan.html` (generated; review `docs/plan.md`)
 - `node_modules/`, `.turbo/`, build output and `.DS_Store`
 

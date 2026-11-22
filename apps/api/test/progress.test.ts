@@ -165,33 +165,11 @@ test("paths.list: scopes, enrolled flag, search and visibility", async () => {
   assert.equal(enrolled.learners, 1);
 });
 
-test("paths.get: private paths are 404 except to their owner", async () => {
-  const cookie = await signUp(app, "a@example.com");
-  const otherCookie = await signUp(app, "b@example.com");
-  await db.insert(paths).values({ slug: "b-private", title: "B Secret", visibility: "private", ownerId: await userId("b@example.com") });
-
-  assert.equal((await q(cookie, "paths.get", { slug: "nope" })).statusCode, 404);
-  assert.equal((await q(cookie, "paths.get", { slug: "b-private" })).statusCode, 404);
-  const mine = out(await q(otherCookie, "paths.get", { slug: "b-private" }));
-  assert.deepEqual(
-    { visibility: mine.visibility, mine: mine.mine, enrolled: mine.enrolled, courses: mine.courses },
-    { visibility: "private", mine: true, enrolled: false, courses: [] },
-  );
-
-  const detail = out(await q(cookie, "paths.get", { slug: "js-foundations" }));
-  assert.equal(detail.mine, false);
-  assert.deepEqual(detail.courses, [
-    { slug: "codequest", title: "Shopping Cart Basics", description: "Build a cart total, then test it.", lessonsDone: 0, lessonsTotal: 1 },
-  ]);
-  for (const step of ["s1", "s2", "s3"]) await answer(cookie, step, step === "s2" ? { kind: "cloze", text: "discount = 0" } : { kind: "mcq", choice: 1 });
-  assert.equal(out(await q(cookie, "paths.get", { slug: "js-foundations" })).courses[0].lessonsDone, 1);
-});
-
 test("paths.publish: owner only, publishes the owned courses", async () => {
   const cookie = await signUp(app, "a@example.com");
   const otherCookie = await signUp(app, "b@example.com");
   const otherId = await userId("b@example.com");
-  await db.insert(paths).values({ slug: "b-private", title: "B Secret", visibility: "private", ownerId: otherId });
+  await db.insert(paths).values({ slug: "b-private", title: "B Secret", visibility: "private", origin: "community", ownerId: otherId });
   const [world] = await db
     .insert(worlds)
     .values({ slug: "b-course", title: "B Course", visibility: "private", ownerId: otherId, origin: "community" })
@@ -199,11 +177,11 @@ test("paths.publish: owner only, publishes the owned courses", async () => {
   await db.insert(pathCourses).values({ pathId: await pathId("b-private"), worldId: world!.id, position: 0 });
 
   assert.equal((await m(cookie, "paths.publish", { slug: "b-private" })).statusCode, 404);
-  assert.equal((await q(cookie, "paths.get", { slug: "b-private" })).statusCode, 404);
+  assert.equal((await q(cookie, "courses.get", { slug: "b-course" })).statusCode, 404);
   assert.equal((await m(otherCookie, "paths.publish", { slug: "nope" })).statusCode, 404);
 
   assert.equal((await m(otherCookie, "paths.publish", { slug: "b-private" })).statusCode, 200);
-  assert.equal(out(await q(cookie, "paths.get", { slug: "b-private" })).visibility, "public");
+  assert.ok(out(await q(cookie, "paths.list", { scope: "community" })).some((path: { slug: string }) => path.slug === "b-private"));
   assert.equal((await q(cookie, "courses.get", { slug: "b-course" })).statusCode, 200);
 });
 
@@ -242,9 +220,7 @@ test("paths never list another user's private course", async () => {
   const list = out(await q(cookie, "paths.list"));
   assert.deepEqual(list[0].courses.map((c: { slug: string }) => c.slug), ["codequest"]);
   assert.equal(list[0].courseCount, 1);
-  const detail = out(await q(cookie, "paths.get", { slug: "js-foundations" }));
-  assert.equal(detail.courses.length, 1);
-  const mine = out(await q(other, "paths.get", { slug: "js-foundations" }));
+  const mine = out(await q(other, "paths.list"))[0];
   assert.equal(mine.courses.length, 2);
 });
 

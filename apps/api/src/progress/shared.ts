@@ -18,7 +18,7 @@ export const PathCard = z.object({
 export const Slug = z.object({ slug: z.string().regex(/^[\w-]{1,64}$/) });
 
 export const lessonTotal = sql`(CASE WHEN l.kind = 'predict'
-  THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int ELSE 1 END)`;
+  THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id AND s.idx >= 0)::int ELSE 1 END)`;
 const gameBlocks = (content: SQL) => sql`(SELECT b.value->>'id' AS id, b.value->'props' AS props
   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${content}->'doc'->'blocks') = 'array'
     THEN ${content}->'doc'->'blocks' ELSE '[]'::jsonb END) b(value)
@@ -75,7 +75,7 @@ export const everyGameWon = (learnerId: string) => sql`(SELECT coalesce(bool_and
 export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}
-      AND sp.state = 'revealed'
+      AND s.idx >= 0 AND sp.state = 'revealed'
       AND (EXISTS (SELECT 1 FROM attempts a
         WHERE a.step_id = s.id AND a.learner_id = ${me} AND a.observed AND a.kind <> 'skip')
         OR (EXISTS (SELECT 1 FROM attempts skipped

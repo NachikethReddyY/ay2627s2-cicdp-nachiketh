@@ -12,7 +12,7 @@ export type PublicQuiz = { kind: "quiz"; questions: { prompt: string; options: s
 export type PublicOrder = { kind: "order"; items: string[] };
 export type PublicMatch = { kind: "match"; lefts: string[]; rights: string[] };
 export type PublicSort = { kind: "sort"; buckets: string[]; cards: string[] };
-export type PublicKind = PublicQuiz | PublicOrder | PublicMatch | PublicSort | GridProps | PhysicsProps;
+type PublicKind = PublicQuiz | PublicOrder | PublicMatch | PublicSort | GridProps | PhysicsProps;
 export type PublicGameProps = Omit<ShellProps, "hints"> & {
   hintCount: number;
   gameIndex: number;
@@ -36,7 +36,7 @@ const publicKinds = [
   physicsKind.schema,
 ] as const;
 
-export const publicGameSchema = z.strictObject({
+const publicGameSchema = z.strictObject({
   title: shellFields.title,
   goalText: shellFields.goalText,
   alt: shellFields.alt,
@@ -46,7 +46,7 @@ export const publicGameSchema = z.strictObject({
   kind: z.discriminatedUnion("kind", publicKinds as unknown as [(typeof publicKinds)[number], ...(typeof publicKinds)[number][]]),
 }) as unknown as z.ZodType<PublicGameProps>;
 
-export type Rng = () => number;
+type Rng = () => number;
 
 export function shuffled<T>(xs: readonly T[], rng: Rng = Math.random): T[] {
   const a = [...xs];

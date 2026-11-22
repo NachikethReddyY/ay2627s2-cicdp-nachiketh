@@ -4,19 +4,19 @@ import type { GameKind } from "./shell.ts";
 
 export const GRID_COMMANDS = ["forward", "left", "right", "pick"] as const;
 export const DIRS = ["up", "right", "down", "left"] as const;
-export const GRID_MODES = ["watch", "solve", "debug"] as const;
+const GRID_MODES = ["watch", "solve", "debug"] as const;
 export const MAX_GRID = 10;
 export const MAX_WALLS = 60;
 export const MAX_GEMS = 10;
 export const MAX_PROGRAM_STEPS = 60;
-export const MIN_REPEAT = 2;
+const MIN_REPEAT = 2;
 export const MAX_REPEAT = 9;
 export const MAX_REPEAT_BODY = 6;
 
 export type GridCommand = (typeof GRID_COMMANDS)[number];
 export type Dir = (typeof DIRS)[number];
 export type Cell = { x: number; y: number };
-export type RepeatStep = { repeat: number; body: GridCommand[] };
+type RepeatStep = { repeat: number; body: GridCommand[] };
 export type GridStep = GridCommand | RepeatStep;
 export type GridProgram = GridStep[];
 
@@ -36,8 +36,8 @@ export type GridProps = {
   starter?: GridProgram;
 };
 
-export type GridState = Cell & { dir: Dir; collected: number[] };
-export type GridTraceStep = GridState & { command: GridCommand; at: number[] };
+type GridState = Cell & { dir: Dir; collected: number[] };
+type GridTraceStep = GridState & { command: GridCommand; at: number[] };
 export type GridRun = {
   ok: boolean;
   reachedGoal: boolean;
@@ -104,7 +104,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export const blockCount = (program: readonly GridStep[]) =>
   program.reduce((n, s) => n + (typeof s === "string" ? 1 : 1 + s.body.length), 0);
 
-export function programIssues(program: unknown, p: GridProps): Issue[] {
+function programIssues(program: unknown, p: GridProps): Issue[] {
   if (!Array.isArray(program)) return [{ path: "", message: "a program is a list of commands" }];
   if (!program.length) return [{ path: "", message: "the program is empty" }];
   const issues: Issue[] = [];

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { saveMedia } from "../media/service.ts";
@@ -7,7 +7,7 @@ import { storage } from "../media/storage.ts";
 import { slugOf } from "../progress/mastery.ts";
 import { db, pool } from "./client.ts";
 import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
-import { collectionPaths, collections, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
+import { attempts, hintEvents, stepProgress, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
 
@@ -45,13 +45,45 @@ async function loadWorld(world: string) {
 
 type Loaded = Awaited<ReturnType<typeof loadWorld>>;
 
-async function archiveStaleSteps(tx: Tx, versionId: string, keep: string[]) {
-  const rows = await tx.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId));
-  const kept = new Set(keep);
-  let nextIdx = Math.min(0, ...rows.map((row) => row.idx)) - 1;
-  for (const row of rows) {
-    if (row.idx >= 0 && !kept.has(row.id)) {
-      await tx.update(steps).set({ idx: nextIdx-- }).where(eq(steps.id, row.id));
+async function seedSteps(tx: Tx, versionId: string, file: LessonFile) {
+  const desired = file.steps.map((step, idx) => ({
+    id: step.id ?? `${file.slug}-${idx}`,
+    lessonVersionId: versionId,
+    idx,
+    public: step.public,
+    secret: step.secret,
+  }));
+  const positions = new Map(desired.map(({ id, idx }) => [id, idx]));
+  const existing = await tx.select({ id: steps.id, idx: steps.idx }).from(steps)
+    .where(eq(steps.lessonVersionId, versionId)).for("update");
+  const originalPositions = new Map(existing.map(({ id, idx }) => [id, idx]));
+  let archiveIndex = Math.min(0, ...existing.map(({ idx }) => idx)) - 1;
+  for (const { id, idx } of existing) {
+    const position = positions.get(id);
+    if (position === undefined) {
+      const removed = await tx.delete(steps).where(and(
+        eq(steps.id, id),
+        sql`not exists (select 1 from ${attempts} where ${attempts.stepId} = ${id})`,
+        sql`not exists (select 1 from ${hintEvents} where ${hintEvents.stepId} = ${id})`,
+        sql`not exists (select 1 from ${stepProgress} where ${stepProgress.stepId} = ${id})`,
+        sql`not exists (select 1 from ${lessonMedia} where ${lessonMedia.stepId} = ${id})`,
+      )).returning({ id: steps.id });
+      if (removed.length) continue;
+    }
+    if (idx >= 0 && position !== idx) {
+      await tx.update(steps).set({ idx: archiveIndex-- }).where(eq(steps.id, id));
+    }
+  }
+
+  for (const row of desired) {
+    const oldIndex = originalPositions.get(row.id);
+    if (oldIndex !== undefined && oldIndex !== row.idx) {
+      await tx.update(steps).set({ idx: row.idx, public: row.public, secret: row.secret }).where(eq(steps.id, row.id));
+    } else {
+      await tx.insert(steps).values(row).onConflictDoUpdate({
+        target: [steps.lessonVersionId, steps.idx],
+        set: { public: row.public, secret: row.secret },
+      });
     }
   }
 }
@@ -79,6 +111,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
       worldId,
       title: file.title,
       position: file.position,
+      status: file.status,
       sourceKind: file.source ? ("repo" as const) : ("authored" as const),
       source: file.source ?? null,
       concepts: file.concepts,
@@ -86,7 +119,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
     };
     await tx
       .insert(lessons)
-      .values({ ...values, status: file.status })
+      .values(values)
       .onConflictDoUpdate({
         target: lessons.slug,
         set: values,
@@ -97,26 +130,11 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
       .insert(lessonVersions)
       .values({ lessonId: lesson.id, version: 1, publishedAt: published ? new Date() : null })
       .onConflictDoNothing();
-    const [version] = await tx.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id));
+    const [version] = await tx.select().from(lessonVersions).where(and(eq(lessonVersions.lessonId, lesson.id), eq(lessonVersions.version, 1)));
     await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
-    await tx.update(lessonVersions).set({ content: file.scrim ?? null }).where(eq(lessonVersions.id, version.id));
+    await tx.update(lessonVersions).set({ content: file.scrim ?? null, publishedAt: published ? version.publishedAt ?? new Date() : null }).where(eq(lessonVersions.id, version.id));
 
-    const stepId = (s: { id?: string }, idx: number) => s.id ?? `${file.slug}-${idx}`;
-    if (file.scrim) {
-      const served = file.scrim.segments.flatMap(({ gate }) => gate === undefined ? [] : [stepId(file.steps[gate], gate)]);
-      await archiveStaleSteps(tx, version.id, served);
-    }
-
-    for (const [idx, s] of file.steps.entries()) {
-      const row = {
-        id: stepId(s, idx),
-        lessonVersionId: version.id,
-        idx,
-        public: s.public,
-        secret: s.secret,
-      };
-      await tx.insert(steps).values(row).onConflictDoUpdate({ target: steps.id, set: row });
-    }
+    await seedSteps(tx, version.id, file);
   }
   return worldId;
 }
@@ -138,7 +156,8 @@ async function seedNarration(file: LessonFile) {
   }
 }
 
-export async function seed() {
+export async function seed({ narration = false } = {}) {
+  if (narration && !storage) throw new Error("Configure object storage to seed narration");
   const main = await loadWorld("codequest");
   const samples = await Promise.all(SAMPLE_WORLDS.map(loadWorld));
   const scrimDemo = await loadWorld("scrim-demo");
@@ -152,13 +171,6 @@ export async function seed() {
       .values({ slug: "js-foundations", ...path })
       .onConflictDoUpdate({ target: paths.slug, set: path });
     const [jsPath] = await tx.select().from(paths).where(eq(paths.slug, "js-foundations"));
-    const startHere = { title: "Start here", description: "New to LearnSlop? Begin with these.", featured: true };
-    const [created] = await tx
-      .insert(collections)
-      .values({ slug: "start-here", ...startHere })
-      .onConflictDoNothing()
-      .returning({ id: collections.id });
-    if (created) await tx.insert(collectionPaths).values({ collectionId: created.id, pathId: jsPath.id, position: 0 });
     await tx
       .insert(pathCourses)
       .values({ pathId: jsPath.id, worldId: codeQuestId, position: 0 })
@@ -175,10 +187,15 @@ export async function seed() {
       await tx.insert(pathCourses).values({ pathId: sample.id, worldId, position }).onConflictDoNothing();
     }
   });
-  for (const file of [main, scrimDemo, ...samples].flatMap((world) => world.files)) await seedNarration(file);
+  if (narration) {
+    for (const file of [main, scrimDemo, ...samples].flatMap((world) => world.files)) await seedNarration(file);
+  }
 }
 
 if (import.meta.main) {
-  await seed();
-  await pool.end();
+  try {
+    await seed({ narration: process.argv.includes("--narration") });
+  } finally {
+    await pool.end();
+  }
 }

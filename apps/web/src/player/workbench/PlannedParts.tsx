@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { ArrowDownToLine, ArrowUp, ArrowUpToLine, Check, ChevronDown, ChevronRight, CircleX, Copy, GripVertical, ImagePlus, Paperclip, Play, Plus, Redo2, RotateCcw, Square, StepForward, TriangleAlert, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type Dispatch, type FormEvent, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { ArrowDownToLine, ArrowUp, ArrowUpToLine, Check, ChevronDown, ChevronRight, CircleX, Copy, GripVertical, Play, Plus, Redo2, RotateCcw, Square, StepForward, TriangleAlert, type LucideIcon } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { SOON, Soon, type NavView } from "./Planned";
 import type { WorkbenchProblem } from "./context";
@@ -22,7 +22,9 @@ export function RunStopPill() {
 }
 
 type GuideMessage = { role: "user" | "assistant"; text: string; widgets?: GuideWidget[] };
-type GuideImage = { id: string; name: string; url: string };
+export type GuideChat = { messages: GuideMessage[]; question: string; sending: boolean; chatError: string };
+type GuideSession = { chat: GuideChat; setChat: Dispatch<SetStateAction<GuideChat>>; requestId: RefObject<number> };
+const emptyChat: GuideChat = { messages: [], question: "", sending: false, chatError: "" };
 
 function GuideWidgetCard({ widget }: { widget: GuideWidget }) {
   return <aside className="wb-ai-widget">
@@ -48,44 +50,24 @@ function clipGuideCode(code: string, selection: { startLine: number; endLine: nu
   return { code: lines.slice(lo, hi + 1).join("\n").slice(0, GUIDE_CODE_LIMIT), clipped: true, fromStart: !selection };
 }
 
-export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent, pendingPrompt, onPromptSent }: { lessonId?: string; fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void; pendingPrompt?: { text: string } | null; onPromptSent?: () => void }) {
+export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent, pendingPrompt, onPromptSent, session }: { lessonId?: string; fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void; pendingPrompt?: { text: string } | null; onPromptSent?: () => void; session?: GuideSession }) {
   const guideCode = clipGuideCode(code, selection);
-  const [messages, setMessages] = useState<GuideMessage[]>([]);
-  const [question, setQuestion] = useState("");
-  const [sending, setSending] = useState(false);
-  const [chatError, setChatError] = useState("");
-  const [images, setImages] = useState<GuideImage[]>([]);
-  const [showAttachments, setShowAttachments] = useState(false);
-  const imageInput = useRef<HTMLInputElement>(null);
-  const imageUrls = useRef(new Set<string>());
-  const requestId = useRef(0);
-  const clearImages = () => {
-    images.forEach((image) => URL.revokeObjectURL(image.url));
-    imageUrls.current.clear();
-    setImages([]);
-  };
+  const [localChat, setLocalChat] = useState(emptyChat);
+  const localRequestId = useRef(0);
+  const { chat: { messages, question, sending, chatError }, setChat, requestId } =
+    session ?? { chat: localChat, setChat: setLocalChat, requestId: localRequestId };
   const chatPath = useRef(filePath);
   useEffect(() => {
     if (chatPath.current === filePath) return;
     chatPath.current = filePath;
     requestId.current++;
-    setMessages([]);
-    setSending(false);
-    setChatError("");
-    setImages([]);
-    setShowAttachments(false);
-  }, [filePath]);
-  useEffect(() => () => {
-    imageUrls.current.forEach((url) => URL.revokeObjectURL(url));
-    imageUrls.current.clear();
-  }, [filePath]);
+    setChat(emptyChat);
+  }, [filePath, requestId, setChat]);
   const ask = async (prompt: string, finding?: { ruleId: string; line: number; column?: number }) => {
     if (sending) return;
     const id = ++requestId.current;
     const next: GuideMessage[] = [...messages, { role: "user", text: prompt }];
-    setMessages(next);
-    setSending(true);
-    setChatError("");
+    setChat((chat) => ({ ...chat, messages: next, sending: true, chatError: "" }));
     try {
       const { guide } = await askEditorGuide({
         lessonId,
@@ -97,11 +79,11 @@ export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, langu
         messages: next.slice(-8).map(({ role, text }) => ({ role, content: text })),
         ...(finding ? { finding } : {}),
       });
-      if (id === requestId.current) setMessages((current) => [...current, { role: "assistant", text: guide.message, widgets: guide.widgets }]);
+      if (id === requestId.current) setChat((chat) => ({ ...chat, messages: [...chat.messages, { role: "assistant", text: guide.message, widgets: guide.widgets }] }));
     } catch (error) {
-      if (id === requestId.current) setChatError(error instanceof Error ? error.message : "The AI guide could not reply. Try again shortly.");
+      if (id === requestId.current) setChat((chat) => ({ ...chat, chatError: error instanceof Error ? error.message : "The AI guide could not reply. Try again shortly." }));
     } finally {
-      if (id === requestId.current) setSending(false);
+      if (id === requestId.current) setChat((chat) => ({ ...chat, sending: false }));
     }
   };
   const handledFinding = useRef<object | null>(null);
@@ -126,14 +108,14 @@ export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, langu
     event.preventDefault();
     const value = question.trim();
     if (!value || sending) return;
-    setQuestion("");
+    setChat((chat) => ({ ...chat, question: "" }));
     void ask(value);
   };
   const quickActions = ["Explain this", "Give me a hint", "Debug this code", "Find a bug", "Write a test"];
   return (
     <section className="wb-ai-guide flex h-full min-h-0 min-w-0 flex-1 flex-col" aria-label="AI learning guide">
       <div className="wb-ai-head">
-        <button className="wb-ai-iconbtn" type="button" aria-label="New chat" title="New chat" onClick={() => { requestId.current++; setSending(false); setMessages([]); setChatError(""); clearImages(); }}><Plus size={18} /></button>
+        <button className="wb-ai-iconbtn" type="button" aria-label="New chat" title="New chat" onClick={() => { requestId.current++; setChat(emptyChat); }}><Plus size={18} /></button>
         <div className="wb-ai-avatar" aria-hidden="true">
           <svg viewBox="0 0 48 48" width="54" height="54">
             <defs><linearGradient id="sloppy-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#7fb2ff" /><stop offset="1" stopColor="#2f5fd6" /></linearGradient></defs>
@@ -158,38 +140,17 @@ export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, langu
         </div>
       </div>
       <form className="wb-ask wb-ai-composer" onSubmit={submit}>
-        {(selection || guideCode.clipped || images.length > 0) && <div className="wb-ai-context" aria-label="Attached context">
+        {(selection || guideCode.clipped) && <div className="wb-ai-context" aria-label="Attached context">
           {guideCode.clipped && <span className="wb-ai-context-chip" title={guideCode.fromStart ? "The cursor position is not available here, so the guide sees the start of the file." : "The guide sees the lines around your selection."}>
             <span className="wb-ai-context-lines">{guideCode.fromStart ? "Showing the start of this file" : "Showing part of this file"}</span>
           </span>}
           {selection && <span className="wb-ai-context-chip" title={`${fileName} · Lines ${selection.startLine}${selection.endLine !== selection.startLine ? `–${selection.endLine}` : ""}`}>
             <span className="wb-ai-context-file">{fileName}</span><span className="wb-ai-context-lines">Lines {selection.startLine}{selection.endLine !== selection.startLine ? `–${selection.endLine}` : ""}</span>
           </span>}
-          {images.map((image) => <span className="wb-ai-context-chip wb-ai-image-chip" key={image.id} title={image.name}>
-            <img src={image.url} alt="" /><span className="wb-ai-context-file">{image.name}</span><button type="button" aria-label={`Remove ${image.name}`} onClick={() => { URL.revokeObjectURL(image.url); imageUrls.current.delete(image.url); setImages((current) => current.filter((item) => item.id !== image.id)); }}><X size={11} /></button>
-          </span>)}
         </div>}
         <div className="wb-ai-input-row">
-          <span className="wb-ai-attach-wrap">
-            <button type="button" className="wb-ai-attach" aria-label="Add attachment" title="Image attachments are not sent to the guide yet" disabled aria-expanded={showAttachments} onClick={() => setShowAttachments((open) => !open)}><Paperclip size={16} /></button>
-            {showAttachments && <span className="wb-ai-attach-menu" role="menu" aria-label="Attach image">
-              <button type="button" role="menuitem" onClick={() => imageInput.current?.click()}><ImagePlus size={15} />Add images</button>
-            </span>}
-            <input ref={imageInput} className="sr-only" type="file" accept="image/*" multiple aria-label="Choose images to attach" onChange={(event) => {
-              const remaining = Math.max(0, 5 - images.length);
-              const selected = Array.from(event.currentTarget.files ?? []).filter((file) => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024).slice(0, remaining);
-              const added = selected.map((file) => {
-                const url = URL.createObjectURL(file);
-                imageUrls.current.add(url);
-                return { id: crypto.randomUUID(), name: file.name, url };
-              });
-              if (added.length) setImages((current) => [...current, ...added]);
-              event.currentTarget.value = "";
-              setShowAttachments(false);
-            }} />
-          </span>
           <label htmlFor="wb-guide-question" className="sr-only">Ask about this code</label>
-          <textarea id="wb-guide-question" rows={1} maxLength={2000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about this code" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+          <textarea id="wb-guide-question" rows={1} maxLength={2000} value={question} onChange={(event) => { const { value } = event.currentTarget; setChat((chat) => ({ ...chat, question: value })); }} placeholder="Ask about this code" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
           <button type="submit" className="wb-send" aria-label="Send" disabled={!question.trim() || sending}><ArrowUp size={15} strokeWidth={2} aria-hidden="true" /></button>
         </div>
       </form>

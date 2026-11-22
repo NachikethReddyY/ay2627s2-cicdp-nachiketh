@@ -1,19 +1,19 @@
 
 export const MAX_EXPR_LEN = 80;
-export const MAX_EXPR_DEPTH = 20;
-export const MAX_EXPR_NODES = 200;
+const MAX_EXPR_DEPTH = 20;
+const MAX_EXPR_NODES = 200;
 
 export const FUNCTIONS = { sin: 1, cos: 1, tan: 1, sqrt: 1, abs: 1, exp: 1, log: 1, min: 2, max: 2 } as const;
 type Fn = keyof typeof FUNCTIONS;
 
-export type Ast =
+type Ast =
   | { t: "num"; v: number }
   | { t: "var"; name: string }
   | { t: "neg"; a: Ast }
   | { t: "bin"; op: "+" | "-" | "*" | "/" | "^"; a: Ast; b: Ast }
   | { t: "call"; fn: Fn; args: Ast[] };
 
-export type ParseExprResult = { ok: true; ast: Ast } | { ok: false; error: string; pos: number };
+type ParseExprResult = { ok: true; ast: Ast } | { ok: false; error: string; pos: number };
 
 class Fail extends Error {
   pos: number;

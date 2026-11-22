@@ -1,9 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { bin } from "./bin.ts";
+import { bin } from "../../../scripts/bin.ts";
 
 export type PortOwner = { pid: number; command: string };
 
-export const PORTS = { web: 5173, api: 3000, fakeLlm: 8080, engine: 8000 } as const;
+export const PORTS = {
+  web: Number(process.env.VALIDATOR_WEB_PORT ?? 5173),
+  api: Number(process.env.VALIDATOR_API_PORT ?? 3000),
+  fakeLlm: Number(process.env.VALIDATOR_FAKE_LLM_PORT ?? 8080),
+  engine: Number(process.env.VALIDATOR_ENGINE_PORT ?? 8000),
+} as const;
 
 export function parsePort(value: string): number {
   const port = Number(value);

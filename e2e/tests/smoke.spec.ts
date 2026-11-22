@@ -58,15 +58,15 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
 
   const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
   try {
-    const { rows } = await pool.query<{ kind: string; correct: boolean; feedback: string }>(
-      `select a.kind, a.correct, a.feedback #>> '{}' as feedback
+    const { rows } = await pool.query<{ kind: string; correct: boolean; response: null; feedback: null }>(
+      `select a.kind, a.correct, a.response, a.feedback
          from attempts a
          join learners l on l.id = a.learner_id
          join "user" u on u.id = l.user_id
         where u.email = $1 and a.step_id = $2`,
       [email, FIRST_STEP_ID],
     );
-    expect(rows).toEqual([{ kind: "mcq", correct: true, feedback: "Correct!" }]);
+    expect(rows).toEqual([{ kind: "mcq", correct: true, response: null, feedback: null }]);
   } finally {
     await pool.end();
   }

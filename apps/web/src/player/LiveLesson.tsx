@@ -1,16 +1,16 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
 import { useApi } from "../lib/api";
-import { LearnView } from "./LearnView.tsx";
-import { GamePracticeView } from "./GamePracticeView.tsx";
 import { CourseNext, LessonProgress, NextLink } from "./live/CourseNav";
 import { Notice } from "./live/Notice";
-import CheckedLesson from "./live/CheckedLesson";
-import Steps from "./live/Steps";
 import { hasChecks } from "./live/readFlow";
-import WatchView from "./live/WatchView";
 import { lessonTitle } from "./live/courseProgress";
 
+const LearnView = lazy(() => import("./LearnView").then(({ LearnView }) => ({ default: LearnView })));
+const GamePracticeView = lazy(() => import("./GamePracticeView").then(({ GamePracticeView }) => ({ default: GamePracticeView })));
+const CheckedLesson = lazy(() => import("./live/CheckedLesson"));
+const Steps = lazy(() => import("./live/Steps"));
+const WatchView = lazy(() => import("./live/WatchView"));
 const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 const ScrimLesson = lazy(() => import("./scrim/ScrimLesson"));
 
@@ -84,11 +84,11 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
         <a href="/" className="underline">Home</a>
       </Notice>;
     const read = (footer: ReactNode) => {
-      if (part?.kind === "learn") return <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div>;
+      if (part?.kind === "learn") return <Suspense fallback={fallback}><div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div></Suspense>;
       if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={footer} completed={data.completed} /></Suspense>;
       return fallback;
     };
-    if (checked) return <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson>;
+    if (checked) return <Suspense fallback={fallback}><CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson></Suspense>;
     return read(update ? <div className="flex flex-wrap items-center justify-center gap-3">{next}{update}</div> : next);
   }
   if (data.kind === "practice" && part?.kind === "practice")
@@ -96,7 +96,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   if (data.kind === "scrim" && part?.kind === "scrim")
     return <Suspense fallback={fallback}><ScrimLesson lessonId={data.id} title={data.title} part={part} steps={data.steps} media={data.media} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
-    return <div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} versionId={part.versionId} title={data.title} intro={part.intro} doc={part.doc} next={next} onComplete={courseState.reload} /></div>;
+    return <Suspense fallback={fallback}><div className="flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} versionId={part.versionId} title={data.title} intro={part.intro} doc={part.doc} next={next} onComplete={courseState.reload} /></div></Suspense>;
   if (data.kind === "predict" && data.steps.length > 0)
     return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} onFinished={courseState.reload} /></Suspense></>;
   return (

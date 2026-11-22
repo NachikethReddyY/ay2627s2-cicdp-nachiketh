@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { alt, text, type BlockModule } from "../src/index.ts";
+import { alt } from "../src/core/caps.ts";
+import { text } from "../src/core/sanitize.ts";
+import { type BlockModule } from "../src/index.ts";
 import { catalog, jsonSchema, specSchema } from "../src/gen/build.ts";
 import { stale } from "../src/gen/main.ts";
 

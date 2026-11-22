@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { lessonRef, playableLesson, visibleWorld } from "../access.ts";
 import { db } from "../db/client.ts";
@@ -16,7 +16,7 @@ export async function loadGuideContext(learnerId: string, lessonId: string) {
   if (!found) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
   const practice = practiceOf(found.content);
   const lessonSteps = await db.select({ id: steps.id }).from(steps)
-    .where(eq(steps.lessonVersionId, found.versionId)).orderBy(asc(steps.idx));
+    .where(and(eq(steps.lessonVersionId, found.versionId), gte(steps.idx, 0))).orderBy(asc(steps.idx));
   const hint = await guideStep(learnerId, lessonSteps.map((step) => step.id));
   return {
     context: {

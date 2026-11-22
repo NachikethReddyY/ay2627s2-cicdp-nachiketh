@@ -155,6 +155,18 @@ def test_truncated_reply_fails_fast_without_repair(monkeypatch: pytest.MonkeyPat
     assert len(calls) == 1
 
 
+def test_truncated_repair_reply_fails_without_another_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cut = reply('{"steps": [')
+    cut.choices[0].finish_reason = "length"
+    calls = fake(monkeypatch, reply("not json"), cut)
+    with pytest.raises(GenerationError) as err:
+        generate("sys", {}, Lesson)
+    assert "truncated" in err.value.errors
+    assert len(calls) == 2
+
+
 def test_litellm_retries_are_off_and_timeout_capped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_DEADLINE_S", "10")
     get_settings.cache_clear()

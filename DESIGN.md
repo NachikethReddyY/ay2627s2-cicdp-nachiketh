@@ -1,7 +1,7 @@
 ---
 version: beta
 name: LearnSlop-design
-description: Geist-style system in two scopes. The landing page (.lp) is dark only, with a pure black canvas, a gray ramp for hierarchy, 1px rings instead of borders, pill buttons and one blue accent. The app (:root) is the light and dark editor system, built on the same ideas. Geist for UI, Geist Mono for code. Pip, the sprout mascot, appears in the app only.
+description: Geist-style system in two scopes. The landing page (.lp) is dark only, with a pure black canvas, a gray ramp for hierarchy, 1px rings instead of borders, pill buttons and one blue accent. The app (:root) is the light and dark editor system, built on the same ideas. Geist for UI, Geist Mono for code.
 
 colors:
   landing:            # .lp in apps/web/src/pages/landing.css, dark only
@@ -270,14 +270,6 @@ Neither scope uses a hard offset shadow.
 - **App**: `--out: cubic-bezier(0.2, 0.8, 0.2, 1)` and `--pop: cubic-bezier(0.34, 1.56, 0.64, 1)`. The shared keyframes (`shake`, `float`, `sketch`, `pop`, `hop`, `wiggle`, `slide-in`, `rise`, `ring`, `burst`, `loader-press`, `loader-dot`, `lq-blink`) travel no more than 14px and rotate no more than 2.5deg (`wiggle`). Window morphs take 0.26s.
 - **Reduced motion**: the app turns off every animation and transition. The landing stops the tile bob and the button transitions, and the tiles stay visible.
 
-## Pip
-
-**App only.** The landing page does not show Pip. Its logo mark is the blue three-path monogram SVG, not the mascot artwork.
-
-- Pip is the mint sprout mascot from the existing illustrations. Its body is mint in the artwork and does not use the editor palette.
-- Pip sits on the edge of a panel, floats (`float`, 4s) and wiggles in the wave pose.
-- Poses: wave (idle), think (hint, and the `PipEmpty` default), oops (wrong), cheer (correct), sheet (empty).
-- Pip is never drawn inside a code block.
 
 ## Voice
 

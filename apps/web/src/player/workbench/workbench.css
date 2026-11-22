@@ -371,20 +371,12 @@
   .wb-ai-composer { display: flex; flex: none; flex-direction: column; align-items: stretch; gap: 0; padding: 7px 8px 6px 12px; }
   .wb-ai-context { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 5px; margin: 0 2px 7px 0; padding-bottom: 7px; border-bottom: 1px solid #f0f0f2; }
   .wb-ai-context-chip { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 3px; padding: 2px 4px 2px 0; border-radius: 12px; background: #f0f0f2; }
-  .wb-ai-image-chip img { width: 22px; height: 22px; flex: none; border-radius: 5px; object-fit: cover; }
   .wb-ai-context-file, .wb-ai-context-lines { display: inline-block; max-width: 58%; min-width: 0; overflow: hidden; padding: 3px 7px; border-radius: 10px; color: #3a3a3f; font: 10px/1.2 "Geist Mono", ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
   .wb-ai-context-file { background: rgba(47,95,214,.1); color: #2f5fd6; }
   .wb-ai-context-chip > button { display: grid; width: 18px; height: 18px; flex: none; place-items: center; border: 0; border-radius: 9px; background: transparent; color: #555a66; cursor: pointer; }
   .wb-ai-context-chip > button:hover { background: rgba(0,0,0,.08); }
   .wb-ai-input-row { display: flex; width: 100%; min-width: 0; align-items: flex-end; gap: 7px; }
   .wb-ai-input-row textarea { width: 0; height: 34px; min-height: 34px; max-height: 100px; flex: 1 1 0%; padding: 7px 2px; line-height: 20px; text-align: left; }
-  .wb-ai-attach-wrap { position: relative; display: flex; flex: none; }
-  .wb-ai-attach { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 15px; background: transparent; color: #555a66; cursor: pointer; }
-  .wb-ai-attach:hover, .wb-ai-attach[aria-expanded="true"] { background: #f0f0f2; color: #2f5fd6; }
-  .wb-ai-attach-menu { position: absolute; z-index: 6; bottom: calc(100% + 10px); left: -4px; display: flex; width: 205px; flex-direction: column; padding: 6px; border: 1px solid #d7d6d6; border-radius: 14px; background: rgba(255,255,255,.96); box-shadow: 0 12px 32px rgba(20,30,70,.2); backdrop-filter: blur(18px); }
-  .wb-ai-attach-menu button { display: flex; min-width: 0; align-items: center; gap: 9px; padding: 8px; border: 0; border-radius: 9px; background: transparent; color: #1c1c1e; font: inherit; text-align: left; cursor: pointer; }
-  .wb-ai-attach-menu button:hover:not(:disabled) { background: rgba(47,95,214,.1); }
-  .wb-ai-attach-menu button:disabled { color: #8a8f9a; cursor: default; }
   .wb .wb-ai-composer { position: relative; display: flex; flex: none; flex-direction: column; align-items: stretch; gap: 0; padding: 7px 8px 6px 9px; }
   .wb-ai-guide .wb-send { cursor: pointer; }
   .wb-ai-guide .wb-send:disabled { opacity: .45; cursor: default; }
@@ -453,12 +445,7 @@
   .wb[data-resolved="dark"] .wb-ai-context-chip { background: var(--selrow); }
   .wb[data-resolved="dark"] .wb-ai-context-file, .wb[data-resolved="dark"] .wb-ai-context-lines { color: var(--tx); }
   .wb[data-resolved="dark"] .wb-ai-context-file { background: var(--sel); color: var(--acT); }
-  .wb[data-resolved="dark"] .wb-ai-context-chip > button, .wb[data-resolved="dark"] .wb-ai-attach { color: var(--mu); }
   .wb[data-resolved="dark"] .wb-ai-context-chip > button:hover { background: var(--hov); }
-  .wb[data-resolved="dark"] .wb-ai-attach:hover, .wb[data-resolved="dark"] .wb-ai-attach[aria-expanded="true"] { background: var(--hov); color: var(--acT); }
-  .wb[data-resolved="dark"] .wb-ai-attach-menu { background: var(--tbar); border-color: var(--line); }
-  .wb[data-resolved="dark"] .wb-ai-attach-menu button { color: var(--tx); }
-  .wb[data-resolved="dark"] .wb-ai-attach-menu button:disabled { color: var(--mu); }
   .wb[data-resolved="dark"] .wb-ai-prompt { color: var(--tx); background: var(--pane2); border-color: var(--line); }
   .wb[data-resolved="dark"] .wb-ai-prompt:hover { border-color: var(--ac); background: var(--sel); }
   .wb[data-resolved="dark"] .wb-ai-challenge { background: var(--pane2); border-color: var(--line); box-shadow: 0 8px 22px rgba(0,0,0,.35); }

@@ -39,19 +39,6 @@ export type SourceEntry = { url: string; kind: "script" | "style" | "document" }
 
 export type SourceText = { url: string; text?: string; error?: string };
 
-export type PreviewToHost =
-  | { type: "console"; level: LogLevel; args: string[] }
-  | { type: "inspect-state"; enabled: boolean }
-  | { type: "ready" }
-  | { type: "element"; nodeId: number; tag: string; id: string; classes: string; text: string; size: string }
-  | { type: "contextmenu"; x: number; y: number }
-  | { type: "pointerdown" }
-  | { type: "dom"; root: DomNode; truncated: boolean }
-  | { type: "styles"; styles: NodeStyles }
-  | { type: "network"; entry: NetworkEntry }
-  | { type: "sources"; entries: SourceEntry[] }
-  | ({ type: "source" } & SourceText);
-
 export type HostToPreview =
   | { type: "inspect"; enabled: boolean }
   | { type: "dom-request" }

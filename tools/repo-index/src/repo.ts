@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { bin } from "./bin.ts";
+import { bin } from "../../../scripts/bin.ts";
 
 export const INDEX_DIR_NAME = ".repo-index";
 const MAX_FILE_BYTES = 200 * 1024;

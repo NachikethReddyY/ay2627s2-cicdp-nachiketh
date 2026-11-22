@@ -55,7 +55,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Before a PR push**, run the full CI (`turbo run lint test build`) against a test Postgres. No pushing on partial checks.
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
-- **Data.** Learner data is limited to account email, attempts, mastery (BKT per concept), a public handle, XP, streak, timezone and daily goal. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
+- **Data.** Learner data includes account and session records, a public handle, role and leaderboard settings, timezone and daily goal, enrollments, attempts and hint use, lesson and game progress, mastery (BKT per concept), recommendations, workspace check results and import jobs. Learner-owned content records include generated and imported courses. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
 - **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment follow the merge gate (see Merging).
 
 ## Foundations first

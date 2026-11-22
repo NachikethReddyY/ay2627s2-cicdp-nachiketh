@@ -1,17 +1,17 @@
-import type { Timeline } from "../../core/timeline.ts";
+import type { BlockTimeline } from "../../core/timeline.ts";
 
 export const G_UNITS = 490;
 export const REST_HEIGHT = 0.25;
 export const MAX_HOPS = 30;
 export const MAX_SIM_S = 15;
-export const CAPTIONED_HOPS = 4;
+const CAPTIONED_HOPS = 4;
 
 export const bodyBelow = (s: { kind: string; r?: number; h?: number }) => (s.kind === "circle" ? (s.r ?? 0) : (s.h ?? 0));
 
-export type BounceBody = { y: number; below: number };
-export type BouncePhysics = { kind: "bounce"; floor: number; restitution: number; autoplay?: boolean };
-export type BounceHop = { at: number; speed: number; height: number };
-export type Bounce = { y0: number; rest: number; t0: number; hops: BounceHop[]; restAt: number };
+type BounceBody = { y: number; below: number };
+type BouncePhysics = { kind: "bounce"; floor: number; restitution: number; autoplay?: boolean };
+type BounceHop = { at: number; speed: number; height: number };
+type Bounce = { y0: number; rest: number; t0: number; hops: BounceHop[]; restAt: number };
 
 export function simulateBounce(body: BounceBody, physics: BouncePhysics): Bounce {
   const rest = physics.floor - body.below;
@@ -44,7 +44,7 @@ export function bounceY(bounce: Bounce, time: number): number {
   return bounce.rest;
 }
 
-export function bounceTimeline(bounce: Bounce, physics: BouncePhysics): { timeline: Timeline; poses: number[] } {
+export function bounceTimeline(bounce: Bounce, physics: BouncePhysics): { timeline: BlockTimeline; poses: number[] } {
   const visible = bounce.hops.filter((hop) => hop.height >= bounce.hops[0].height * 0.05).slice(0, CAPTIONED_HOPS);
   const poses = [0, ...visible.map((hop) => hop.at + hop.speed / G_UNITS), bounce.restAt];
   const steps = poses.map((pose, i) => {

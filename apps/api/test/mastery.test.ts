@@ -434,6 +434,7 @@ test("me.next carries a reason, even before any attempt", async () => {
   const c = await signUp(app);
   const first = out(await trpc(app, c).q("me.next", { world: "codequest" }));
   assert.ok(first.reason.length > 0);
+  assert.equal(first.reasonCode, "stub");
   assert.equal(first.lessonSlug, "lesson-1");
   await attempt(c, 1);
   const next = out(await trpc(app, c).q("me.next", { world: "codequest" }));

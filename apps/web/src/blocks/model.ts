@@ -1,4 +1,4 @@
-import { CLIENT_BLOCKS, parseSpec, type BlockModule, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type Timeline, type TimelineState } from "@learnquest/ui-catalog";
+import { CLIENT_BLOCKS, parseSpec, type BlockModule, sanitize, MAX_ALT, clampStep, stateAt, stepCount, type Block, type Issue, type BlockTimeline, type TimelineState } from "@learnquest/ui-catalog";
 
 type Item = { kind: "block"; block: Block } | { kind: "rejected"; alt: string; reasons: string[] };
 export type Plan = { items: Item[]; issues: Issue[]; fatal: boolean };
@@ -29,7 +29,7 @@ export function plan(doc: unknown, registry: readonly BlockModule[] = CLIENT_BLO
 export type Stepper = { step: number; playing: boolean };
 export type StepAction = "toggle" | "play" | "pause" | "next" | "prev" | "first" | "last" | { goto: number };
 
-export function stepReduce(t: Timeline, s: Stepper, a: StepAction): Stepper {
+export function stepReduce(t: BlockTimeline, s: Stepper, a: StepAction): Stepper {
   const at = (i: number, playing = false): Stepper => ({ step: clampStep(t, i), playing });
   const last = stepCount(t) - 1;
   if (a === "toggle") return stepReduce(t, s, s.playing ? "pause" : "play");
@@ -42,7 +42,7 @@ export function stepReduce(t: Timeline, s: Stepper, a: StepAction): Stepper {
   return at(a.goto);
 }
 
-export const tick = (t: Timeline, s: Stepper): Stepper => {
+export const tick = (t: BlockTimeline, s: Stepper): Stepper => {
   const n = clampStep(t, s.step + 1);
   return { step: n, playing: n < stepCount(t) - 1 };
 };
@@ -57,7 +57,7 @@ export function keyAction(key: string, targetTag = "", mods: { alt?: boolean; ct
 
 export const initialPlaying = (autoplay: boolean | undefined, reducedMotion: boolean): boolean => !!autoplay && !reducedMotion;
 
-export const viewState = (t: Timeline, s: Pick<Stepper, "step">): { state: TimelineState; caption: string; count: number } => ({
+export const viewState = (t: BlockTimeline, s: Pick<Stepper, "step">): { state: TimelineState; caption: string; count: number } => ({
   state: stateAt(t, s.step),
   caption: t.steps[clampStep(t, s.step)].caption,
   count: stepCount(t),

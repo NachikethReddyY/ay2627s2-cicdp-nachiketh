@@ -33,6 +33,7 @@ Files live in `.validator/` (ignored by git): `state.json` (pids and ports), `lo
 
 | Variable | Default | Use |
 |---|---|---|
+| `VALIDATOR_WEB_PORT`, `VALIDATOR_API_PORT`, `VALIDATOR_FAKE_LLM_PORT`, `VALIDATOR_ENGINE_PORT` | 5173, 3000, 8080, 8000 | Override ports when running another stack. Pass the same overrides to each validator command. |
 | `VALIDATOR_DATABASE_URL` | `postgres://learnquest:learnquest@localhost:5432/learnquest_validator` | Another server or database. Names ending `_test` and `postgres` are refused, so the shared test database is never touched. |
 | `VALIDATOR_ADMIN_URL` | the database URL with `/postgres` | A superuser URL used only to create and drop the database, for servers where the app role cannot create databases. |
 

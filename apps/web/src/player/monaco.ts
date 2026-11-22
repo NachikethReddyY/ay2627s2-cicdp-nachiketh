@@ -1,8 +1,24 @@
-import * as monaco from "monaco-editor";
+import * as editorApi from "monaco-editor/editor/editor.api.js";
+import * as typescript from "monaco-editor/languages/features/typescript/register.js";
+import "monaco-editor/languages/definitions/javascript/register.js";
+import "monaco-editor/languages/definitions/typescript/register.js";
+import "monaco-editor/languages/definitions/python/register.js";
+import "monaco-editor/editor/browser/coreCommands.js";
+import "monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching.js";
+import "monaco-editor/editor/contrib/comment/browser/comment.js";
+import "monaco-editor/editor/contrib/contextmenu/browser/contextmenu.js";
+import "monaco-editor/editor/contrib/find/browser/findController.js";
+import "monaco-editor/editor/contrib/folding/browser/folding.js";
+import "monaco-editor/editor/contrib/gotoError/browser/gotoError.js";
+import "monaco-editor/editor/contrib/hover/browser/hoverContribution.js";
+import "monaco-editor/editor/contrib/parameterHints/browser/parameterHints.js";
+import "monaco-editor/editor/contrib/suggest/browser/suggestController.js";
 import editorWorker from "monaco-editor/editor/editor.worker?worker";
 import tsWorker from "monaco-editor/language/typescript/ts.worker?worker";
 import { wrapCompletionProvider } from "./workbench/editorHelp";
 import { loader } from "@monaco-editor/react";
+
+const monaco = { ...editorApi, typescript };
 
 self.MonacoEnvironment = {
   getWorker: (_id, label) => (label === "typescript" || label === "javascript" ? new tsWorker() : new editorWorker()),

@@ -28,6 +28,8 @@ These steps are outside the repo. The workflow fails clearly until they are done
 3. Engine: health check path `/healthz`. Set `LLM_*`, `ENGINE_TOKEN` and `PORT` from `services/engine/.env.example`.
 4. Copy each service's **deploy hook URL** into the matching GitHub secret. The hook URL is a secret; never paste it into a chat or a log.
 
+Run a single API instance. Sandbox runs, shell tickets and rate limits use in-process state. Move that state to shared storage before scaling the API horizontally.
+
 ### Vercel
 
 1. Use the production Vercel project (`pip-learnquest`) with root directory `apps/web`.

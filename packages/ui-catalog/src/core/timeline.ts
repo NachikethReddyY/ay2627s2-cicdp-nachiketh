@@ -3,10 +3,10 @@ import { id } from "./caps.ts";
 import { text } from "./sanitize.ts";
 
 export const MAX_STEPS = 30;
-export const MAX_SET = 20;
+const MAX_SET = 20;
 const MAX_CAPTION = 200;
-export const MIN_STEP_MS = 300;
-export const MAX_STEP_MS = 4000;
+const MIN_STEP_MS = 300;
+const MAX_STEP_MS = 4000;
 export const EASES = ["none", "power2.in", "power2.out", "power2.inOut", "back.out(1.6)", "bounce.out", "elastic.out(1, 0.5)"] as const;
 
 const setSchema = z.strictObject({
@@ -27,16 +27,16 @@ export const timelineSchema = z.strictObject({
   autoplay: z.boolean().optional(),
 });
 
-export type Timeline = z.infer<typeof timelineSchema>;
-export type TimelineValue = string | number | boolean;
+export type BlockTimeline = z.infer<typeof timelineSchema>;
+type TimelineValue = string | number | boolean;
 export type TimelineState = Record<string, Record<string, TimelineValue>>;
 
-export const stepCount = (t: Timeline): number => t.steps.length;
+export const stepCount = (t: BlockTimeline): number => t.steps.length;
 
-export const clampStep = (t: Timeline, i: number): number =>
+export const clampStep = (t: BlockTimeline, i: number): number =>
   Math.min(Math.max(Math.trunc(i) || 0, 0), t.steps.length - 1);
 
-export const stateAt = (t: Timeline, i: number): TimelineState => {
+export const stateAt = (t: BlockTimeline, i: number): TimelineState => {
   const state: TimelineState = Object.create(null);
   for (const step of t.steps.slice(0, clampStep(t, i) + 1)) {
     for (const { id, prop, value } of step.set) {
