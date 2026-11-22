@@ -53,7 +53,9 @@ def test_outline_shapes() -> None:
         Outline.model_validate({"title": "x"})
 
 
-@pytest.mark.parametrize("kind", ["predict", "learn", "watch", "practice", "game-practice", "scrim"])
+@pytest.mark.parametrize(
+    "kind", ["predict", "learn", "watch", "practice", "game-practice", "scrim"]
+)
 def test_programming_outline_kinds(kind: str) -> None:
     lesson = {"title": "Return values", "level": 1, "concepts": ["return-values"], "kind": kind}
     course = {"title": "Functions", "description": "JavaScript", "lessons": [lesson] * 3}
