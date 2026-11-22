@@ -10,7 +10,7 @@ const noSkip = () => undefined;
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
 
-type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; showCode?: boolean; showAnswer?: boolean };
+type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; showCode?: boolean; showAnswer?: boolean; finishOnAttempt?: boolean };
 
 
 function Failure({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -41,10 +41,11 @@ function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: Ga
   );
 }
 
-function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = false, showAnswer = true }: GateProps & { step: StepPublic }) {
+function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = false, showAnswer = true, finishOnAttempt = false }: GateProps & { step: StepPublic }) {
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: total, idx: ordinal, step } });
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
+  const [answer, setAnswer] = useState<boolean | null>(null);
   const state = snap.value as string;
 
   const reload = async () => {
@@ -70,6 +71,8 @@ function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = f
 
   if (failed)
     return <Failure message={failed} onRetry={() => { setFailed(""); if (state === "browse") void reload(); }} />;
+  if (finishOnAttempt && answer !== null)
+    return <OutcomePanel idx={ordinal} total={total} correct={answer} step={snap.context.step ?? step} nextLabel="Continue" onNext={onDone} />;
   if ((state === "revealed" || state === "skipped") && !showAnswer)
     return <OutcomePanel idx={ordinal} total={total} correct={snap.context.lastCorrect} step={snap.context.step ?? step} nextLabel="Continue" onNext={onDone} />;
   if (state === "revealed" || state === "skipped")
@@ -90,7 +93,7 @@ function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = f
         canSkip={false}
         showSkip={false}
         showCode={showCode}
-        onSubmit={(answer) => run(async () => { send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id: stepId, answer }) }); onAttempt?.(); })}
+        onSubmit={(prediction) => run(async () => { const r = await trpc.steps.attempt.mutate({ id: stepId, answer: prediction }); send({ type: "RESULT", r }); if (finishOnAttempt) setAnswer(r.correct); onAttempt?.(); })}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id: stepId }) }))}
         onSkip={noSkip}
       />

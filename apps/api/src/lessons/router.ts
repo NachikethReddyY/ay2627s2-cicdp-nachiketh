@@ -5,7 +5,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { attempts, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
-import { ensureLesson, prefetchNext } from "../ai/service.ts";
+import { ensureLesson, prefetchNext, upgradeReadChecks } from "../ai/service.ts";
 import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
@@ -57,6 +57,7 @@ const ScrimMore = z.object({
 
 const Lesson = z.object({
   id: z.string(),
+  versionId: z.string(),
   title: z.string(),
   kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]),
   part: z
@@ -93,6 +94,7 @@ const Lesson = z.object({
     }),
   ),
   completed: z.boolean(),
+  canUpgradeReadChecks: z.boolean(),
   media: z.array(z.object({ stepId: z.string().nullable(), segment: z.number().nullable(), kind: z.literal("narration"), url: z.string() })),
 });
 
@@ -113,13 +115,20 @@ const write = protectedProcedure
 
 export const lessonsRouter = router({
   write,
+  upgradeReadChecks: protectedProcedure
+    .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/), versionId: z.uuid() }))
+    .output(z.object({ ok: z.literal(true) }))
+    .mutation(async ({ ctx, input }) => {
+      await upgradeReadChecks(input.id, input.versionId, ctx.learnerId);
+      return { ok: true as const };
+    }),
   get: protectedProcedure
     .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/) }))
     .output(Lesson)
     .query(async ({ ctx, input }) => {
       const { id } = input;
       const [found] = await db
-        .select({ lesson: lessons })
+        .select({ lesson: lessons, privateOwner: sql<boolean>`coalesce(${worlds.visibility} = 'private' AND ${worlds.ownerId} = ${learners.userId}, false)` })
         .from(lessons)
         .innerJoin(worlds, eq(worlds.id, lessons.worldId))
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
@@ -203,6 +212,7 @@ export const lessonsRouter = router({
       const servedRows = part?.kind === "scrim" ? rows.filter((row) => served.has(row.id)) : rows;
       return {
         id: lesson.slug,
+        versionId: lesson.currentVersionId,
         title: lesson.title,
         kind: lesson.kind,
         part,
@@ -214,6 +224,7 @@ export const lessonsRouter = router({
           state: lesson.kind === "scrim" ? scrimStepState(r.state) : (r.state ?? "predicting"),
         })),
         completed: completion !== undefined,
+        canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.privateOwner === true,
         media: !readAllowed ? [] : await listMedia(lesson.currentVersionId).then((media) => {
           if (readLesson) {
             const revealed = new Set(rows.filter((row) => row.state === "revealed").map((row) => row.id));

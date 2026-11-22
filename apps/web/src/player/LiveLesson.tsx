@@ -18,6 +18,8 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   const { data, error, loading: refreshing, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
   const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
   const [slow, setSlow] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeFailed, setUpgradeFailed] = useState(false);
   const loading = !data && !error;
   useEffect(() => {
     if (!loading) return;
@@ -54,14 +56,33 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   const checked = hasChecks(data.kind, data.steps);
   const reloadChecked = () => { reload(); courseState.reload(); };
   if (data.kind === "learn" || data.kind === "watch") {
-    if (!checked && !data.completed)
-      return <Notice>This lesson needs updated checks before it can be played. <a href="/" className="underline">Home</a></Notice>;
+    if (!checked && !data.completed) {
+      const upgrade = async () => {
+        setUpgrading(true);
+        setUpgradeFailed(false);
+        try {
+          await trpc.lessons.upgradeReadChecks.mutate({ id: data.id, versionId: data.versionId });
+          reload();
+        } catch {
+          setUpgradeFailed(true);
+          reload();
+        } finally {
+          setUpgrading(false);
+        }
+      };
+      return <Notice>
+        <p>This lesson needs updated checks before it can be played.</p>
+        {data.canUpgradeReadChecks && <button type="button" className="pill px-3 py-1 text-sm" disabled={upgrading} onClick={() => void upgrade()}>{upgrading ? "Updating lesson…" : "Update with AI"}</button>}{" "}
+        {upgradeFailed && <p role="alert">The lesson couldn't be updated. Try again later.</p>}
+        <a href="/" className="underline">Home</a>
+      </Notice>;
+    }
     const read = (footer: ReactNode) => {
       if (part?.kind === "learn") return <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div>;
       if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={footer} /></Suspense>;
       return fallback;
     };
-    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} next={next} onFinished={reloadChecked}>{read}</CheckedLesson> : read(next);
+    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson> : read(next);
   }
   if (data.kind === "practice" && part?.kind === "practice")
     return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;

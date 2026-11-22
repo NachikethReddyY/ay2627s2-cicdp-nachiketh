@@ -13,8 +13,8 @@ export const offersNext = (checks: readonly CheckStep[], completed: boolean) => 
 
 export type ClosingPhase = "off" | "on" | "leaving";
 
-export function stageFor(checks: readonly CheckStep[], completed: boolean, phase: ClosingPhase, refreshing: boolean): ReadStage {
-  const served = advance(checks, completed);
+export function stageFor(checks: readonly CheckStep[], completed: boolean, phase: ClosingPhase, refreshing: boolean, contentAvailable = false): ReadStage {
+  const served = contentAvailable && !completed ? "reading" : advance(checks, completed);
   if (served === "opening") return served;
   if (phase === "on") return "closing";
   if (phase === "leaving" && refreshing && !completed) return "closing";
@@ -27,5 +27,5 @@ export function hasChecks(kind: string, checks: readonly unknown[]): boolean {
 
 export const outcomeCopy = (correct: boolean | null) => ({
   heading: correct === true ? "Correct!" : correct === false ? "Not quite." : "Check complete.",
-  note: "Watch the lesson to see the answer and why it works.",
+  note: "Review the lesson for the ideas behind this check.",
 });

@@ -59,7 +59,7 @@ test("only learn and watch lessons with two checks use the flow", () => {
   assert.equal(hasChecks("predict", [open, open]), false);
 });
 
-test("legacy learn and watch lessons with fewer than two checks stay on the plain flow", () => {
+test("legacy learn and watch lessons with fewer than two checks do not enter the checked flow", () => {
   assert.equal(hasChecks("learn", []), false);
   assert.equal(hasChecks("learn", [done]), false);
   assert.equal(hasChecks("watch", [open]), false);
@@ -90,13 +90,19 @@ test("with no closing check in progress the stage is the served stage", () => {
   assert.equal(stageFor([open, open], false, "on", false), "opening");
 });
 
-test("a checked lesson outcome never shows an answer and points to the video", () => {
+test("a checked lesson outcome never shows an answer and points back to the lesson", () => {
   for (const correct of [true, false, null]) {
     const { heading, note } = outcomeCopy(correct);
-    assert.match(note, /Watch the lesson/);
+    assert.match(note, /Review the lesson/);
     assert.doesNotMatch(`${heading} ${note}`, /here's the answer|answer:/i);
   }
   assert.equal(outcomeCopy(true).heading, "Correct!");
   assert.equal(outcomeCopy(false).heading, "Not quite.");
   assert.equal(outcomeCopy(null).heading, "Check complete.");
+});
+
+
+test("an opening prediction unlocks the lesson even when the answer was wrong", () => {
+  assert.equal(stageFor([{ state: "hinting" }, open], false, "off", false, true), "reading");
+  assert.equal(stageFor([{ state: "hinting" }, open], false, "on", false, true), "closing");
 });
