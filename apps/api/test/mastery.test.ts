@@ -37,6 +37,7 @@ beforeEach(() => {
     lastNext = req;
     const lesson = req.lessons.find((l) => !l.done) ?? null;
     return {
+      policyVersion: POLICY_VERSION,
       action: lesson ? "practice" : "done",
       lessonId: lesson?.lessonId ?? null,
       conceptId: req.mastery[0]?.conceptId ?? null,
@@ -219,6 +220,29 @@ test("two reads with no change make one engine next call; new information makes 
   assert.equal(nextCalls, 3);
   await read();
   assert.equal(nextCalls, 3);
+});
+
+test("a response from another policy version is not stored under the current hash", async () => {
+  const c = await signUp(app);
+  engineLearner.next = async (req) => {
+    nextCalls++;
+    lastNext = req;
+    const lesson = req.lessons.find((l) => !l.done) ?? null;
+    return {
+      policyVersion: "4",
+      action: lesson ? "practice" : "done",
+      lessonId: lesson?.lessonId ?? null,
+      conceptId: req.mastery[0]?.conceptId ?? null,
+      reasonCode: "stub",
+      reason: "Stub reason.",
+    };
+  };
+  const read = () => trpc(app, c).q("me.next", { world: "codequest" });
+  assert.equal((await read()).statusCode, 200);
+  assert.equal((await db.select().from(recommendations)).length, 0);
+  assert.equal((await read()).statusCode, 200);
+  assert.equal(nextCalls, 2);
+  assert.equal((await db.select().from(recommendations)).length, 0);
 });
 
 test("a changed world title changes the hash and the engine receives display titles", async () => {

@@ -73,7 +73,8 @@ def test_next_shape(client: TestClient) -> None:
     r = client.post("/v1/next", json=NEXT, headers=TOKEN)
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"action", "lessonId", "conceptId", "reasonCode", "reason"}
+    assert set(body) == {"policyVersion", "action", "lessonId", "conceptId", "reasonCode", "reason"}
+    assert body["policyVersion"] == "5"
     assert body["action"] == "learn"
     assert body["lessonId"] == "l1"
     assert body["reasonCode"] == "LEARN"

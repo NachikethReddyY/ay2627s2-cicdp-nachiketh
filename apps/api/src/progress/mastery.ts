@@ -166,6 +166,7 @@ async function recommend(learnerId: string, worldId: string): Promise<void> {
   });
   if (snapshot.current) return;
   const next = await engineLearner.next(snapshot.request, { timeoutMs: ENGINE_CALL_TIMEOUT_MS });
+  if (next.policyVersion !== POLICY_VERSION) return;
   const result = { ...next, conceptId: next.conceptId ? (snapshot.idOfSlug.get(next.conceptId) ?? null) : null };
   await withTx(async (tx) => {
     await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
