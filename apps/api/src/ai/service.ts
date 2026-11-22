@@ -12,6 +12,8 @@ import { checkStep, Step, text, type GeneratedStep } from "./step-schema.ts";
 import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
+import { practiceOf } from "../parts/practice.ts";
+import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
 import { mvpLimits } from "../config/limits.ts";
 import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
@@ -195,6 +197,13 @@ async function generate(ctx: LessonContext, key: string | null, cached: PartCach
     const next = validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx)));
     if (next.kind !== ctx.lesson.kind) throw new Error("The generated part has the wrong lesson kind");
     part = await moderated(next, isPublic);
+    const lab = part.kind === "practice" ? part : part.kind === "scrim" ? part.lab : null;
+    if (lab?.referenceSolution) {
+      delete lab.referenceSolutionVerified;
+      const verification = await verifyReferenceSolution(practiceOf(part));
+      if (verification === "valid") lab.referenceSolutionVerified = true;
+      if (verification === "invalid") delete lab.referenceSolution;
+    }
     const entry = { kind: part.kind, content: part };
     const insert = db.insert(generationCache).values({ key, ...entry });
     if (cached.obsolete) {

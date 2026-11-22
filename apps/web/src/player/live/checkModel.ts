@@ -15,6 +15,7 @@ export type CheckResponse = {
   stretch: { passed: number; total: number };
   points: number; maxPoints: number; complete: boolean;
   best: { points: number; maxPoints: number };
+  attemptCount: number;
 };
 
 export const STATUS_LABEL: Record<TestStatus, string> = { pass: "✓ Passed", fail: "✗ Failed", timeout: "Timed out", error: "Error" };

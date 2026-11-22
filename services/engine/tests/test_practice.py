@@ -170,6 +170,16 @@ def test_total_tests_capped_at_25() -> None:
         build(raw)
 
 
+def test_reference_solution_stays_optional_and_must_differ_from_starter() -> None:
+    raw = part(required())
+    assert build(raw).referenceSolution is None
+    raw["referenceSolution"] = "  console.log(1 + 2);  "
+    assert build(raw).referenceSolution == "console.log(1 + 2);"
+    raw["referenceSolution"] = raw["starterCode"]
+    with pytest.raises(ValidationError, match="referenceSolution must differ"):
+        build(raw)
+
+
 def test_practice_schema_is_strict() -> None:
     schema = json_schema(PracticePart)
     test_item = schema["$defs"]["PracticeTest"]
@@ -193,10 +203,11 @@ def practice_ctx(stretch_tests: int = 0) -> LessonContext:
 
 
 def test_typescript_part_from_the_model_is_kept(fake_llm: FakeLLM) -> None:
-    fake_llm("part_practice_ts")
+    calls = fake_llm("part_practice_ts")
     res = pipeline.lesson(practice_ctx())
     assert isinstance(res.value, PracticePart)
     assert res.value.language == "typescript"
+    assert "referenceSolution is a complete runnable program" in calls[0]["messages"][0]["content"]
 
 
 def test_stretch_count_is_in_the_system_prompt_and_the_input(fake_llm: FakeLLM) -> None:

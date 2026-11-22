@@ -18,11 +18,12 @@ const msg = (e: unknown) => {
   return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
 };
 
-type Options = { lessonId: string; language: PracticeLanguage; code: string; openTerminal: () => void };
+type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void };
 type RunJob = { source: string; authored: boolean };
 
-export function usePracticeRunner({ lessonId, language, code, openTerminal }: Options) {
+export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal }: Options) {
   const [term, setTerm] = useState("");
+  const [attemptCount, setAttemptCount] = useState(0);
   const [result, setResult] = useState<CheckResponse | null>(null);
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
@@ -140,7 +141,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     setSid(id);
     await finished;
   };
-  const actionsFor = (enabled: boolean, source: string = code, authored = false) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled, authored });
+  const actionsFor = (enabled: boolean, source: string = code, authored = false) => practiceActions({ language, code: source, lessonId, versionId, revision, sandboxEnabled: enabled, authored });
 
   useEffect(() => {
     lintSeq.current++;
@@ -166,7 +167,10 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     setCheckError("");
     try {
       const res = await checkPractice(...actionsFor(sandboxEnabled).check.args);
-      if (live.current) setResult(res);
+      if (live.current) {
+        setAttemptCount(res.attemptCount);
+        setResult(res);
+      }
     } catch (e) {
       if (live.current) { setResult(null); setCheckError(msg(e)); }
     }
@@ -232,7 +236,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
 
   return {
     shell, shellState, term, sid, starting, shellRun, runNote, typed, setTyped,
-    result, checkBusy, checkError, findings, lintBusy, lintError,
+    result, attemptCount, checkBusy, checkError, findings, lintBusy, lintError,
     busy: starting || sid !== null || shellRun,
     showOutput: sid !== null || starting || shellRun || term !== "",
     run, runAuthored, check, lint, stop, answer,

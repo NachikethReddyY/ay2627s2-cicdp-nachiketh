@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LintFinding } from "../runPython";
 import { bonusRows, previewRows, requiredRows, scoreLine, toRows, type CheckResponse, type CheckRow, type PracticeTest } from "./checkModel";
 import { askLabel, lintSummary } from "./lintModel";
@@ -37,6 +38,7 @@ function Row({ row }: { row: CheckRow }) {
 const alert = (text: string) => <p role="alert" className="m-0 mb-2 rounded-lg bg-[var(--bad)] px-3 py-2 text-xs font-semibold text-white">{text}</p>;
 
 type Props = {
+  children?: ReactNode;
   result: CheckResponse | null;
   tests?: PracticeTest[];
   checkError: string;
@@ -45,7 +47,7 @@ type Props = {
   onAsk(finding: LintFinding): void;
 };
 
-export default function LessonResults({ result, tests, checkError, findings, lintError, onAsk }: Props) {
+export default function LessonResults({ children, result, tests, checkError, findings, lintError, onAsk }: Props) {
   const rows = result ? toRows(result.results) : previewRows(tests ?? []);
   const required = requiredRows(rows);
   const bonus = bonusRows(rows);
@@ -71,6 +73,7 @@ export default function LessonResults({ result, tests, checkError, findings, lin
           )}
         </section>
       )}
+      {children}
       {findings !== null && (
         <section aria-labelledby="lint-h" className="mt-3">
           <h3 id="lint-h" className="wb-sec h-[22px] p-0">Style findings</h3>

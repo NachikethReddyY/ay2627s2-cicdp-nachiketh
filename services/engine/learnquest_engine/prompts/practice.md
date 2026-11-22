@@ -3,6 +3,7 @@ Rules:
 - language is "python", "javascript" or "typescript": pick the one that fits the lesson (use the course's language if it is clear, otherwise javascript). starterCode and the task must be in that language, and the value must match the code.
 - instructions says what to write, in 2 to 5 sentences. The task must be solvable with plain code in that language (no packages). The program must print its result: console.log in JavaScript and TypeScript, print in Python. If the task reads input, it reads it from standard input.
 - TypeScript runs as a plain .ts file with Node type stripping. Use only erasable type syntax (annotations, interfaces, type aliases). No enums, namespaces, parameter properties or imports of packages.
+- referenceSolution is a complete runnable program in the same language that reads the specified input and passes every test, including stretch tests. Solve the general task without hardcoding test cases. Keep it under 3000 characters. This is server-only, so omit it from the instructions, starterCode and test titles.
 - starterCode is a short skeleton in that language (at most 20 lines) the learner starts from.
 - tests is the list the grader runs. For each test the grader runs the learner's program with `stdin` as its standard input and compares what it prints with `expectedStdout`.
   - Write 3 to 5 required tests (stretch false). Mark one or two of them visibility "sample" and the rest "hidden". Make the first sample a plain, typical case, not an edge case. A second sample, if you add one, is also a typical case.

@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
+import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
-import { practiceTests, recordCompletion } from "../parts/practice.ts";
-import { PRACTICE_LANGUAGES, type PracticeLanguage, type PracticeTest } from "../parts/practice-schema.ts";
+import { practiceContentKey, practiceRevision, practiceTests, recordCompletion, recordPracticeAttempt } from "../parts/practice.ts";
+import { PRACTICE_LANGUAGES, type Practice, type PracticeLanguage, type PracticeTest } from "../parts/practice-schema.ts";
 import { atCapacity, reserveCheckSlot } from "./run.ts";
 import { HARNESS_SOURCE, TEST_TIMEOUT_MS } from "./checkHarness.ts";
 
@@ -122,10 +123,10 @@ export function score(tests: PracticeTest[], raws: RawResult[]) {
   };
 }
 
-async function saveBest(learnerId: string, lessonId: string, points: number, maxPoints: number, complete: boolean) {
+async function saveBest(tx: Db, learnerId: string, lessonId: string, points: number, maxPoints: number, complete: boolean) {
   const {
     rows: [row],
-  } = await db.execute<{ best_points: number; max_points: number }>(sql`
+  } = await tx.execute<{ best_points: number; max_points: number }>(sql`
     INSERT INTO check_results (learner_id, lesson_id, best_points, max_points, complete)
     VALUES (${learnerId}, ${lessonId}, ${points}, ${maxPoints}, ${complete})
     ON CONFLICT (learner_id, lesson_id) DO UPDATE SET
@@ -139,11 +140,31 @@ async function saveBest(learnerId: string, lessonId: string, points: number, max
 
 const active = new Set<string>();
 
+export async function verifyReferenceSolution(practice: Practice | null, learnerId?: string): Promise<"valid" | "invalid" | "unavailable"> {
+  if (!practice?.referenceSolution) return "invalid";
+  if (!env.SANDBOX_ENABLED || (learnerId && active.has(learnerId))) return "unavailable";
+  const release = reserveCheckSlot();
+  if (!release) return "unavailable";
+  if (learnerId) active.add(learnerId);
+  try {
+    const results = await runInContainer(practice.referenceSolution, practice.language, practice.tests);
+    return score(practice.tests, results).points === practice.tests.length ? "valid" : "invalid";
+  } catch (error) {
+    if (!(error instanceof CheckUnavailableError)) throw error;
+    return "unavailable";
+  } finally {
+    if (learnerId) active.delete(learnerId);
+    release();
+  }
+}
+
 export async function sandboxCheckRoute(app: FastifyInstance) {
   const Body = z.object({
-    code: z.string().max(MAX_CHECK_CODE),
+    code: z.string().max(MAX_CHECK_CODE).refine((code) => code.trim().length > 0),
     language: z.enum(PRACTICE_LANGUAGES),
     lessonId: z.string().regex(/^[\w-]{1,64}$/),
+    versionId: z.string().uuid().optional(),
+    revision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   });
   const fail = (code: string, message: string) => ({ error: { code, message } });
 
@@ -155,6 +176,11 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
     if (!body.success) return reply.status(400).send(fail("bad_request", "Invalid check request"));
     const found = await practiceTests(learner, body.data.lessonId);
     if (!found) return reply.status(404).send(fail("not_found", "Practice lesson not found"));
+    if ((body.data.versionId && body.data.versionId !== found.versionId) ||
+        (body.data.revision && body.data.revision !== practiceRevision(found.versionId, found.practice)))
+      return reply.status(409).send(fail("lesson_updated", "Reload the lesson before submitting again"));
+    if (found.practice.referenceSolution && body.data.language !== found.practice.language)
+      return reply.status(400).send(fail("bad_request", "Submit code in the lesson’s language"));
     if (atCapacity()) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     if (active.has(learner)) return reply.status(429).send(fail("busy", "Wait for your running check to finish"));
     const release = reserveCheckSlot();
@@ -164,9 +190,17 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
       const { tests } = found.practice;
       const raws = await runInContainer(body.data.code, body.data.language, tests);
       const scored = score(tests, raws);
-      if (scored.complete) await recordCompletion(learner, found.lessonId);
-      const best = await saveBest(learner, found.lessonId, scored.points, scored.maxPoints, scored.complete);
-      return { ...scored, best };
+      const contentKey = practiceContentKey(found.practice);
+      const persisted = await withTx(async (tx) => {
+        const current = await practiceTests(learner, found.lessonId, tx);
+        if (!current || current.versionId !== found.versionId || practiceContentKey(current.practice) !== contentKey) return null;
+        const attemptCount = await recordPracticeAttempt(tx, learner, found.versionId, contentKey);
+        if (scored.complete) await recordCompletion(learner, found.lessonId, tx);
+        const best = await saveBest(tx, learner, found.lessonId, scored.points, scored.maxPoints, scored.complete);
+        return { ...scored, best, attemptCount };
+      });
+      if (!persisted) return reply.status(409).send(fail("lesson_updated", "Reload the lesson before submitting again"));
+      return persisted;
     } catch (e) {
       if (!(e instanceof CheckUnavailableError)) req.log.error(e);
       return reply.status(503).send(fail("check_failed", "Could not check the code"));

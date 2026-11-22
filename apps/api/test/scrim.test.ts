@@ -141,7 +141,7 @@ test("lessons.get returns only through the first pending gate with no secrets", 
       segments: [scrim.segments[0], scrim.segments[1], { ...scrim.segments[2], gate: gateId }],
       lab: {
         kind: "practice", instructions: scrim.lab.instructions, language: "javascript", starterCode: scrim.lab.starterCode,
-        tests: publicTests,
+        versionId, revision: out(res).part.lab.revision, solution: null, tests: publicTests,
       },
       started: false,
     },
@@ -322,7 +322,11 @@ function fakeSandbox(stdout: string[]) {
 
 test("sandbox check grades the scrim lab and records completion without returning hidden test data", async (t) => {
   const cookie = await signUp(app);
-  const { lessonId, gateId } = await insertScrim();
+  const { lessonId, versionId, gateId } = await insertScrim();
+  const referenceSolution = "console.log('SCRIM_REFERENCE_SOLUTION')";
+  await db.update(lessonVersions).set({
+    content: { ...scrim, lab: { ...scrim.lab, referenceSolution } },
+  }).where(eq(lessonVersions.id, versionId));
   const previous = env.SANDBOX_ENABLED;
   env.SANDBOX_ENABLED = true;
   t.after(() => { env.SANDBOX_ENABLED = previous; });
@@ -343,7 +347,7 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assertOmitted(failed.json(), [...hiddenValues, hiddenActual, hiddenError]);
   assert.deepEqual(failed.json(), {
     results: expectedResults, required: { passed: 2, total: 3 }, stretch: { passed: 1, total: 1 },
-    points: 3, maxPoints: 4, complete: false, best: { points: 3, maxPoints: 4 },
+    points: 3, maxPoints: 4, complete: false, best: { points: 3, maxPoints: 4 }, attemptCount: 1,
   });
   assert.deepEqual(submissions[0].tests, scrim.lab.tests.map(({ stdin }) => ({ stdin })));
   assert.equal((await db.select().from(partCompletions).where(eq(partCompletions.lessonId, lessonId))).length, 0);
@@ -355,11 +359,18 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.deepEqual(passed.json(), {
     results: [expectedResults[0], expectedResults[1], { ...publicTests[2], status: "pass" }, expectedResults[3]],
     required: { passed: 3, total: 3 }, stretch: { passed: 1, total: 1 },
-    points: 4, maxPoints: 4, complete: true, best: { points: 4, maxPoints: 4 },
+    points: 4, maxPoints: 4, complete: true, best: { points: 4, maxPoints: 4 }, attemptCount: 2,
   });
   const [learner] = await db.select({ id: learners.id }).from(learners);
   const completed = await db.select({ learnerId: partCompletions.learnerId }).from(partCompletions).where(eq(partCompletions.lessonId, lessonId));
   assert.deepEqual(completed, [{ learnerId: learner.id }]);
+  const third = await check();
+  assert.equal(third.json().attemptCount, 3, third.body);
+  const client = trpc(app, cookie);
+  const lab = out(await client.q("lessons.get", { id: slug })).part.lab;
+  assert.deepEqual(lab.solution, { attemptCount: 3, unlockAt: 3, gated: true });
+  const revealReference = () => client.m("lessons.revealPracticeSolution", { id: slug, versionId, revision: lab.revision });
+  assert.equal((await revealReference()).statusCode, 403);
   const beforeGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
   assert.equal(beforeGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
   const skipped = await trpc(app, cookie).m("steps.skip", { id: gateId });
@@ -368,6 +379,8 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.equal(afterSkip.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
   const revealed = await trpc(app, cookie).m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } });
   assert.equal(revealed.statusCode, 200, revealed.body);
+  assert.equal(out(await client.q("lessons.get", { id: slug })).part.lab.solution.gated, false);
+  assert.deepEqual(out(await revealReference()), { code: referenceSolution });
   const afterGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
   assert.equal(afterGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 1);
   const scores = await db.select({

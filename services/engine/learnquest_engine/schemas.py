@@ -270,6 +270,7 @@ class PracticePart(BaseModel):
     instructions: T1000
     language: Literal["python", "javascript", "typescript"]
     starterCode: Annotated[str, StringConstraints(max_length=3000)]
+    referenceSolution: Annotated[str, _c(3000)] | None = None
     tests: list[PracticeTest] = Field(min_length=1, max_length=PRACTICE_TOTAL_MAX)
 
     @model_validator(mode="before")
@@ -281,6 +282,8 @@ class PracticePart(BaseModel):
 
     @model_validator(mode="after")
     def _tests(self, info: ValidationInfo) -> "PracticePart":
+        if self.referenceSolution == self.starterCode.strip():
+            raise ValueError("referenceSolution must differ from starterCode")
         wanted = int((info.context or {}).get("stretchTests", 0))
         required = [t for t in self.tests if not t.stretch]
         stretch = [t for t in self.tests if t.stretch]

@@ -175,6 +175,29 @@ test("a parallel burst cannot exceed the daily limit", async () => {
   assert.equal(res.filter((r) => r.statusCode === 200).length, 5);
 });
 
+test("a temporarily unavailable sandbox preserves a generated reference in the lesson and cache", async (t) => {
+  const previous = env.SANDBOX_ENABLED;
+  env.SANDBOX_ENABLED = false;
+  t.after(() => { env.SANDBOX_ENABLED = previous; });
+  const referenceSolution = "console.log([1, 2].reduce((total, n) => total + n));";
+  lessonOut = (kind) => kind === "practice" ? { ...parts.practice, referenceSolution } : parts[kind as keyof typeof parts];
+  const owner = await setup();
+  const lessonId = owner.lessons[2]!.slug;
+  const response = await owner.t.q("lessons.get", { id: lessonId });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.ok(!response.body.includes(referenceSolution));
+  assert.deepEqual(out(response).part.solution, { attemptCount: 0, unlockAt: 3, gated: false });
+  const [stored] = await db.select({ content: lessonVersions.content }).from(lessonVersions)
+    .innerJoin(lessons, eq(lessons.currentVersionId, lessonVersions.id)).where(eq(lessons.slug, lessonId));
+  assert.equal(stored?.content?.kind === "practice" && stored.content.referenceSolution, referenceSolution);
+
+  const other = await setup("cache-solution@example.com");
+  const cached = await other.t.q("lessons.get", { id: other.lessons[2]!.slug });
+  assert.equal(cached.statusCode, 200, cached.body);
+  assert.equal(lessonCalls, 1);
+  assert.deepEqual(out(cached).part.solution, { attemptCount: 0, unlockAt: 3, gated: false });
+});
+
 test("two concurrent plays write the part once", async () => {
   const { t, lessons: ls } = await setup();
   const last = ls[2]!.slug;
@@ -184,12 +207,19 @@ test("two concurrent plays write the part once", async () => {
   assert.deepEqual(out(a), out(b));
   assert.equal(out(a).kind, "practice");
   const { expectedOutput: _hidden, ...visiblePractice } = parts.practice;
-  assert.deepEqual(out(a).part, { ...visiblePractice, language: "javascript", tests: [{ id: "legacy", name: "Expected output", visibility: "hidden", stretch: false }] });
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
   assert.equal(row!.status, "draft");
   const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, row!.id));
+  assert.deepEqual(out(a).part, {
+    ...visiblePractice,
+    language: "javascript",
+    versionId: version?.id,
+    revision: out(a).part.revision,
+    solution: null,
+    tests: [{ id: "legacy", name: "Expected output", visibility: "hidden", stretch: false }],
+  });
   assert.equal(version?.publishedAt, null);
   assert.equal((await db.select().from(steps)).length, initialStepCount);
 });
