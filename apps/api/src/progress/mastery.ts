@@ -163,7 +163,7 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   await insertRecommendation(tx, learnerId, worldId, result, inputHash);
 }
 
-export const POLICY_VERSION = "4";
+export const POLICY_VERSION = "5";
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 

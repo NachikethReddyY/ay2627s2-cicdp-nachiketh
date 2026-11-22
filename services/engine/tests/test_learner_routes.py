@@ -81,11 +81,21 @@ def test_next_shape(client: TestClient) -> None:
 
 
 def test_next_done_has_null_lesson(client: TestClient) -> None:
-    done = {**NEXT, "lessons": [{**NEXT["lessons"][0], "done": True}]}  # type: ignore[index]
+    done = {
+        **NEXT,
+        "mastery": [{"conceptId": "vars", "pKnown": 0.97}],
+        "lessons": [{**NEXT["lessons"][0], "done": True}],  # type: ignore[index]
+    }
     body = client.post("/v1/next", json=done, headers=TOKEN).json()
     assert body["action"] == "done"
     assert body["lessonId"] is None
     assert body["reason"]
+
+
+def test_next_finished_weak_lesson_is_reviewed(client: TestClient) -> None:
+    weak = {**NEXT, "lessons": [{**NEXT["lessons"][0], "done": True}]}  # type: ignore[index]
+    body = client.post("/v1/next", json=weak, headers=TOKEN).json()
+    assert (body["action"], body["reasonCode"], body["lessonId"]) == ("practice", "REVIEW", "l1")
 
 
 def test_next_reason_uses_titles(client: TestClient) -> None:

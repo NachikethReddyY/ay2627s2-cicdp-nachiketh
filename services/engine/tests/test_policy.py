@@ -65,13 +65,46 @@ def test_advance_reason_lists_only_mastered_and_uses_titles() -> None:
     assert r.reason == "You've mastered vars. Next up: Loops."
 
 
-def test_weak_concept_with_no_lesson_left_is_not_claimed_as_mastered() -> None:
+def test_finished_lesson_at_half_mastery_is_reviewed_not_advanced() -> None:
     done = Lesson("l1", ["vars"], "learn", True, 1, "Variables")
     nxt = Lesson("l2", ["loops"], "learn", False, 2, "Loops")
-    r = recommend([Mastery("vars", 0.6)], [], [done, nxt])
+    r = recommend([Mastery("vars", 0.5)], [], [done, nxt])
+    assert (r.action, r.reason_code, r.lesson_id, r.concept_id) == (
+        Action.PRACTICE,
+        ReasonCode.REVIEW,
+        "l1",
+        "vars",
+    )
+    assert "50%" in r.reason
+    assert "mastered" not in r.reason
+
+
+def test_review_prefers_predict_kind_among_finished_lessons() -> None:
+    watch = Lesson("l1", ["vars"], "watch", True, 1)
+    predict = Lesson("l2", ["vars"], "predict", True, 2)
+    nxt = Lesson("l3", ["loops"], "learn", False, 3)
+    assert recommend([Mastery("vars", 0.3)], [], [watch, predict, nxt]).lesson_id == "l2"
+
+
+def test_review_beats_unfinished_concept_with_higher_mastery() -> None:
+    done = Lesson("l1", ["vars"], "learn", True, 1)
+    nxt = Lesson("l2", ["loops"], "learn", False, 2)
+    r = recommend([Mastery("vars", 0.2), Mastery("loops", 0.7)], [], [done, nxt])
+    assert (r.reason_code, r.concept_id) == (ReasonCode.REVIEW, "vars")
+
+
+def test_finished_concept_between_unlock_and_mastered_advances_without_claiming_it() -> None:
+    done = Lesson("l1", ["vars"], "learn", True, 1)
+    nxt = Lesson("l2", ["loops"], "learn", False, 2, "Loops")
+    r = recommend([Mastery("vars", 0.85)], [], [done, nxt])
     assert r.action == Action.ADVANCE
-    assert r.lesson_id == "l2"
-    assert "vars" not in r.reason
+    assert r.reason == "Next up: Loops."
+
+
+def test_everything_finished_but_weak_concept_is_reviewed_not_done() -> None:
+    done = Lesson("l1", ["vars"], "learn", True, 1)
+    r = recommend([Mastery("vars", 0.5)], [], [done])
+    assert (r.action, r.reason_code, r.lesson_id) == (Action.PRACTICE, ReasonCode.REVIEW, "l1")
 
 
 def test_start_reason_uses_titles() -> None:
@@ -113,12 +146,11 @@ def test_falls_back_to_any_covering_lesson() -> None:
     assert recommend([Mastery("vars", 0.1)], [], [only]).lesson_id == "l9"
 
 
-def test_unfinished_concept_with_no_remaining_lesson_is_not_practised() -> None:
+def test_unfinished_concept_with_no_remaining_lesson_is_reviewed() -> None:
     vars_done = Lesson("l1", ["vars"], "learn", True, 1)
     loops = Lesson("l3", ["loops"], "learn", False, 2)
     rec = recommend([Mastery("vars", 0.1), Mastery("loops", 0.9)], [], [vars_done, loops])
-    assert rec.concept_id != "vars"
-    assert rec.lesson_id == "l3"
+    assert (rec.reason_code, rec.concept_id, rec.lesson_id) == (ReasonCode.REVIEW, "vars", "l1")
 
 
 concept_ids = st.sampled_from(["a", "b", "c", "d"])
@@ -173,3 +205,52 @@ def test_reason_default_world_has_no_double_yet() -> None:
     from learnquest_engine.policy import _reason
 
     assert "yet yet" not in _reason(ReasonCode.START, ["vars"], lesson="X")
+
+
+NAMED = ["alpha", "beta", "gamma", "delta"]
+named_lessons_st = st.lists(
+    st.builds(
+        Lesson,
+        lesson_id=st.uuids().map(str),
+        concept_ids=st.lists(st.sampled_from(NAMED), min_size=1, max_size=3, unique=True),
+        kind=kinds,
+        done=st.booleans(),
+        order=st.integers(0, 100),
+        title=st.none(),
+    ),
+    max_size=8,
+)
+named_mastery_st = st.lists(
+    st.builds(Mastery, concept_id=st.sampled_from(NAMED), p_known=st.floats(0.001, 0.999)),
+    max_size=4,
+    unique_by=lambda m: m.concept_id,
+)
+
+
+@settings(deadline=None)
+@given(mastery=named_mastery_st, lessons=named_lessons_st, mastered_at=st.floats(0.5, 0.99))
+def test_no_reason_names_a_concept_below_threshold_as_mastered(
+    mastery: list[Mastery], lessons: list[Lesson], mastered_at: float
+) -> None:
+    r = recommend(mastery, [], lessons, mastered_at=mastered_at)
+    prefix = "You've mastered "
+    if not r.reason.startswith(prefix):
+        assert "mastered" not in r.reason
+        return
+    listed = r.reason.removeprefix(prefix).split(". Next up:")[0].split(", ")
+    p_of = {m.concept_id: m.p_known for m in mastery}
+    assert listed
+    assert all(p_of[c] >= mastered_at for c in listed)
+
+
+@settings(deadline=None)
+@given(mastery=named_mastery_st, lessons=named_lessons_st)
+def test_finished_concept_below_unlock_is_never_advanced_past(
+    mastery: list[Mastery], lessons: list[Lesson]
+) -> None:
+    r = recommend(mastery, [], lessons)
+    finished = {c for lesson in lessons if lesson.done for c in lesson.concept_ids}
+    unfinished = {c for lesson in lessons if not lesson.done for c in lesson.concept_ids}
+    weak = [m for m in mastery if m.concept_id in finished - unfinished and m.p_known < 0.8]
+    if weak:
+        assert r.action not in (Action.ADVANCE, Action.DONE)
