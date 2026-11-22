@@ -1,9 +1,11 @@
+import { Link } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import { LearnView } from "./LearnView.tsx";
 import { GamePracticeView } from "./GamePracticeView.tsx";
 import { CourseNext, LessonProgress, NextLink } from "./live/CourseNav";
+import { practiceMedia } from "./live/lessonWorkbenchModel";
 import { Notice } from "./live/Notice";
 import CheckedLesson from "./live/CheckedLesson";
 import Steps from "./live/Steps";
@@ -35,7 +37,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
       <Notice>
         {isNotFound(error) ? "We couldn't find that lesson." : "We couldn't write this lesson."}{" "}
         {!isNotFound(error) && <button type="button" className="pill px-3 py-1 text-sm" onClick={reload}>Try again</button>}{" "}
-        <a href="/" className="underline">Home</a>
+        <Link to="/" className="underline">Home</Link>
       </Notice>
     );
   if (!data) {
@@ -81,7 +83,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
       return <Notice>
         <p>This lesson needs updated checks before it can be played.</p>
         {update}
-        <a href="/" className="underline">Home</a>
+        <Link to="/" className="underline">Home</Link>
       </Notice>;
     const read = (footer: ReactNode) => {
       if (part?.kind === "learn") return <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div>;
@@ -92,7 +94,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     return read(update ? <div className="flex flex-wrap items-center justify-center gap-3">{next}{update}</div> : next);
   }
   if (data.kind === "practice" && part?.kind === "practice")
-    return <Suspense fallback={fallback}><LessonWorkbench key={part.revision} lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
+    return <Suspense fallback={fallback}><LessonWorkbench key={part.revision} lessonId={data.id} title={data.title} part={part} next={next} media={practiceMedia(data.media)} /></Suspense>;
   if (data.kind === "scrim" && part?.kind === "scrim")
     return <Suspense fallback={fallback}><ScrimLesson lessonId={data.id} title={data.title} part={part} steps={data.steps} media={data.media} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
@@ -103,7 +105,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     <Notice>
       This lesson isn't ready yet.{" "}
       <button type="button" className="pill px-3 py-1 text-sm" onClick={reload}>Try again</button>{" "}
-      <a href="/" className="underline">Home</a>
+      <Link to="/" className="underline">Home</Link>
     </Notice>
   );
 }

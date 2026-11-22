@@ -49,11 +49,5 @@ export function announceRun(run: GridRun, state: Outcome): string {
   const tail = bumps(run) ? ` ${bumps(run)} bump${bumps(run) === 1 ? "" : "s"}.` : "";
   if (state === "win") return `You win! Reached the goal with ${run.gems} gem${run.gems === 1 ? "" : "s"} in ${run.steps} steps.${tail}`;
   const why = `${run.error ?? "The run did not succeed"}.${tail}`;
-  return state === "lose" ? `Game over, no lives left. ${why}` : `Not yet: ${why} Change the program and run again.`;
-}
-
-export function verdict(run: GridRun, lives?: number): { state: Outcome; lives?: number } {
-  if (run.ok) return { state: "win", lives };
-  const left = lives === undefined || !run.trace.length ? lives : lives - 1;
-  return { state: left !== undefined && left <= 0 ? "lose" : "retry", lives: left };
+  return state === "lose" ? why : `Not yet: ${why} Change the program and run again.`;
 }

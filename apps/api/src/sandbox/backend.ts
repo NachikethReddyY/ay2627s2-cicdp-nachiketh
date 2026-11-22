@@ -1,3 +1,5 @@
+import type { PracticeLanguage, PracticeTest } from "../parts/practice-schema.ts";
+import type { RawResult } from "./checkRunner.ts";
 import { env } from "../env.ts";
 
 export interface ShellHandle {
@@ -52,6 +54,7 @@ export interface SandboxBackend {
   writeWorkspaceFile?(learnerId: string, path: string, content: string): Promise<void>;
   moveWorkspaceFile?(learnerId: string, source: string, targetDir: string): Promise<void>;
   listDir?(learnerId: string, relDir: string): Promise<DirListing | null>;
+  runChecks?(code: string, language: PracticeLanguage, tests: PracticeTest[]): Promise<RawResult[]>;
   runCode?(learnerId: string, language: "python" | "javascript" | "typescript", code: string, limits: RunLimits): RunHandle;
 }
 

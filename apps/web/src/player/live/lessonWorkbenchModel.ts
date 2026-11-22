@@ -11,8 +11,8 @@ export function lessonFile(language: string | undefined) {
 export const outputTail = (text: string, max: number) => (text.length > max ? text.slice(text.length - max) : text);
 
 export const actionGuards = (o: { busy: boolean; checkBusy: boolean; lintBusy: boolean; code: string }) => ({
-  run: !o.busy,
-  check: !o.busy && !o.checkBusy,
+  run: !o.busy && o.code.trim() !== "",
+  check: !o.busy && !o.checkBusy && o.code.trim() !== "",
   lint: !o.lintBusy && o.code.trim() !== "",
 });
 
@@ -32,4 +32,11 @@ export function shellLine(s: ShellState): { text: string; retry?: boolean } | nu
     default:
       return null;
   }
+}
+
+export function practiceMedia(media: ReadonlyArray<{ stepId: string | null; segment: number | null; url: string }>) {
+  const narration = media.find((item) => item.stepId === null && item.segment === null);
+  if (!narration) return undefined;
+  const type = narration.url.split("?")[0].endsWith(".wav") ? "audio/wav" : "audio/mpeg";
+  return { src: narration.url, type };
 }

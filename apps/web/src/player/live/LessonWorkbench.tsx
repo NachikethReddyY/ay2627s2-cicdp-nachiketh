@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check } from "lucide-react";
+import { Check, ListChecks, Play } from "lucide-react";
 import { usePanel } from "../terminal/usePanel";
 import DocsPanel from "../workbench/DocsPanel";
 import { DOCS } from "../workbench/docs";
@@ -17,7 +17,7 @@ import type { WorkbenchStatus } from "../workbench/StatusBar";
 import type { LintFinding } from "../runPython";
 import PracticeSolution from "./PracticeSolution";
 import LessonResults from "./LessonResults";
-import LessonVideo from "./LessonVideo";
+import LessonVideo, { type VideoSource } from "./LessonVideo";
 import { monacoLanguage, type PracticeLanguage, type PracticeTest } from "./checkModel";
 import { findingPointer } from "./lintModel";
 import { actionGuards, lessonFile } from "./lessonWorkbenchModel";
@@ -41,7 +41,7 @@ const ROOT = "Lesson";
 
 const BUSY = "Running…";
 
-export default function LessonWorkbench({ lessonId, title, part, next, video = true }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode; video?: boolean }) {
+export default function LessonWorkbench({ lessonId, title, part, next, media }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode; media?: VideoSource }) {
   const practice = part as PracticePart;
   const language = monacoLanguage(practice.language);
   const { fileName, languageLabel } = lessonFile(language);
@@ -61,6 +61,11 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
   const { dispatch: panelDispatch } = panel;
   const runRef = useRef<HTMLButtonElement>(null);
   const r = usePracticeRunner({ lessonId, versionId: part.versionId, revision: part.revision, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
+
+  const changeCode = (value: string) => {
+    r.resetResults();
+    setCode(value);
+  };
 
   const mountedOpen = useRef(panel.state.open);
   const [interacted, setInteracted] = useState(false);
@@ -103,10 +108,20 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
   );
 
   const actions = (
-    <button ref={runRef} type="button" className="wb-tb wb-primary" onClick={check} disabled={!can.check}>
-      <Check size={15} strokeWidth={1.75} aria-hidden="true" />
-      {r.checkBusy ? "Submitting…" : "Submit"}
-    </button>
+    <>
+      <button ref={runRef} type="button" className="wb-tb" onClick={run} disabled={!can.run}>
+        <Play size={15} strokeWidth={1.75} aria-hidden="true" />
+        Run
+      </button>
+      <button type="button" className="wb-tb" onClick={lint} disabled={!can.lint}>
+        <ListChecks size={15} strokeWidth={1.75} aria-hidden="true" />
+        {r.lintBusy ? "Linting…" : "Lint"}
+      </button>
+      <button type="button" className="wb-tb wb-primary" onClick={check} disabled={!can.check}>
+        <Check size={15} strokeWidth={1.75} aria-hidden="true" />
+        {r.checkBusy ? "Submitting…" : "Submit"}
+      </button>
+    </>
   );
   const trailing = <span className="lq-next">{next}</span>;
 
@@ -115,26 +130,21 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="wb-scroll flex h-[43px] flex-none items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-[var(--line)] px-2.5">
         <Segmented className="wb-pill gap-1" role="group" aria-label="Side panel view">
-          {(video ? TABS : WATCHLESS_TABS).map((t) => (
+          {(media ? TABS : WATCHLESS_TABS).map((t) => (
             <button key={t.id} type="button" className="wb-ptab" aria-pressed={tab === t.id} onClick={() => show(t.id)}>{t.label}</button>
           ))}
         </Segmented>
       </div>
       <div hidden={tab !== "instructions"} className="wb-prose wb-scroll min-h-0 flex-1 overflow-auto px-3 py-2.5">{instructions}</div>
-      {video && (
-        <div hidden={tab !== "video"} className="wb-scroll min-h-0 flex-1 overflow-auto">
+      {media && tab === "video" && (
+        <div className="wb-scroll min-h-0 flex-1 overflow-auto">
           <LessonVideo
             title={title}
-            captionsSrc={`/video/${lessonId}.vtt`}
-            chaptersSrc={`/video/${lessonId}.chapters.vtt`}
             onExplain={(text) => {
               setPendingPrompt({ text });
               show("sloppy");
             }}
-            sources={[
-              { src: `/video/${lessonId}.mp4`, type: "video/mp4" },
-              { src: `/audio/${lessonId}.mp3`, type: "audio/mpeg" },
-            ]}
+            sources={[media]}
           />
         </div>
       )}
@@ -183,7 +193,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
       fileName={fileName}
       language={language}
       navigator={navigator}
-      editor={<WorkbenchEditor key={fileName} transportRef={runRef} edit={{ value: code, language, onChange: setCode }} />}
+      editor={<WorkbenchEditor key={fileName} transportRef={runRef} edit={{ value: code, language, onChange: changeCode }} />}
       bottom={bottom}
       bottomTitle="Terminal"
       instructions={instructions}
@@ -202,7 +212,6 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
       languageLabel={languageLabel}
       panel={panel}
       revealDocs={revealDocs}
-      showPlanned
       floatingWindow={{
         style: win.style,
         resizeHandles: <PreviewResizeHandles onResizeStart={win.onResizeStart} onResizeMove={win.onResizeMove} onResizeEnd={win.onResizeEnd} />,

@@ -114,7 +114,7 @@ export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: 
 export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, onRun, actions, trailing, lights = false, planned = false }: Props) {
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
-      <div className="flex h-12 flex-none items-center gap-2 px-2 sm:gap-3 sm:px-3">
+      <div className="flex min-h-12 flex-none flex-wrap items-center gap-2 px-2 py-1 sm:gap-3 sm:px-3">
         {lights && <TrafficLights />}
         {planned && (
           <span className="wb-pill flex-none gap-0 shadow-[0_1px_2px_rgba(20,30,70,.1)]">

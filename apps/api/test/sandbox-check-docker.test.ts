@@ -7,7 +7,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
 const { env } = await import("../src/env.ts");
-const { runInContainer, score, CheckUnavailableError } =await import("../src/sandbox/check.ts");
+const { score } = await import("../src/sandbox/check.ts");
+const { runInContainer } = await import("../src/sandbox/dockerChecks.ts");
+const { CheckUnavailableError } = await import("../src/sandbox/checkRunner.ts");
 type T = Parameters<typeof score>[0][number];
 
 const hasImage = spawnSync("docker", ["image", "inspect", env.SANDBOX_IMAGE], { stdio: "ignore" }).status === 0;

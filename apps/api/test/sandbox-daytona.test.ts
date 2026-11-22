@@ -4,14 +4,16 @@ import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
 import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
 
-function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; mktemp?: { exitCode?: number; result?: string }; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean } = {}) {
-  const log = { created: [] as Record<string, unknown>[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], execs: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
+function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; mktemp?: { exitCode?: number; result?: string }; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean; check?: { exitCode: number } } = {}) {
+  const log = { created: [] as Record<string, unknown>[], network: [] as boolean[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], execs: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   const createdFolders = new Set<string>();
+  let checkPayload: { token: string; tests: unknown[] } | undefined;
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
   const mk = (extra: Partial<DaytonaSandbox> = {}): DaytonaSandbox => ({
     id: "sbx1",
     state: "started",
+    updateNetworkSettings: async ({ networkBlockAll }) => { log.network.push(networkBlockAll); },
     start: async () => void log.started++,
     waitUntilStarted: async () => void log.waited++,
     waitUntilStopped: async () => {},
@@ -33,6 +35,10 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
       executeCommand: async (c) => {
         log.execs.push(c);
         if (c === "mktemp -d") return { exitCode: 0, result: "/tmp/tmp.Ab3dEf9x\n", ...opts.mktemp };
+        if (opts.check && c.startsWith("timeout")) {
+          const results = checkPayload?.tests.map(() => ({ exit: 0, timedOut: false, overflow: false, stdout: "ok", stderr: "" }));
+          return { exitCode: opts.check.exitCode, result: JSON.stringify({ token: checkPayload?.token, results }) };
+        }
         return { exitCode: 0, result: "" };
       },
       executeSessionCommand: async (_s, req) => (log.cmds.push(req.command), log.reqs.push(req), { cmdId: "c1" }),
@@ -47,7 +53,11 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
     getUserHomeDir: async () => (log.homeCalls++, "home" in opts ? opts.home : "/home/daytona"),
     fs: {
       createFolder: async (p, mode) => { log.fsOps.push(`mkdir ${p} ${mode}`); createdFolders.add(p); },
-      uploadFile: async (_f, p) => (log.fsOps.push(`upload ${p}`), void log.uploaded.push(p)),
+      uploadFile: async (file, path) => {
+        log.fsOps.push(`upload ${path}`);
+        log.uploaded.push(path);
+        if (opts.check) checkPayload = JSON.parse(file.toString()) as typeof checkPayload;
+      },
       deleteFile: async (p) => {
         if (opts.deleteFails) throw new Error("delete refused");
         log.fsOps.push(`delete ${p}`);
@@ -104,6 +114,8 @@ test("openShell creates a labelled sandbox with auto-stop and opens a PTY", asyn
     snapshot: "lq-snap",
     labels: { app: "learnquest", role: "shell", learner: learnerHash("learner-1") },
     autoStopInterval: 7,
+    networkBlockAll: true,
+    resources: { cpu: 1, memory: 1, disk: 3 },
   });
   assert.deepEqual(f.log.ptyOptions[0], {
     cwd: "/home/daytona/task-tracker",
@@ -131,6 +143,7 @@ test("openShell reuses the learner's sandbox and starts it when stopped", async 
   await daytonaBackend({ client: f.client }).openShell("learner-1", { cols: 80, rows: 24 });
   assert.equal(f.log.created.length, 0);
   assert.equal(f.log.started, 1);
+  assert.deepEqual(f.log.network, [true]);
 });
 
 test("output before onData is attached is not lost", async () => {
@@ -358,4 +371,23 @@ test("file methods look the sandbox up by the hashed learner label", async () =>
   await b.listDir!("learner-1", "");
   const labels = { app: "learnquest", role: "shell", learner: learnerHash("learner-1") };
   assert.deepEqual(f.log.listed, [{ labels }, { labels }]);
+});
+
+
+test("checks use a private input file in an isolated disposable Daytona sandbox", async () => {
+  const tests = [{ id: "a", name: "Test", stdin: "input", expectedStdout: "ok", visibility: "hidden" as const, stretch: false }];
+  for (const exitCode of [0, 1]) {
+    const { client, log } = fake({ check: { exitCode } });
+    const backend = daytonaBackend({ client, snapshot: "lesson-runtime" });
+    const result = backend.runChecks!("console.log('ok')", "javascript", tests);
+    if (exitCode === 0) assert.equal((await result)[0]?.stdout, "ok");
+    else await assert.rejects(result, /Daytona check failed/);
+    assert.deepEqual(log.created[0], {
+      snapshot: "lesson-runtime", networkBlockAll: true, resources: { cpu: 1, memory: 1, disk: 3 },
+      user: "root", labels: { app: "learnquest", role: "check" }, ephemeral: true, autoStopInterval: 2, ttlMinutes: 3,
+    });
+    assert.deepEqual(log.uploaded, ["/tmp/learnquest-check/input.json"]);
+    assert.match(log.execs[0] ?? "", /mkdir -m 700/);
+    assert.equal(log.deleted, 1);
+  }
 });

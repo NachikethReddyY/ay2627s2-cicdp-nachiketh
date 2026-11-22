@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { MAX_ANGLE, MIN_ANGLE, simulateLaunch, type PublicGameProps, type PhysicsProps } from "@learnquest/ui-catalog";
-import type { GameApi } from "./api.ts";
+import type { ActiveGameApi } from "./api.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import Shell, { btnPrimary } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
@@ -8,14 +8,14 @@ import type { Outcome } from "./model.ts";
 const W = 400;
 const H = 160;
 
-export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind: PhysicsProps; api: GameApi }) {
+export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind: PhysicsProps; api: ActiveGameApi }) {
   const reduced = useReducedMotion();
-  const maxLives = p.shell.lives;
+  const maxLives = api.maxAttempts;
   const [angle, setAngle] = useState(45);
   const [speed, setSpeed] = useState(Math.ceil(kind.maxSpeed / 2));
   const [shot, setShot] = useState<ReturnType<typeof simulateLaunch> | null>(null);
-  const [lives, setLives] = useState(maxLives);
-  const [outcome, setOutcome] = useState<Outcome>("play");
+  const [lives, setLives] = useState(api.remainingAttempts);
+  const [outcome, setOutcome] = useState<Outcome>(api.remainingAttempts > 0 ? "play" : "lose");
   const [live, setLive] = useState("");
   const [busy, setBusy] = useState(false);
   const gen = useRef(0);
@@ -32,12 +32,11 @@ export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind
     try {
       const r = await api.check({ kind: "physics", angle, speed });
       if (mine !== gen.current) return;
+      setLives(r.remainingAttempts);
       setShot(preview);
       const miss = `${preview.landX < kind.target.x ? "Short" : "Long"}: it landed ${preview.landX.toFixed(1)} metres out, the target is at ${kind.target.x}.`;
       if (r.correct) return (setOutcome("win"), setLive(`You win! It landed ${preview.landX.toFixed(1)} metres out, inside the target.`));
-      const left = lives === undefined ? undefined : lives - 1;
-      if (left !== undefined) setLives(left);
-      if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive(`Game over, no lives left. ${miss}`));
+      if (r.remainingAttempts === 0) return (setOutcome("lose"), setLive(miss));
       setLive(`${miss} Change a slider and launch again.`);
     } catch {
       if (mine === gen.current) setLive("Couldn't check your throw. Try again.");
@@ -48,7 +47,7 @@ export default function PhysicsGame({ p, kind, api }: { p: PublicGameProps; kind
 
   const retry = () => {
     gen.current++;
-    setShot(null), setOutcome("play"), setLives(maxLives), setLive("Back at the start.");
+    setShot(null), setOutcome("play"), setLive("Back at the start.");
   };
 
   const slider = (label: string, value: number, min: number, max: number, set: (n: number) => void, unit: string) => (

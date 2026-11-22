@@ -8,12 +8,14 @@ import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
 import { checkResults, lessons, lessonVersions, partCompletions, practiceAttempts, worlds, type PartSecret } from "../src/db/schema.ts";
 import { parsePractice } from "../src/parts/practice-schema.ts";
-import { setCheckSpawnForTests, verifyReferenceSolution } from "../src/sandbox/check.ts";
+import { verifyReferenceSolution } from "../src/sandbox/check.ts";
+import { setCheckSpawnForTests } from "../src/sandbox/dockerChecks.ts";
+import { setBackend } from "../src/sandbox/backend.ts";
 import { atCapacity, startRun, stopRun } from "../src/sandbox/run.ts";
 
 const app = buildApp();
 after(() => app.close());
-afterEach(() => setCheckSpawnForTests());
+afterEach(() => { setCheckSpawnForTests(); setBackend(null); });
 
 type Test = { id: string; name: string; stdin?: string; expectedStdout: string; visibility: "sample" | "hidden"; stretch?: boolean };
 const tests: Test[] = [
@@ -394,4 +396,25 @@ test("scrim lab is checked as practice and cannot be completed directly", async 
   assert.equal((await practiceCheck(me, "scrim-lab"))?.expected, "42");
   assert.equal((await practiceTests(me, "scrim-lab"))?.practice.tests[0]?.expectedStdout, "42");
   assert.equal((await trpc(app, cookie).m("parts.complete", { lessonId: "scrim-lab" })).statusCode, 403);
+});
+
+
+test("check and reference verification use the configured backend and authored language", async () => {
+  const cookie = await signUp(app);
+  await addLesson("backend-check", "practice", part());
+  const calls: string[] = [];
+  setBackend({
+    openShell: () => Promise.reject(new Error("unexpected shell")),
+    runChecks: async (code, language, tests) => {
+      calls.push(`${language}:${code}`);
+      return tests.map((t) => ({ exit: 0, timedOut: false, overflow: false, stdout: t.expectedStdout, stderr: "" }));
+    },
+  });
+  await withSandbox(true, async () => {
+    assert.equal((await check(cookie, body("backend-check", { language: "javascript" }))).statusCode, 400);
+    assert.equal((await check(cookie, { lessonId: "backend-check", code: "print(1)" })).statusCode, 200);
+    const practice = parsePractice({ ...part(), referenceSolution: "print(5)" });
+    assert.equal(await verifyReferenceSolution(practice), "valid");
+    assert.deepEqual(calls, ["python:print(1)", "python:print(5)"]);
+  });
 });

@@ -72,7 +72,29 @@ test("answers a seeded quiz step: feedback comes from the server and the attempt
   }
 });
 
-test("opens a scrim's lab at /editor with its starter code and no hidden answers", async ({ page }) => {
+test("practice workbench opens the scrim lab, runs code, lints, and submits", async ({ page }) => {
+  await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => ws.close({ code: 4503, reason: "Sandbox busy" }));
+  let ran = false;
+  let submitted = false;
+  await page.route("**/api/sandbox/run", async (route) => {
+    expect(route.request().postDataJSON().code).toContain("function double");
+    ran = true;
+    await route.fulfill({ json: { id: "run-1" } });
+  });
+  await page.route("**/api/sandbox/run/run-1?*", (route) => route.fulfill({ json: { output: "Practice output", next: 15, done: true } }));
+  await page.route("**/api/sandbox/check", async (route) => {
+    const input = route.request().postDataJSON();
+    expect(input).toMatchObject({ lessonId: "scrim-return-values", language: "javascript" });
+    expect(input.code).toContain("function double");
+    submitted = true;
+    await route.fulfill({ json: {
+      complete: true, points: 4, maxPoints: 4, required: { passed: 4, total: 4 },
+      stretch: { passed: 0, total: 0 }, best: { points: 4, maxPoints: 4 }, attemptCount: 1,
+      results: ["two", "five", "hidden-1", "hidden-2"].map((id, index) => ({
+        id, name: id, stretch: false, visibility: index < 2 ? "sample" : "hidden", status: "pass",
+      })),
+    } });
+  });
   await signUp(page, newEmail(), "/");
   const lesson = page.waitForResponse((res) => res.url().includes("lessons.get") && res.ok());
   await page.goto("/editor?lesson=scrim-return-values");
@@ -82,6 +104,22 @@ test("opens a scrim's lab at /editor with its starter code and no hidden answers
   await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
   await expect(page.locator(".view-lines").first()).toContainText("function double(n)");
+  await expect(page.getByRole("button", { name: "Watch", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Source control", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.locator('pre[aria-label="Output"]')).toContainText("Practice output");
+  expect(ran).toBe(true);
+
+  await page.getByRole("button", { name: "Lint", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
+  expect(submitted).toBe(true);
+
+  await page.locator(".view-lines").first().click();
+  await page.keyboard.type(" ");
+  await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toHaveCount(0);
 });
 
 test("a scrim keeps later code hidden until its prediction and shows the updated replay", async ({ page }) => {
