@@ -35,12 +35,12 @@ type PredictProps = {
   busy: boolean;
   canSubmit: boolean;
   canHint: boolean;
-  canSkip: boolean;
+  canSkip?: boolean;
   showSkip?: boolean;
   showCode?: boolean;
   onSubmit: (a: Answer) => void;
   onHint: () => void;
-  onSkip: () => void;
+  onSkip?: () => void;
 };
 
 export function PredictPanel(p: PredictProps) {
@@ -89,7 +89,7 @@ export function PredictPanel(p: PredictProps) {
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="submit" disabled={!p.canSubmit || !ready || p.busy} className={`btn !px-5 !py-1.5 text-sm disabled:opacity-50 ${FOCUS}`}>Check</button>
         <button type="button" disabled={!p.canHint || p.busy} onClick={p.onHint} className={btn}>Hint</button>
-        {p.showSkip !== false && <button type="button" disabled={!p.canSkip || p.busy} onClick={p.onSkip} className={btn}>Skip</button>}
+        {p.onSkip && p.showSkip !== false && <button type="button" disabled={!p.canSkip || p.busy} onClick={p.onSkip} className={btn}>Skip</button>}
       </div>
     </form>
   );

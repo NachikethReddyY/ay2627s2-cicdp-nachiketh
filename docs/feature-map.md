@@ -46,13 +46,15 @@ A lesson's `kind` decides which parts the player shows. The kind is stored on `l
 
 | Name | Kind | What the learner does | Code |
 |---|---|---|---|
-| Predict | `predict` | Answers an MCQ or cloze before the reveal. | `player/live/Steps.tsx`, `apps/api/src/attempts/` |
+| Predict | `predict` | Answers each MCQ or cloze before the reveal to complete the lesson. | `player/live/Steps.tsx`, `apps/api/src/attempts/` |
 | Learn | `learn` | Makes an opening prediction, reads a short lesson and completes a closing check. Older lessons without both checks need an update before they can be played; owners can regenerate private AI lessons, and previous completions remain available. | `player/LiveLesson.tsx` |
 | Watch | `watch` | Makes an opening prediction, replays a code change and completes a closing check. Older lessons without both checks need an update before they can be played; owners can regenerate private AI lessons, and previous completions remain available. | `player/LiveLesson.tsx` |
 | Practice | `practice` | Edits code and uses Run and Check in the lab. | `player/live/LessonWorkbench.tsx` |
-| Game practice | `game-practice` | Plays and checks a short game. | `player/GamePracticeView.tsx`, `apps/api/src/progress/games.ts` |
+| Game practice | `game-practice` | Checks games on the server. Every game block in the current lesson needs a win, and replaying an unchanged block does not grant XP again. | `player/GamePracticeView.tsx`, `apps/api/src/progress/games.ts` |
 | Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. JavaScript and Python segment runs use the interactive terminal; TypeScript runs use the one-shot runner. Runs share a queue with manual Run presses. A **gate** holds playback at the start of its segment until the gate step is revealed, so the prediction comes first. A gate cannot be skipped. `lessons.get` sends segments only up to the first unrevealed gate, `lessons.scrimMore` sends the next slice once that gate is revealed, every step route refuses a gate behind it, and the lesson counts as done only when every gate is revealed and the lab is passed. Captions and playback controls float above the workbench and stay in place when the terminal opens. The lesson ends with a practice lab. | Player `apps/web/src/player/scrim/` (`ScrimWatch`, `GatePanel`, model in `scrimModel.ts`). Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Generated scrims: the engine drafts one for a code course, and the API stores its gate steps as ordinary mcq `steps` rows, so `lessons.get` never sends the answers or hints. Seeded demo `worlds/scrim-demo/`. |
 
+
+Game wins follow a renamed block when its game content is unchanged and the rename is unambiguous. If two former IDs for the same game return together, the ID present in the previous revision keeps the win. If both were absent, the first ID in sort order keeps it.
 
 The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. The lesson player (`/play`) plays the segments, holds at gates, and opens the lab in the practice workbench after **Start the lab**.
 

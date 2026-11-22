@@ -19,10 +19,70 @@ export const Slug = z.object({ slug: z.string().regex(/^[\w-]{1,64}$/) });
 
 export const lessonTotal = sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id)::int ELSE 1 END)`;
+const gameBlocks = (content: SQL) => sql`(SELECT b.value->>'id' AS id, b.value->'props' AS props
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${content}->'doc'->'blocks') = 'array'
+    THEN ${content}->'doc'->'blocks' ELSE '[]'::jsonb END) b(value)
+  WHERE b.value->>'type' = 'game')`;
+
+const gameBlockWon = (learnerId: string, lessonId: SQL, version: SQL, blockId: SQL, props: SQL) => sql`EXISTS (
+  WITH RECURSIVE revisions AS (
+    SELECT history.version, row_number() OVER (ORDER BY history.version) AS position,
+      ARRAY(SELECT game.id FROM ${gameBlocks(sql`history.content`)} game WHERE game.props = ${props}) AS ids
+    FROM lesson_versions history JOIN lessons owner ON owner.id = history.lesson_id
+    WHERE history.lesson_id = ${lessonId}
+      AND (history.published_at IS NOT NULL OR history.version = ${version}
+        OR (owner.source_kind = 'ai' AND history.version < ${version})
+        OR EXISTS (SELECT 1 FROM game_completions gc
+          WHERE gc.lesson_id = history.lesson_id AND gc.part_idx = history.version - 1))
+  ), identities(position, ids, active, known) AS (
+    SELECT 0::bigint, ARRAY[]::text[], '{}'::jsonb, '{}'::jsonb
+    UNION ALL
+    SELECT revision.position, revision.ids, mapped.active, previous.known || mapped.active
+    FROM identities previous JOIN revisions revision ON revision.position = previous.position + 1
+    CROSS JOIN LATERAL (
+      SELECT coalesce(jsonb_object_agg(candidate.id, CASE WHEN candidate.priority = 1 AND candidate.identity IS NOT NULL
+        THEN candidate.identity ELSE jsonb_build_array(revision.version, candidate.id)::text END), '{}'::jsonb) AS active
+      FROM (
+        SELECT proposed.*, row_number() OVER (PARTITION BY proposed.identity
+          ORDER BY (previous.active ? proposed.id) DESC, proposed.id) AS priority
+        FROM (
+          SELECT id, coalesce(previous.known->>id, CASE
+            WHEN cardinality(previous.ids) = 1 AND cardinality(revision.ids) = 1
+            THEN previous.active->>previous.ids[1] END) AS identity
+          FROM unnest(revision.ids) block(id)
+        ) proposed
+      ) candidate
+    ) mapped
+  )
+  SELECT 1
+  FROM game_completions gc
+  JOIN revisions earned ON earned.version = gc.part_idx + 1
+  JOIN identities earned_blocks ON earned_blocks.position = earned.position
+  JOIN revisions current ON current.version = ${version}
+  JOIN identities current_blocks ON current_blocks.position = current.position
+  WHERE gc.learner_id = ${learnerId} AND gc.lesson_id = ${lessonId}
+    AND earned_blocks.active->>gc.block_id = current_blocks.active->>${blockId})`;
+
+export const currentGameBlockWon = (learnerId: string, lessonId: string, versionId: string, blockId: string) => sql`EXISTS (
+  SELECT 1 FROM lesson_versions v CROSS JOIN LATERAL ${gameBlocks(sql`v.content`)} b
+  WHERE v.id = ${versionId} AND b.id = ${blockId}
+    AND ${gameBlockWon(learnerId, sql`${lessonId}`, sql`v.version`, sql`b.id`, sql`b.props`)})`;
+
+export const everyGameWon = (learnerId: string) => sql`(SELECT coalesce(bool_and(
+  ${gameBlockWon(learnerId, sql`l.id`, sql`v.version`, sql`b.id`, sql`b.props`)}), false)
+  FROM lesson_versions v CROSS JOIN LATERAL ${gameBlocks(sql`v.content`)} b
+  WHERE v.id = l.current_version_id)`;
 export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}
-      AND sp.state IN ('revealed', 'skipped'))::int
+      AND sp.state = 'revealed'
+      AND (EXISTS (SELECT 1 FROM attempts a
+        WHERE a.step_id = s.id AND a.learner_id = ${me} AND a.observed AND a.kind <> 'skip')
+        OR (EXISTS (SELECT 1 FROM attempts skipped
+          WHERE skipped.step_id = s.id AND skipped.learner_id = ${me} AND skipped.observed AND skipped.kind = 'skip')
+          AND EXISTS (SELECT 1 FROM attempts answered
+            WHERE answered.step_id = s.id AND answered.learner_id = ${me} AND answered.kind <> 'skip'))))::int
+  WHEN l.kind = 'game-practice' THEN (CASE WHEN ${everyGameWon(me)} THEN 1 ELSE 0 END)
   WHEN l.kind = 'scrim'
   THEN (SELECT count(*) FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}
     AND NOT EXISTS (SELECT 1 FROM lesson_versions v
@@ -34,7 +94,8 @@ export const lessonDone = (me: string) => sql`(CASE WHEN l.kind = 'predict'
 export const lastActive = (me: string) => sql`GREATEST(
   (SELECT max(sp.updated_at) FROM steps s JOIN step_progress sp ON sp.step_id = s.id
     WHERE s.lesson_version_id = l.current_version_id AND sp.learner_id = ${me}),
-  (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}))`;
+  (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}),
+  (SELECT max(gc.created_at) FROM game_completions gc WHERE gc.lesson_id = l.id AND gc.learner_id = ${me}))`;
 export const complete = (l: { done: number; total: number }) => l.total > 0 && l.done >= l.total;
 export const listed = playableLesson();
 export const visibleCourse = (me: string) => visibleWorld(userOfLearner(me));

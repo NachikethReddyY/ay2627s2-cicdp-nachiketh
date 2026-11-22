@@ -39,7 +39,7 @@ export function next(
     }
     return { progress: { ...p, state: "revealed" }, outcome };
   }
-  if (p.state === "predicting" && step.hintCount === 0) {
+  if (p.state === "predicting" && p.rungsTaken >= step.hintCount) {
     return { progress: { ...p, state: "hinting", attemptAllowed: true, retryAllowed: true }, outcome };
   }
   if (p.state === "predicting") return { progress: { ...p, state: "hinting", attemptAllowed: false }, outcome };

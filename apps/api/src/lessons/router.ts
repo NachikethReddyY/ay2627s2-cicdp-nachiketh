@@ -81,7 +81,7 @@ const Lesson = z.object({
         started: z.boolean(),
       }),
       PublicPractice,
-      z.object({ kind: z.literal("game-practice"), intro: z.string(), doc: z.unknown() }),
+      z.object({ kind: z.literal("game-practice"), versionId: z.string().uuid(), intro: z.string(), doc: z.unknown() }),
     ])
     .nullable(),
   steps: z.array(
@@ -196,7 +196,7 @@ export const lessonsRouter = router({
           const doc = content.doc && publicDoc(await resolveDocImages(content.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId }));
           part = content.kind === "learn"
             ? { kind: "learn", body: content.body, doc }
-            : { kind: "game-practice", intro: content.intro, doc };
+            : { kind: "game-practice", versionId: lesson.currentVersionId, intro: content.intro, doc };
           break;
         }
         case "watch":
@@ -221,7 +221,7 @@ export const lessonsRouter = router({
           idx: r.idx,
           title: r.pub.title,
           hintCount: r.hintCount,
-          state: lesson.kind === "scrim" ? scrimStepState(r.state) : (r.state ?? "predicting"),
+          state: lesson.kind === "scrim" ? scrimStepState(r.state) : lesson.kind === "predict" && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
         })),
         completed: completion !== undefined,
         canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.privateOwner === true,

@@ -91,7 +91,8 @@ test("game completion grants XP once and leaves lesson mastery unchanged", async
   const [game] = await db.insert(lessons).values({ slug: "game-xp", title: "Game", worldId: world!.id, sourceKind: "authored", kind: "game-practice", status: "published" }).returning();
   await db.insert(lessonVersions).values({ lessonId: game!.id, version: 1, content: { kind: "game-practice", intro: "Play.", doc: { v: 1, blocks: [{ type: "game", id: "quiz-one", props: { title: "Quiz", goalText: "Answer.", alt: "A one question quiz.", hints: [], shell: {}, kind: { kind: "quiz", questions: [{ prompt: "2 + 2?", options: ["3", "4"], answer: 1 }] } } }] } } });
   await db.update(lessons).set({ currentVersionId: (await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, game!.id)))[0]!.id }).where(eq(lessons.id, game!.id));
-  const input = { lessonId: "game-xp", gameIndex: 0, submission: { kind: "quiz", answers: [1] } };
+  const versionId = out(await trpc(app, cookie).q("lessons.get", { id: "game-xp" })).part.versionId;
+  const input = { lessonId: "game-xp", versionId, gameIndex: 0, submission: { kind: "quiz", answers: [1] } };
   assert.equal(out(await m(cookie, "games.check", input)).complete, true);
   assert.equal(out(await m(cookie, "games.check", input)).complete, true, "a repeat win is accepted but earns nothing more");
   assert.equal(out(await get(cookie)).stats.xp, 10);
