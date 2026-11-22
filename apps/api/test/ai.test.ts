@@ -1,4 +1,4 @@
-import { code, out, signUp, trpc } from "./helpers.ts";
+import { code, out, signUp, trpc, withChecks } from "./helpers.ts";
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -45,7 +45,7 @@ beforeEach(() => {
   env.AI_WRITE_COURSE_ON_GENERATE = false;
   env.ENGINE_TOKEN = "t".repeat(32);
   lessonCalls = 0;
-  lessonOut = (kind) => parts[kind as keyof typeof parts];
+  lessonOut = (kind) => withChecks(parts[kind as keyof typeof parts]);
   generator.outline = async () => outline;
   engineParts.lesson = async (ctx) => {
     lessonCalls++;
@@ -213,7 +213,7 @@ test("concurrent ensureLesson calls for one lesson make one call and reserve onc
 test("invalid watch hunks are rejected after one retry, and a good retry succeeds", async () => {
   const { t, lessons: ls } = await setup();
   const watch = ls[1]!.slug;
-  lessonOut = () => badWatch;
+  lessonOut = () => withChecks(badWatch);
   const res = await t.q("lessons.get", { id: watch });
   assert.equal(code(res), "INTERNAL_SERVER_ERROR");
   assert.equal(lessonCalls, 2);
@@ -221,7 +221,7 @@ test("invalid watch hunks are rejected after one retry, and a good retry succeed
   assert.deepEqual([row!.status, row!.currentVersionId], ["draft", null]);
 
   lessonCalls = 0;
-  lessonOut = () => (lessonCalls === 1 ? badWatch : parts.watch);
+  lessonOut = () => (lessonCalls === 1 ? withChecks(badWatch) : withChecks(parts.watch));
   const ok = out(await t.q("lessons.get", { id: watch }));
   assert.deepEqual([ok.kind, ok.part], ["watch", parts.watch]);
   assert.equal(lessonCalls, 2);
@@ -230,7 +230,7 @@ test("invalid watch hunks are rejected after one retry, and a good retry succeed
 test("a truncated learn body is regenerated", async () => {
   const { t, lessons: ls } = await setup();
   const first = ls[0]!.slug;
-  lessonOut = () => (lessonCalls === 1 ? { kind: "learn", body: "Use `let` like `" } : parts.learn);
+  lessonOut = () => (lessonCalls === 1 ? withChecks({ kind: "learn", body: "Use `let` like `" }) : withChecks(parts.learn));
   const res = out(await t.q("lessons.get", { id: first }));
   assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
   assert.equal(lessonCalls, 2);
@@ -239,8 +239,8 @@ test("a truncated learn body is regenerated", async () => {
 test("a looping learn body is regenerated", async () => {
   const { t, lessons: ls } = await setup();
   const first = ls[0]!.slug;
-  const looping = { kind: "learn", body: "Your First Python Program# ".repeat(200) };
-  lessonOut = () => (lessonCalls === 1 ? looping : parts.learn);
+  const looping = withChecks({ kind: "learn", body: "Your First Python Program# ".repeat(200) });
+  lessonOut = () => (lessonCalls === 1 ? looping : withChecks(parts.learn));
   const res = out(await t.q("lessons.get", { id: first }));
   assert.deepEqual([res.kind, res.part], ["learn", parts.learn]);
   assert.equal(lessonCalls, 2);
@@ -279,7 +279,7 @@ test("a part generated for one learner is reused by another without a model call
 
 test("a learn part's visual document is stored and returned", async () => {
   const doc = { v: 1, blocks: [{ type: "text", id: "t", props: { md: "Ownership moves values." } }] };
-  lessonOut = (kind) => (kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
+  lessonOut = (kind) => withChecks(kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
   const { t, lessons: ls } = await setup();
   const res = out(await t.q("lessons.get", { id: ls[0]!.slug }));
   assert.equal(res.part.kind, "learn");
@@ -346,7 +346,7 @@ test("lessons.get returns the lesson with its image prompt resolved", async () =
   Object.assign(env, { IMAGE_BASE_URL: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`, IMAGE_API_KEY: "k", IMAGE_MODEL: "m", IMAGE_API_STYLE: "images" });
   try {
     const doc = { v: 1, blocks: [{ type: "image", id: "i", props: { source: "generate", prompt: "A slow cell", alt: "cell" } }] };
-    lessonOut = (kind) => (kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
+    lessonOut = (kind) => withChecks(kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
     const { t, lessons: ls } = await setup();
     assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
   } finally {

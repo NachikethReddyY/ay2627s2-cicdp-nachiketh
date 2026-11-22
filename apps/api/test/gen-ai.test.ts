@@ -1,4 +1,4 @@
-import { code, out, signUp, trpc } from "./helpers.ts";
+import { code, out, signUp, trpc, withChecks } from "./helpers.ts";
 import { after, afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { eq, sql } from "drizzle-orm";
@@ -65,7 +65,7 @@ test("generation holds no transaction or pooled connection, and a concurrent wri
     calls++;
     started.open();
     await g.opened;
-    return { kind: "learn", body: "Variables hold values." };
+    return withChecks({ kind: "learn", body: "Variables hold values." });
   };
   const a = ensureLesson(lesson.id, learnerId);
   const b = ensureLesson(lesson.id, learnerId);
@@ -89,7 +89,7 @@ test("concurrent first plays produce exactly one version", async () => {
   engineParts.lesson = async () => {
     calls++;
     await new Promise((r) => setTimeout(r, 30));
-    return { kind: "learn", body: "Variables hold values." };
+    return withChecks({ kind: "learn", body: "Variables hold values." });
   };
   const results = await Promise.all([1, 2, 3].map(() => ensureLesson(lesson.id, learnerId)));
   assert.deepEqual(results, [true, true, true]);
@@ -103,7 +103,7 @@ test("an engine part reserves four calls' worth of spend", async () => {
   env.AI_DAILY_BUDGET_USD = 0;
   env.AI_MONTHLY_BUDGET_USD = 0;
   await db.execute(sql`DELETE FROM spend_ledger`);
-  engineParts.lesson = async () => ({ kind: "learn", body: "Variables hold values." });
+  engineParts.lesson = async () => withChecks({ kind: "learn", body: "Variables hold values." });
   assert.equal(await ensureLesson(lesson.id, learnerId), true);
   const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
   assert.equal(Number(r!.s), 2);
@@ -146,7 +146,7 @@ test("a predict lesson stored for everyone is generated without the learner's mi
 test("moderation down: a lesson in a public course is refused, a private one still generates", async () => {
   const safe = async () => ({ flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } });
   const { lesson, learnerId } = await firstLesson();
-  engineParts.lesson = async () => ({ kind: "learn", body: "Variables hold values." });
+  engineParts.lesson = async () => withChecks({ kind: "learn", body: "Variables hold values." });
   setModerationClient(async () => {
     throw new Error("moderation unavailable");
   });
@@ -179,7 +179,7 @@ test("a lesson generated while its path is published must pass public moderation
   engineParts.lesson = async () => {
     started.open();
     await release.opened;
-    return { kind: "learn", body: draftBody };
+    return withChecks({ kind: "learn", body: draftBody });
   };
 
   const writing = ensureLesson(lesson.id, learnerId);

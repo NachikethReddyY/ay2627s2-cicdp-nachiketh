@@ -1,4 +1,4 @@
-import { out, signUp, trpc } from "./helpers.ts";
+import { out, signUp, trpc, withChecks } from "./helpers.ts";
 import { after, afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
@@ -23,7 +23,7 @@ const outline = {
     lessons: [1, 2, 3].map((n) => ({ title: `Lesson ${c}.${n}`, level: n, concepts: ["ownership"], kind: "learn" as const })),
   })),
 };
-const learnPart = { kind: "learn", body: "Variables hold values." };
+const learnPart = withChecks({ kind: "learn", body: "Variables hold values." });
 
 beforeEach(() => {
   env.ENGINE_TOKEN = "t".repeat(32);

@@ -1,10 +1,10 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, max } from "drizzle-orm";
 import { playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
-import { db } from "../db/client.ts";
-import { attempts, hintEvents, learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
+import { db, type Db } from "../db/client.ts";
+import { attempts, hintEvents, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
@@ -30,7 +30,7 @@ async function mustStep(id: string, learnerId: string) {
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
+    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -62,6 +62,12 @@ async function readProgress(learnerId: string, stepId: string): Promise<Progress
     .from(stepProgress)
     .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId)));
   return p ?? fresh();
+}
+
+async function closesReadLesson(tx: Db, step: Step) {
+  if (step.lessonKind !== "learn" && step.lessonKind !== "watch") return false;
+  const [last] = await tx.select({ idx: max(steps.idx) }).from(steps).where(eq(steps.lessonVersionId, step.versionId));
+  return last?.idx === step.idx;
 }
 
 function mutate(
@@ -105,6 +111,9 @@ function mutate(
         .returning({ id: attempts.id });
       attemptId = row.id;
       observedFirst = n === 0;
+      if (o.type === "attempt" && (await closesReadLesson(tx, step))) {
+        await tx.insert(partCompletions).values({ learnerId, lessonId: step.lessonId }).onConflictDoNothing();
+      }
     }
     return { ...r, attemptId, observed: attemptId !== undefined && observedFirst };
   });

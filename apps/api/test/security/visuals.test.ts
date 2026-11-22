@@ -3,13 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { validatePart } from "../../src/visuals/gate.ts";
 import type { PartSecret } from "../../src/db/schema.ts";
+import { withChecks } from "../read-steps.ts";
 
 type LearnPart = Extract<PartSecret, { kind: "learn" }>;
 
 const fixture = JSON.parse(await readFile(new URL("./fixtures/injection.json", import.meta.url), "utf8"));
 
 test("injection fixture keeps learner text but drops executable visual blocks", () => {
-  const part = validatePart({ kind: "learn", ...fixture }) as LearnPart;
+  const part = validatePart(withChecks({ kind: "learn", ...fixture })) as LearnPart;
   assert.equal(part.body, fixture.body);
   assert.equal(part.doc, undefined);
 });
@@ -27,7 +28,7 @@ test("seeded malformed visual inputs never escape the part validator", () => {
       id: `fuzz-${i}-${index}`,
       props: { payload: "<script>alert(1)</script>" },
     }));
-    const part = validatePart({ kind: "learn", body: "untrusted learner text", doc: { v: 1, blocks } }) as LearnPart;
+    const part = validatePart(withChecks({ kind: "learn", body: "untrusted learner text", doc: { v: 1, blocks } })) as LearnPart;
     assert.equal(part.body, "untrusted learner text");
     assert.ok(part.doc === undefined || part.doc.blocks.every((block) => block.type !== "run"));
   }

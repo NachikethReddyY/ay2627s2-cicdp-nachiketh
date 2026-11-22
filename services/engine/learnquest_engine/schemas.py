@@ -164,12 +164,14 @@ class LearnPart(BaseModel):
     kind: Literal["learn"]
     body: T4000
     doc: dict[str, Any] | None = None
+    steps: list[McqStep] = Field(min_length=2, max_length=2)
 
 
 class WatchPart(BaseModel):
     kind: Literal["watch"]
     beforeFiles: dict[T200, Annotated[str, StringConstraints(max_length=6000)]]
     hunks: list[Hunk] = Field(min_length=1, max_length=6)
+    steps: list[McqStep] = Field(min_length=2, max_length=2)
 
     @model_validator(mode="after")
     def _files(self) -> "WatchPart":
