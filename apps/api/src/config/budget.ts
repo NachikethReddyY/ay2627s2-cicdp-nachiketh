@@ -3,12 +3,16 @@ import { TRPCError } from "@trpc/server";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 
-export const ENGINE_CALLS_PER_REPLY = 2;
+export const ENGINE_CALLS_PER_REPLY = 3;
 
-export const ENGINE_CALLS_PER_PART = 4;
+export const ENGINE_CALLS_PER_PART = 6;
+
+export function assertAiEnabled() {
+  if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });
+}
 
 export async function reserveAiSpend(estimatedUsd = 0) {
-  if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });
+  assertAiEnabled();
   await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('ai_spend'))`);
     const { rows: [totals] } = await tx.execute<{ daily: string; monthly: string }>(sql`SELECT

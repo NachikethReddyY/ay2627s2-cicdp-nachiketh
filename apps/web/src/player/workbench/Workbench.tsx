@@ -64,6 +64,8 @@ type Props = {
   };
   revealDocs?: number;
   aiContext?: { fileName: string; filePath: string; projectRoot: string; code: string; language: string };
+  onAskGuide?: () => void;
+  onGuideSelection?: WorkbenchContextValue["setSelection"];
 };
 
 const LANG_NAMES: Record<WorkbenchLanguage, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python" };
@@ -259,9 +261,10 @@ export default function Workbench(p: Props) {
 
   const openDocRef = useRef(openDoc);
   openDocRef.current = openDoc;
+  const onGuideSelection = p.onGuideSelection;
   const ctx = useMemo<WorkbenchContextValue>(
-    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", wordWrap, setWordWrap, fileName: p.fileName, setCursor, setSelection, setProblems, openDoc: (id) => openDocRef.current(id) }),
-    [resolved, wordWrap, p.fileName],
+    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", wordWrap, setWordWrap, fileName: p.fileName, setCursor, setSelection: (value) => { setSelection(value); onGuideSelection?.(value); }, setProblems, openDoc: (id) => openDocRef.current(id) }),
+    [resolved, wordWrap, p.fileName, onGuideSelection],
   );
 
   const bottomPanel = panel.everOpened && (
@@ -396,7 +399,7 @@ export default function Workbench(p: Props) {
                             <button type="button" className="wb-tb wb-nb" aria-label="List" title="List" aria-pressed={view !== "ai"} onClick={() => setNavView("files")}>
                               <List size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
-                            <button type="button" className="wb-tb wb-nb" aria-label="AI help" title="AI help" aria-pressed={view === "ai"} onClick={() => setNavView("ai")}>
+                            <button type="button" className="wb-tb wb-nb" aria-label="AI help" title="AI help" aria-pressed={view === "ai"} onClick={() => p.onAskGuide ? p.onAskGuide() : setNavView("ai")}>
                               <Sparkles size={18} strokeWidth={1.8} aria-hidden="true" />
                             </button>
                           </Segmented>

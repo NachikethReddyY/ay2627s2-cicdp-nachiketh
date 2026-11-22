@@ -4,6 +4,7 @@ import os
 import time
 from typing import Annotated, Any
 
+import litellm
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from litellm.exceptions import (
@@ -40,6 +41,13 @@ class VisualRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=500)
 
 
+class ModerationRequest(BaseModel):
+    input: str = Field(min_length=1, max_length=50000)
+    model: str = Field(min_length=1, max_length=240)
+    apiBase: str
+    apiKey: str
+
+
 class GuideMessage(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     content: str = Field(min_length=1, max_length=2000)
@@ -58,6 +66,7 @@ class GuideRequest(BaseModel):
     messages: list[GuideMessage] = Field(min_length=1, max_length=8)
     workspaceFiles: list[GuideWorkspaceFile] = Field(default_factory=list, max_length=24)
     lintFinding: LintFinding | None = None
+    lessonContext: dict[str, Any] | None = None
 
 
 def require_token(x_engine_token: Annotated[str | None, Header()] = None) -> None:
@@ -94,7 +103,9 @@ class CapBody:
         if length.isdigit() and int(length) > MAX_BODY_BYTES:
             await too_large(scope, receive, send)
             return
-        llm.start_request_deadline()
+        timeout_header = dict(scope["headers"]).get(b"x-engine-timeout-ms", b"")
+        timeout_s = max(0.001, int(timeout_header) / 1000 - 1) if timeout_header.isdigit() else None
+        llm.start_request_deadline(timeout_s)
         chunks: list[bytes] = []
         size = 0
         while True:
@@ -147,7 +158,7 @@ def visual_route(body: VisualRequest) -> JSONResponse:
     doc = visual.unwrap(first.value.model_dump())
     found = visual.all_issues(doc)
     t2 = time.monotonic()
-    log.warning(
+    log.info(
         "visual: first pass %.1fs (attempts=%d, completion_tokens=%d), checks %.1fs, issues=%d",
         t1 - t0,
         first.attempts,
@@ -161,7 +172,7 @@ def visual_route(body: VisualRequest) -> JSONResponse:
         t3 = time.monotonic()
         doc = visual.unwrap(repaired.value.model_dump())
         found = visual.all_issues(doc)
-        log.warning(
+        log.info(
             "visual: repair pass %.1fs (attempts=%d, completion_tokens=%d), checks %.1fs",
             t3 - t2,
             repaired.attempts,
@@ -181,6 +192,21 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
     result = guide.reply(body.model_dump(exclude_none=True))
     return _body("guide", result)
+
+
+@app.post("/v1/moderation", dependencies=[Depends(require_token)])
+def moderation_route(body: ModerationRequest) -> dict[str, Any]:
+    started = time.monotonic()
+    result = litellm.moderation(
+        input=body.input,
+        model=body.model,
+        api_base=body.apiBase,
+        api_key=body.apiKey,
+        timeout=4,
+        num_retries=0,
+    )
+    log.info("moderation model=%s latency_ms=%d", body.model, (time.monotonic() - started) * 1000)
+    return dict(result.model_dump())
 
 
 @app.post("/v1/mastery/update", dependencies=[Depends(require_token)])

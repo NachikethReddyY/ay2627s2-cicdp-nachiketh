@@ -48,7 +48,7 @@ function clipGuideCode(code: string, selection: { startLine: number; endLine: nu
   return { code: lines.slice(lo, hi + 1).join("\n").slice(0, GUIDE_CODE_LIMIT), clipped: true, fromStart: !selection };
 }
 
-export function AIGuide({ fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent, pendingPrompt, onPromptSent }: { fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void; pendingPrompt?: { text: string } | null; onPromptSent?: () => void }) {
+export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, language, selection, pendingFinding, onFindingSent, pendingPrompt, onPromptSent }: { lessonId?: string; fileName: string; filePath: string; projectRoot: string; code: string; language: string; selection: { startLine: number; endLine: number; text: string } | null; pendingFinding?: { ruleId: string; line: number; column?: number } | null; onFindingSent?: () => void; pendingPrompt?: { text: string } | null; onPromptSent?: () => void }) {
   const guideCode = clipGuideCode(code, selection);
   const [messages, setMessages] = useState<GuideMessage[]>([]);
   const [question, setQuestion] = useState("");
@@ -88,11 +88,12 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
     setChatError("");
     try {
       const { guide } = await askEditorGuide({
+        lessonId,
         fileName,
         projectRoot,
         language,
         code: guideCode.code,
-        selection: selection?.text ?? "",
+        selection: selection?.text.slice(0, 3000) ?? "",
         messages: next.slice(-8).map(({ role, text }) => ({ role, content: text })),
         ...(finding ? { finding } : {}),
       });
@@ -148,7 +149,7 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
           {messages.length === 0 ? <>
           <div className="wb-ai-time">Code guide · {fileName}</div>
           <div className="wb-ai-reply">Ask me about this file. I’ll help you work it out with clues and questions, without giving away the solution.</div>
-          </> : messages.map((message, index) => message.role === "user" ? <div key={`${index}-${message.text}`} className="wb-ai-user">{message.text}</div> : <div key={`${index}-${message.text}`} className="wb-ai-reply wb-ai-markdown"><ReactMarkdown>{message.text}</ReactMarkdown>{message.widgets?.map((widget, widgetIndex) => <GuideWidgetCard key={`${index}-${widgetIndex}`} widget={widget} />)}</div>)}
+          </> : messages.map((message, index) => message.role === "user" ? <div key={`${index}-${message.text}`} className="wb-ai-user">{message.text}</div> : <div key={`${index}-${message.text}`} className="wb-ai-reply wb-ai-markdown"><ReactMarkdown disallowedElements={["img", "a"]} unwrapDisallowed>{message.text}</ReactMarkdown>{message.widgets?.map((widget, widgetIndex) => <GuideWidgetCard key={`${index}-${widgetIndex}`} widget={widget} />)}</div>)}
           {sending && <div role="status" className="wb-ai-reply flex items-center gap-2"><span className="wb-ai-spinner" aria-hidden="true" />Thinking through a clue…</div>}
           {chatError && <div role="alert" className="wb-ai-error">{chatError}</div>}
         </div>
@@ -188,7 +189,7 @@ export function AIGuide({ fileName, filePath, projectRoot, code, language, selec
             }} />
           </span>
           <label htmlFor="wb-guide-question" className="sr-only">Ask about this code</label>
-          <textarea id="wb-guide-question" rows={1} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about this code" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+          <textarea id="wb-guide-question" rows={1} maxLength={2000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about this code" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
           <button type="submit" className="wb-send" aria-label="Send" disabled={!question.trim() || sending}><ArrowUp size={15} strokeWidth={2} aria-hidden="true" /></button>
         </div>
       </form>

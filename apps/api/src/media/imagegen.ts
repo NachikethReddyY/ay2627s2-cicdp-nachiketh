@@ -133,7 +133,7 @@ const IMAGE_CONCURRENCY = 4;
 
 export async function resolveDocImages(
   doc: unknown,
-  opts: { lessonVersionId: string; learnerId: string; stepId?: string },
+  opts: { lessonVersionId: string; learnerId: string; stepId?: string; generateMissing?: boolean },
   http?: HttpClient,
 ): Promise<unknown> {
   const blocks = (doc as { blocks?: unknown } | null)?.blocks;
@@ -156,7 +156,7 @@ export async function resolveDocImages(
     let props: Record<string, unknown> = { source: "generated-pending", ...base };
     if (!known.has(promptHash(p.prompt))) {
       const input = { ...opts, prompt: p.prompt, description: p.alt };
-      later.push(() => generateImage(input, http));
+      if (opts.generateMissing !== false) later.push(() => generateImage(input, http));
       return { type: "image", id: b.id, props };
     }
     try {

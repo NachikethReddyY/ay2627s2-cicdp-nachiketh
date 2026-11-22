@@ -246,3 +246,20 @@ test("mcq choice is validated against the step's option count", async () => {
   assert.equal(r.attemptAllowed, true);
   assert.equal(out(await attempt(c, two!.id, { kind: "mcq", choice: 1 })).correct, true);
 });
+
+test("Sloppy returns lesson context without answers and counts as help on the next attempt", async () => {
+  const cookie = await signUp(app);
+  const { loadGuideContext } = await import("../src/ai/guide-context.ts");
+  const { resolveLearnerId } = await import("../src/auth/guards.ts");
+  const learnerId = await resolveLearnerId({ cookie });
+  assert.ok(learnerId);
+  const guide = await loadGuideContext(learnerId, "lesson-1");
+  assert.equal(guide.context.task, out(await get(cookie, "s1")).prompt);
+  assert.equal(guide.context.hintRung, 1);
+  assert.deepEqual(Object.keys(guide.context).sort(), ["concepts", "hintRung", "lessonId", "task", "title"]);
+  assert.ok(guide.recordHint);
+  await guide.recordHint();
+  const result = out(await mcq(cookie, 1));
+  assert.equal(result.correct, true);
+  assert.equal(result.hintsUsed, 1);
+});

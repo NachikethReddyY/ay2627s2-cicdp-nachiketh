@@ -11,14 +11,16 @@ from learnquest_engine import guide
 from learnquest_engine.server import app
 
 
-def test_persona_prompt_is_reloaded_for_each_request(tmp_path: Path, monkeypatch) -> None:
+def test_persona_prompt_is_cached(tmp_path: Path, monkeypatch) -> None:
     prompt = tmp_path / "editor_guide.md"
     prompt.write_text("first persona", encoding="utf-8")
     monkeypatch.setattr(guide, "PROMPT", prompt)
 
+    guide._system.cache_clear()
     assert guide._system() == "first persona"
     prompt.write_text("updated persona", encoding="utf-8")
-    assert guide._system() == "updated persona"
+    assert guide._system() == "first persona"
+    guide._system.cache_clear()
 
 
 TOKEN = {"X-Engine-Token": "x" * 32}
@@ -106,3 +108,24 @@ def test_other_lint_finding_limits_are_enforced(
     r = post({**BASE, "lintFinding": {**FINDING, **override}})
     assert r.status_code == 422
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "```js\nconst answer = 42;\n```",
+        "const answer = 42;",
+        "print(answer)",
+        "<script>alert(1)</script>",
+    ],
+)
+def test_solution_code_is_rejected_in_messages_and_cards(text: str) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        guide.GuideReply(message=text, widgets=[])
+    with pytest.raises(ValidationError):
+        guide.GuideReply(
+            message="Think through the value.",
+            widgets=[guide.HintWidget(type="hint", title="A clue", body=text)],
+        )

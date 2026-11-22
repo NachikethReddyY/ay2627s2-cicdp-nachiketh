@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
 
-process.env.DATABASE_URL ??= "postgres://learnquest:learnquest@localhost:5432/learnquest_test";
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? "postgres://learnquest:learnquest@localhost:5432/learnquest_test";
 process.env.BETTER_AUTH_SECRET ??= "test-only-secret-not-for-production-0123456789";
 process.env.NODE_ENV ??= "test";
 process.env.MODERATION_API_KEY = "test-key";
+process.env.ENGINE_TOKEN = "x".repeat(32);
+const { pool } = await import("../src/db/client.ts");
+after(() => pool.end());
 const { CATEGORIES, isSafe, setModerationTimeoutForTests } = await import("../src/safety/moderation.ts");
 type ModerationClient = import("../src/safety/moderation.ts").ModerationClient;
 

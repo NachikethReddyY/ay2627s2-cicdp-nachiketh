@@ -97,7 +97,7 @@ test("concurrent first plays produce exactly one version", async () => {
   assert.equal((await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id))).length, 1);
 });
 
-test("an engine part reserves four calls' worth of spend", async () => {
+test("an engine part reserves six calls' worth of spend", async () => {
   const { lesson, learnerId } = await firstLesson();
   env.AI_CALL_ESTIMATE_USD = 0.5;
   env.AI_DAILY_BUDGET_USD = 0;
@@ -106,10 +106,10 @@ test("an engine part reserves four calls' worth of spend", async () => {
   engineParts.lesson = async () => withChecks({ kind: "learn", body: "Variables hold values." });
   assert.equal(await ensureLesson(lesson.id, learnerId), true);
   const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
-  assert.equal(Number(r!.s), 2);
+  assert.equal(Number(r!.s), 3);
 });
 
-test("a predict reply reserves two calls' worth of spend on each attempt", async () => {
+test("a predict reply reserves three calls' worth of spend on each attempt", async () => {
   const { lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
   env.AI_CALL_ESTIMATE_USD = 0.5;
@@ -121,7 +121,7 @@ test("a predict reply reserves two calls' worth of spend on each attempt", async
   };
   await assert.rejects(ensureLesson(lesson.id, learnerId));
   const { rows: [r] } = await db.execute<{ s: string }>(sql`SELECT COALESCE(sum(amount_usd), 0)::text AS s FROM spend_ledger`);
-  assert.equal(Number(r!.s), 2);
+  assert.equal(Number(r!.s), 3);
 });
 
 test("a predict lesson stored for everyone is generated without the learner's missed concepts", async () => {

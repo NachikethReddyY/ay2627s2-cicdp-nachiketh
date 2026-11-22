@@ -16,7 +16,7 @@ import { practiceOf } from "../parts/practice.ts";
 import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
 import { mvpLimits } from "../config/limits.ts";
-import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
+import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, assertAiEnabled, reserveAiSpend } from "../config/budget.ts";
 import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
@@ -46,10 +46,6 @@ const Lesson = z.object({ steps: z.array(Step).min(3).max(5) });
 
 const slugify = (s: string, max: number) =>
   `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(6).toString("hex")}`;
-
-function assertAiEnabled() {
-  if (env.AI_KILL_SWITCH) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is temporarily unavailable" });
-}
 
 export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();

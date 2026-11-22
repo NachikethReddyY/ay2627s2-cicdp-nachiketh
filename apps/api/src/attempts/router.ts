@@ -144,9 +144,13 @@ function mutate(
     const o = r.outcome;
     let attemptId: string | undefined;
     let observedFirst = false;
+    let hintsUsed = r.progress.rungsTaken;
     if (o.type === "hint") {
       await tx.insert(hintEvents).values({ learnerId, stepId, rung: o.rung });
     } else {
+      const [guideHelp] = await tx.select({ rung: hintEvents.rung }).from(hintEvents)
+        .where(and(eq(hintEvents.learnerId, learnerId), eq(hintEvents.stepId, stepId), eq(hintEvents.rung, 0)));
+      hintsUsed = Math.max(hintsUsed, guideHelp ? 1 : 0);
       const [{ n }] = await tx
         .select({ n: count() })
         .from(attempts)
@@ -160,7 +164,7 @@ function mutate(
           response: o.type === "skip" ? null : response,
           observed: n === 0,
           correct: o.type === "skip" ? null : o.correct,
-          hintsUsed: r.progress.rungsTaken,
+          hintsUsed,
           feedback: o.type === "skip" ? null : o.correct ? "Correct!" : "Not quite.",
           missedConcepts: o.type === "skip" || o.correct ? [] : missedOf(step),
         })
@@ -171,7 +175,7 @@ function mutate(
         await tx.insert(partCompletions).values({ learnerId, lessonId: step.lessonId }).onConflictDoNothing();
       }
     }
-    return { ...r, attemptId, observed: attemptId !== undefined && observedFirst };
+    return { ...r, attemptId, hintsUsed, observed: attemptId !== undefined && observedFirst };
   });
 }
 
@@ -182,6 +186,33 @@ async function applyMastery(learnerId: string, out: { observed: boolean }) {
   } catch (e) {
     console.error("mastery update failed; will catch up on read", e);
   }
+}
+
+export async function guideStep(learnerId: string, stepIds: string[]) {
+  for (const id of stepIds) {
+    const step = await mustStep(id, learnerId);
+    const progress = await readProgress(learnerId, step);
+    if (progress.state === "revealed" || progress.state === "skipped") continue;
+    return {
+      rung: Math.min(progress.rungsTaken + 1, step.secret.hints.length),
+      task: step.pub.prompt,
+      answers: step.pub.kind === "mcq" ? [step.pub.options?.[Number(step.secret.answer)] ?? ""] : [String(step.secret.answer), ...(step.secret.accepted ?? [])],
+      record: async () => {
+        if (step.secret.hints.length > 0) {
+          await mutate(learnerId, step, { type: "hint" }, null);
+          return;
+        }
+        await withTx(async (tx) => {
+          await tx.insert(stepProgress).values({ learnerId, stepId: id }).onConflictDoNothing();
+          const [current] = await tx.select().from(stepProgress)
+            .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, id))).for("update");
+          if (current.state !== "revealed" && current.state !== "skipped")
+            await tx.insert(hintEvents).values({ learnerId, stepId: id, rung: 0 }).onConflictDoNothing();
+        });
+      },
+    };
+  }
+  return null;
 }
 
 const Attempt = z.object({
@@ -253,7 +284,7 @@ export const stepsRouter = router({
         correct,
         feedback: correct ? (out.progress.state === "revealed" ? "Correct!" : "Correct! Try again to unlock the explanation.") : "Not quite.",
         missedConcepts: correct ? [] : missedOf(step),
-        hintsUsed: out.progress.rungsTaken,
+        hintsUsed: out.hintsUsed,
         state: out.progress.state,
         attemptAllowed: out.progress.attemptAllowed,
       };

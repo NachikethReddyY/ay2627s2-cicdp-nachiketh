@@ -200,3 +200,20 @@ def test_deadline_is_shared_by_all_calls_in_a_request(monkeypatch: pytest.Monkey
         llm._deadline.reset(token)
     assert calls[0]["timeout"] == 100
     assert calls[1]["timeout"] == 30
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_transient_provider_failure_gets_one_retry(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    from litellm.exceptions import APIError
+
+    error = APIError(status_code=status, message="temporary", llm_provider="openai", model="test")
+    calls = fake(monkeypatch, error, reply(GOOD))
+    assert len(generate("sys", {}, Lesson).value.steps) == 3
+    assert len(calls) == 2
+
+    calls = fake(monkeypatch, error, error, reply(GOOD))
+    with pytest.raises(APIError):
+        generate("sys", {}, Lesson)
+    assert len(calls) == 2

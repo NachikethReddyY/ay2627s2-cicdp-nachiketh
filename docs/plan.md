@@ -14,7 +14,7 @@
 
 **LearnSlop teaches programming concepts in short lessons. Learners predict what code will do before seeing the answer.**
 
-The engine generates paths with predictions, hints and explanations. A path starts private to its creator. It becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. The planned learner model recommends a next lesson and review items with reasons. Sloppy is the practice help chat. It is intended to give hints, and a deterministic chat output check is planned (LQ-124). Answer keys stay server-side.
+The engine generates paths with predictions, hints and explanations. A path starts private to its creator. It becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. The planned learner model recommends a next lesson and review items with reasons. Sloppy is the practice help chat. It gives hints and uses a deterministic check on chat output. Answer keys stay server-side.
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 

@@ -114,13 +114,16 @@ const write = protectedProcedure
   .output(z.object({ ok: z.literal(true) }))
   .mutation(async ({ ctx, input }) => {
     const [found] = await db
-      .select({ id: lessons.id })
+      .select({ lesson: lessons })
       .from(lessons)
       .innerJoin(worlds, eq(worlds.id, lessons.worldId))
       .innerJoin(learners, eq(learners.id, ctx.learnerId))
-      .where(and(lessonRef(input.id, lessons), eq(lessons.sourceKind, "ai"), visibleWorld(learners.userId, worlds)));
+      .where(and(lessonRef(input.id, lessons), playableLesson(lessons), visibleWorld(learners.userId, worlds)));
     if (!found) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
-    await ensureLesson(found.id, ctx.learnerId);
+    if (found.lesson.sourceKind === "ai") {
+      await ensureLesson(found.lesson.id, ctx.learnerId);
+      prefetchNext(found.lesson, ctx.learnerId);
+    }
     return { ok: true as const };
   });
 
@@ -189,16 +192,11 @@ export const lessonsRouter = router({
             visibleWorld(learners.userId, worlds),
           ),
         );
-      let lesson = found?.lesson;
-      if (lesson && !lesson.currentVersionId && lesson.sourceKind === "ai") {
-        await ensureLesson(lesson.id, ctx.learnerId);
-        [lesson] = await db.select().from(lessons).where(eq(lessons.id, lesson.id));
-      }
+      const lesson = found?.lesson;
       if (!lesson?.currentVersionId || (lesson.status !== "published" && !(lesson.status === "draft" && lesson.sourceKind === "ai"))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
       }
       const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson.currentVersionId));
-      if (lesson.sourceKind === "ai") prefetchNext(lesson, ctx.learnerId);
       const rows = await db
         .select({ id: steps.id, idx: steps.idx, pub: steps.public, hintCount: sql<number>`jsonb_array_length(${steps.secret}->'hints')`, state: stepProgress.state })
         .from(steps)
@@ -243,7 +241,7 @@ export const lessonsRouter = router({
         }
         case "learn":
         case "game-practice": {
-          const doc = content.doc && publicDoc(await resolveDocImages(content.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId }));
+          const doc = content.doc && publicDoc(await resolveDocImages(content.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId, generateMissing: false }));
           part = content.kind === "learn"
             ? { kind: "learn", body: content.body, doc }
             : { kind: "game-practice", versionId: lesson.currentVersionId, intro: content.intro, doc };

@@ -34,7 +34,7 @@ Routes marked dev or test only exist in non-production builds.
 | Hint | server `stepsRouter.hint` (`apps/api/src/attempts/router.ts`) | Requested by the learner. Returns the next fixed hint rung stored on the step. |
 | Reveal | server `stepsRouter.reveal` | Only after the learner finishes or skips. |
 | Generation limits | `apps/api/src/config/limits.ts` | Every learner can generate five AI paths and one image per day. |
-| Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | The AI help chat. It is prompted to give hints. A deterministic check for finished solutions is planned (LQ-124). |
+| Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | One chat per lab for editor selections, lint findings, and video questions. Sloppy renders hints, observation steps, and prediction questions as cards. The server checks responses for code and known lesson answers. |
 | Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. |
 | Diagram and scene blocks | `blocks/diagram/`, `blocks/scene3d/` | From `packages/ui-catalog`. |
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
