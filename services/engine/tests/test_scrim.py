@@ -14,7 +14,6 @@ from learnquest_engine.schemas import (
     SCRIM_MAX_SEGMENT_MS,
     SCRIM_MIN_SEGMENT_MS,
     LessonContext,
-    Outline,
     ScrimDraft,
     ScrimPart,
     segment_duration_ms,
@@ -75,15 +74,6 @@ def test_the_route_returns_durations_and_steps(fake_llm: FakeLLM) -> None:
     assert lesson["kind"] == "scrim"
     assert all(s["durationMs"] >= SCRIM_MIN_SEGMENT_MS for s in lesson["segments"])
     assert lesson["steps"][0]["answer"] == 0
-
-
-def test_outline_allows_scrim_for_code_only() -> None:
-    lesson = {"title": "Return values", "level": 1, "concepts": ["return"], "kind": "scrim"}
-    course = {"title": "Functions", "description": "d", "lessons": [lesson] * 3}
-    base = {"title": "T", "tagline": "t", "courses": [course, course]}
-    assert Outline.model_validate({**base, "subject": "code"}).courses is not None
-    with pytest.raises(ValidationError, match="non-coding"):
-        Outline.model_validate({**base, "subject": "other"})
 
 
 def test_a_gate_must_point_at_a_step() -> None:

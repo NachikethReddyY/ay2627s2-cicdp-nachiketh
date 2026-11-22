@@ -17,7 +17,6 @@ after(() => app.close());
 const outline = {
   title: "Learn JavaScript functions",
   tagline: "Return values",
-  subject: "code",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
