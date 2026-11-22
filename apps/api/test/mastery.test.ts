@@ -96,12 +96,14 @@ test("a hint-assisted correct answer lowers p_known", async () => {
   assert.ok(m!.p < 0.2);
 });
 
-test("a skipped first action counts as incorrect", async () => {
+test("a refused predict skip does not affect mastery or the first answer", async () => {
   const c = await signUp(app);
-  assert.equal((await trpc(app, c).m("steps.skip", { id: "s1" })).statusCode, 200);
+  assert.equal((await trpc(app, c).m("steps.skip", { id: "s1" })).statusCode, 400);
+  assert.equal(await pOf("functions"), undefined);
+  assert.equal((await attempt(c, 1)).statusCode, 200);
   const m = await pOf("functions");
   assert.equal(m?.n, 1);
-  assert.ok(m!.p < 0.2);
+  assert.ok(m!.p > 0.2);
 });
 
 test("the second attempt on a step is not observed", async () => {
