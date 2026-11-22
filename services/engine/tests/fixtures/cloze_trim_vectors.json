@@ -1,0 +1,8 @@
+[
+  {"name": "ASCII spaces", "input": "  lqtrim42  ", "expected": "lqtrim42"},
+  {"name": "byte order marks", "input": "\ufefflqtrim42\ufeff", "expected": "lqtrim42"},
+  {"name": "em spaces", "input": "\u2003lqtrim42\u2003", "expected": "lqtrim42"},
+  {"name": "next line characters are retained", "input": "\u0085lqtrim42\u0085", "expected": "\u0085lqtrim42\u0085"},
+  {"name": "information separators are retained", "input": "\u001clqtrim42\u001c", "expected": "\u001clqtrim42\u001c"},
+  {"name": "all trim characters are invalid", "input": "\ufeff\u3000", "expected": null}
+]

@@ -1,9 +1,19 @@
 """Pydantic ports of the zod models in apps/api/src/ai/service.ts, plus the leak check."""
 
+import re
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, ValidationInfo, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    model_validator,
+)
+
+from .answer_leak import contains_answer
 
 
 def _c(n: int) -> StringConstraints:
@@ -20,6 +30,32 @@ T300 = Annotated[str, _c(300)]
 T400 = Annotated[str, _c(400)]
 T500 = Annotated[str, _c(500)]
 T1000 = Annotated[str, _c(1000)]
+_ZOD_TRIM = (
+    "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+    "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+_OPTION_WHITESPACE = (
+    "\t-\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+_OPTION_WHITESPACE_RUN = re.compile(f"[{_OPTION_WHITESPACE}]+")
+_OPTION_WHITESPACE_EDGE = re.compile(f"^[{_OPTION_WHITESPACE}]+|[{_OPTION_WHITESPACE}]+\\Z")
+_OPTION_IDENTIFIER = re.compile("[a-z0-9_]+")
+ClozeText = Annotated[
+    str,
+    BeforeValidator(lambda value: value.strip(_ZOD_TRIM)),
+    StringConstraints(min_length=1, max_length=100),
+]
+
+
+def _contains_mcq_option(text: str, answer: str) -> bool:
+    haystack = text.lower()
+    needle = _OPTION_WHITESPACE_EDGE.sub("", answer.lower())
+    if _OPTION_IDENTIFIER.fullmatch(needle):
+        return len(needle) >= 3 and bool(
+            re.search(f"(?<![a-z0-9_]){needle}(?![a-z0-9_])", haystack)
+        )
+    squashed = _OPTION_WHITESPACE_RUN.sub("", needle)
+    return len(squashed) >= 3 and squashed in _OPTION_WHITESPACE_RUN.sub("", haystack)
 
 
 class OutlineLesson(BaseModel):
@@ -92,16 +128,37 @@ class _Step(BaseModel):
     def _answers(self) -> list[str]:
         raise NotImplementedError
 
+    def _leak_surfaces(self) -> list[str]:
+        return [
+            self.title,
+            self.prompt,
+            self.explanations.workedExample,
+            self.explanations.practice,
+            *(h.text for h in self.hints),
+        ]
+
     @model_validator(mode="after")
     def _check(self) -> "_Step":
         if not 1 <= len(self.beforeFiles) <= 4:
             raise ValueError("beforeFiles needs 1 to 4 files")
-        haystack = [_norm(h.text) for h in self.hints]
-        haystack += [_norm(self.title), _norm(self.explanations.workedExample)]
-        for a in map(_norm, self._answers()):
-            if len(a) >= 3 and any(a in h for h in haystack):
+        surfaces = self._leak_surfaces()
+        for answer in self._answers():
+            leaks = (
+                any(_contains_mcq_option(surface, answer) for surface in surfaces)
+                if isinstance(self, McqStep)
+                else any(contains_answer(surface, answer) for surface in surfaces)
+                or (
+                    isinstance(self, ClozeStep)
+                    and any(
+                        contains_answer(surface, answer, False)
+                        for surface in self.beforeFiles.values()
+                    )
+                )
+            )
+            if leaks:
                 raise ValueError(
-                    f"step {self.title!r}: hints, title or workedExample leak the answer"
+                    f"step {self.title!r}: hints, title, prompt, explanations or starter code "
+                    "leak the answer"
                 )
         return self
 
@@ -123,11 +180,14 @@ class McqStep(_Step):
 
 class ClozeStep(_Step):
     kind: Literal["cloze"]
-    answer: T100
-    accepted: list[T100] = Field(default=[], max_length=6)
+    answer: ClozeText
+    accepted: list[ClozeText] = Field(default=[], max_length=6)
 
     def _answers(self) -> list[str]:
         return [self.answer, *self.accepted]
+
+    def _leak_surfaces(self) -> list[str]:
+        return super()._leak_surfaces()
 
 
 Step = Annotated[McqStep | ClozeStep, Field(discriminator="kind")]
