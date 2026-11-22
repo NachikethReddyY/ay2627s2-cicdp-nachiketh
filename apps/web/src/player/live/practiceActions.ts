@@ -10,11 +10,11 @@ export type PracticeActions = {
 
 export const SHELL_LANGUAGES: readonly PracticeLanguage[] = ["python", "javascript"];
 
-export function practiceActions(o: { language: PracticeLanguage; code: string; lessonId: string; sandboxEnabled: boolean; authored?: boolean }): PracticeActions {
+export function practiceActions(o: { language: PracticeLanguage; code: string; lessonId: string; versionId?: string; revision?: string; sandboxEnabled: boolean; authored?: boolean }): PracticeActions {
   const shell = o.sandboxEnabled && SHELL_LANGUAGES.includes(o.language);
   return {
     run: shell ? { via: "shell" } : { via: "oneshot", args: [o.code, o.language] },
-    check: { via: "check", args: [{ code: o.code, language: o.language, lessonId: o.lessonId }] },
+    check: { via: "check", args: [{ code: o.code, language: o.language, lessonId: o.lessonId, ...(o.versionId && { versionId: o.versionId }), ...(o.revision && { revision: o.revision }) }] },
   };
 }
 

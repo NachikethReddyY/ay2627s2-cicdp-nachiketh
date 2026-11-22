@@ -29,7 +29,7 @@ function Lab({ slug, course }: { slug: string; course?: string }) {
   const back = course ? <NextLink href={`/courses/${course}`}>Back to course</NextLink> : <NextLink href="/">Back home</NextLink>;
   return (
     <Suspense fallback={<Notice><p>Loading the lab…</p></Notice>}>
-      <LessonWorkbench key={data.id} lessonId={data.id} title={data.title} part={target.part} next={<div className="flex justify-center">{back}</div>} />
+      <LessonWorkbench key={target.part.revision} lessonId={data.id} title={data.title} part={target.part} next={<div className="flex justify-center">{back}</div>} />
     </Suspense>
   );
 }

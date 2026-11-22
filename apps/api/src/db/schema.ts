@@ -272,6 +272,8 @@ export type PartSecret =
       instructions: string;
       language?: "python" | "javascript" | "typescript";
       starterCode: string;
+      referenceSolution?: string;
+      referenceSolutionVerified?: true;
       tests?: Array<{ id: string; name: string; stdin?: string; expectedStdout: string; visibility: "sample" | "hidden"; stretch?: boolean }>;
       expectedOutput?: string;
     }
@@ -462,6 +464,21 @@ export const checkResults = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId] })],
+);
+
+export const practiceAttempts = pgTable(
+  "practice_attempts",
+  {
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learners.id, { onDelete: "cascade" }),
+    lessonVersionId: text("lesson_version_id")
+      .notNull()
+      .references(() => lessonVersions.id, { onDelete: "cascade" }),
+    contentKey: text("content_key").notNull(),
+    count: integer("count").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.lessonVersionId, t.contentKey] })],
 );
 
 export const lessonMedia = pgTable(

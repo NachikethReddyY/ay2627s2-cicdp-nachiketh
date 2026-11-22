@@ -91,6 +91,7 @@
       "kind": "practice",
       "instructions": "Write double(n) so it returns n times 2. The program reads one number from stdin, passes it to double and prints the result.",
       "language": "javascript",
+      "referenceSolution": "function double(n) {\n  return n * 2;\n}\n\nconst n = Number(require(\"fs\").readFileSync(0, \"utf8\"));\nconsole.log(double(n));",
       "starterCode": "function double(n) {\n  \n}\n\nconst n = Number(require(\"fs\").readFileSync(0, \"utf8\"));\nconsole.log(double(n));\n",
       "tests": [
         { "id": "two", "name": "double 2", "stdin": "2", "expectedStdout": "4", "visibility": "sample" },

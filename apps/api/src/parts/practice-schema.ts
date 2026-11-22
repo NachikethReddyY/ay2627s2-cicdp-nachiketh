@@ -21,10 +21,13 @@ export const PracticeContent = z
     instructions: z.string().min(1).max(1000),
     language: z.enum(PRACTICE_LANGUAGES).default("javascript"),
     starterCode: z.string().max(3000),
+    referenceSolution: z.string().trim().min(1).max(3000).optional(),
+    referenceSolutionVerified: z.literal(true).optional(),
     tests: z.array(PracticeTestSchema).min(1).max(MAX_TESTS).optional(),
     expectedOutput: z.string().max(1000).optional(),
   })
   .superRefine((v, ctx) => {
+    if (v.referenceSolution === v.starterCode.trim()) ctx.addIssue({ code: "custom", path: ["referenceSolution"], message: "reference solution matches starter code" });
     if (!v.tests && v.expectedOutput === undefined) ctx.addIssue({ code: "custom", message: "tests or expectedOutput is required" });
     if (v.tests) {
       if (new Set(v.tests.map((t) => t.id)).size !== v.tests.length) ctx.addIssue({ code: "custom", path: ["tests"], message: "test ids must be unique" });
@@ -33,16 +36,18 @@ export const PracticeContent = z
     }
   });
 
-export type Practice = { instructions: string; language: PracticeLanguage; starterCode: string; tests: PracticeTest[] };
+export type Practice = { instructions: string; language: PracticeLanguage; starterCode: string; referenceSolution?: string; referenceSolutionVerified?: true; tests: PracticeTest[] };
 
 export function parsePractice(content: unknown): Practice | null {
   const r = PracticeContent.safeParse(content);
   if (!r.success) return null;
-  const { instructions, language, starterCode, tests, expectedOutput } = r.data;
+  const { instructions, language, starterCode, referenceSolution, referenceSolutionVerified, tests, expectedOutput } = r.data;
   return {
     instructions,
     language,
     starterCode,
+    referenceSolution,
+    referenceSolutionVerified,
     tests: tests ?? [{ id: "legacy", name: "Expected output", stdin: "", expectedStdout: expectedOutput!, visibility: "hidden", stretch: false }],
   };
 }

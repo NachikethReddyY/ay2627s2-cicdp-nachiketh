@@ -6,8 +6,9 @@ import { eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
-import { checkResults, lessons, lessonVersions, partCompletions, worlds, type PartSecret } from "../src/db/schema.ts";
-import { setCheckSpawnForTests } from "../src/sandbox/check.ts";
+import { checkResults, lessons, lessonVersions, partCompletions, practiceAttempts, worlds, type PartSecret } from "../src/db/schema.ts";
+import { parsePractice } from "../src/parts/practice-schema.ts";
+import { setCheckSpawnForTests, verifyReferenceSolution } from "../src/sandbox/check.ts";
 import { atCapacity, startRun, stopRun } from "../src/sandbox/run.ts";
 
 const app = buildApp();
@@ -20,7 +21,7 @@ const tests: Test[] = [
   { id: "h1", name: "Hidden sum", stdin: "HIDDEN-IN", expectedStdout: "HIDDEN-OUT", visibility: "hidden" },
   { id: "b1", name: "Bonus", stdin: "BONUS-IN", expectedStdout: "BONUS-OUT", visibility: "hidden", stretch: true },
 ];
-const part = (t: Test[] = tests): PartSecret => ({ kind: "practice", instructions: "Add two numbers.", language: "python", starterCode: "# code", tests: t });
+const part = (t: Test[] = tests): Extract<PartSecret, { kind: "practice" }> => ({ kind: "practice", instructions: "Add two numbers.", language: "python", starterCode: "# code", tests: t });
 
 async function addLesson(slug: string, kind: "practice" | "learn" | "scrim", content: PartSecret, status: "published" | "draft" = "published") {
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
@@ -30,7 +31,7 @@ async function addLesson(slug: string, kind: "practice" | "learn" | "scrim", con
   return lesson!.id;
 }
 
-function fakeDocker(pass: boolean[], calls: { stdin: string[] } = { stdin: [] }) {
+function fakeDocker(pass: boolean[], calls: { stdin: string[] } = { stdin: [] }, beforeResult: () => Promise<void> = async () => {}) {
   setCheckSpawnForTests(((_c: string, args: string[]) => {
     const child = new EventEmitter() as EventEmitter & Record<string, unknown>;
     child.stdout = new EventEmitter();
@@ -42,7 +43,12 @@ function fakeDocker(pass: boolean[], calls: { stdin: string[] } = { stdin: [] })
         calls.stdin.push(s);
         const n = (JSON.parse(s) as { tests: unknown[] }).tests.length;
         const results = Array.from({ length: n }, (_, i) => ({ exit: 0, timedOut: false, overflow: false, stdout: pass[i] ? ["5", "HIDDEN-OUT", "BONUS-OUT"][i] : "wrong", stderr: "" }));
-        setImmediate(() => { (child.stdout as EventEmitter).emit("data", Buffer.from(JSON.stringify({ token: (JSON.parse(s) as { token: string }).token, results }) + "\n")); child.emit("close", 0); });
+        void beforeResult().then(() => {
+          setImmediate(() => {
+            (child.stdout as EventEmitter).emit("data", Buffer.from(JSON.stringify({ token: (JSON.parse(s) as { token: string }).token, results }) + "\n"));
+            child.emit("close", 0);
+          });
+        }, () => child.emit("close", 1));
       },
     });
     if (args[0] !== "run") setImmediate(() => child.emit("close", 0));
@@ -84,8 +90,99 @@ test("lessons.get: a legacy lesson becomes one hidden test and keeps its output 
   const res = await trpc(app, cookie).q("lessons.get", { id: "legacy" });
   const p = out(res).part;
   assert.equal(p.language, "typescript");
+  assert.equal(p.solution, null);
+  assert.equal((await trpc(app, cookie).m("lessons.revealPracticeSolution", { id: "legacy", versionId: p.versionId, revision: p.revision })).statusCode, 404);
   assert.deepEqual(p.tests, [{ id: "legacy", name: "Expected output", visibility: "hidden", stretch: false }]);
   assert.ok(!res.body.includes("THE-ANSWER"));
+});
+
+test("a reference solution unlocks after three checked submissions for the same learner and lesson version", async () => {
+  const cookie = await signUp(app, "solver@example.com");
+  const otherCookie = await signUp(app, "other@example.com");
+  const referenceSolution = "print(sum(map(int, input().split())))";
+  const content = { ...part(), referenceSolution };
+  const lessonId = await addLesson("multi", "practice", content);
+  const current = () => trpc(app, cookie).q("lessons.get", { id: "multi" });
+  const [initial, other] = await Promise.all([current(), trpc(app, otherCookie).q("lessons.get", { id: "multi" })]);
+  assert.ok(!initial.body.includes(referenceSolution));
+  assert.equal(out(other).part.solution.attemptCount, 0);
+  const { versionId, revision, solution } = out(initial).part;
+  assert.deepEqual(solution, { attemptCount: 0, unlockAt: 3, gated: false });
+  const reveal = (session = cookie, version = versionId, token = revision) =>
+    trpc(app, session).m("lessons.revealPracticeSolution", { id: "multi", versionId: version, revision: token });
+  assert.equal((await reveal("")).statusCode, 401);
+  assert.equal((await reveal()).statusCode, 403);
+
+  const calls = fakeDocker([false, false, false]);
+  await withSandbox(true, async () => {
+    assert.equal((await check("", body("multi", { versionId, attemptCount: 999 }))).statusCode, 401);
+    assert.equal((await check(cookie, body("multi", { code: "  ", versionId }))).statusCode, 400);
+    assert.equal((await check(cookie, body("multi", { language: "javascript", versionId }))).statusCode, 400);
+    for (let count = 1; count <= 3; count++) {
+      const response = await check(cookie, body("multi", { versionId, attemptCount: 999 }));
+      assert.equal(response.statusCode, 200, response.body);
+      assert.equal(response.json().attemptCount, count);
+      assert.ok(!response.body.includes(referenceSolution));
+      if (count < 3) assert.equal((await reveal()).statusCode, 403);
+    }
+    assert.equal(calls.stdin.length, 3);
+    fakeDocker([true, true, true], undefined, async () => {
+      await db.update(lessons).set({ status: "archived" }).where(eq(lessons.id, lessonId));
+    });
+    assert.equal((await withSandbox(false, reveal)).statusCode, 503);
+    assert.equal((await reveal()).statusCode, 404);
+    await db.update(lessons).set({ status: "published" }).where(eq(lessons.id, lessonId));
+    fakeDocker([true, true, true]);
+    assert.deepEqual(out(await reveal()), { code: referenceSolution });
+    assert.equal((await reveal(otherCookie)).statusCode, 403);
+    const reloaded = await current();
+    assert.equal(out(reloaded).part.solution.attemptCount, 3);
+    assert.ok(!reloaded.body.includes(referenceSolution));
+
+    await db.update(lessonVersions).set({ content: { ...content, instructions: "Add two integers." } }).where(eq(lessonVersions.id, versionId));
+    const changed = out(await current()).part;
+    assert.equal(changed.versionId, versionId);
+    assert.equal(changed.solution.attemptCount, 0);
+    assert.notEqual(changed.revision, revision);
+    assert.equal((await reveal()).statusCode, 409);
+    assert.equal((await reveal(cookie, changed.versionId, changed.revision)).statusCode, 403);
+    assert.equal((await check(cookie, body("multi", { versionId, revision }))).statusCode, 409);
+
+    const [next] = await db.insert(lessonVersions).values({ lessonId, version: 2, content }).returning();
+    await db.update(lessons).set({ currentVersionId: next.id }).where(eq(lessons.id, lessonId));
+    const updated = out(await current()).part;
+    assert.equal(updated.solution.attemptCount, 0);
+    assert.equal((await reveal()).statusCode, 404);
+    assert.equal((await reveal(cookie, next.id, updated.revision)).statusCode, 403);
+    assert.equal((await check(cookie, body("multi", { versionId }))).statusCode, 409);
+  });
+});
+
+test("reference solutions must pass every test, including bonus tests, without counting as a submission", async () => {
+  const referenceSolution = "print(sum(map(int, input().split())))";
+  const practice = parsePractice({ ...part(), referenceSolution });
+  await withSandbox(true, async () => {
+    fakeDocker([true, true, false]);
+    assert.equal(await verifyReferenceSolution(practice), "invalid");
+    const calls = fakeDocker([true, true, true]);
+    assert.equal(await verifyReferenceSolution(practice), "valid");
+    assert.equal(JSON.parse(calls.stdin[0]!).code, referenceSolution);
+    assert.equal((await db.select().from(practiceAttempts)).length, 0);
+  });
+});
+
+test("a passing submission cannot update progress if the lesson changes during grading", async () => {
+  const cookie = await signUp(app);
+  const lessonId = await addLesson("revision-race", "practice", part());
+  fakeDocker([true, true, true], undefined, async () => {
+    const [next] = await db.insert(lessonVersions).values({ lessonId, version: 2, content: part() }).returning();
+    await db.update(lessons).set({ currentVersionId: next.id }).where(eq(lessons.id, lessonId));
+  });
+  const result = await withSandbox(true, () => check(cookie, body("revision-race")));
+  assert.equal(result.statusCode, 409, result.body);
+  assert.equal((await db.select().from(practiceAttempts)).length, 0);
+  assert.equal((await db.select().from(partCompletions)).length, 0);
+  assert.equal((await db.select().from(checkResults)).length, 0);
 });
 
 test("POST /sandbox/check: 503 when the sandbox is disabled", async () => {
@@ -169,6 +266,7 @@ test("POST /sandbox/check: a harness that reports nothing usable is a 503, never
     const res = await check(cookie, body("multi"));
     assert.equal(res.statusCode, 503);
     assert.equal(res.json().error.message, "Could not check the code");
+    assert.equal((await db.select().from(practiceAttempts)).length, 0);
   });
   assert.equal((await db.select().from(partCompletions)).length, 0);
   assert.equal((await db.select().from(checkResults)).length, 0);

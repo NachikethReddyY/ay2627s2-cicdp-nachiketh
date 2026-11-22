@@ -11,7 +11,10 @@ type ScrimPart = Extract<Part, { kind: "scrim" }>;
 
 export default function ScrimLesson({ lessonId, title, part, steps, media, next }: { lessonId: string; title: string; part: ScrimPart; steps: Lesson["steps"]; media: Lesson["media"]; next: ReactNode }) {
   const [phase, setPhase] = useState<"watch" | "lab">("watch");
-  if (phase === "lab") return <LessonWorkbench lessonId={lessonId} title={title} part={part.lab} next={next} video={false} />;
+  if (phase === "lab") {
+    const lab = { ...part.lab, solution: part.lab.solution && { ...part.lab.solution, gated: false } };
+    return <LessonWorkbench key={lab.revision} lessonId={lessonId} title={title} part={lab} next={next} video={false} />;
+  }
   return <ScrimWatching lessonId={lessonId} title={title} part={part} steps={steps} media={media} onLab={() => setPhase("lab")} />;
 }
 

@@ -4,13 +4,16 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
+import { withTx } from "../db/tx.ts";
 import { learners, lessons, lessonVersions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { ensureLesson, prefetchNext } from "../ai/service.ts";
 import { resolveDocImages } from "../media/imagegen.ts";
 import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
+import { countPracticeAttempts, PRACTICE_REVEAL_ATTEMPTS, practiceRevision, practiceTests } from "../parts/practice.ts";
 import { parseScrim } from "../parts/scrim-schema.ts";
 import { malformedScrim, publicScrimMedia, publicScrimSegments, scrimGateStates, scrimStepState, servedGateIds } from "./scrim.ts";
+import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { loadScrimGates } from "./scrim-gates.ts";
 import { publicDoc } from "@learnquest/ui-catalog";
 
@@ -20,13 +23,16 @@ const PublicPractice = z.object({
   instructions: z.string(),
   language: z.enum(PRACTICE_LANGUAGES).default("javascript"),
   starterCode: z.string(),
+  versionId: z.string().uuid(),
+  revision: z.string(),
+  solution: z.object({ attemptCount: z.number().int(), unlockAt: z.number().int(), gated: z.boolean() }).nullable(),
   tests: z.array(z.discriminatedUnion("visibility", [
     PracticeTestSummary.extend({ visibility: z.literal("sample"), stdin: z.string(), expectedStdout: z.string() }),
     PracticeTestSummary.extend({ visibility: z.literal("hidden") }),
   ])),
 });
 
-function publicPractice(content: unknown): z.output<typeof PublicPractice> {
+async function publicPractice(content: unknown, learnerId: string, versionId: string, gated = false): Promise<z.output<typeof PublicPractice>> {
   const practice = parsePractice(content);
   if (!practice) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Practice lesson is malformed" });
   return {
@@ -34,6 +40,11 @@ function publicPractice(content: unknown): z.output<typeof PublicPractice> {
     instructions: practice.instructions,
     language: practice.language,
     starterCode: practice.starterCode,
+    versionId,
+    revision: practiceRevision(versionId, practice),
+    solution: practice.referenceSolution
+      ? { attemptCount: await countPracticeAttempts(learnerId, versionId, practice), unlockAt: PRACTICE_REVEAL_ATTEMPTS, gated }
+      : null,
     tests: practice.tests.map((t) =>
       t.visibility === "sample"
         ? { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch, stdin: t.stdin, expectedStdout: t.expectedStdout }
@@ -110,8 +121,47 @@ const write = protectedProcedure
     return { ok: true as const };
   });
 
+const PracticeSolutionInput = z.object({
+  id: z.string().regex(/^[\w-]{1,64}$/),
+  versionId: z.string().uuid(),
+  revision: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
+const noReferenceSolution = () => new TRPCError({ code: "NOT_FOUND", message: "No reference solution is available for this lesson" });
+
+function authorizePracticeSolution(learnerId: string, input: z.infer<typeof PracticeSolutionInput>) {
+  return withTx(async (tx) => {
+    const found = await practiceTests(learnerId, input.id, tx);
+    const code = found?.practice.referenceSolution;
+    if (!found || !code || found.versionId !== input.versionId) throw noReferenceSolution();
+    if (input.revision !== practiceRevision(found.versionId, found.practice))
+      throw new TRPCError({ code: "CONFLICT", message: "Reload the lesson to view its current reference solution" });
+    if (found.kind === "scrim") {
+      const { gates } = await loadScrimGates(found.versionId, learnerId, tx);
+      if ([...gates.values()].some((gate) => gate.state !== "revealed"))
+        throw new TRPCError({ code: "FORBIDDEN", message: "Finish the scrim predictions to unlock the reference solution" });
+    }
+    if (await countPracticeAttempts(learnerId, found.versionId, found.practice, tx) < PRACTICE_REVEAL_ATTEMPTS)
+      throw new TRPCError({ code: "FORBIDDEN", message: "Submit three attempts to unlock the reference solution" });
+    return { practice: found.practice, code };
+  });
+}
+
 export const lessonsRouter = router({
   write,
+  revealPracticeSolution: protectedProcedure
+    .input(PracticeSolutionInput)
+    .output(z.object({ code: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { practice, code } = await authorizePracticeSolution(ctx.learnerId, input);
+      if (practice.referenceSolutionVerified) return { code };
+
+      const verification = await verifyReferenceSolution(practice, ctx.learnerId);
+      if (verification === "invalid") throw noReferenceSolution();
+      if (verification === "unavailable")
+        throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Could not verify the reference solution. Try again soon." });
+      return { code: (await authorizePracticeSolution(ctx.learnerId, input)).code };
+    }),
   get: protectedProcedure
     .input(z.object({ id: z.string().regex(/^[\w-]{1,64}$/) }))
     .output(Lesson)
@@ -154,7 +204,7 @@ export const lessonsRouter = router({
       const served = new Set<string>();
       switch (content?.kind) {
         case "practice":
-          part = publicPractice(content);
+          part = await publicPractice(content, ctx.learnerId, lesson.currentVersionId);
           break;
         case "scrim": {
           const scrim = parseScrim(content);
@@ -166,7 +216,7 @@ export const lessonsRouter = router({
             kind: "scrim",
             language: scrim.language,
             segments: visible.segments,
-            lab: publicPractice(scrim.lab),
+            lab: await publicPractice(scrim.lab, ctx.learnerId, lesson.currentVersionId, [...gates.values()].some((gate) => gate.state !== "revealed")),
             started: rows.some((row) => row.state !== null),
           };
           break;

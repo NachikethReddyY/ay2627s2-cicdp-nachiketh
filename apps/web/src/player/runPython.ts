@@ -21,7 +21,7 @@ async function call<T>(fullPath: string, init: RequestInit = {}): Promise<T> {
 export const startPython = (code: string, language: PracticeLanguage, lessonId?: string, signal?: AbortSignal) =>
   call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId }), signal });
 
-export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string }) =>
+export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string; versionId?: string; revision?: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
 
 export type LintFinding = { ruleId: string; line: number; column: number; message: string };

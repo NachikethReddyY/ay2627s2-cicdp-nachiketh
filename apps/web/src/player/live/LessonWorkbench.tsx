@@ -15,6 +15,7 @@ import Notepad from "../../pages/Notepad";
 import WorkbenchEditor from "../workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../workbench/StatusBar";
 import type { LintFinding } from "../runPython";
+import PracticeSolution from "./PracticeSolution";
 import LessonResults from "./LessonResults";
 import LessonVideo from "./LessonVideo";
 import { monacoLanguage, type PracticeLanguage, type PracticeTest } from "./checkModel";
@@ -58,7 +59,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
   const panel = usePanel();
   const { dispatch: panelDispatch } = panel;
   const runRef = useRef<HTMLButtonElement>(null);
-  const r = usePracticeRunner({ lessonId, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
+  const r = usePracticeRunner({ lessonId, versionId: part.versionId, revision: part.revision, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
 
   const mountedOpen = useRef(panel.state.open);
   const [interacted, setInteracted] = useState(false);
@@ -137,7 +138,9 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
         </div>
       )}
       <div hidden={tab !== "results"} className="flex min-h-0 flex-1 flex-col">
-        <LessonResults result={r.result} tests={practice.tests} checkError={r.checkError} findings={r.findings} lintError={r.lintError} onAsk={askAbout} />
+        <LessonResults result={r.result} tests={practice.tests} checkError={r.checkError} findings={r.findings} lintError={r.lintError} onAsk={askAbout}>
+          <PracticeSolution lessonId={lessonId} versionId={part.versionId} revision={part.revision} solution={part.solution} attemptCount={r.attemptCount} />
+        </LessonResults>
       </div>
       {sloppyMounted && (
         <div hidden={tab !== "sloppy"} className="flex min-h-0 min-w-0 flex-1">

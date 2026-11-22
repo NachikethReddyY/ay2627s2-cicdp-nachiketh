@@ -11,6 +11,8 @@ import { checkStep, Step, text, type GeneratedStep } from "./step-schema.ts";
 import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
+import { practiceOf } from "../parts/practice.ts";
+import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
 import { mvpLimits } from "../config/limits.ts";
 import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
@@ -189,6 +191,13 @@ async function generate(ctx: LessonContext, key: string | null, cached: Generate
   if (key && !part) {
     const partCtx: PartContext = { ...ctx, missedConcepts: [] };
     part = await moderated(validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx))), isPublic);
+    const lab = part.kind === "practice" ? part : part.kind === "scrim" ? part.lab : null;
+    if (lab?.referenceSolution) {
+      delete lab.referenceSolutionVerified;
+      const verification = await verifyReferenceSolution(practiceOf(part));
+      if (verification === "valid") lab.referenceSolutionVerified = true;
+      if (verification === "invalid") delete lab.referenceSolution;
+    }
     await db.insert(generationCache).values({ key, kind: part.kind, content: part }).onConflictDoNothing();
   }
   const generated = key ? [] : await moderated(validate(await measureGeneration("lesson", () => generator.lesson(ctx))), isPublic);

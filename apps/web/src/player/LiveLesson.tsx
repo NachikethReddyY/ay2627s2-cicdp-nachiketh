@@ -60,7 +60,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   if (data.kind === "watch" && part?.kind === "watch")
     return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={next} /></Suspense>;
   if (data.kind === "practice" && part?.kind === "practice")
-    return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
+    return <Suspense fallback={fallback}><LessonWorkbench key={part.revision} lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;
   if (data.kind === "scrim" && part?.kind === "scrim")
     return <Suspense fallback={fallback}><ScrimLesson lessonId={data.id} title={data.title} part={part} steps={data.steps} media={data.media} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")
