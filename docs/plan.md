@@ -4,7 +4,7 @@
 > Changes from v1: 6-week core with a Wk-3 cut gate and an ordered cut line; adaptivity redefined (steps keep commit order); answers, hints and source served server-side only; World seam defined; one queue (pg-boss on Postgres); data model and API made consistent; KidsQuest, sandbox, embed and SDK publish moved to stretch (Appendix A).
 >
 > **Pivot (2026-11-06): programming learning tool.** The audience is learners of programming, 13 and over, JavaScript and TypeScript first. Children, KidsQuest, parental consent and the YC Primer framing are dropped. Code and schema keep the names `world` and `worlds`; read them as *track*. Already built, per a 2026-11-06 check: game blocks (grid, order, match, sort, physics, quiz) and the visual engine (LQ-19, LQ-48 to LQ-58). Sections touching children, KidsQuest or the audience are updated; the superseded decision is marked in §17.
-> **Scope update (2026-11-20).** Programming concepts are the MVP input. The real-code-change capstone and Pro are coming soon. Generated paths start private and their creator can publish them without an approval queue.
+> **Scope update (2026-11-20).** Programming concepts are the MVP input. The real-code-change capstone and Pro are coming soon. Generated paths start private to their creator. A path becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue.
 > Date: 2026-10-27 · Owner: Nachikethreddyy · CICDP course project, solo, **6 weeks** (§11), deadline unknown (Q3).
 > Source: `docs/idea.md`, `docs/notes/`.
 
@@ -14,7 +14,7 @@
 
 **LearnSlop teaches programming concepts in short lessons. Learners predict what code will do before seeing the answer.**
 
-The engine generates paths with predictions, hints and explanations. A path starts private. Its creator can publish it when it passes automatic moderation. The planned learner model recommends a next lesson and review items with reasons. Sloppy is the practice help chat. It is intended to give hints, and a deterministic chat output check is planned (LQ-124). Answer keys stay server-side.
+The engine generates paths with predictions, hints and explanations. A path starts private to its creator. It becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. The planned learner model recommends a next lesson and review items with reasons. Sloppy is the practice help chat. It is intended to give hints, and a deterministic chat output check is planned (LQ-124). Answer keys stay server-side.
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 
@@ -227,7 +227,7 @@ pg-boss keeps its own job tables. Mastery work is not in `lesson_jobs`.
 Import (`POST /lessons/import`) → pg-boss job `import` in the API process:
 1. Import body is `{repo, sha}`. The API rejects repos not in `worlds/codequest/repos.yml` (400); the engine resolves the parent SHA. `POST /v1/pipeline/ingest` (engine) fetches the commit. Checks licence and vendored code, and scans for secrets. Returns whole-file before/after per changed file and hunks. The engine applies hunks in order with `unidiff` to compute one `beforeFiles`/`afterFiles` state per step (WP6 deliverable, with a test). Commits over the §15.4 limits fail with `lesson_jobs.error = "split this lesson"`.
 2. `POST /v1/pipeline/pedagogy` (engine, one call per lesson). The engine validates with Pydantic and does one repair retry with the validation errors appended. Validators reject output where any hint, title or explanation contains the normalised answer or an accepted variant, or where a concept slug is not in the manifest (both are validation errors). Returns the content, `usage` and `validation`.
-3. The API re-validates with Zod, writes a draft `lesson_versions` and `steps`, and writes `llm_calls` from `usage`. The author publishes the imported lesson (UC12). For generated paths, the creator publishes the path after automatic moderation. Published versions are immutable.
+3. The API re-validates with Zod, writes a draft `lesson_versions` and `steps`, and writes `llm_calls` from `usage`. The author publishes the imported lesson (UC12). A generated path becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. Published versions are immutable.
 
 **Fallback** (LLM off or invalid): synthetic lessons use hand-written content (WP11). The OSS lesson uses the LLM, with the deterministic fallback below. Imported lessons get a deterministic prediction. Cloze: one identifier or literal token of an added line with ≥ 3 tokens (§15.1). MCQ: the added line as the answer; distractors are drawn only from lines absent from the visible `beforeFiles` (added lines from other hunks, or mutated variants of the answer), so the answer is not the only absent option. Hints are generic (§15.1). The explanation is the commit title, labelled `inferred`.
 
@@ -496,7 +496,7 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 
 Threat model: STRIDE in `docs/sdlc/threat-model.md`. Draft by WP0 in Wk 2; final by WP15 in Wk 6.
 
-**15.6 Privacy.** The learner data policy covers account email, attempts, mastery, public handle, XP, streak, timezone and daily goal. XP and streak are calculated from activity. The weekly leaderboard shows the handle and XP. See `docs/sdlc/privacy.md` for the privacy notice.
+**15.6 Privacy.** Stored learner data is limited to account email, attempts, mastery (BKT per concept), public handle, XP, streak, timezone and daily goal. No child-specific data is stored. XP and streak are calculated from activity. The weekly leaderboard includes every learner and shows their generated handle, XP and streak. Learners are included automatically without opt-in or opt-out. See `docs/sdlc/privacy.md` for the privacy notice.
 
 **15.7 AI practice.** Core: recorded fixtures only in CI; no live calls in PR checks; `prompt_version` on steps and `llm_calls`; repair inside the engine. Stretch (cut 12): prompt registry, provider failover, live evals with spend cap.
 
