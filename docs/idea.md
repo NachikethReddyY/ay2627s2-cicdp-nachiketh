@@ -1,4 +1,4 @@
-# LearnSlop: learn to code from real code changes
+# LearnSlop: learn programming by predicting what code does
 
 Status: pivoted on 2026-11-06 from a children's tutoring idea to a programming learning tool. The earlier YC "Primer" framing is dropped. The research below is kept because the design decisions depend on it.
 
@@ -8,15 +8,15 @@ Most programming tutorials are passive. A learner watches someone write code, or
 
 ## The product
 
-LearnSlop turns a real code change into an adaptive lesson. The learner predicts what a change does before the answer is shown. The lesson then mixes modalities, chosen per concept and per learner:
+Learners choose a programming concept and predict what the code will do before seeing the answer. Short lessons teach the concept in several ways.
 
-- **Code replay:** an ordered commit or PR is replayed step by step in an editor. The learner can pause and edit at any point.
+- **Scrims:** follow a narrated code replay that pauses for predictions and ends with a coding lab.
 - **Diagrams:** a picture of how the code runs (call flow, state, data shape).
 - **Quizzes:** predict-the-output, multiple choice and fill-in-the-blank questions.
 - **Games:** short practice games that drill a concept (for example, tracing a loop or ordering the steps of a function call).
-- **Practice:** run the code in the browser and check it against expected output.
+- **Practice:** run code in a server-side sandbox and check it against tests.
 
-A learner model tracks which concepts each learner misses and changes the next step: hint depth, explanation style and the next lesson.
+The planned learner model uses first attempts to update mastery per concept. It recommends the next lesson and review items with a reason for each. The advanced track will replay real code changes in the editor.
 
 **Audience.** Learners of programming, 13 and over. Beginners and early-career developers, starting with JavaScript and TypeScript.
 
@@ -27,7 +27,17 @@ A learner model tracks which concepts each learner misses and changes the next s
 - The target is programming learners, not young children. Child profiles, age bands, parental consent and the KidsQuest world are out of scope.
 - The YC "Primer" request (Fall 2026) is about ages 4 to 10 and says nothing about code. It is not a fit and is no longer used as a pitch.
 - The learner model and the adaptive next step survive the pivot. So do the prediction-first rule and the hint ladder.
-- Diagrams, quizzes and games were already partly built as catalog blocks (`packages/ui-catalog`: diagram, quiz, order, match, sort, physics, grid). Wiring them into lesson steps is the next step.
+- Diagrams, quizzes and games were already partly built as catalog blocks (`packages/ui-catalog`: diagram, quiz, order, match, sort, physics, grid). Game blocks now appear in game-practice lessons.
+
+## Product decisions of 2026-11-20
+
+- The generator teaches programming and defaults to JavaScript and TypeScript. The real-code-change track and Pro are coming soon.
+- Every learner can generate five paths and one image per day. The production spend cap also applies.
+- The audience is 13 and over. Sign-up has no age gate.
+- Generated paths start private. Their creator can publish them through an automatic moderation check with no approval queue.
+- The weekly leaderboard includes all learners and shows each public handle with its XP. Home also shows the learner their streak.
+
+See the [revised idea and demo order](reviews/2026-11-20-revised-idea.html).
 
 ## The pitch, with claim checks
 
@@ -66,10 +76,10 @@ None of these studies tests this product. They set the design rules.
 ## MVP scope
 
 - **Language:** JavaScript and TypeScript first. Python is the second track (stretch).
-- **Input:** one commit from a permissively licensed public repo, plus seeded synthetic lessons.
-- **Player:** Monaco editor; steps replayed from the commit; a snapshot for each step.
+- **Input:** seeded lessons and AI paths generated from a programming concept. The advanced track will use commits from permissively licensed public repos.
+- **Player:** Monaco editor with predict-first replays and coding labs.
 - **Learning parts:** a prediction question and a three-rung hint ladder per step, plus at least one diagram or quiz per lesson.
-- **Sandbox:** WebContainers fork, later, once replay works.
+- **Sandbox:** server-side practice runs, checks and shells. The WebContainers fork is stretch work.
 - **Cut for now:** TTS, AST hover, Python, any-repo claims, child audiences.
 
 ## Limits
@@ -83,10 +93,9 @@ None of these studies tests this product. They set the design rules.
 
 ## Next step
 
-1. Replay one real commit in Monaco with no AI, to check the player.
-2. Add one prediction question and one diagram or quiz per step.
-3. Test with classmates: a lesson versus reading the same diff, then a short quiz (the design in Anthropic, 2026).
-4. Go on only if the lesson group scores better or finds it clearly easier. Otherwise the player is a toy.
+1. Follow the fix plan and seeded demo order in the revised idea.
+2. Compare a predict-first lesson with reading the same material, then give both groups the same quiz.
+3. Use the scores and learner feedback to decide whether to continue the study.
 
 ## Patterns worth writing up
 

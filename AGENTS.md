@@ -4,7 +4,7 @@ Shared instructions for every coding agent working in this repo. `CLAUDE.md` imp
 
 ## What we are building
 
-LearnSlop is an interactive **programming learning tool**. A learner picks a programming concept or a real code change and the engine turns it into a short, adaptive lesson that mixes diagrams, code replay, quizzes, games and in-browser practice. The engine picks the mix, the hint depth and the next lesson from a learner model (BKT per learner and concept).
+LearnSlop is an interactive **programming learning tool**. Learners pick a concept and predict what the code will do. Lessons use diagrams, quizzes, games, scrims and coding practice. The learner model uses BKT per learner and concept to recommend lessons and reviews. The advanced track for real code changes is coming soon.
 
 - **Audience**: beginners and early-career developers, 13 and over, JavaScript and TypeScript first, then other languages.
 - **Not for children.** Do not add child profiles, age bands, parental consent or kids-specific UI. The KidsQuest world (ages 4 to 10) is dropped (pivot logged at the top of `docs/plan.md`).
@@ -14,7 +14,7 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 - **Predict before reveal.** Ask for a prediction, then show the answer. Never show the answer first.
 - **Hints and answers are server-side only.** Never ship expected output or answer keys to the client.
 - **Model-agnostic AI.** Engine calls go through an OpenAI-compatible interface (LiteLLM). No provider lock-in.
-- **Generated content is reviewed.** An LLM drafts lessons, quizzes and games. A human author approves before publish.
+- **Generated paths start private.** The creator can share a path after the automatic moderation check passes. There is no approval queue.
 - **Sloppy is the AI help chat.** It answers a learner who is stuck in practice, and it does not hand over finished solutions. Its guardrails keep the full answer out; hints and the answer key stay server-side.
 - **Learning first, demo second.** Prefer features that improve measurable learning over decoration.
 
@@ -31,7 +31,7 @@ LearnSlop is an interactive **programming learning tool**. A learner picks a pro
 | `tools/` | Developer and agent tooling (repo index and MCP server), not shipped |
 | `scripts/` | Repo checks, merge gate, review pipeline, metrics, with tests |
 | `docs/` | Plans, ADRs, diagrams, design references. Agent guides in `docs/agents/` |
-| `DESIGN.md` | Visual design system (Geist, glass, light and dark, Pip the sprout mascot) |
+| `DESIGN.md` | Visual design system (Geist, glass, light and dark) |
 
 ## Commands
 
@@ -55,7 +55,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Before a PR push**, run the full CI (`turbo run lint test build`) against a test Postgres. No pushing on partial checks.
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
-- **Data.** Do not add learner or child data beyond account email, attempts and mastery.
+- **Data.** Learner data is limited to account email, attempts, mastery (BKT per concept), a public handle, XP, streak, timezone and daily goal. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
 - **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment are allowed, but only through the sensitive merge gate (see Merging).
 
 ## Foundations first
@@ -109,12 +109,18 @@ The operator declares the author family with `--author`, and the gate checks the
 - `README.md`: local setup and engine configuration.
 - `docs/agents/README.md`: how agents work here, the verification loop, merge and review.
 - `docs/feature-map.md`: learner-facing names for screens and features, with routes and code.
+- `docs/reviews/2026-11-20-revised-idea.html`: product decisions, learner model, fix plan and demo order.
+
+## Concept catalogue and demo order
+
+- The JavaScript and TypeScript [concept catalogue](docs/concepts/catalogue.json) is AI-generated and public. The LearnSwap how-to catalogue is human-written. Seeded worlds still read their concepts from `worlds/<slug>/manifest.json`. Wiring catalogue prerequisites into the learner model is LQ-117.
+- The seeded demo lessons are in `worlds/` and load through `SAMPLE_WORLDS` in `apps/api/src/db/seed.ts`. Section 6 of the revised idea gives the presentation order.
 
 ## Open work after the pivot
 
 Done on 2026-11-06: `docs/plan.md` re-scoped (tracks, 13+ audience, game parts, second track as stretch), `docs/idea.md` rewritten, `docs/plan.html` regenerated, README, AGENTS and CLAUDE updated.
 
-1. Define the concept catalogue for the JavaScript and TypeScript track (first set: variables, conditionals, loops, functions).
-2. Wire game and diagram parts into lesson steps in the web player. The blocks exist in `packages/ui-catalog` (grid, order, match, sort, physics, quiz) and the engine has a `game_practice.md` prompt. Check end to end; this is not verified.
+1. Connect the JavaScript and TypeScript catalogue and its prerequisite edges to the app (LQ-117).
+2. Add attempt limits and a hint ladder to game practice, and make games in learn docs read-only (LQ-128).
 3. Decide the second track. The plan's default is Python basics; JavaScript and TypeScript stay first.
-4. Agree the presentation-day demo: a seeded set of lessons that works without live generation.
+4. Use the seeded lessons in the presentation order above.

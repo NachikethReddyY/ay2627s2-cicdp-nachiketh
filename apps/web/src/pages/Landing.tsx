@@ -24,9 +24,9 @@ const features = [
   {
     id: "replay", Mock: ReplayMock, flip: false,
     alt: "Example of a replayed code change: one line removed and two added, at step 4 of 6.",
-    title: "Real code changes, replayed.",
-    body: "Lessons are built from real code changes. The editor writes the change one step at a time with narration, so you see how working code actually grows.",
-    ticks: ["Built from real code changes, not toy snippets", "Narrated one step at a time", "The editor rebuilds each step, it is never a screen recording", "Pauses at the line you have to predict"],
+    title: "Watch code change step by step.",
+    body: "Follow along in the editor as each change is written and explained.",
+    ticks: ["Replay any step in the editor", "Pauses at the line you have to predict"],
   },
   {
     id: "hints", Mock: HintMock, flip: true,
@@ -39,15 +39,15 @@ const features = [
     id: "mastery", Mock: MasteryMock, flip: true,
     alt: "Example: Strings at 58% after a clean first try, with Loops 45%, Arrays 31%, Conditionals 18% and Functions 12%.",
     title: "It learns what you know.",
-    body: "Your first attempt at each question updates what LearnSlop thinks you know about that concept. The next lesson, and how much help you get, follow from it.",
-    ticks: ["Updates after your first attempt at each question", "Answers after a hint do not count toward mastery", "The next lesson adapts to what you know"],
+    body: "Your first attempt at each question updates what LearnSlop thinks you know about that concept.",
+    ticks: ["Updates after your first attempt at each question", "Answers after a hint do not count toward mastery"],
   },
   {
     id: "track", Mock: TopicMock, flip: false,
     alt: "Example: asking for React hooks and getting a three step path: useState, useEffect and a custom hook.",
     title: "You choose what to learn.",
-    body: "There is no fixed curriculum to work through. Tell LearnSlop what you want to learn and it builds a path around it. JavaScript and TypeScript are where it starts, and you can ask for other coding topics too.",
-    ticks: ["Ask for a coding topic and get a path built for it", "Your path is built around what you ask for", "Learn at your own pace, in your own order"],
+    body: "Pick a JavaScript or TypeScript concept and LearnSlop builds a path around it.",
+    ticks: ["Learn at your own pace, in your own order"],
   },
 ] as const;
 
@@ -74,7 +74,7 @@ export default function Landing() {
 
           <div className="lp-hero-in">
             <h1 id="hero-title" className="lp-h1"><span>Guess the next line.</span> <span>Then watch it get written.</span></h1>
-            <p className="lp-lead">LearnSlop turns real code changes into short JavaScript and TypeScript lessons that adapt to what you get right.</p>
+            <p className="lp-lead">Learn JavaScript and TypeScript in short lessons that start with a prediction.</p>
             <a href="/login" className="lp-btn">Start learning <ArrowRight size={17} strokeWidth={2.25} aria-hidden /></a>
             <a href="#guess" className="lp-sub">See how it works</a>
           </div>
@@ -100,6 +100,7 @@ export default function Landing() {
         ))}
 
         <section className="lp-close" aria-labelledby="final-title">
+          <p className="lp-lede">Pro, coming soon<br />Real code changes: advanced track, coming soon</p>
           <h2 id="final-title" className="lp-h2">What does the next line do?</h2>
           <a href="/login" className="lp-btn">Start learning <ArrowRight size={17} strokeWidth={2.25} aria-hidden /></a>
         </section>

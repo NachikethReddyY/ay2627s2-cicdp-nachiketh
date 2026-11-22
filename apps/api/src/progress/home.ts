@@ -38,10 +38,9 @@ const Home = z.object({
     .nullable(),
   mastery: z.array(z.object({ name: z.string(), pKnown: z.number() })),
   leaderboard: z.object({
-    optedIn: z.boolean(),
     xp: z.number(),
     rank: z.number().nullable(),
-    rows: z.array(z.object({ rank: z.number(), name: z.string(), xp: z.number(), you: z.boolean() })),
+    rows: z.array(z.object({ handle: z.string(), xp: z.number() })),
   }),
   paths: z.array(
     z.object({ slug: z.string(), title: z.string(), tagline: z.string(), origin: Origin, courses: z.array(Course) }),
@@ -158,27 +157,27 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       snippet = first?.prompt ? firstCodeBlock(first.prompt) : null;
     }
 
-    const weekly = sql`
+    const { rows: ranked } = await db.execute<{ handle: string; xp: number; position: number; own: boolean }>(sql`
       WITH x AS (
         SELECT a.learner_id, ${XP} AS xp, a.created_at FROM attempts a WHERE a.observed
         UNION ALL
         SELECT gc.learner_id, 10 AS xp, gc.created_at FROM game_completions gc
       ),
-      w AS (
-        SELECT l.id, l.leaderboard_opt_in AS opted, coalesce(sum(x.xp), 0)::int AS xp
+      totals AS (
+        SELECT l.id, l.handle, coalesce(sum(x.xp), 0)::int AS xp
         FROM learners l
         LEFT JOIN x ON x.learner_id = l.id AND x.created_at >= now() - interval '7 days'
-        GROUP BY l.id, l.leaderboard_opt_in
-      )`;
-    const { rows: board } = await db.execute<{ id: string; name: string; xp: number }>(sql`
-      ${weekly}
-      SELECT w.id, u.name, w.xp FROM w JOIN learners l ON l.id = w.id JOIN "user" u ON u.id = l.user_id
-      WHERE w.opted ORDER BY w.xp DESC, w.id LIMIT 5`);
-    const { rows: [self] } = await db.execute<{ optedIn: boolean; xp: number; rank: number }>(sql`
-      ${weekly}
-      SELECT w.opted AS "optedIn", w.xp,
-        (SELECT count(*) FROM w o WHERE o.opted AND o.xp > w.xp)::int + 1 AS rank
-      FROM w WHERE w.id = ${me}`);
+        GROUP BY l.id, l.handle
+      ),
+      ranked AS (
+        SELECT id, handle, xp, (row_number() OVER (ORDER BY xp DESC, id))::int AS position
+        FROM totals
+      )
+      SELECT handle, xp, position, id = ${me} AS own
+      FROM ranked WHERE position <= 5 OR id = ${me}
+      ORDER BY position`);
+    const self = ranked.find((row) => row.own);
+    const board = ranked.slice(0, 5).map(({ handle, xp }) => ({ handle, xp }));
 
     const { rows: mastery } = await db.execute<{ name: string; pKnown: number }>(sql`
       SELECT c.name, m.p_known::float8 AS "pKnown"
@@ -198,10 +197,9 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       continue: next && { ...next, snippet },
       mastery,
       leaderboard: {
-        optedIn: self?.optedIn ?? false,
         xp: self?.xp ?? 0,
-        rank: self?.optedIn && self.xp > 0 ? self.rank : null,
-        rows: board.map((r, i) => ({ rank: i + 1, name: r.name, xp: r.xp, you: r.id === me })),
+        rank: self && (self.xp > 0 || self.position <= board.length) ? self.position : null,
+        rows: board,
       },
       paths: [...byPath.values()].map((p) => ({
         slug: p.slug,

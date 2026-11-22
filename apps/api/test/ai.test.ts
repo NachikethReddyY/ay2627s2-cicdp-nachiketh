@@ -7,14 +7,13 @@ import { eq, sql } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { learners, lessons, steps, user } from "../src/db/schema.ts";
+import { learners, lessons, lessonVersions, steps } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { EngineError } from "../src/engine-client/client.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
-import photosynthesis from "../../../services/engine/tests/fixtures/outline_photosynthesis.json" with { type: "json" };
 
 const app = buildApp();
 after(() => app.close());
@@ -22,7 +21,6 @@ after(() => app.close());
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
-  subject: "code",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
@@ -80,25 +78,32 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
 });
 
-test("photosynthesis outline persists only non-coding lesson kinds", async () => {
-  const fixture = photosynthesis as typeof outline;
-  generator.outline = async () => fixture;
-  const { t, firstCourseSlug } = await setup("photosynthesis@example.com");
-  const course = out(await t.q("courses.get", { slug: firstCourseSlug }));
-  assert.deepEqual((course.lessons as { title: string; kind: string }[]).map(({ title, kind }) => [title, kind]),
-    fixture.courses[0]!.lessons.map(({ title, kind }) => [title, kind]));
-  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "game-practice"]));
+test("an outline can schedule a prediction lesson", async () => {
+  generator.outline = async () => ({
+    ...outline,
+    courses: outline.courses.map((course) => ({
+      ...course,
+      lessons: course.lessons.map((lesson, index) => index === 0 ? { ...lesson, kind: "predict" } : lesson),
+    })),
+  });
+  const { lessons: planned } = await setup();
+  const [prediction] = await db.select({ kind: lessons.kind }).from(lessons).where(eq(lessons.slug, planned[0]!.slug));
+  assert.equal(prediction?.kind, "predict");
 });
 
-test("a non-coding outline with a watch lesson is rejected", async () => {
-  const t = trpc(app, await signUp(app, "noncode-watch@example.com"));
-  const bad = structuredClone(photosynthesis) as typeof outline;
-  bad.courses[0]!.lessons[0]!.kind = "watch";
-  generator.outline = async () => bad;
-  assert.equal(code(await t.m("paths.generate", { prompt: "learn photosynthesis" })), "INTERNAL_SERVER_ERROR");
+test("an outline with an unsupported lesson kind is rejected", async () => {
+  generator.outline = async () => ({
+    ...outline,
+    courses: outline.courses.map((course) => ({
+      ...course,
+      lessons: course.lessons.map((lesson) => ({ ...lesson, kind: "essay" })),
+    })),
+  });
+  const t = trpc(app, await signUp(app));
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
 });
 
-test("missing key, non-coding topic and bad input", async () => {
+test("missing key, refused topic and bad input", async () => {
   const t = trpc(app, await signUp(app));
   env.ENGINE_TOKEN = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");
@@ -149,17 +154,6 @@ test("at most 5 generated paths per rolling day", async () => {
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
 });
 
-test("the plan tier sets the daily AI path limit", async () => {
-  const email = "tier@example.com";
-  const t = trpc(app, await signUp(app, email));
-  for (let i = 0; i < 5; i++) assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
-  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "TOO_MANY_REQUESTS");
-
-  const [u] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
-  await db.update(learners).set({ tier: "pro" }).where(eq(learners.userId, u!.id));
-  assert.equal((await t.m("paths.generate", { prompt: "learn rust" })).statusCode, 200);
-});
-
 test("rejected topics use up the daily limit too", async () => {
   const t = trpc(app, await signUp(app));
   generator.outline = async () => ({ refused: true });
@@ -187,7 +181,9 @@ test("two concurrent plays write the part once", async () => {
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
-  assert.equal(row!.status, "published");
+  assert.equal(row!.status, "draft");
+  const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, row!.id));
+  assert.equal(version?.publishedAt, null);
   assert.equal((await db.select().from(steps)).length, initialStepCount);
 });
 
@@ -257,7 +253,14 @@ test("private AI lesson is hidden from others until the path is published", asyn
   const other = trpc(app, await signUp(app, "b@example.com"));
   assert.equal(code(await other.q("lessons.get", { id: last })), "NOT_FOUND");
 
+  assert.equal(code(await other.m("paths.publish", { slug })), "NOT_FOUND");
   assert.equal((await t.m("paths.publish", { slug })).statusCode, 200);
+  const [published] = await db.select({ status: lessons.status, publishedAt: lessonVersions.publishedAt })
+    .from(lessons)
+    .innerJoin(lessonVersions, eq(lessonVersions.id, lessons.currentVersionId))
+    .where(eq(lessons.slug, last));
+  assert.equal(published?.status, "published");
+  assert.ok(published.publishedAt instanceof Date);
   assert.equal((await other.q("lessons.get", { id: last })).statusCode, 200);
 });
 

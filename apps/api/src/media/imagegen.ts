@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { env } from "../env.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { reserveAiSpend } from "../config/budget.ts";
-import { tiers } from "../config/tiers.ts";
+import { mvpLimits } from "../config/limits.ts";
 import { saveMedia } from "./service.ts";
 import { storage } from "./storage.ts";
 import { db } from "../db/client.ts";
@@ -34,7 +34,6 @@ type ImageInput = {
   stepId?: string;
   prompt: string;
   description: string;
-  tier: keyof typeof tiers;
 };
 
 const inFlight = new Map<string, Promise<ImageResult>>();
@@ -66,7 +65,7 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.learnerId}))`);
     const { rows: [{ n }] } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM image_generations WHERE learner_id = ${input.learnerId} AND status = 'ready' AND created_at > now() - interval '24 hours'`);
-    if (n >= tiers[input.tier].imagesPerDay) return null;
+    if (n >= mvpLimits.imagesPerDay) return null;
     const [row] = await tx.insert(imageGenerations).values({ learnerId: input.learnerId, promptHash: hash, status: "ready" }).returning({ id: imageGenerations.id });
     return row.id;
   });
@@ -121,7 +120,7 @@ const sniff = (b: Buffer) =>
 
 type DocBlock = { type?: unknown; id?: unknown; props?: Record<string, unknown> };
 
-export async function prewarmDocImages(doc: unknown, opts: { lessonVersionId: string; learnerId: string; tier: keyof typeof tiers }): Promise<void> {
+export async function prewarmDocImages(doc: unknown, opts: { lessonVersionId: string; learnerId: string }): Promise<void> {
   const blocks = (doc as { blocks?: unknown } | null)?.blocks;
   if (!Array.isArray(blocks)) return;
   for (const block of blocks as Array<{ type?: string; props?: { source?: string; prompt?: string; alt?: string } }>) {
@@ -134,7 +133,7 @@ const IMAGE_CONCURRENCY = 4;
 
 export async function resolveDocImages(
   doc: unknown,
-  opts: { lessonVersionId: string; learnerId: string; tier: keyof typeof tiers; stepId?: string },
+  opts: { lessonVersionId: string; learnerId: string; stepId?: string },
   http?: HttpClient,
 ): Promise<unknown> {
   const blocks = (doc as { blocks?: unknown } | null)?.blocks;

@@ -8,10 +8,10 @@ Routes marked dev or test only exist in non-production builds.
 
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
-| Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Reads the pitch, goes to sign in. |
-| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your path** and the **Generator**, which turns a concept into a lesson. |
+| Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Reads the pitch and sees Pro and the advanced track marked coming soon. |
+| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a generated handle and XP. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
-| Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses collections and paths. |
+| Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses collections and paths. The creator can publish a private path through `paths.publish` after automatic moderation. |
 | Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. A generated course writes all its lessons in the background, three at a time. While some are still writing the page shows how many are ready, with **Check again**. A lesson tagged **Writing…** is still being written; **Couldn't write** or **Not written yet** lessons offer **Write now** (`lessons.write`). Write states come from `courses.get` (`writeState`) and live in process memory (`apps/api/src/ai/service.ts`). |
 | Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
 | Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the practice lab of a practice lesson, or the lab a scrim ends with, in the **Workbench**. Same Run, Submit, Lint and Sloppy as `/play`. A lesson with no lab shows a notice. |
@@ -33,7 +33,8 @@ Routes marked dev or test only exist in non-production builds.
 | Check results | `player/live/LessonResults.tsx`, `player/live/checkModel.ts` | Sample tests show expected output. Hidden tests never do. |
 | Hint | server `stepsRouter.hint` (`apps/api/src/attempts/router.ts`) | Requested by the learner. Returns the next fixed hint rung stored on the step. |
 | Reveal | server `stepsRouter.reveal` | Only after the learner finishes or skips. |
-| Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | The AI help chat. Gives hints, never the finished solution. |
+| Generation limits | `apps/api/src/config/limits.ts` | Every learner can generate five AI paths and one image per day. |
+| Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | The AI help chat. It is prompted to give hints. A deterministic check for finished solutions is planned (LQ-124). |
 | Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. |
 | Diagram and scene blocks | `blocks/diagram/`, `blocks/scene3d/` | From `packages/ui-catalog`. |
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
@@ -45,6 +46,11 @@ A lesson's `kind` decides which parts the player shows. The kind is stored on `l
 
 | Name | Kind | What the learner does | Code |
 |---|---|---|---|
+| Predict | `predict` | Answers an MCQ or cloze before the reveal. | `player/live/Steps.tsx`, `apps/api/src/attempts/` |
+| Learn | `learn` | Reads a short lesson about a concept. | `player/LiveLesson.tsx` |
+| Watch | `watch` | Replays a code change. | `player/LiveLesson.tsx` |
+| Practice | `practice` | Edits code and uses Run and Check in the lab. | `player/live/LessonWorkbench.tsx` |
+| Game practice | `game-practice` | Plays and checks a short game. | `player/GamePracticeView.tsx`, `apps/api/src/progress/games.ts` |
 | Scrim | `scrim` | Watches a short narrated run of code, one timed segment at a time. A segment can change the code and run it. A **gate** holds playback at the start of its segment until the gate step is answered or skipped, so the prediction comes first. Captions and playback controls float above the workbench and stay in place when the terminal opens. The lesson ends with a practice lab. | Player `apps/web/src/player/scrim/` (`ScrimWatch`, `GatePanel`, model in `scrimModel.ts`). Content schema `apps/api/src/parts/scrim-schema.ts`, stored in `lesson_versions.content`. Lab grading `apps/api/src/parts/practice.ts`. Narration in `lesson_media` with `segment` set, `apps/api/src/media/`. Generated scrims: the engine drafts one for a code course, and the API stores its gate steps as ordinary mcq `steps` rows, so `lessons.get` never sends the answers or hints. Seeded demo `worlds/scrim-demo/`. |
 
 The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), graded by the same server check as a practice lesson. The lesson player (`/play`) plays the segments, holds at gates, and opens the lab in the practice workbench after **Start the lab**.
@@ -57,6 +63,9 @@ The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), 
 | Attempts and mastery (BKT) | `apps/api/src/attempts/`, `apps/api/src/progress/` |
 | Practice grading and sandbox | `apps/api/src/grading/`, `apps/api/src/sandbox/`, `services/sandbox` |
 | Lesson generation | `apps/api/src/ai/`, `services/engine` |
+| Path sharing | `apps/api/src/progress/paths.ts` (`paths.publish`) |
+| Leaderboard | `apps/api/src/progress/home.ts` (`home.get`), `pages/home/Sidebar.tsx` |
+| Sloppy chat endpoint | `apps/api/src/dev/route.ts` (`POST /api/guide/chat`) |
 | Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS` lists the sample courses; `worlds/scrim-demo` seeds one scrim, and its narration is silent placeholder audio) |
 
 ## Driving the app

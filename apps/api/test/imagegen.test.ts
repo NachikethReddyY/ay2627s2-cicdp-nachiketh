@@ -14,7 +14,7 @@ import { setModerationClient } from "../src/safety/moderation.ts";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString("base64");
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]).toString("base64");
-const base = { prompt: "A cell diagram, labelled", description: "Cell diagram", tier: "free" as const };
+const base = { prompt: "A cell diagram, labelled", description: "Cell diagram" };
 const noNetwork = async () => { throw new Error("network must not be called"); };
 const clean = async () => ({ flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } });
 const versionId = async () => { await seed(); return (await db.select().from(lessons).where(eq(lessons.slug, "lesson-1")))[0]!.currentVersionId!; };
@@ -121,11 +121,11 @@ test("resolveDocImages rewrites generate blocks for the client and never leaks t
   ] };
   const lessonVersionId = await versionId();
   const learnerId = await learnerId_();
-  const first = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
+  const first = (await resolveDocImages(doc, { lessonVersionId, learnerId })) as typeof doc;
   assert.deepEqual(first.blocks.map((b) => b.id), ["t", "a", "g"]);
   assert.equal((first.blocks[2]!.props as any).source, "generated-pending", "a read does not wait on the provider");
   await idleImages();
-  const out = (await resolveDocImages(doc, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
+  const out = (await resolveDocImages(doc, { lessonVersionId, learnerId })) as typeof doc;
   assert.deepEqual(out.blocks.map((b) => b.id), ["t", "a", "g"]);
   const g = out.blocks[2]!.props as any;
   assert.equal(g.source, "generated");
@@ -136,7 +136,7 @@ test("resolveDocImages rewrites generate blocks for the client and never leaks t
   assert.ok(JSON.stringify(doc).includes(secret), "input doc is not mutated");
 
   Object.assign(env, { IMAGE_BASE_URL: undefined, IMAGE_API_KEY: undefined, IMAGE_MODEL: undefined });
-  const pending = (await resolveDocImages({ v: 1, blocks: [{ type: "image", id: "g", props: { source: "generate", prompt: "other prompt", alt: "A cell" } }] }, { lessonVersionId, learnerId, tier: "free" })) as typeof doc;
+  const pending = (await resolveDocImages({ v: 1, blocks: [{ type: "image", id: "g", props: { source: "generate", prompt: "other prompt", alt: "A cell" } }] }, { lessonVersionId, learnerId })) as typeof doc;
   assert.deepEqual(pending.blocks[0]!.props, { source: "generated-pending", alt: "A cell" });
 });
 
@@ -225,7 +225,7 @@ test("concurrent requests for one prompt share a single provider call", async ()
   const f = await fake("images");
   configure(f.url, "images");
   setStorage(memoryStorage());
-  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_(), tier: "max" as const };
+  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_() };
   const results = await Promise.all([generateImage({ ...base, ...opts }), generateImage({ ...base, ...opts })]);
   assert.equal(f.calls.length, 1);
   assert.ok(results.every((r) => r.status === "ready"));
@@ -240,14 +240,14 @@ test("concurrent requests for one prompt from two learners share a single provid
   await db.insert(user).values({ id: "u2", name: "T2", email: "t2@example.com" });
   const b = (await db.insert(learners).values({ userId: "u2" }).returning({ id: learners.id }))[0]!.id;
   const results = await Promise.all([
-    generateImage({ ...base, lessonVersionId, learnerId: a, tier: "max" as const }),
-    generateImage({ ...base, lessonVersionId, learnerId: b, tier: "max" as const }),
+    generateImage({ ...base, lessonVersionId, learnerId: a }),
+    generateImage({ ...base, lessonVersionId, learnerId: b }),
   ]);
   assert.equal(f.calls.length, 1);
   assert.ok(results.every((r) => r.status === "ready"));
 });
 
-test("prewarm generates each image once, so a later read costs no provider call", async () => {
+test("prewarm respects the daily limit and the generated image is cached", async () => {
   const f = await fake("images");
   configure(f.url, "images");
   const mem = memoryStorage();
@@ -259,11 +259,11 @@ test("prewarm generates each image once, so a later read costs no provider call"
       { type: "image", id: "b", props: { source: "generate", prompt: "A leaf, flat colours", alt: "A leaf" } },
     ],
   };
-  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_(), tier: "max" as const };
+  const opts = { lessonVersionId: await versionId(), learnerId: await learnerId_() };
   await prewarmDocImages(doc, opts);
-  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls.length, 1);
   const shown = await resolveDocImages(doc, opts);
-  assert.equal(f.calls.length, 2, "reads are served from the cache");
+  assert.equal(f.calls.length, 1, "reads reuse the generated image and respect the daily limit");
   assert.ok(JSON.stringify(shown).includes('"generated"'));
   assert.ok(!JSON.stringify(shown).includes("flat colours"), "prompt never appears in the client doc");
 });

@@ -12,7 +12,7 @@ import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
-import { tiers } from "../config/tiers.ts";
+import { mvpLimits } from "../config/limits.ts";
 import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
 import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
@@ -23,24 +23,20 @@ const Outline = z.union([
   z.object({
     title: text(80),
     tagline: text(160),
-    subject: z.enum(["code", "other"]),
     courses: z
       .array(
         z.object({
           title: text(80),
           description: text(300),
           lessons: z
-            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["learn", "watch", "practice", "game-practice", "scrim"]) }))
+            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]) }))
             .min(3)
             .max(6),
         }),
       )
       .min(2)
       .max(4),
-  }).refine(
-    (o) => o.subject === "code" || o.courses.every((c) => c.lessons.every((l) => l.kind === "learn" || l.kind === "game-practice")),
-    "non-coding outline may only use learn and game-practice lessons",
-  ),
+  }),
 ]);
 
 const Lesson = z.object({ steps: z.array(Step).min(3).max(5) });
@@ -56,18 +52,18 @@ export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
   if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
   if (!env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
-  const [me] = await db.select({ userId: learners.userId, tier: learners.tier }).from(learners).where(eq(learners.id, learnerId));
+  const [me] = await db.select({ userId: learners.userId }).from(learners).where(eq(learners.id, learnerId));
   const slot = await withTx(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me.userId}))`);
     const {
       rows: [{ n }],
     } = await tx.execute<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= tiers[me.tier].aiPathsPerDay) return null;
+    if (n >= mvpLimits.aiPathsPerDay) return null;
     const [row] = await tx.insert(aiGenerations).values({ userId: me.userId }).returning({ id: aiGenerations.id });
     return row.id;
   });
-  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${tiers[me.tier].aiPathsPerDay} AI paths for today` });
+  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${mvpLimits.aiPathsPerDay} AI paths for today` });
   try {
     await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_REPLY);
   } catch (e) {
@@ -224,21 +220,25 @@ function stepRows(lessonVersionId: string, list: readonly GeneratedStep[]) {
   }));
 }
 
-async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, generated }: Generated) {
+async function writeOnce(tx: Db, lessonId: string, usedPublicModeration: boolean, { part, generated }: Generated) {
   const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
   if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
+
+  const [world] = await tx.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, l.worldId));
+  if (world.visibility === "public" && !usedPublicModeration) {
+    throw new Error("Lesson must pass public moderation before it can be saved");
+  }
 
   const { content, gateSteps } = splitPart(part);
   const [version] = await tx
     .insert(lessonVersions)
-    .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content })
+    .values({ lessonId: l.id, version: 1, publishedAt: l.status === "published" ? new Date() : null, content })
     .returning();
   const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
-  const [learner] = prewarm ? await tx.select({ tier: learners.tier }).from(learners).where(eq(learners.id, learnerId)) : [];
   const stepList = part ? (gateSteps ?? []) : generated;
   if (stepList.length) await tx.insert(steps).values(stepRows(version.id, stepList));
-  await tx.update(lessons).set({ currentVersionId: version.id, status: "published" }).where(eq(lessons.id, l.id));
-  return { lessonVersionId: version.id, prewarm, tier: learner?.tier as keyof typeof tiers | undefined };
+  await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, l.id));
+  return { lessonVersionId: version.id, prewarm };
 }
 
 const inflight = new Map<string, Promise<boolean>>();
@@ -295,20 +295,20 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
   const ctx = await lessonContext(pre);
-  const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
-  const isPublic = world?.visibility === "public";
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
   const cached = key ? await cachedPart(key) : null;
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
+    const isPublic = world?.visibility === "public";
     if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
-      const written = await withTx((tx) => writeOnce(tx, lessonId, learnerId, result));
+      const written = await withTx((tx) => writeOnce(tx, lessonId, isPublic, result));
       if (!written) return false;
       if (written.prewarm) {
-        const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId, tier: written.tier! })
+        const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId })
           .catch((e) => console.error("prewarm of lesson images failed", e))
           .finally(() => background.delete(p));
         background.add(p);

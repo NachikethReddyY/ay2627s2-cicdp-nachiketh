@@ -1,6 +1,6 @@
 # LearnSlop engine
 
-The inference engine: the LLM pipelines behind "Learn anything" (path outline and lesson
+The inference engine: the LLM pipelines behind "Learn a programming concept" (path outline and lesson
 generation). `learnquest_engine` is importable on its own; the FastAPI app is a thin layer on top.
 It is stateless (JSON in, JSON out) and holds the only LLM key in the system. Why: [ADR 0003](../../docs/adr/0003-engine-boundary.md).
 

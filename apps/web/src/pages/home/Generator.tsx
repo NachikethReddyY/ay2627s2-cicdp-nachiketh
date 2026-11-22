@@ -43,7 +43,7 @@ export default function Generator() {
   return (
     <section className="lq-card lq-gen lq-gen-photo lq-bg-blue lq-rise d1" aria-labelledby="gen-h">
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h2 id="gen-h" style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 500, letterSpacing: ".04em", color: "var(--mu)" }}>Learn anything</h2>
+        <h2 id="gen-h" style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 500, letterSpacing: ".04em", color: "var(--mu)" }}>Learn a programming concept</h2>
         <span className="lq-ai-tag">AI</span>
       </div>
       <form onSubmit={submit}>

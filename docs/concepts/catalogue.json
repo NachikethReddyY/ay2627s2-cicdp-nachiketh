@@ -1,0 +1,139 @@
+{
+  "status": "ai-generated, public",
+  "track": "javascript-typescript",
+  "concepts": [
+    {
+      "slug": "values-types",
+      "name": "values and types",
+      "level": 1,
+      "prerequisites": [],
+      "example": "console.log(typeof 42, typeof \"42\");"
+    },
+    {
+      "slug": "console-log",
+      "name": "console.log",
+      "level": 1,
+      "prerequisites": ["values-types"],
+      "example": "console.log(\"Total:\", 3 + 4);"
+    },
+    {
+      "slug": "operators",
+      "name": "arithmetic operators",
+      "level": 1,
+      "prerequisites": ["values-types"],
+      "example": "console.log(7 % 3, 2 + 3 * 4);"
+    },
+    {
+      "slug": "variables",
+      "name": "variables",
+      "level": 1,
+      "prerequisites": ["values-types", "console-log"],
+      "example": "let count = 1;\ncount = count + 2;\nconsole.log(count);"
+    },
+    {
+      "slug": "constants",
+      "name": "constants",
+      "level": 1,
+      "prerequisites": ["variables"],
+      "example": "const TAX_RATE = 0.2;\nconst price = 50;\nconsole.log(price * TAX_RATE);"
+    },
+    {
+      "slug": "booleans",
+      "name": "booleans",
+      "level": 1,
+      "prerequisites": ["values-types"],
+      "example": "const isMember = true;\nconsole.log(!isMember);"
+    },
+    {
+      "slug": "comparison-operators",
+      "name": "comparison operators",
+      "level": 2,
+      "prerequisites": ["booleans", "operators"],
+      "example": "const total = 50;\nconsole.log(total > 50, total >= 50);"
+    },
+    {
+      "slug": "conditionals",
+      "name": "conditionals",
+      "level": 2,
+      "prerequisites": ["variables", "comparison-operators"],
+      "example": "const total = 50;\nif (total >= 50) {\n  console.log(\"free\");\n} else {\n  console.log(\"paid\");\n}"
+    },
+    {
+      "slug": "arrays",
+      "name": "arrays",
+      "level": 2,
+      "prerequisites": ["variables"],
+      "example": "const prices = [4, 8, 15];\nconsole.log(prices[1], prices.length);"
+    },
+    {
+      "slug": "objects",
+      "name": "objects",
+      "level": 2,
+      "prerequisites": ["variables"],
+      "example": "const item = { name: \"pen\", price: 2 };\nconsole.log(item.name, item.price * 3);"
+    },
+    {
+      "slug": "functions",
+      "name": "functions",
+      "level": 2,
+      "prerequisites": ["variables"],
+      "example": "function greet() {\n  console.log(\"hi\");\n}\ngreet();\ngreet();"
+    },
+    {
+      "slug": "loops",
+      "name": "loops",
+      "level": 3,
+      "prerequisites": ["conditionals", "arrays"],
+      "example": "let sum = 0;\nfor (let i = 1; i <= 3; i++) {\n  sum = sum + i;\n}\nconsole.log(sum);"
+    },
+    {
+      "slug": "parameters",
+      "name": "parameters and arguments",
+      "level": 3,
+      "prerequisites": ["functions"],
+      "example": "function double(n) {\n  console.log(n * 2);\n}\ndouble(4);\ndouble(10);"
+    },
+    {
+      "slug": "return-values",
+      "name": "return values",
+      "level": 3,
+      "prerequisites": ["parameters", "console-log"],
+      "example": "function add(a, b) {\n  console.log(a + b);\n}\nconst result = add(2, 3);\nconsole.log(result);"
+    },
+    {
+      "slug": "arrow-functions",
+      "name": "arrow functions",
+      "level": 4,
+      "prerequisites": ["return-values"],
+      "example": "const square = (n) => n * n;\nconsole.log(square(5));"
+    },
+    {
+      "slug": "callbacks",
+      "name": "callbacks",
+      "level": 4,
+      "prerequisites": ["arrow-functions"],
+      "example": "function twice(fn) {\n  fn();\n  fn();\n}\nlet n = 0;\ntwice(() => {\n  n = n + 5;\n});\nconsole.log(n);"
+    },
+    {
+      "slug": "array-map",
+      "name": "array map",
+      "level": 4,
+      "prerequisites": ["loops", "callbacks", "objects"],
+      "example": "const products = [{ name: \"pen\" }, { name: \"cup\" }];\nconsole.log(products.map((p) => p.name));"
+    },
+    {
+      "slug": "array-filter",
+      "name": "array filter",
+      "level": 4,
+      "prerequisites": ["loops", "callbacks", "comparison-operators"],
+      "example": "const prices = [3, 12, 7, 20];\nconsole.log(prices.filter((p) => p > 5));"
+    },
+    {
+      "slug": "array-reduce",
+      "name": "array reduce",
+      "level": 5,
+      "prerequisites": ["array-map", "objects"],
+      "example": "const cart = [{ price: 4 }, { price: 6 }];\nconsole.log(cart.reduce((sum, item) => sum + item.price, 0));"
+    }
+  ]
+}

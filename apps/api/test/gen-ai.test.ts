@@ -1,4 +1,4 @@
-import { out, signUp, trpc } from "./helpers.ts";
+import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { eq, sql } from "drizzle-orm";
@@ -21,7 +21,6 @@ after(() => app.close());
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
-  subject: "code",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
@@ -44,10 +43,11 @@ async function firstLesson() {
   const t = trpc(app, await signUp(app, "gen@example.com"));
   const res = await t.m("paths.generate", { prompt: "learn rust" });
   assert.equal(res.statusCode, 200, res.body);
-  const course = out(await t.q("courses.get", { slug: out(res).firstCourseSlug }));
+  const { slug, firstCourseSlug } = out(res);
+  const course = out(await t.q("courses.get", { slug: firstCourseSlug }));
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, course.lessons[0].slug));
   const learner = (await db.execute<{ id: string }>(sql`SELECT id FROM learners LIMIT 1`)).rows[0]!;
-  return { t, lesson: row!, learnerId: learner.id };
+  return { t, slug, lesson: row!, learnerId: learner.id };
 }
 
 function gate() {
@@ -162,8 +162,47 @@ test("moderation down: a lesson in a public course is refused, a private one sti
   }
 });
 
+test("a lesson generated while its path is published must pass public moderation", { timeout: 15_000 }, async () => {
+  const { t, slug, lesson, learnerId } = await firstLesson();
+  const started = gate();
+  const release = gate();
+  const draftBody = "Variables store values the learner can reuse.";
+  const safe = async () => ({ flagged: false, scores: {} });
+  let moderationCalls = 0;
+  setModerationClient(async (input) => {
+    if (input.includes(draftBody)) {
+      moderationCalls++;
+      throw new Error("moderation unavailable for the lesson body");
+    }
+    return safe();
+  });
+  engineParts.lesson = async () => {
+    started.open();
+    await release.opened;
+    return { kind: "learn", body: draftBody };
+  };
+
+  const writing = ensureLesson(lesson.id, learnerId);
+  const rejected = assert.rejects(writing, /Couldn't write this lesson/);
+  try {
+    await started.opened;
+    const published = await t.m("paths.publish", { slug });
+    assert.equal(published.statusCode, 200, published.body);
+    release.open();
+    await rejected;
+    assert.equal(moderationCalls, 2);
+    const [row] = await db.select().from(lessons).where(eq(lessons.id, lesson.id));
+    assert.equal(row?.currentVersionId, null);
+  } finally {
+    release.open();
+    await writing.catch(() => {});
+    await rejected.catch(() => {});
+    setModerationClient(safe);
+  }
+});
+
 test("a predict lesson comes from the engine over HTTP and the learner never sees an answer key", async () => {
-  const { t, lesson, learnerId } = await firstLesson();
+  const { t, slug, lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
   const input = lesson1.steps[0]!.input;
   const step = (n: number) => ({
@@ -202,6 +241,15 @@ test("a predict lesson comes from the engine over HTTP and the learner never see
   assert.equal(res.statusCode, 200, res.body);
   assert.equal(out(res).steps.length, 3);
   assert.doesNotMatch(res.body, /"(answer|accepted|expectedOutput)"/);
+
+  setModerationClient(async (text) => ({ flagged: text.includes("What changes?"), scores: {} }));
+  try {
+    assert.equal(code(await t.m("paths.publish", { slug })), "PRECONDITION_FAILED");
+    const [world] = await db.select().from(worlds).where(eq(worlds.id, lesson.worldId));
+    assert.equal(world?.visibility, "private");
+  } finally {
+    setModerationClient(async () => ({ flagged: false, scores: {} }));
+  }
 });
 
 test("a generated course is one section: every lesson sits in level 1, whatever the model suggested", async () => {

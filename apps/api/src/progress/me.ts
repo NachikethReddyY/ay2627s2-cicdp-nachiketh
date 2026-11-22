@@ -15,13 +15,12 @@ const meUpdate = protectedProcedure
       .object({
         timezone: TimeZone.optional(),
         dailyGoalXp: z.union([z.literal(30), z.literal(50), z.literal(100)]).optional(),
-        leaderboardOptIn: z.boolean().optional(),
       })
       .nullish(),
   )
   .output(z.void())
   .mutation(async ({ ctx, input }) => {
-    const { timezone, dailyGoalXp, leaderboardOptIn } = input ?? {};
+    const { timezone, dailyGoalXp } = input ?? {};
     if (timezone !== undefined) {
       const { rows } = await db.execute(sql`SELECT 1 FROM pg_timezone_names WHERE name = ${timezone}`);
       if (rows.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown IANA time zone" });
@@ -29,8 +28,7 @@ const meUpdate = protectedProcedure
     await db.execute(sql`
       UPDATE learners
       SET timezone = COALESCE(${timezone ?? null}, timezone),
-        daily_goal_xp = COALESCE(${dailyGoalXp ?? null}, daily_goal_xp),
-        leaderboard_opt_in = COALESCE(${leaderboardOptIn ?? null}, leaderboard_opt_in)
+        daily_goal_xp = COALESCE(${dailyGoalXp ?? null}, daily_goal_xp)
       WHERE id = ${ctx.learnerId}`);
   });
 
