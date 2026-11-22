@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
-import { lessonRef, meUser, visibleWorld } from "../access.ts";
+import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 import { parsePractice, type Practice } from "./practice-schema.ts";
 
 export function practiceOf(content: unknown): Practice | null {
@@ -21,7 +21,7 @@ export async function practiceCheck(learnerId: string, lessonId: string): Promis
     JOIN learners me ON me.id = ${learnerId}
     JOIN lesson_versions v ON v.id = l.current_version_id
     WHERE ${lessonRef(lessonId)}
-      AND l.status = 'published'
+      AND ${playableLesson()}
       AND l.kind IN ('practice', 'scrim')
       AND v.content->>'kind' = l.kind
       AND (l.kind = 'practice' OR v.content->'lab'->'tests' IS NULL)
@@ -42,7 +42,7 @@ export async function practiceTests(learnerId: string, lessonId: string): Promis
     JOIN learners me ON me.id = ${learnerId}
     JOIN lesson_versions v ON v.id = l.current_version_id
     WHERE ${lessonRef(lessonId)}
-      AND l.status = 'published'
+      AND ${playableLesson()}
       AND l.kind IN ('practice', 'scrim')
       AND v.content->>'kind' = l.kind
       AND ${visibleWorld(meUser)}`);

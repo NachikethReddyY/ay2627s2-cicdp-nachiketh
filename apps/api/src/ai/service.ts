@@ -227,12 +227,12 @@ async function writeOnce(tx: Db, lessonId: string, learnerId: string, { part, ge
   const { content, gateSteps } = splitPart(part);
   const [version] = await tx
     .insert(lessonVersions)
-    .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content })
+    .values({ lessonId: l.id, version: 1, publishedAt: l.status === "published" ? new Date() : null, content })
     .returning();
   const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
   const stepList = part ? (gateSteps ?? []) : generated;
   if (stepList.length) await tx.insert(steps).values(stepRows(version.id, stepList));
-  await tx.update(lessons).set({ currentVersionId: version.id, status: "published" }).where(eq(lessons.id, l.id));
+  await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, l.id));
   return { lessonVersionId: version.id, prewarm };
 }
 

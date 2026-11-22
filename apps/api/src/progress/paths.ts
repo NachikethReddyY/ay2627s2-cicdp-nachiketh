@@ -181,6 +181,18 @@ const publish = protectedProcedure
         WHERE owner_id = (SELECT id FROM me)
           AND id IN (SELECT world_id FROM path_courses WHERE path_id IN (SELECT id FROM p))
         RETURNING id
+      ),
+      l AS (
+        UPDATE lessons SET status = 'published'
+        WHERE source_kind = 'ai' AND status = 'draft'
+          AND world_id IN (SELECT world_id FROM path_courses WHERE path_id IN (SELECT id FROM p))
+          AND world_id IN (SELECT id FROM w)
+        RETURNING id, current_version_id
+      ),
+      v AS (
+        UPDATE lesson_versions SET published_at = coalesce(published_at, now())
+        WHERE id IN (SELECT current_version_id FROM l)
+        RETURNING id
       )
       SELECT id FROM p`);
     if (rows.length === 0) throw notFound("Path not found");

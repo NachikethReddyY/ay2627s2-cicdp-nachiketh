@@ -8,6 +8,9 @@ const rawLesson: LessonCols = { id: sql`l.id`, slug: sql`l.slug` };
 export const visibleWorld = (userId: SQLWrapper, world: WorldCols = rawWorld): SQL =>
   sql`(${world.visibility} = 'public' OR ${world.ownerId} = ${userId})`;
 
+export const playableLesson = (lesson: { status: SQLWrapper; sourceKind: SQLWrapper } = { status: sql`l.status`, sourceKind: sql`l.source_kind` }): SQL =>
+  sql`(${lesson.status} = 'published' OR (${lesson.sourceKind} = 'ai' AND ${lesson.status} = 'draft'))`;
+
 export const lessonRef = (ref: string, lesson: LessonCols = rawLesson): SQL =>
   sql`(${lesson.id} = ${ref} OR ${lesson.slug} = ${ref})`;
 

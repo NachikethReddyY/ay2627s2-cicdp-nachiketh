@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
-import { lessonRef, meUser, visibleWorld } from "../access.ts";
+import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 
 const complete = protectedProcedure
   .input(z.object({ lessonId: z.string().regex(/^[\w-]{1,64}$/) }))
@@ -16,7 +16,7 @@ const complete = protectedProcedure
       JOIN worlds w ON w.id = l.world_id
       JOIN learners me ON me.id = ${ctx.learnerId}
       WHERE ${lessonRef(input.lessonId)}
-        AND l.status = 'published'
+        AND ${playableLesson()}
         AND ${visibleWorld(meUser)}`);
     if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
     if (lesson.kind === "practice" || lesson.kind === "scrim" || lesson.kind === "game-practice")

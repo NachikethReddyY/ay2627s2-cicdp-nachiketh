@@ -118,8 +118,8 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   const { rows } = await tx.execute<{ id: string; done: number; total: number }>(sql`
     SELECT l.id, ${lessonDone(learnerId)} AS done, ${lessonTotal} AS total
     FROM lessons l WHERE l.world_id = ${worldId} AND ${listed}`);
-  const published = new Set(worldLessons.filter((l) => l.status === "published").map((l) => l.id));
-  const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total && published.has(r.id)).map((r) => r.id));
+  const playable = new Set(worldLessons.map((l) => l.id));
+  const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total && playable.has(r.id)).map((r) => r.id));
 
   const known = await tx
     .select({ conceptId: mastery.conceptId, slug: concepts.slug, pKnown: mastery.pKnown })

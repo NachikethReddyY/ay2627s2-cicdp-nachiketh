@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, or } from "drizzle-orm";
 import { visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -39,7 +39,7 @@ async function loadStep(id: string, learnerId: string) {
     .where(
       and(
         eq(steps.id, id),
-        eq(lessons.status, "published"),
+        or(eq(lessons.status, "published"), and(eq(lessons.sourceKind, "ai"), eq(lessons.status, "draft"))),
         eq(lessons.currentVersionId, steps.lessonVersionId),
         visibleWorld(learners.userId, worlds),
       ),

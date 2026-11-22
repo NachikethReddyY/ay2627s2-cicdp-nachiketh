@@ -7,7 +7,7 @@ import { eq, sql } from "drizzle-orm";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { learners, lessons, steps } from "../src/db/schema.ts";
+import { learners, lessonVersions, lessons, steps, user } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { EngineError } from "../src/engine-client/client.ts";
@@ -173,7 +173,7 @@ test("two concurrent plays write the part once", async () => {
   assert.deepEqual(out(a).steps, []);
   assert.equal(lessonCalls, 1);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, last));
-  assert.equal(row!.status, "published");
+  assert.equal(row!.status, "draft");
   assert.equal((await db.select().from(steps)).length, initialStepCount);
 });
 
@@ -245,6 +245,34 @@ test("private AI lesson is hidden from others until the path is published", asyn
 
   assert.equal((await t.m("paths.publish", { slug })).statusCode, 200);
   assert.equal((await other.q("lessons.get", { id: last })).statusCode, 200);
+});
+
+test("a generated path stays private: the creator plays it, only the creator can share it, sharing lists it to others", async () => {
+  const { t, slug, lessons: ls } = await setup();
+  const other = trpc(app, await signUp(app, "b@example.com"));
+  const last = ls[2]!.slug;
+
+  assert.equal((await t.q("lessons.get", { id: last })).statusCode, 200);
+  const [written] = await db.select().from(lessons).where(eq(lessons.slug, last));
+  assert.equal(written!.status, "draft");
+  assert.ok(written!.currentVersionId);
+  const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, written!.currentVersionId!));
+  assert.equal(version!.publishedAt, null);
+  assert.equal(out(await t.q("paths.list", { scope: "community" })).length, 0);
+
+  assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
+  assert.equal(code(await other.q("paths.get", { slug })), "NOT_FOUND");
+  assert.equal(code(await other.q("lessons.get", { id: last })), "NOT_FOUND");
+  assert.equal(code(await other.m("paths.publish", { slug })), "NOT_FOUND");
+  assert.equal(code(await other.q("lessons.get", { id: last })), "NOT_FOUND");
+
+  assert.equal((await t.m("paths.publish", { slug })).statusCode, 200);
+  assert.deepEqual(out(await other.q("paths.list", { scope: "community" })).map((p: { slug: string }) => p.slug), [slug]);
+  assert.equal((await other.q("lessons.get", { id: last })).statusCode, 200);
+  const [shared] = await db.select().from(lessons).where(eq(lessons.slug, last));
+  assert.equal(shared!.status, "published");
+  const [sharedVersion] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, shared!.currentVersionId!));
+  assert.ok(sharedVersion!.publishedAt);
 });
 
 test("a part generated for one learner is reused by another without a model call", async () => {
