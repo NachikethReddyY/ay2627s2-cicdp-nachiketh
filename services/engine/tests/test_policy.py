@@ -121,6 +121,13 @@ def test_locked_prerequisites_are_skipped() -> None:
     assert r.concept_id == "vars"
 
 
+def test_lq_117_waiting_prerequisite_filter_can_outrank_lower_mastery() -> None:
+    m = [Mastery("vars", 0.1), Mastery("loops", 0.5)]
+    lessons = [L1, L3]
+    r = recommend(m, [("setup", "vars")], lessons)
+    assert (r.concept_id, r.lesson_id) == ("loops", "l3")
+
+
 def test_unlocked_once_prerequisite_reaches_threshold() -> None:
     m = [Mastery("vars", 0.8), Mastery("loops", 0.1)]
     assert recommend(m, [("vars", "loops")], [L1, L3]).concept_id == "loops"
