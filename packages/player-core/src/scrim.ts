@@ -6,6 +6,7 @@ const GAP_SHARE = 0.85;
 const RUN_DELAY = 0.4;
 const END_GATE_LEAD = 0.05;
 const PART_GATE_PREFIX = "part-";
+const CLOCK_TOLERANCE = 1e-9;
 
 export type TimedEdit = { id: string; segment: number; at: number; cueHeard: boolean; cue: string; predict: string | null; code: string; run?: boolean };
 
@@ -52,11 +53,16 @@ function validate(edits: readonly TimedEdit[], clock: ScrimClock): void {
   if (clock.offsets.length !== clock.durations.length || !Number.isFinite(clock.total)) {
     throw new RangeError(`scrim clock must have one finite offset per part and a finite total, got ${clock.offsets.length} offsets and total ${clock.total}`);
   }
+  let elapsed = 0;
   clock.offsets.forEach((offset, i) => {
-    if (!Number.isFinite(offset) || offset < (clock.offsets[i - 1] ?? 0)) {
-      throw new RangeError(`scrim part offset ${i} must be finite and not before the previous offset, got ${offset}`);
+    if (!Number.isFinite(offset) || Math.abs(offset - elapsed) > CLOCK_TOLERANCE) {
+      throw new RangeError(`scrim part offset ${i} must equal the sum of the earlier part durations (${elapsed}), got ${offset}`);
     }
+    elapsed += clock.durations[i];
   });
+  if (Math.abs(clock.total - elapsed) > CLOCK_TOLERANCE) {
+    throw new RangeError(`scrim clock total must equal the sum of the part durations (${elapsed}), got ${clock.total}`);
+  }
   const gateIds = new Set<string>();
   for (const e of edits) {
     if (!Number.isInteger(e.segment) || e.segment < 0 || e.segment >= clock.durations.length) {
@@ -136,4 +142,8 @@ export function codeAt(scrim: ScrimTimeline, answered: ReadonlySet<string>, t: n
 
 export function runCrossed(scrim: ScrimTimeline, answered: ReadonlySet<string>, from: number, to: number): ScrimRun[] {
   return scrim.runs.filter((r) => from < r.t && r.t <= to && shownEdits(scrim, answered, r.t) > r.edit);
+}
+
+export function runsReleased(scrim: ScrimTimeline, before: ReadonlySet<string>, after: ReadonlySet<string>, t: number): ScrimRun[] {
+  return scrim.runs.filter((r) => r.t <= t && shownEdits(scrim, before, r.t) <= r.edit && shownEdits(scrim, after, r.t) > r.edit);
 }

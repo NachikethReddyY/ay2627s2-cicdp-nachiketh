@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildScrimTimeline, codeAt, editGateKey, frameAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type ScrimClock, type TimedEdit } from "./scrim.ts";
+import { buildScrimTimeline, codeAt, editGateKey, frameAt, openGate, reachable, runCrossed, runsReleased, scrimClock, segmentAt, shownEdits, type ScrimClock, type ScrimRun, type TimedEdit } from "./scrim.ts";
 import { editTimeline, scrimFile } from "./scrim-timeline.ts";
 
 const FILE = scrimFile(undefined);
@@ -97,6 +97,68 @@ test("a clock with non-finite totals or out-of-order offsets is rejected", () =>
   const backwards: ScrimClock = { offsets: [1, 0], durations: [1, 1], total: 2 };
   assert.throws(() => buildScrimTimeline([], [], huge), RangeError);
   assert.throws(() => buildScrimTimeline([], [], backwards), RangeError);
+});
+
+test("a clock whose offsets overlap or whose total disagrees with the durations is rejected", () => {
+  const overlapping: ScrimClock = { offsets: [0, 0], durations: [1, 1], total: 2 };
+  const gap: ScrimClock = { offsets: [0, 2], durations: [1, 1], total: 3 };
+  const short: ScrimClock = { offsets: [0, 1], durations: [1, 1], total: 1.5 };
+  for (const clock of [overlapping, gap, short]) {
+    assert.throws(() => buildScrimTimeline([], [], clock), RangeError, JSON.stringify(clock));
+  }
+  const drift: ScrimClock = { offsets: [0, 1 + 1e-10], durations: [1, 1], total: 2 - 1e-10 };
+  assert.doesNotThrow(() => buildScrimTimeline([], [], drift));
+});
+
+test("for any durations, the clock the scrim builds is accepted", () => {
+  const rand = mulberry32(77);
+  for (let n = 0; n < 500; n++) {
+    const durations = Array.from({ length: 1 + Math.floor(rand() * 8) }, () => rand() * 7);
+    assert.doesNotThrow(() => buildScrimTimeline([], [], scrimClock(durations)), `run ${n}`);
+  }
+});
+
+test("a run held back by a question at the end of the clock is released once the question is answered, and only then", () => {
+  const scrim = buildScrimTimeline([edit(0, 1, "print(1)", "What prints?", true)], [null], scrimClock([1]));
+  const [gate] = scrim.gates;
+  const none = new Set<string>();
+  const answered = new Set([gate.key]);
+  const [run] = scrim.runs;
+  assert.equal(run.t, scrim.clock.total);
+  assert.deepEqual(runsReleased(scrim, none, none, gate.t), []);
+  assert.deepEqual(runsReleased(scrim, none, answered, gate.t), [run]);
+  assert.deepEqual(runsReleased(scrim, answered, answered, gate.t), []);
+  assert.deepEqual(runCrossed(scrim, answered, scrim.clock.total, scrim.clock.total), []);
+});
+
+test("answering a question does not release a run that is still ahead of the playhead", () => {
+  const scrim = buildScrimTimeline([edit(0, 1, "print(1)", "What prints?", true)], [null], scrimClock([10]));
+  const [gate] = scrim.gates;
+  assert.equal(runsReleased(scrim, new Set(), new Set([gate.key]), gate.t).length, 0);
+  assert.equal(runCrossed(scrim, new Set([gate.key]), gate.t, scrim.clock.total).length, 1);
+});
+
+test("for any scrim, every visible run is reported once across ticks and answers, however the questions are answered", () => {
+  const rand = mulberry32(606);
+  for (let n = 0; n < 1000; n++) {
+    const { edits, predicts, clock } = hostileScrim(rand);
+    const scrim = buildScrimTimeline(finiteEdits(edits), predicts, clock);
+    const answered = new Set<string>();
+    const reported: ScrimRun[] = [];
+    let t = -1;
+    for (let guard = 0; guard < 40; guard++) {
+      const stop = reachable(scrim, answered, clock.total);
+      reported.push(...runCrossed(scrim, answered, t, stop));
+      t = Math.max(t, stop);
+      const gate = openGate(scrim, answered);
+      if (!gate) break;
+      const next = new Set([...answered, gate.key]);
+      reported.push(...runsReleased(scrim, answered, next, t));
+      next.forEach((k) => answered.add(k));
+    }
+    const final = scrim.runs.filter((r) => shownEdits(scrim, answered, r.t) > r.edit);
+    assert.deepEqual([...reported].sort((a, b) => a.edit - b.edit), final, `run ${n}: runs lost or doubled`);
+  }
 });
 
 test("for any scrim and any seek, no edit behind an open question ever shows, and code only grows while playing", () => {

@@ -5,6 +5,7 @@ import { checkPractice, lintPractice, pollPython, putFile, sendPythonLine, start
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
 import { lintErrorMessage } from "./lintModel";
 import { outputTail } from "./lessonWorkbenchModel";
+import { createRunGate, createRunQueue } from "./runQueue";
 import type { CheckResponse, PracticeLanguage } from "./checkModel";
 
 const MAX_POLL_FAILURES = 4;
@@ -34,6 +35,9 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const shellUnreachable = useRef(false);
   const readyTimeouts = useRef(0);
   const lintSeq = useRef(0);
+  const runNow = useRef<(source: string) => Promise<void>>(async () => {});
+  const [runGate] = useState(createRunGate);
+  const [enqueue] = useState(() => createRunQueue<string>((source) => runNow.current(source)));
   const append = (text: string) => setTerm((t) => outputTail(t + text, MAX_OUTPUT));
 
   const [shell, setShell] = useState<ShellSocket | null>(null);
@@ -66,9 +70,10 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     live.current = true;
     return () => {
       live.current = false;
+      runGate.release();
       if (sidRef.current) void stopPython(sidRef.current).catch(() => {});
     };
-  }, []);
+  }, [runGate]);
   useEffect(() => { sidRef.current = sid; }, [sid]);
 
   useEffect(() => {
@@ -87,6 +92,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
         append(`\n${msg(e)}\n`);
         void stopPython(sid).catch(() => {});
         setSid(null);
+        runGate.release();
         return;
       }
       if (!alive) return;
@@ -97,10 +103,11 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
       if (p.error) setTerm((t) => `${t}${t && !t.endsWith("\n") ? "\n" : ""}${p.error}\n`);
       else if (!stdout.current) setTerm((t) => t || "The program ran and printed nothing.");
       setSid(null);
+      runGate.release();
     };
     void poll();
     return () => { alive = false; clearTimeout(timer); };
-  }, [sid]);
+  }, [sid, runGate]);
 
   const oneShot = async (args: Parameters<typeof startPython>) => {
     stdout.current = "";
@@ -117,7 +124,9 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (!live.current) { void stopPython(id).catch(() => {}); return; }
     setStarting(false);
+    const finished = runGate.wait();
     setSid(id);
+    await finished;
   };
   const actionsFor = (enabled: boolean, source: string = code) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled });
 
@@ -151,7 +160,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setCheckBusy(false);
   };
-  const run = async (source: string = code) => {
+  runNow.current = async (source) => {
     const a = actionsFor(sandboxEnabled, source).run;
     if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
@@ -188,10 +197,12 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setShellRun(false);
   };
+  const run = (source: string = code) => enqueue(source);
   const stop = () => {
     if (!sid) return;
     void stopPython(sid).catch(() => {});
     setSid(null);
+    runGate.release();
     append("\n[stopped]\n");
   };
   const answer = (e: FormEvent) => {

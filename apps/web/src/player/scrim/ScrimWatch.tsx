@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
-import { frameAt, runCrossed, segmentAt } from "@learnquest/player-core";
+import { frameAt, runCrossed, runsReleased, segmentAt } from "@learnquest/player-core";
 import { monacoLanguage } from "../live/checkModel";
 import { lessonFile } from "../live/lessonWorkbenchModel";
 import RunBottom from "../live/RunBottom";
@@ -118,8 +118,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
 
   const tickTo = (t: number) => {
     const crossed = state.playing ? runCrossed(scrim, state.answered, state.t, commit({ type: "tick", t }).t) : [];
-    const last = crossed[crossed.length - 1];
-    if (last) void runner.run(scrim.edits[last.edit].code);
+    for (const crossing of crossed) void runner.run(scrim.edits[crossing.edit].code);
   };
 
   const endSegment = () => {
@@ -174,7 +173,10 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       />
       {gate && gateStep && (
         <section role="region" aria-label="Predict" className="scrim-gate">
-          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => commit({ type: "answer", key: gate.key })} />
+          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => {
+            const next = commit({ type: "answer", key: gate.key });
+            for (const released of runsReleased(scrim, state.answered, next.answered, state.t)) void runner.run(scrim.edits[released.edit].code);
+          }} />
         </section>
       )}
       {done && (
