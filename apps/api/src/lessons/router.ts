@@ -189,7 +189,7 @@ export const lessonsRouter = router({
           idx: r.idx,
           title: r.pub.title,
           hintCount: r.hintCount,
-          state: r.state ?? "predicting",
+          state: lesson.kind === "predict" && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
         })),
         media: await listMedia(lesson.currentVersionId),
       };

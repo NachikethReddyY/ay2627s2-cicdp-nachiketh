@@ -65,6 +65,11 @@ async function readProgress(learnerId: string, stepId: string): Promise<Progress
   return p ?? fresh();
 }
 
+const recoveryProgress = (p: Progress, lessonKind: Step["lessonKind"]): Progress =>
+  lessonKind === "predict" && p.state === "skipped"
+    ? { ...p, state: "predicting", attemptAllowed: true, retryAllowed: false }
+    : p;
+
 function mutate(
   learnerId: string,
   step: Step,
@@ -75,8 +80,8 @@ function mutate(
   return withTx(async (tx) => {
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
-    const [p] = await tx.select().from(stepProgress).where(where).for("update");
-    const r = next(p, action, { hintCount: step.secret.hints.length });
+    const [stored] = await tx.select().from(stepProgress).where(where).for("update");
+    const r = next(recoveryProgress(stored!, step.lessonKind), action, { hintCount: step.secret.hints.length });
     if ("conflict" in r) return r;
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
@@ -152,6 +157,7 @@ export const stepsRouter = router({
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
       const p = await readProgress(ctx.learnerId, step.id);
+      const progress = recoveryProgress(p, step.lessonKind);
       return {
         id: step.id,
         idx: step.idx,
@@ -160,9 +166,9 @@ export const stepsRouter = router({
         kind: step.pub.kind,
         ...(step.pub.options && { options: step.pub.options }),
         hintCount: step.secret.hints.length,
-        state: p.state,
+        state: progress.state,
         rungsTaken: p.rungsTaken,
-        attemptAllowed: p.attemptAllowed,
+        attemptAllowed: progress.attemptAllowed,
         hints: Array.from({ length: p.rungsTaken }, (_, i) => hintAt(step, i + 1)),
         beforeFiles: step.secret.beforeFiles,
       };
@@ -234,7 +240,7 @@ export const stepsRouter = router({
     .query(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
       const { state } = await readProgress(ctx.learnerId, step.id);
-      if (state !== "revealed" && state !== "skipped") throw conflict("Not revealed yet");
+      if (state !== "revealed" && (state !== "skipped" || step.lessonKind === "predict")) throw conflict("Not revealed yet");
       const s = step.secret;
       return {
         answer:

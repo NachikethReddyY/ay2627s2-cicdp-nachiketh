@@ -2,10 +2,11 @@ import { out, signUp, trpc } from "./helpers.ts";
 import { randomUUID } from "node:crypto";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
 import { attempts, gameCompletions, learners, lessons, lessonVersions, stepProgress, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { lessonDone } from "../src/progress/shared.ts";
 import { seed } from "../src/db/seed.ts";
 import { engineLearner } from "../src/engine-client/learner.ts";
 
@@ -51,6 +52,10 @@ const PREDICT_ACTIONS = ["right", "right", "right", "wrong", "hint", "skip"] as 
 
 const userIdOf = async (email: string) => (await db.select({ id: user.id }).from(user).where(eq(user.email, email)))[0]!.id;
 const learnerOf = async (email: string) => (await db.select({ id: learners.id }).from(learners).where(eq(learners.userId, await userIdOf(email))))[0]!.id;
+const predictDone = async (learnerId: string) => {
+  const result = await db.execute<{ done: number }>(sql`SELECT ${lessonDone(learnerId)} AS done FROM lessons l WHERE l.slug = 'lesson-1'`);
+  return Number(result.rows[0]?.done ?? 0);
+};
 
 async function signedUp(email: string) {
   const cookie = await signUp(app, email);
@@ -117,6 +122,47 @@ test("skipping a predict step is refused and never completes the lesson", async 
   for (const step of PREDICT_STEPS) assert.equal((await m(cookie, "steps.attempt", { id: step.id, answer: step.right })).statusCode, 200);
   const lesson = await codequestLesson(cookie, "lesson-1");
   assert.deepEqual([lesson.done, lesson.total], [3, 3]);
+});
+
+test("a legacy first-action predict skip needs a new answer and keeps its observation", async () => {
+  const email = emailOf("legacy-skip");
+  const cookie = await signUp(app, email);
+  assert.equal((await q(cookie, "home.get")).statusCode, 200);
+  const [learner] = await db.select({ id: learners.id }).from(learners);
+  const learnerId = learner!.id;
+  await db.insert(stepProgress).values({ learnerId, stepId: "s1", state: "skipped" });
+  await db.insert(attempts).values({ learnerId, stepId: "s1", kind: "skip", observed: true });
+
+  assert.equal(out(await q(cookie, "lessons.get", { id: "lesson-1" })).steps[0].state, "predicting");
+  assert.equal(out(await q(cookie, "steps.get", { id: "s1" })).state, "predicting");
+  assert.equal((await q(cookie, "steps.reveal", { id: "s1" })).statusCode, 409);
+  const answers = await Promise.all(Array.from({ length: 10 }, () => m(cookie, "steps.attempt", { id: "s1", answer: { kind: "mcq", choice: 1 } })));
+  assert.equal(answers.filter((answer) => answer.statusCode === 200).length, 1);
+  assert.equal(answers.filter((answer) => answer.statusCode === 409).length, 9);
+  assert.equal(out(answers.find((answer) => answer.statusCode === 200)!).state, "revealed");
+
+  const rows = await db.select().from(attempts).where(and(eq(attempts.learnerId, learnerId), eq(attempts.stepId, "s1")));
+  assert.deepEqual(rows.map((row) => [row.kind, row.observed]), [["skip", true], ["mcq", false]]);
+  assert.equal(await predictDone(learnerId), 1);
+});
+
+test("a legacy wrong-answer-then-skip predict step accepts a new answer", async () => {
+  const email = emailOf("legacy-wrong-skip");
+  const cookie = await signUp(app, email);
+  assert.equal((await q(cookie, "home.get")).statusCode, 200);
+  const [learner] = await db.select({ id: learners.id }).from(learners);
+  const learnerId = learner!.id;
+  const wrong = await m(cookie, "steps.attempt", { id: "s1", answer: { kind: "mcq", choice: 0 } });
+  assert.equal(out(wrong).state, "hinting");
+  await db.insert(attempts).values({ learnerId, stepId: "s1", kind: "skip", observed: false });
+  await db.update(stepProgress).set({ state: "skipped" }).where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, "s1")));
+
+  assert.equal(out(await q(cookie, "lessons.get", { id: "lesson-1" })).steps[0].state, "predicting");
+  assert.equal(out(await m(cookie, "steps.attempt", { id: "s1", answer: { kind: "mcq", choice: 1 } })).state, "revealed");
+
+  const rows = await db.select().from(attempts).where(and(eq(attempts.learnerId, learnerId), eq(attempts.stepId, "s1")));
+  assert.deepEqual(rows.map((row) => [row.kind, row.observed]), [["mcq", true], ["skip", false], ["mcq", false]]);
+  assert.equal(await predictDone(learnerId), 1);
 });
 
 const quizBlock = (id: string) => ({
