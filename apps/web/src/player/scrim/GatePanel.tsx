@@ -83,6 +83,7 @@ function GateRun({ stepId, ordinal, total, step, onDone, skippable = true, showC
         canSubmit={canSubmit(snap)}
         canHint={canHint(snap)}
         canSkip={skippable && canSkip(snap)}
+        showSkip={skippable}
         showCode={showCode}
         onSubmit={(answer) => run(async () => send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id: stepId, answer }) }))}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id: stepId }) }))}

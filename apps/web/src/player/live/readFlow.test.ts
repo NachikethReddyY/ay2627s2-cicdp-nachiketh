@@ -13,20 +13,20 @@ test("a learn or watch lesson starts with its opening prediction", () => {
 
 test("a revealed opening resumes at reading, and an unattempted closing check is not terminal", () => {
   assert.equal(startStage([done, open], false), "reading");
-  assert.equal(offersNext(startStage([done, open], false)), false);
+  assert.equal(offersNext([done, open], false), false);
 });
 
 test("a skipped step never opens the lesson or offers next", () => {
   assert.equal(startStage([{ state: "skipped" }, open], false), "opening");
-  const skippedClosing = startStage([done, { state: "skipped" }], false);
-  assert.equal(skippedClosing, "reading");
-  assert.equal(offersNext(skippedClosing), false);
+  const skippedClosing = [done, { state: "skipped" as const }];
+  assert.equal(startStage(skippedClosing, false), "reading");
+  assert.equal(offersNext(skippedClosing, false), false);
 });
 
 test("a wrong closing answer records completion, so reopening shows the lesson complete", () => {
   const reopened = startStage([done, wrong], true);
   assert.equal(reopened, "done");
-  assert.equal(offersNext(reopened), true);
+  assert.equal(offersNext([done, wrong], true), true);
 });
 
 test("without a completion row the stage never reaches done, whatever the step states", () => {
@@ -34,11 +34,22 @@ test("without a completion row the stage never reaches done, whatever the step s
     assert.notEqual(startStage(states, false), "done");
 });
 
-test("the flow advances opening, reading, closing, done and offers next only at the end", () => {
-  assert.equal(advance("opening"), "reading");
-  assert.equal(advance("reading"), "reading");
-  assert.equal(advance("closing"), "done");
-  assert.deepEqual((["opening", "reading", "closing", "done"] as const).map(offersNext), [false, false, false, true]);
+test("the flow follows server state, and offers next only once the server reports completion", () => {
+  assert.equal(advance([open, open], false), "opening");
+  assert.equal(advance([done, open], false), "reading");
+  assert.equal(advance([done, done], true), "done");
+  assert.deepEqual(
+    [[open, open], [done, open], [done, done]].map((c) => offersNext(c, false)),
+    [false, false, false],
+  );
+  assert.equal(offersNext([done, done], true), true);
+});
+
+test("a terminal closing step without a completion row never reaches done or offers next", () => {
+  for (const closing of [done, wrong, { state: "skipped" as const }]) {
+    assert.notEqual(advance([done, closing], false), "done");
+    assert.equal(offersNext([done, closing], false), false);
+  }
 });
 
 test("only learn and watch lessons with two checks use the flow", () => {

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import GatePanel from "../scrim/GatePanel";
-import { advance, offersNext, startStage, type ReadStage } from "./readFlow";
+import { advance, offersNext } from "./readFlow";
 
 type Check = { id: string; state: "predicting" | "hinting" | "revealed" | "skipped" };
 
@@ -23,16 +23,18 @@ function CheckPage({ check, ordinal, total, onDone }: { check: Check; ordinal: n
 }
 
 export default function CheckedLesson({ checks, completed, next, onFinished, children }: Props) {
-  const [stage, setStage] = useState<ReadStage>(() => startStage(checks, completed));
+  const [reviewing, setReviewing] = useState(false);
   const opening = checks[0];
   const closing = checks[checks.length - 1];
-  if (stage === "opening") return <CheckPage check={opening} ordinal={0} total={2} onDone={() => setStage(advance(stage))} />;
+  const served = advance(checks, completed);
+  const stage = served === "reading" && reviewing ? "closing" : served;
+  if (stage === "opening") return <CheckPage check={opening} ordinal={0} total={2} onDone={onFinished} />;
   if (stage === "closing")
-    return <CheckPage check={closing} ordinal={1} total={2} onDone={() => { setStage(advance(stage)); onFinished(); }} />;
-  const footer = offersNext(stage) ? (
+    return <CheckPage check={closing} ordinal={1} total={2} onDone={() => { setReviewing(false); onFinished(); }} />;
+  const footer = offersNext(checks, completed) ? (
     next
   ) : (
-    <button type="button" className="btn" onClick={() => setStage("closing")}>
+    <button type="button" className="btn" onClick={() => setReviewing(true)}>
       Check what you learned
     </button>
   );
