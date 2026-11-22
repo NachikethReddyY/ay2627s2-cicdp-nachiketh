@@ -193,13 +193,24 @@ def test_advance_without_title_does_not_leak_the_lesson_id() -> None:
     assert "l3" not in r.reason
 
 
+def test_advance_reason_keeps_comma_in_concept_name_clear() -> None:
+    r = recommend(
+        [Mastery("arrays, recursion", 0.99), Mastery("loops", 0.97)],
+        [],
+        [Lesson("done", ["arrays, recursion", "loops"], "learn", True, 1), L3],
+    )
+    assert r.reason == (
+        "You've mastered arrays, recursion. You've mastered loops. Next up: the next lesson."
+    )
+
+
 def test_reason_default_world_has_no_double_yet() -> None:
     from learnquest_engine.policy import _reason
 
     assert "yet yet" not in _reason(ReasonCode.START, ["vars"], lesson="X")
 
 
-NAMED = ["alpha", "beta", "gamma", "delta"]
+NAMED = ["alpha", "beta", "gamma", "delta", "arrays, recursion"]
 named_lessons_st = st.lists(
     st.builds(
         Lesson,
@@ -229,7 +240,12 @@ def test_no_reason_names_a_concept_below_threshold_as_mastered(
     if not r.reason.startswith(prefix):
         assert "mastered" not in r.reason
         return
-    listed = r.reason.removeprefix(prefix).split(". Next up:")[0].split(", ")
+    listed = [
+        concept.removesuffix(".")
+        for concept in r.reason.removeprefix(prefix)
+        .split(". Next up:")[0]
+        .split(". You've mastered ")
+    ]
     p_of = {m.concept_id: m.p_known for m in mastery}
     assert listed
     assert all(p_of[c] >= mastered_at for c in listed)

@@ -93,7 +93,8 @@ def _reason(
         case ReasonCode.ADVANCE:
             if not concepts:
                 return f"Next up: {lesson}."
-            return f"You've mastered {', '.join(concepts[:3])}. Next up: {lesson}."
+            mastered = " ".join(f"You've mastered {concept}." for concept in concepts[:3])
+            return f"{mastered} Next up: {lesson}."
         case ReasonCode.REVIEW:
             return f"{name} is at {_pct(p_known)}%. A quick re-do will lock it in."
         case ReasonCode.DONE:
