@@ -1,7 +1,7 @@
 import { Suspense, lazy, createElement, type ComponentType } from "react";
 import type { Block } from "@learnquest/ui-catalog";
 
-export type GameCompletionContext = { lessonId: string; partIdx: number; onComplete?: () => void };
+export type GameCompletionContext = { lessonId: string; versionId: string; partIdx: number; onComplete?: () => void };
 export type BlockViewProps<P = any> = { block: Block<P>; gameCompletion?: GameCompletionContext };
 
 const mods = import.meta.glob<{ default: ComponentType<BlockViewProps> }>(["./*/View.tsx", "!./scene3d/View.tsx"], { eager: true });

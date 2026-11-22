@@ -24,10 +24,10 @@ export function gameApi(ctx: GameCompletionContext | undefined, gameIndex: numbe
   }
   return {
     check: (submission) =>
-      trpc.games.check.mutate({ lessonId: ctx.lessonId, gameIndex, submission }).then((verdict) => {
+      trpc.games.check.mutate({ lessonId: ctx.lessonId, versionId: ctx.versionId, gameIndex, submission }).then((verdict) => {
         if (verdict.complete) ctx.onComplete?.();
         return verdict;
       }),
-    hint: async (hintIndex) => (await trpc.games.hint.query({ lessonId: ctx.lessonId, gameIndex, hintIndex })).text,
+    hint: async (hintIndex) => (await trpc.games.hint.query({ lessonId: ctx.lessonId, versionId: ctx.versionId, gameIndex, hintIndex })).text,
   };
 }

@@ -146,8 +146,10 @@ async function publishVersion(lesson: GameLesson, version: number, blocks: unkno
 
 const addTwoGameLesson = () => addGameLesson([quizBlock("g1"), quizBlock("g2")]);
 
-const play = (cookie: string, lesson: GameLesson, gameIndex: number, right: boolean) =>
-  m(cookie, "games.check", { lessonId: lesson.slug, gameIndex, submission: { kind: "quiz", answers: [right ? 1 : 0] } });
+const play = async (cookie: string, lesson: GameLesson, gameIndex: number, right: boolean) => {
+  const versionId = out(await q(cookie, "lessons.get", { id: lesson.slug })).part.versionId;
+  return m(cookie, "games.check", { lessonId: lesson.slug, versionId, gameIndex, submission: { kind: "quiz", answers: [right ? 1 : 0] } });
+};
 
 const progressOf = async (cookie: string, lesson: GameLesson) => {
   const { done, total } = await codequestLesson(cookie, lesson.slug);
@@ -169,6 +171,20 @@ test("winning one of two games does not complete a game lesson", async () => {
 const xpOf = async (cookie: string): Promise<number> => out(await q(cookie, "home.get")).stats.xp;
 
 const winRows = async (lesson: GameLesson) => db.select().from(gameCompletions).where(eq(gameCompletions.lessonId, lesson.lessonId));
+
+test("a submission from an older lesson version cannot win the new game", async () => {
+  const lesson = await addGameLesson([quizBlock("g1")]);
+  const cookie = await signUp(app, emailOf("stale-game"));
+  const versionId = out(await q(cookie, "lessons.get", { id: lesson.slug })).part.versionId;
+  const original = quizBlock("g1");
+  await publishVersion(lesson, 2, [{ ...original, props: { ...original.props, title: "Changed" } }]);
+  const response = await m(cookie, "games.check", { lessonId: lesson.slug, versionId, gameIndex: 0, submission: { kind: "quiz", answers: [1] } });
+  assert.equal(response.statusCode, 409);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  assert.equal(await xpOf(cookie), 0);
+  assert.equal((await q(cookie, "games.hint", { lessonId: lesson.slug, versionId, gameIndex: 0, hintIndex: 0 })).statusCode, 409);
+  assert.equal(out(await play(cookie, lesson, 0, true)).complete, true);
+});
 
 test("a block added in a new version keeps old wins, needs its own win, and awards no XP for old blocks", async () => {
   const lesson = await addTwoGameLesson();

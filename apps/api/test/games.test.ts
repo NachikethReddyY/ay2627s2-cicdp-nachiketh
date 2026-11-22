@@ -111,7 +111,8 @@ test("watch mode sends its solution, debug mode its starter, and nothing else ex
   assert.deepEqual(keys(extra.kind), ["items", "kind"]);
 });
 
-const check = (cookie: string, gameIndex: number, submission: unknown, lessonId = "games-1") => m(cookie, "games.check", { lessonId, gameIndex, submission });
+const versionOf = async (lessonId: string) => (await db.select().from(lessons).where(eq(lessons.slug, lessonId)))[0]?.currentVersionId ?? "00000000-0000-4000-8000-000000000000";
+const check = async (cookie: string, gameIndex: number, submission: unknown, lessonId = "games-1") => m(cookie, "games.check", { lessonId, versionId: await versionOf(lessonId), gameIndex, submission });
 
 test("games.check grades every kind on the server", async () => {
   const cookie = await signUp(app);
@@ -163,7 +164,7 @@ test("games.hint returns the stored hint, 404 out of range and for lessons the c
   const cookie = await signUp(app, "a@example.com");
   const other = await signUp(app, "b@example.com");
   await addGame("games-1");
-  const hint = (c: string, gameIndex: number, hintIndex: number, lessonId = "games-1") => q(c, "games.hint", { lessonId, gameIndex, hintIndex });
+  const hint = async (c: string, gameIndex: number, hintIndex: number, lessonId = "games-1") => q(c, "games.hint", { lessonId, versionId: await versionOf(lessonId), gameIndex, hintIndex });
   assert.deepEqual(out(await hint(cookie, 0, 0)), { text: "quiz hint 1" });
   assert.deepEqual(out(await hint(cookie, 0, 1)), { text: "quiz hint 2" });
   for (const res of [await hint(cookie, 0, 2), await hint(cookie, 2, 0), await hint(cookie, 9, 0), await hint(cookie, 0, 0, "nope")]) {

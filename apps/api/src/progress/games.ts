@@ -12,9 +12,9 @@ const lessonId = z.string().regex(/^[\w-]{1,64}$/);
 const gameIndex = z.number().int().min(0).max(100);
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-async function loadGame(learnerId: string, ref: string, index: number): Promise<{ lessonDbId: string; blockHash: string; game: GameProps }> {
+async function loadGame(learnerId: string, ref: string, versionId: string, index: number): Promise<{ lessonDbId: string; blockHash: string; game: GameProps }> {
   const { rows } = await db.execute(sql`
-    SELECT l.id AS lesson_id, v.content->'doc' AS doc,
+    SELECT l.id AS lesson_id, v.id AS version_id, v.content->'doc' AS doc,
       ARRAY(SELECT k.hash FROM ${gameBlockKeys(sql`v.content`)} k ORDER BY k.ord) AS hashes
     FROM lessons l
     JOIN worlds w ON w.id = l.world_id
@@ -24,7 +24,8 @@ async function loadGame(learnerId: string, ref: string, index: number): Promise<
       AND ${playableLesson()}
       AND ${visibleWorld(meUser)}
       AND v.content->>'kind' = 'game-practice'`);
-  const row = rows[0] as { lesson_id: string; doc: unknown; hashes: string[] } | undefined;
+  const row = rows[0] as { lesson_id: string; version_id: string; doc: unknown; hashes: string[] } | undefined;
+  if (row && row.version_id !== versionId) throw new TRPCError({ code: "CONFLICT", message: "This lesson has changed. Reload it to continue." });
   const block = row && gameBlocksOf(row.doc)[index];
   const parsed = block && gameSchema.safeParse(block.props);
   const blockHash = row?.hashes[index];
@@ -41,20 +42,20 @@ async function everyBlockWon(learnerId: string, lessonDbId: string): Promise<boo
 }
 
 const hint = protectedProcedure
-  .input(z.object({ lessonId, gameIndex, hintIndex: z.number().int().min(0).max(100) }))
+  .input(z.object({ lessonId, versionId: z.string().uuid(), gameIndex, hintIndex: z.number().int().min(0).max(100) }))
   .output(z.object({ text: z.string() }))
   .query(async ({ ctx, input }) => {
-    const { game } = await loadGame(ctx.learnerId, input.lessonId, input.gameIndex);
+    const { game } = await loadGame(ctx.learnerId, input.lessonId, input.versionId, input.gameIndex);
     const text = game.hints[input.hintIndex];
     if (text === undefined) throw notFound();
     return { text };
   });
 
 const check = protectedProcedure
-  .input(z.object({ lessonId, gameIndex, submission: submissionSchema }))
+  .input(z.object({ lessonId, versionId: z.string().uuid(), gameIndex, submission: submissionSchema }))
   .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionResults: z.array(z.boolean()).optional() }))
   .mutation(async ({ ctx, input }) => {
-    const { lessonDbId, blockHash, game } = await loadGame(ctx.learnerId, input.lessonId, input.gameIndex);
+    const { lessonDbId, blockHash, game } = await loadGame(ctx.learnerId, input.lessonId, input.versionId, input.gameIndex);
     let verdict;
     try {
       verdict = grade(game, input.submission);
