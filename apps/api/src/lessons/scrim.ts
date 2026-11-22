@@ -16,7 +16,7 @@ export function scrimGateStates(scrim: Scrim, rows: ReadonlyArray<{ id: string; 
     if (!step || step.pub.kind !== "mcq") throw malformedScrim();
     gates.set(segment.gate, { id: step.id, state: scrimStepState(step.state) });
   }
-  if (gates.size !== rows.length) throw malformedScrim();
+  if (gates.size !== rows.filter((row) => row.idx >= 0).length) throw malformedScrim();
   return gates;
 }
 

@@ -1,4 +1,4 @@
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { saveMedia } from "../media/service.ts";
@@ -7,7 +7,7 @@ import { storage } from "../media/storage.ts";
 import { slugOf } from "../progress/mastery.ts";
 import { db, pool } from "./client.ts";
 import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
-import { attempts, collectionPaths, collections, concepts, hintEvents, lessonMedia, lessons, lessonVersions, pathCourses, paths, stepProgress, steps, worlds } from "./schema.ts";
+import { collectionPaths, collections, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
 
@@ -45,34 +45,15 @@ async function loadWorld(world: string) {
 
 type Loaded = Awaited<ReturnType<typeof loadWorld>>;
 
-async function stepsWithLearnerData(tx: Tx, stepIds: string[]) {
-  const ids = new Set<string>();
-  for (const rows of await Promise.all([
-    tx.select({ stepId: attempts.stepId }).from(attempts).where(inArray(attempts.stepId, stepIds)),
-    tx.select({ stepId: hintEvents.stepId }).from(hintEvents).where(inArray(hintEvents.stepId, stepIds)),
-    tx.select({ stepId: stepProgress.stepId }).from(stepProgress).where(inArray(stepProgress.stepId, stepIds)),
-  ])) {
-    for (const row of rows) ids.add(row.stepId);
+async function archiveStaleSteps(tx: Tx, versionId: string, keep: string[]) {
+  const rows = await tx.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId));
+  const kept = new Set(keep);
+  let nextIdx = Math.min(0, ...rows.map((row) => row.idx)) - 1;
+  for (const row of rows) {
+    if (row.idx >= 0 && !kept.has(row.id)) {
+      await tx.update(steps).set({ idx: nextIdx-- }).where(eq(steps.id, row.id));
+    }
   }
-  return ids;
-}
-
-async function dropStaleSteps(tx: Tx, versionId: string, keep: string[]) {
-  const stale = (
-    await tx
-      .select({ id: steps.id })
-      .from(steps)
-      .where(keep.length > 0 ? and(eq(steps.lessonVersionId, versionId), notInArray(steps.id, keep)) : eq(steps.lessonVersionId, versionId))
-  ).map((row) => row.id);
-  if (stale.length === 0) return;
-  const protectedSteps = await stepsWithLearnerData(tx, stale);
-  const deletable = stale.filter((id) => !protectedSteps.has(id));
-  if (deletable.length === 0) return;
-  await tx.delete(lessonMedia).where(inArray(lessonMedia.stepId, deletable));
-  await tx.delete(hintEvents).where(inArray(hintEvents.stepId, deletable));
-  await tx.delete(attempts).where(inArray(attempts.stepId, deletable));
-  await tx.delete(stepProgress).where(inArray(stepProgress.stepId, deletable));
-  await tx.delete(steps).where(inArray(steps.id, deletable));
 }
 
 async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
@@ -123,7 +104,7 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
     const stepId = (s: { id?: string }, idx: number) => s.id ?? `${file.slug}-${idx}`;
     if (file.scrim) {
       const served = file.scrim.segments.flatMap(({ gate }) => gate === undefined ? [] : [stepId(file.steps[gate], gate)]);
-      await dropStaleSteps(tx, version.id, served);
+      await archiveStaleSteps(tx, version.id, served);
     }
 
     for (const [idx, s] of file.steps.entries()) {

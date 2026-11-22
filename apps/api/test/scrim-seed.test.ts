@@ -1,7 +1,7 @@
-import "./helpers.ts";
+import { signUp, trpc } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
 import { attempts, hintEvents, lessonMedia, learners, lessons, lessonVersions, stepProgress, steps, user, worlds } from "../src/db/schema.ts";
@@ -10,6 +10,10 @@ import { silentWav } from "../src/media/silent-wav.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
 import { LessonFile } from "../src/db/lesson-file.ts";
 import { parseScrim } from "../src/parts/scrim-schema.ts";
+import { buildApp } from "../src/app.ts";
+
+const app = buildApp();
+after(() => app.close());
 
 const SLUG = "scrim-return-values";
 
@@ -137,5 +141,9 @@ test("reseeding after a removed gate keeps the learner's attempts, hints and pro
   assert.equal((await db.select().from(attempts).where(eq(attempts.stepId, ghost!.id))).length, 1);
   assert.equal((await db.select().from(hintEvents).where(eq(hintEvents.stepId, ghost!.id))).length, 1);
   assert.equal((await db.select().from(stepProgress).where(eq(stepProgress.stepId, ghost!.id))).length, 1);
-  assert.equal((await db.select().from(steps).where(eq(steps.id, ghost!.id))).length, 1);
+  const [archived] = await db.select().from(steps).where(eq(steps.id, ghost!.id));
+  assert.ok(archived!.idx < 0);
+  const client = trpc(app, await signUp(app, "scrim-reseed-view@example.com"));
+  assert.equal((await client.q("lessons.get", { id: SLUG })).statusCode, 200);
+  assert.equal((await client.q("steps.get", { id: ghost!.id })).statusCode, 404);
 });
