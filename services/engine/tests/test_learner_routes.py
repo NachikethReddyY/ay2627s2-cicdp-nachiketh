@@ -92,10 +92,10 @@ def test_next_done_has_null_lesson(client: TestClient) -> None:
     assert body["reason"]
 
 
-def test_next_finished_weak_lesson_is_reviewed(client: TestClient) -> None:
+def test_next_finished_weak_lesson_uses_next_action(client: TestClient) -> None:
     weak = {**NEXT, "lessons": [{**NEXT["lessons"][0], "done": True}]}  # type: ignore[index]
     body = client.post("/v1/next", json=weak, headers=TOKEN).json()
-    assert (body["action"], body["reasonCode"], body["lessonId"]) == ("practice", "REVIEW", "l1")
+    assert (body["action"], body["reasonCode"], body["lessonId"]) == ("done", "DONE", None)
 
 
 def test_next_reason_uses_titles(client: TestClient) -> None:
