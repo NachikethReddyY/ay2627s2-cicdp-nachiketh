@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { playableLesson } from "../access.ts";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { attempts, concepts, lessons, lessonVersions, mastery, recommendations, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
@@ -102,12 +103,12 @@ async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string
 
 async function recommend(tx: Db, learnerId: string, worldId: string): Promise<void> {
   const worldLessons = await tx
-    .select({ id: lessons.id, status: lessons.status, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
+    .select({ id: lessons.id, kind: lessons.kind, title: lessons.title, concepts: lessons.concepts })
     .from(lessons)
     .where(
       and(
         eq(lessons.worldId, worldId),
-        or(eq(lessons.status, "published"), and(eq(lessons.sourceKind, "ai"), eq(lessons.status, "draft"))),
+        playableLesson(lessons),
       ),
     )
     .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.slug));
@@ -118,8 +119,7 @@ async function recommend(tx: Db, learnerId: string, worldId: string): Promise<vo
   const { rows } = await tx.execute<{ id: string; done: number; total: number }>(sql`
     SELECT l.id, ${lessonDone(learnerId)} AS done, ${lessonTotal} AS total
     FROM lessons l WHERE l.world_id = ${worldId} AND ${listed}`);
-  const published = new Set(worldLessons.filter((l) => l.status === "published").map((l) => l.id));
-  const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total && published.has(r.id)).map((r) => r.id));
+  const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total).map((r) => r.id));
 
   const known = await tx
     .select({ conceptId: mastery.conceptId, slug: concepts.slug, pKnown: mastery.pKnown })

@@ -1,5 +1,5 @@
-import { and, asc, eq, or, sql } from "drizzle-orm";
-import { lessonRef, visibleWorld } from "../access.ts";
+import { and, asc, eq, sql } from "drizzle-orm";
+import { lessonRef, playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
@@ -111,7 +111,7 @@ export const lessonsRouter = router({
         .where(
           and(
             lessonRef(id, lessons),
-            or(eq(lessons.status, "published"), and(eq(lessons.sourceKind, "ai"), eq(lessons.status, "draft"))),
+            playableLesson(lessons),
             visibleWorld(learners.userId, worlds),
           ),
         );
@@ -120,7 +120,7 @@ export const lessonsRouter = router({
         await ensureLesson(lesson.id, ctx.learnerId);
         [lesson] = await db.select().from(lessons).where(eq(lessons.id, lesson.id));
       }
-      if (!lesson?.currentVersionId || lesson.status !== "published") {
+      if (!lesson?.currentVersionId || (lesson.status !== "published" && !(lesson.status === "draft" && lesson.sourceKind === "ai"))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
       }
       const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, lesson.currentVersionId));

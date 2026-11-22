@@ -1,5 +1,5 @@
 import { and, count, eq } from "drizzle-orm";
-import { visibleWorld } from "../access.ts";
+import { playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
@@ -39,7 +39,7 @@ async function loadStep(id: string, learnerId: string) {
     .where(
       and(
         eq(steps.id, id),
-        eq(lessons.status, "published"),
+        playableLesson(lessons),
         eq(lessons.currentVersionId, steps.lessonVersionId),
         visibleWorld(learners.userId, worlds),
       ),

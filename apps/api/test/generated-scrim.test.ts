@@ -106,7 +106,7 @@ test("a generated scrim is stored without steps, and its gate steps are written 
   await idle();
 
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));
-  assert.deepEqual([row!.kind, row!.status], ["scrim", "published"]);
+  assert.deepEqual([row!.kind, row!.status], ["scrim", "draft"]);
   const [version] = await db.select().from(lessonVersions).where(eq(lessonVersions.id, row!.currentVersionId!));
   assert.equal(version!.content?.kind, "scrim");
   assert.equal("steps" in version!.content!, false);

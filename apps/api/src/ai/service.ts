@@ -220,19 +220,24 @@ function stepRows(lessonVersionId: string, list: readonly GeneratedStep[]) {
   }));
 }
 
-async function writeOnce(tx: Db, lessonId: string, { part, generated }: Generated) {
+async function writeOnce(tx: Db, lessonId: string, usedPublicModeration: boolean, { part, generated }: Generated) {
   const [l] = await tx.select().from(lessons).where(eq(lessons.id, lessonId)).for("update");
   if (!l || l.currentVersionId || l.sourceKind !== "ai") return null;
+
+  const [world] = await tx.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, l.worldId));
+  if (world.visibility === "public" && !usedPublicModeration) {
+    throw new Error("Lesson must pass public moderation before it can be saved");
+  }
 
   const { content, gateSteps } = splitPart(part);
   const [version] = await tx
     .insert(lessonVersions)
-    .values({ lessonId: l.id, version: 1, publishedAt: new Date(), content })
+    .values({ lessonId: l.id, version: 1, publishedAt: l.status === "published" ? new Date() : null, content })
     .returning();
   const prewarm = part && (part.kind === "learn" || part.kind === "game-practice") && part.doc ? part.doc : null;
   const stepList = part ? (gateSteps ?? []) : generated;
   if (stepList.length) await tx.insert(steps).values(stepRows(version.id, stepList));
-  await tx.update(lessons).set({ currentVersionId: version.id, status: "published" }).where(eq(lessons.id, l.id));
+  await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, l.id));
   return { lessonVersionId: version.id, prewarm };
 }
 
@@ -290,17 +295,17 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
   const ctx = await lessonContext(pre);
-  const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
-  const isPublic = world?.visibility === "public";
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
   const cached = key ? await cachedPart(key) : null;
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
+    const isPublic = world?.visibility === "public";
     if (!cached) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
-      const written = await withTx((tx) => writeOnce(tx, lessonId, result));
+      const written = await withTx((tx) => writeOnce(tx, lessonId, isPublic, result));
       if (!written) return false;
       if (written.prewarm) {
         const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId })

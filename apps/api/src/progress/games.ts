@@ -4,7 +4,7 @@ import { z } from "zod";
 import { gameBlocksOf, gameSchema, type GameProps } from "@learnquest/ui-catalog";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
-import { lessonRef, meUser, visibleWorld } from "../access.ts";
+import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 import { BadSubmission, grade, submissionSchema } from "../games/grade.ts";
 
 const lessonId = z.string().regex(/^[\w-]{1,64}$/);
@@ -19,7 +19,7 @@ async function loadGame(learnerId: string, ref: string, index: number): Promise<
     JOIN learners me ON me.id = ${learnerId}
     JOIN lesson_versions v ON v.id = l.current_version_id
     WHERE ${lessonRef(ref)}
-      AND l.status = 'published'
+      AND ${playableLesson()}
       AND ${visibleWorld(meUser)}
       AND v.content->>'kind' = 'game-practice'`);
   const row = rows[0] as { lesson_id: string; doc: unknown } | undefined;
