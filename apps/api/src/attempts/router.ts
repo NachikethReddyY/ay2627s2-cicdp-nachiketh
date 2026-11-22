@@ -81,7 +81,7 @@ function mutate(
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [stored] = await tx.select().from(stepProgress).where(where).for("update");
-    const r = next(recoveryProgress(stored!, step.lessonKind), action, { hintCount: step.secret.hints.length });
+    const r = next(recoveryProgress(stored, step.lessonKind), action, { hintCount: step.secret.hints.length });
     if ("conflict" in r) return r;
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);

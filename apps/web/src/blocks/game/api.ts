@@ -1,4 +1,5 @@
 import type { GridProgram } from "@learnquest/ui-catalog";
+import { TRPCClientError } from "@trpc/client";
 import { trpc } from "../../lib/trpc.ts";
 import type { GameCompletionContext } from "../registry.ts";
 
@@ -22,12 +23,16 @@ export function gameApi(ctx: GameCompletionContext | undefined, gameIndex: numbe
     const unavailable = () => Promise.reject(new Error("This game is not part of a lesson"));
     return { check: unavailable, hint: unavailable };
   }
+  const handleError = (error: unknown): never => {
+    if (error instanceof TRPCClientError && error.data?.code === "CONFLICT") ctx.onStale?.();
+    throw error;
+  };
   return {
     check: (submission) =>
       trpc.games.check.mutate({ lessonId: ctx.lessonId, versionId: ctx.versionId, gameIndex, submission }).then((verdict) => {
         if (verdict.complete) ctx.onComplete?.();
         return verdict;
-      }),
-    hint: async (hintIndex) => (await trpc.games.hint.query({ lessonId: ctx.lessonId, versionId: ctx.versionId, gameIndex, hintIndex })).text,
+      }).catch(handleError),
+    hint: async (hintIndex) => (await trpc.games.hint.query({ lessonId: ctx.lessonId, versionId: ctx.versionId, gameIndex, hintIndex }).catch(handleError)).text,
   };
 }
