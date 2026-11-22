@@ -131,6 +131,8 @@ test("lessons.get returns only through the first pending gate with no secrets", 
   ]);
   assert.deepEqual(out(res), {
     id: slug,
+    versionId,
+    canUpgradeReadChecks: false,
     title: "Scrim echo",
     kind: "scrim",
     part: {
