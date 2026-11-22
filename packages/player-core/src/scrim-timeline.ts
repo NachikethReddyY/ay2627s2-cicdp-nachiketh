@@ -1,10 +1,14 @@
 import { buildTimeline } from "./events.ts";
 import type { Hunk, Timeline, TypingConfig } from "./types.ts";
 
-const EXTENSIONS: Record<string, string> = { python: "py", typescript: "ts", javascript: "js" };
+const EXTENSIONS = new Map([
+  ["python", "py"],
+  ["typescript", "ts"],
+  ["javascript", "js"],
+]);
 
 export function scrimFile(language: string | undefined): string {
-  return `main.${EXTENSIONS[language ?? ""] ?? "js"}`;
+  return `main.${EXTENSIONS.get(language ?? "") ?? "js"}`;
 }
 
 const TYPING: TypingConfig = { msPerChar: 55, lineEndPauseMs: 250, blockThresholdLines: 20 };

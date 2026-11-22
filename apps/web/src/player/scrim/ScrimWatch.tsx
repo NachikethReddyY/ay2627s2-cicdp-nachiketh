@@ -117,8 +117,9 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   };
 
   const tickTo = (t: number) => {
-    const crossed = state.playing ? runCrossed(scrim, state.t, commit({ type: "tick", t }).t) : [];
-    for (const run of crossed) void runner.run(scrim.edits[run.edit].code);
+    const crossed = state.playing ? runCrossed(scrim, state.answered, state.t, commit({ type: "tick", t }).t) : [];
+    const last = crossed[crossed.length - 1];
+    if (last) void runner.run(scrim.edits[last.edit].code);
   };
 
   const endSegment = () => {

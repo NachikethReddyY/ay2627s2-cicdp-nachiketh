@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildScrimTimeline, codeAt, editGateKey, frameAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type TimedEdit } from "./scrim.ts";
+import { buildScrimTimeline, codeAt, editGateKey, frameAt, openGate, reachable, runCrossed, scrimClock, segmentAt, shownEdits, type ScrimClock, type TimedEdit } from "./scrim.ts";
 import { editTimeline, scrimFile } from "./scrim-timeline.ts";
 
 const FILE = scrimFile(undefined);
@@ -67,9 +67,36 @@ test("a run fires once, after its edit has finished typing", () => {
   const scrim = buildScrimTimeline([edit(0, 1, "print(1)", null, true)], [null], scrimClock([10]));
   const run = scrim.runs[0];
   assert.ok(run.t > 1 + scrim.typing[0]);
-  assert.deepEqual(runCrossed(scrim, 0, run.t - 0.01), []);
-  assert.deepEqual(runCrossed(scrim, run.t - 0.2, run.t + 0.2), [run]);
-  assert.deepEqual(runCrossed(scrim, run.t, run.t + 1), []);
+  assert.deepEqual(runCrossed(scrim, new Set(), 0, run.t - 0.01), []);
+  assert.deepEqual(runCrossed(scrim, new Set(), run.t - 0.2, run.t + 0.2), [run]);
+  assert.deepEqual(runCrossed(scrim, new Set(), run.t, run.t + 1), []);
+});
+
+test("a question on a part's end holds later edits that start at the same moment", () => {
+  const scrim = buildScrimTimeline([edit(1, 0, "print(2)")], ["Guess?", null], scrimClock([0, 1]));
+  assert.equal(shownEdits(scrim, new Set(), 0), 0);
+  assert.equal(shownEdits(scrim, new Set(["part-0"]), 0), 1);
+});
+
+test("a run under an unanswered question at the end of the clock does not fire", () => {
+  const scrim = buildScrimTimeline([edit(0, 1, "print(1)", "What prints?", true)], [null], scrimClock([1]));
+  const [gate] = scrim.gates;
+  assert.deepEqual(runCrossed(scrim, new Set(), 0, scrim.clock.total), []);
+  assert.equal(runCrossed(scrim, new Set([gate.key]), 0, scrim.clock.total).length, 1);
+});
+
+test("an ungated edit may share its id with a gated step without crashing the timeline", () => {
+  const ungated: TimedEdit = { id: "segment-0", segment: 0, at: 0, cueHeard: true, cue: "", predict: null, code: "print(1)" };
+  const gated: TimedEdit = { ...ungated, at: 0.5, predict: "What prints?" };
+  const scrim = buildScrimTimeline([ungated, gated], [null], scrimClock([1]));
+  assert.equal(scrim.gates.length, 1);
+});
+
+test("a clock with non-finite totals or out-of-order offsets is rejected", () => {
+  const huge = scrimClock([Number.MAX_VALUE, Number.MAX_VALUE, 1]);
+  const backwards: ScrimClock = { offsets: [1, 0], durations: [1, 1], total: 2 };
+  assert.throws(() => buildScrimTimeline([], [], huge), RangeError);
+  assert.throws(() => buildScrimTimeline([], [], backwards), RangeError);
 });
 
 test("for any scrim and any seek, no edit behind an open question ever shows, and code only grows while playing", () => {
@@ -136,7 +163,7 @@ test("for any scrim, every run lands between its edit and the end of the clock",
 
 test("a run near the end of the clock is still crossed by playing to the end", () => {
   const scrim = buildScrimTimeline([edit(0, 3.9, "print(1)", null, true)], [null], scrimClock([4]));
-  assert.equal(runCrossed(scrim, 0, scrim.clock.total).length, 1);
+  assert.equal(runCrossed(scrim, new Set(), 0, scrim.clock.total).length, 1);
 });
 
 test("for any scrim, a frame shows the same code as codeAt, and typing at full speed with distinct edit times adds at most two characters per 16 ms", () => {
@@ -272,14 +299,16 @@ test("for any scrim, crossing a window reports every run in it, in time order, a
   for (let n = 0; n < 1000; n++) {
     const { edits, predicts, clock } = hostileScrim(rand);
     const scrim = buildScrimTimeline(finiteEdits(edits), predicts, clock);
-    const inWindow = (from: number, to: number) => scrim.runs.filter((r) => from < r.t && r.t <= to);
+    const none = new Set<string>();
+    const visible = scrim.runs.filter((r) => shownEdits(scrim, none, r.t) > r.edit);
+    const inWindow = (from: number, to: number) => visible.filter((r) => from < r.t && r.t <= to);
     const from = rand() * clock.total;
     const to = from + rand() * clock.total;
-    assert.deepEqual(runCrossed(scrim, from, to), inWindow(from, to), `run ${n}`);
+    assert.deepEqual(runCrossed(scrim, none, from, to), inWindow(from, to), `run ${n}`);
     const cuts = [-1, ...Array.from({ length: 4 }, () => rand() * clock.total).sort((a, b) => a - b), clock.total];
-    const tiled = cuts.slice(1).flatMap((cut, i) => runCrossed(scrim, cuts[i], cut));
-    assert.deepEqual(tiled, runCrossed(scrim, -1, clock.total), `run ${n}: tiled windows lost or doubled a run`);
-    assert.equal(runCrossed(scrim, -1, clock.total).length, scrim.runs.length, `run ${n}: whole clock missed a run`);
+    const tiled = cuts.slice(1).flatMap((cut, i) => runCrossed(scrim, none, cuts[i], cut));
+    assert.deepEqual(tiled, runCrossed(scrim, none, -1, clock.total), `run ${n}: tiled windows lost or doubled a run`);
+    assert.equal(runCrossed(scrim, none, -1, clock.total).length, visible.length, `run ${n}: whole clock missed a visible run`);
   }
 });
 

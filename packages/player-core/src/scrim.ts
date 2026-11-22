@@ -5,6 +5,7 @@ import type { SeekResult } from "./types.ts";
 const GAP_SHARE = 0.85;
 const RUN_DELAY = 0.4;
 const END_GATE_LEAD = 0.05;
+const PART_GATE_PREFIX = "part-";
 
 export type TimedEdit = { id: string; segment: number; at: number; cueHeard: boolean; cue: string; predict: string | null; code: string; run?: boolean };
 
@@ -48,14 +49,24 @@ function validate(edits: readonly TimedEdit[], clock: ScrimClock): void {
   for (const d of clock.durations) {
     if (!Number.isFinite(d) || d < 0) throw new RangeError(`scrim part duration must be a finite, non-negative number, got ${d}`);
   }
-  const ids = new Set<string>();
+  if (clock.offsets.length !== clock.durations.length || !Number.isFinite(clock.total)) {
+    throw new RangeError(`scrim clock must have one finite offset per part and a finite total, got ${clock.offsets.length} offsets and total ${clock.total}`);
+  }
+  clock.offsets.forEach((offset, i) => {
+    if (!Number.isFinite(offset) || offset < (clock.offsets[i - 1] ?? 0)) {
+      throw new RangeError(`scrim part offset ${i} must be finite and not before the previous offset, got ${offset}`);
+    }
+  });
+  const gateIds = new Set<string>();
   for (const e of edits) {
     if (!Number.isInteger(e.segment) || e.segment < 0 || e.segment >= clock.durations.length) {
       throw new RangeError(`scrim edit "${e.id}" names part ${e.segment}, but the scrim has ${clock.durations.length} parts`);
     }
     if (!Number.isFinite(e.at)) throw new RangeError(`scrim edit "${e.id}" has a non-finite time ${e.at}`);
-    if (ids.has(e.id)) throw new RangeError(`scrim edit id "${e.id}" is used twice, so its gate key would collide`);
-    ids.add(e.id);
+    if (e.predict?.trim()) {
+      if (gateIds.has(e.id)) throw new RangeError(`scrim gated edit id "${e.id}" is used twice, so its gate key would collide`);
+      gateIds.add(e.id);
+    }
   }
 }
 
@@ -74,7 +85,7 @@ export function buildScrimTimeline(edits: readonly TimedEdit[], predicts: readon
   const gates: ScrimGate[] = [
     ...ordered.flatMap((e, i) => (e.predict ? [{ key: editGateKey(e.id), t: times[i], question: e.predict }] : [])),
     ...predicts.flatMap((q, s) =>
-      q?.trim() && s < clock.durations.length ? [{ key: `part-${s}`, t: Math.max(clock.offsets[s], clock.offsets[s] + clock.durations[s] - END_GATE_LEAD), question: q }] : [],
+      q?.trim() && s < clock.durations.length ? [{ key: `${PART_GATE_PREFIX}${s}`, t:Math.max(clock.offsets[s], clock.offsets[s] + clock.durations[s] - END_GATE_LEAD), question: q }] : [],
     ),
   ].sort((a, b) => a.t - b.t);
   const runs = ordered.flatMap((e, i) => (e.run ? [{ edit: i, t: Math.min(times[i] + typing[i] + RUN_DELAY, clock.total) }] : []));
@@ -90,13 +101,16 @@ export function reachable(scrim: ScrimTimeline, answered: ReadonlySet<string>, t
   return clampTime(t, gate ? gate.t : scrim.clock.total);
 }
 
+function partGateBlocks(scrim: ScrimTimeline, answered: ReadonlySet<string>, time: number): boolean {
+  return scrim.gates.some((g) => g.key.startsWith(PART_GATE_PREFIX) && g.t <= time && !answered.has(g.key));
+}
+
 export function shownEdits(scrim: ScrimTimeline, answered: ReadonlySet<string>, t: number): number {
-  const gate = openGate(scrim, answered);
-  const horizon = Math.min(t, gate ? gate.t : Infinity);
   let shown = 0;
-  while (shown < scrim.times.length && scrim.times[shown] <= horizon) {
+  while (shown < scrim.times.length && scrim.times[shown] <= t) {
     const edit = scrim.edits[shown];
     if (edit.predict !== null && !answered.has(editGateKey(edit.id))) break;
+    if (partGateBlocks(scrim, answered, scrim.times[shown])) break;
     shown++;
   }
   return shown;
@@ -120,6 +134,6 @@ export function codeAt(scrim: ScrimTimeline, answered: ReadonlySet<string>, t: n
   return frameAt(scrim, answered, t).files[scrim.file] ?? "";
 }
 
-export function runCrossed(scrim: ScrimTimeline, from: number, to: number): ScrimRun[] {
-  return scrim.runs.filter((r) => from < r.t && r.t <= to);
+export function runCrossed(scrim: ScrimTimeline, answered: ReadonlySet<string>, from: number, to: number): ScrimRun[] {
+  return scrim.runs.filter((r) => from < r.t && r.t <= to && shownEdits(scrim, answered, r.t) > r.edit);
 }
