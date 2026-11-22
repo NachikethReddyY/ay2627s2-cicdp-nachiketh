@@ -21,9 +21,9 @@ Fix the foundations before building on top. A strong inner loop (types, lint, bo
 
 1. Work on a branch. Use `docs/feature-map.md` names for screens and features.
 2. `pnpm agent:verify`. Fix every failure at its cause.
-3. Review with another model using `node scripts/agent-review.ts --author codex`. Set the value to the family that authored the changes.
+3. When useful, review with another model using `node scripts/agent-review.ts --author codex`. Set the value to the family that authored the changes.
 4. Open the PR. A PR for a technical change carries a Mermaid diagram (see the `file-pr` skill).
-5. Use the trusted bootstrap command in [AGENTS.md](../../AGENTS.md#merging), including `--author`, for every PR. Sensitive paths require its clean strict review. See [the merge gate guide](merge-gate.md) and [stacking PRs](stacking-prs.md).
+5. Use the trusted bootstrap command in [AGENTS.md](../../AGENTS.md#merging) for every PR. See [the merge gate guide](merge-gate.md) and [stacking PRs](stacking-prs.md).
 
 ## Where things live
 
