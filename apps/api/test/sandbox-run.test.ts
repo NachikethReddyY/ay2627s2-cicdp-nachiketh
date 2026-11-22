@@ -211,16 +211,18 @@ test("a plain run carries no verdict", async () => {
 test("a checked run whose output overflowed the buffer fails, even if the kept part matches", async () => {
   const kept = "x".repeat(8000);
   const { spawn } = fakeDocker((child) => {
-    child.stdout.emit("data", Buffer.from("extra output the buffer dropped"));
+    child.stdout.emit("data", Buffer.from(kept.slice(-1) + "extra output the buffer dropped"));
     child.emit("close", 0);
-  }, kept);
+  }, kept.slice(0, -1));
   const check = fakeCheck(kept);
   const id = startRun("print('x' * 8000); input(); print('extra')", "learner-k7", "python", spawn as never, check)!;
   await tick();
   sendRunInput(id, "learner-k7", "go");
   await tick();
   await tick();
-  assert.equal(runStatus(id, "learner-k7", 0)?.passed, false);
+  const result = runStatus(id, "learner-k7", 0);
+  assert.equal(result?.output, kept);
+  assert.equal(result?.passed, false);
   assert.equal(check.saved, 0);
 });
 

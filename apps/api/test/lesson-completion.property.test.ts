@@ -248,7 +248,7 @@ test("a submission from an older lesson version cannot win the new game", async 
   assert.equal(response.statusCode, 409);
   assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
   assert.equal(await xpOf(cookie), 0);
-  assert.equal((await q(cookie, "games.hint", { lessonId: lesson.slug, versionId, gameIndex: 0, hintIndex: 0 })).statusCode, 409);
+  assert.equal((await m(cookie, "games.hint", { lessonId: lesson.slug, versionId, gameIndex: 0, hintIndex: 0 })).statusCode, 409);
   assert.equal(out(await play(cookie, lesson, 0, true)).complete, true);
 });
 
@@ -259,13 +259,13 @@ test("a versionless client can play the first version and receives a reload conf
   const cookie = await signUp(app, emailOf("versionless"));
   const game = { lessonId: lesson.slug, gameIndex: 0 };
   const submission = { ...game, submission: { kind: "quiz", answers: [1] } };
-  assert.deepEqual(out(await q(cookie, "games.hint", { ...game, hintIndex: 0 })), { text: "Original hint" });
+  assert.deepEqual(out(await m(cookie, "games.hint", { ...game, hintIndex: 0 })), { text: "Original hint" });
   assert.equal(out(await m(cookie, "games.check", submission)).complete, true);
 
   await publishVersion(lesson, 2, [{ ...original, props: { ...original.props, hints: ["Updated hint"] } }]);
   const rejected = [
     await m(cookie, "games.check", submission),
-    await q(cookie, "games.hint", { ...game, hintIndex: 0 }),
+    await m(cookie, "games.hint", { ...game, hintIndex: 0 }),
   ];
   for (const response of rejected) {
     assert.equal(response.statusCode, 409);

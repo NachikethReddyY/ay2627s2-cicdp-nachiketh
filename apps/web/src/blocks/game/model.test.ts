@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { simulate, type GridProps } from "@learnquest/ui-catalog";
-import { announceRun, announceStep, controls, edit, keyIntent, verdict } from "./model.ts";
+import { announceRun, announceStep, controls, edit, keyIntent } from "./model.ts";
 
 const grid: GridProps = {
   kind: "grid", size: { w: 3, h: 1 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 2, y: 0 }, walls: [], gems: [],
@@ -41,14 +41,4 @@ test("announcements name the step, the bump and the result", () => {
   assert.match(announceRun(run, "win"), /1 bump\./);
   const win = simulate(["forward", "forward"], grid);
   assert.equal(announceRun(win, "win"), "You win! Reached the goal with 0 gems in 2 steps.");
-});
-
-test("verdict: win, retry, lose, and no life lost when nothing ran", () => {
-  const win = simulate(["forward", "forward"], grid);
-  const miss = simulate(["forward"], grid);
-  assert.deepEqual(verdict(win, 2), { state: "win", lives: 2 });
-  assert.deepEqual(verdict(miss, 2), { state: "retry", lives: 1 });
-  assert.deepEqual(verdict(miss, 1), { state: "lose", lives: 0 });
-  assert.deepEqual(verdict(miss), { state: "retry", lives: undefined });
-  assert.deepEqual(verdict(simulate([], grid), 1), { state: "retry", lives: 1 });
 });

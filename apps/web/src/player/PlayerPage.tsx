@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { useSearch } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import LiveLesson from "./LiveLesson";
 import { Notice } from "./live/Notice";
 
@@ -11,7 +11,7 @@ export default function PlayerPage() {
   if (FixturePlayer) return <FixturePlayer />;
   return (
     <Notice>
-      Pick a lesson to start. <a href="/" className="underline">Home</a>
+      Pick a lesson to start. <Link to="/" className="underline">Home</Link>
     </Notice>
   );
 }

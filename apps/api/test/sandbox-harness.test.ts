@@ -8,7 +8,9 @@ import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 
 const { HARNESS_SOURCE, MAX_STDOUT, MAX_STDERR, TEST_TIMEOUT_MS } = await import("../src/sandbox/checkHarness.ts");
-const { classify, score, runInContainer, CheckUnavailableError } = await import("../src/sandbox/check.ts");
+const { classify, score } = await import("../src/sandbox/check.ts");
+const { runInContainer } = await import("../src/sandbox/dockerChecks.ts");
+const { CheckUnavailableError } = await import("../src/sandbox/checkRunner.ts");
 
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -53,7 +55,7 @@ test("harness writes the code, spawns the interpreter per test with its stdin, a
   const h = harness([{ stdout: "3\n" }, { stdout: "x" }], { token: "tok-1", language: "python", code: "print(1)", tests: [{ stdin: "1 2" }, { stdin: "" }] });
   await h.done;
   assert.deepEqual(h.written, { "/tmp/work/solution.py": "print(1)" });
-  const drop = ["--reuid=1001", "--regid=1001", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
+  const drop = ["--no-new-privs", "--reuid=1001", "--regid=1001", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
   assert.deepEqual(h.spawned.map((s) => [s.cmd, s.args, s.stdin]), [
     ["setpriv", [...drop, "python3", "-I", "-u", "solution.py"], "1 2"],
     ["setpriv", [...drop, "python3", "-I", "-u", "solution.py"], ""],

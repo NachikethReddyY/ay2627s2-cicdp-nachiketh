@@ -1,9 +1,10 @@
 import { TRPCError } from "@trpc/server";
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { gameBlocksOf, gameSchema, type GameProps } from "@learnquest/ui-catalog";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import type { Db } from "../db/client.ts";
+import { gameAttempts } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 import { BadSubmission, grade, submissionSchema } from "../games/grade.ts";
@@ -17,7 +18,7 @@ const gameInput = z.object({
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 const lessonChanged = () => new TRPCError({ code: "CONFLICT", message: "This lesson has changed. Reload it to continue." });
 
-async function loadGame(database: Db, learnerId: string, input: z.infer<typeof gameInput>, lock: "check" | "hint"): Promise<{
+async function loadGame(database: Db, learnerId: string, input: z.infer<typeof gameInput>, write: boolean): Promise<{
   lessonDbId: string; versionId: string; partIndex: number; blockId: string; game: GameProps;
 }> {
   const { rows: [lesson] } = await database.execute<{ id: string; current_version_id: string | null }>(sql`
@@ -25,7 +26,7 @@ async function loadGame(database: Db, learnerId: string, input: z.infer<typeof g
     JOIN worlds w ON w.id = l.world_id
     JOIN learners me ON me.id = ${learnerId}
     WHERE ${lessonRef(input.lessonId)} AND ${playableLesson()} AND ${visibleWorld(meUser)} AND l.kind = 'game-practice'
-    ${lock === "check" ? sql`FOR NO KEY UPDATE OF l` : sql`FOR SHARE OF l`}`);
+    ${write ? sql`FOR NO KEY UPDATE OF l` : sql`FOR SHARE OF l`}`);
   if (!lesson?.current_version_id) throw notFound();
   if (input.versionId !== undefined && input.versionId !== lesson.current_version_id) throw lessonChanged();
   const { rows: [version] } = await database.execute<{ id: string; version: number; doc: unknown; has_other_versions: boolean }>(sql`
@@ -41,22 +42,72 @@ async function loadGame(database: Db, learnerId: string, input: z.infer<typeof g
   return { lessonDbId: lesson.id, versionId: version.id, partIndex: version.version - 1, blockId: block.id, game: parsed.data };
 }
 
+type LoadedGame = Awaited<ReturnType<typeof loadGame>>;
+const ATTEMPTS = 3;
+const attemptLimit = (game: GameProps) => game.shell.lives ?? ATTEMPTS;
+const attemptDay = () => new Date().toISOString().slice(0, 10);
+const attemptKey = (learnerId: string, { versionId, blockId }: LoadedGame) =>
+  ({ learnerId, lessonVersionId: versionId, blockId });
+
+async function loadAttempts(tx: Db, key: ReturnType<typeof attemptKey>, day: string) {
+  const [row] = await tx.select().from(gameAttempts).where(and(
+    eq(gameAttempts.learnerId, key.learnerId),
+    eq(gameAttempts.lessonVersionId, key.lessonVersionId),
+    eq(gameAttempts.blockId, key.blockId),
+  ));
+  return {
+    misses: row?.attemptDay === day ? row.misses : 0,
+    hintsRevealed: row?.hintsRevealed ?? 0,
+  };
+}
+
+async function saveAttempts(tx: Db, key: ReturnType<typeof attemptKey>, day: string, state: Awaited<ReturnType<typeof loadAttempts>>) {
+  const change = { attemptDay: day, ...state };
+  await tx.insert(gameAttempts).values({ ...key, ...change }).onConflictDoUpdate({
+    target: [gameAttempts.learnerId, gameAttempts.lessonVersionId, gameAttempts.blockId],
+    set: change,
+  });
+}
+
+const status = protectedProcedure.input(gameInput).query(({ ctx, input }) => withTx(async (tx) => {
+  const loaded = await loadGame(tx, ctx.learnerId, input, false);
+  const { misses } = await loadAttempts(tx, attemptKey(ctx.learnerId, loaded), attemptDay());
+  const maxAttempts = attemptLimit(loaded.game);
+  return { remainingAttempts: Math.max(0, maxAttempts - misses), maxAttempts };
+}));
+
 const hint = protectedProcedure
   .input(gameInput.extend({ hintIndex: z.number().int().min(0).max(100) }))
   .output(z.object({ text: z.string() }))
-  .query(({ ctx, input }) => withTx(async (tx) => {
-    const { game } = await loadGame(tx, ctx.learnerId, input, "hint");
-    const text = game.hints[input.hintIndex];
+  .mutation(({ ctx, input }) => withTx(async (tx) => {
+    const loaded = await loadGame(tx, ctx.learnerId, input, true);
+    const text = loaded.game.hints[input.hintIndex];
     if (text === undefined) throw notFound();
+    const key = attemptKey(ctx.learnerId, loaded);
+    const day = attemptDay();
+    const state = await loadAttempts(tx, key, day);
+    if (input.hintIndex > state.hintsRevealed) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Read the previous hint first" });
+    }
+    if (input.hintIndex === state.hintsRevealed) {
+      await saveAttempts(tx, key, day, { ...state, hintsRevealed: state.hintsRevealed + 1 });
+    }
     return { text };
   }));
 
 const check = protectedProcedure
   .input(gameInput.extend({ submission: submissionSchema }))
-  .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionResults: z.array(z.boolean()).optional() }))
+  .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionCorrect: z.boolean().optional(), remainingAttempts: z.number().int().nonnegative() }))
   .mutation(({ ctx, input }) => withTx(async (tx) => {
     const learnerId = ctx.learnerId;
-    const { lessonDbId, versionId, partIndex, blockId, game } = await loadGame(tx, learnerId, input, "check");
+    const loaded = await loadGame(tx, learnerId, input, true);
+    const { lessonDbId, versionId, partIndex, blockId, game } = loaded;
+    const key = attemptKey(learnerId, loaded);
+    const day = attemptDay();
+    const state = await loadAttempts(tx, key, day);
+    const limit = attemptLimit(game);
+    const remaining = Math.max(0, limit - state.misses);
+    if (remaining === 0) return { correct: false, complete: false, remainingAttempts: 0 };
     let verdict;
     try {
       verdict = grade(game, input.submission);
@@ -75,7 +126,9 @@ const check = protectedProcedure
         SELECT ${learnerId}, l.id FROM lessons l WHERE l.id = ${lessonDbId} AND ${everyGameWon(learnerId)}
         ON CONFLICT DO NOTHING`);
     }
-    return verdict;
+    const miss = !verdict.correct && !verdict.questionCorrect;
+    if (miss) await saveAttempts(tx, key, day, { ...state, misses: state.misses + 1 });
+    return { ...verdict, remainingAttempts: remaining - Number(miss) };
   }));
 
-export const gamesRouter = router({ hint, check });
+export const gamesRouter = router({ status, hint, check });

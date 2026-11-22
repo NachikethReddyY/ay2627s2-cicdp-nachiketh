@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import type { PublicGameProps } from "@learnquest/ui-catalog";
-import type { GameApi } from "./api.ts";
+import type { ActiveGameApi } from "./api.ts";
 import { setupFor, type DragKind, type Item, type Placed, type Zone } from "./dragSetup.ts";
 import Shell, { btn, btnPrimary } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
@@ -52,13 +52,13 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
   );
 }
 
-function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: GameApi }) {
+function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: ActiveGameApi }) {
   const setup = useMemo(() => setupFor(kind), [kind]);
-  const maxLives = p.shell.lives;
+  const maxLives = api.maxAttempts;
   const [placed, setPlaced] = useState<Placed>(setup.start);
   const [selected, setSelected] = useState<string | null>(null);
-  const [lives, setLives] = useState(maxLives);
-  const [outcome, setOutcome] = useState<Outcome>("play");
+  const [lives, setLives] = useState(api.remainingAttempts);
+  const [outcome, setOutcome] = useState<Outcome>(api.remainingAttempts > 0 ? "play" : "lose");
   const [live, setLive] = useState("");
   const over = outcome === "win" || outcome === "lose";
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
@@ -98,10 +98,9 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
     try {
       const r = await api.check(setup.submit(placed));
       if (mine !== gen.current) return;
+      setLives(r.remainingAttempts);
       if (r.correct) return (setOutcome("win"), setLive("You win! Everything is in the right place."));
-      const left = lives === undefined ? undefined : lives - 1;
-      if (left !== undefined) setLives(left);
-      if (left !== undefined && left <= 0) return (setOutcome("lose"), setLive("Game over, no lives left. Some items are in the wrong place."));
+      if (r.remainingAttempts === 0) return (setOutcome("lose"), setLive("Some items are in the wrong place."));
       setLive("Not yet: some items are in the wrong place. Move them and check again.");
     } catch {
       if (mine === gen.current) setLive("Couldn't check your answer. Try again.");
@@ -113,7 +112,6 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
   const retry = () => {
     gen.current++;
     setPlaced(setup.start), setSelected(null), setOutcome("play"), setLive("Back at the start.");
-    setLives(maxLives);
   };
 
   const tapZone = (zone: string) => {
@@ -157,6 +155,6 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
   );
 }
 
-export default function DragGame({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: GameApi }) {
+export default function DragGame({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: ActiveGameApi }) {
   return <DragBoard p={p} kind={kind} api={api} />;
 }

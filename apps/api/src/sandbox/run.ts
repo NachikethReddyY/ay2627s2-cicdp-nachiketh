@@ -154,10 +154,12 @@ export function startRun(code: string, learner: string, language: Language, spaw
   runs.set(id, run);
   let err = "";
   child.stdout?.on("data", (d: Buffer) => {
-    if (run.out.length < MAX_OUT) run.out += d.toString();
-    else run.overflow = true;
+    const chunk = d.toString();
+    const room = MAX_OUT - run.out.length;
+    run.overflow ||= chunk.length > room;
+    if (room > 0) run.out += chunk.slice(0, room);
   });
-  child.stderr?.on("data", (d: Buffer) => { if (err.length < MAX_OUT) err += d.toString(); });
+  child.stderr?.on("data", (d: Buffer) => { if (err.length < MAX_OUT) err = (err + d.toString()).slice(0, MAX_OUT); });
   child.stdin?.on("error", () => {});
   child.on("error", () => finish(run, "Could not run the code"));
   child.on("close", (exit) => {

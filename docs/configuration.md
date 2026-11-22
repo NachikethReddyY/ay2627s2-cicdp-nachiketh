@@ -7,12 +7,12 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SANDBOX_ENABLED` | `false` | Off: `/sandbox/*` answers 503 and no backend is ever loaded. |
-| `SANDBOX_BACKEND` | `docker` | `docker` runs shells and practice runs on the API host. `daytona` runs them in Daytona sandboxes. |
+| `SANDBOX_BACKEND` | `docker` | `docker` runs shells, code runs and practice checks on the API host. `daytona` runs them in Daytona sandboxes. |
 | `SANDBOX_IMAGE` | `lq-sandbox:dev` | Docker backend only. |
 | `DAYTONA_API_KEY` | – | Required when `SANDBOX_ENABLED=true` and `SANDBOX_BACKEND=daytona`; the API refuses to start without it. |
 | `DAYTONA_API_URL` | SDK default | Self-hosted Daytona only. |
 | `DAYTONA_TARGET` | SDK default | Region to create sandboxes in. |
-| `DAYTONA_SNAPSHOT` | Daytona default image | Snapshot built from `services/sandbox` so Python/Node match the Docker image. |
+| `DAYTONA_SNAPSHOT` | Daytona default image | Snapshot with Python 3, Node.js 22.18 or later, GNU timeout and setpriv. Checks request root for the harness and drop to UID 1001 for learner code. |
 | `DAYTONA_AUTO_STOP_MINUTES` | `3` | Idle minutes before Daytona stops a learner's shell sandbox. The Docker backend uses the same 3-minute idle stop. |
 | `SANDBOX_MAX_TABS` / `SANDBOX_MAX_SHELLS` / `SANDBOX_MAX_RUNS` | 4 / 50 / 20 | Per-learner tabs, live terminals, live runs. |
 
@@ -31,7 +31,7 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 
 ### Render
 
-Set `SANDBOX_ENABLED=true`, `SANDBOX_BACKEND=daytona` and `DAYTONA_API_KEY` (secret). Docker and node-pty are not used on this path.
+Set `SANDBOX_ENABLED=true`, `SANDBOX_BACKEND=daytona` and `DAYTONA_API_KEY` (secret). Daytona runs practice checks in disposable sandboxes with networking blocked. The check uses the language declared by the lesson. Interactive Daytona shells also block network access.
 
 ### Not yet built
 

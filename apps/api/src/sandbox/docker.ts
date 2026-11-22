@@ -4,6 +4,7 @@ import { chmodSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import pty from "node-pty";
+import { runInContainer } from "./dockerChecks.ts";
 import { env } from "../env.ts";
 import {
   LIST_MAX_ENTRIES,
@@ -193,6 +194,7 @@ export function dockerBackend(opts: {
   }
 
   return {
+    runChecks: (code, language, tests) => runInContainer(code, language, tests, undefined, opts.image),
     async readWorkspaceFile(learnerId, relPath) {
       const name = containerName(learnerId);
       if (!(await isRunning(name))) throw new SandboxNotRunningError();

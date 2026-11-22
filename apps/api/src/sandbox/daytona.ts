@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { env } from "../env.ts";
+import { HARNESS_SOURCE } from "./checkHarness.ts";
+import { BUDGET_S, CheckUnavailableError, encodeCheckInput, readCheckResults } from "./checkRunner.ts";
 import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxFileTooLargeError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
 
 export interface DaytonaPty {
@@ -14,6 +16,8 @@ export interface DaytonaPty {
 export interface DaytonaSandbox {
   id: string;
   state?: string;
+  networkBlockAll?: boolean;
+  updateNetworkSettings(settings: { networkBlockAll: boolean }): Promise<void>;
   start(timeout?: number): Promise<void>;
   waitUntilStarted(timeout?: number): Promise<void>;
   waitUntilStopped(timeout?: number): Promise<void>;
@@ -30,7 +34,7 @@ export interface DaytonaSandbox {
   getUserHomeDir(): Promise<string | undefined>;
   fs: {
     createFolder(path: string, mode: string): Promise<void>;
-    uploadFile(file: Buffer, remotePath: string): Promise<void>;
+    uploadFile(file: Buffer, remotePath: string, timeout?: number): Promise<void>;
     downloadFile?(remotePath: string): Promise<Buffer>;
     listFiles(path: string): Promise<Array<{ name: string; isDir: boolean; size: number; mode: string }>>;
     getFileDetails(path: string): Promise<{ isDir: boolean; mode?: string }>;
@@ -40,12 +44,15 @@ export interface DaytonaSandbox {
 export interface DaytonaClient {
   create(params: Record<string, unknown>, options?: { timeout?: number }): Promise<DaytonaSandbox>;
   list(query: { labels?: Record<string, string> }): AsyncIterableIterator<DaytonaSandbox>;
-  delete(sandbox: DaytonaSandbox): Promise<void>;
+  delete(sandbox: DaytonaSandbox, timeout?: number): Promise<void>;
 }
 
 export const APP_LABEL = { app: "learnquest" } as const;
 const SHELL_ROLE = "shell";
 const RUNNER_ROLE = "runner";
+const SANDBOX_START_S = 25;
+const SANDBOX_FILE_S = 10;
+const SANDBOX_RESOURCES = { cpu: 1, memory: 1, disk: 3 };
 const DAYTONA_ZSH_RC = readFileSync(new URL("./learner-zshrc", import.meta.url));
 const BROKEN = new Set(["error", "build_failed", "destroyed", "destroying"]);
 
@@ -70,6 +77,7 @@ export function daytonaBackend(opts: {
   const autoStop = opts.autoStopMinutes ?? 3;
   const maxShells = opts.maxShells ?? (() => env.SANDBOX_MAX_SHELLS);
   const base = opts.snapshot ? { snapshot: opts.snapshot } : {};
+  const isolated = { ...base, networkBlockAll: true, resources: SANDBOX_RESOURCES };
   const finding = new Map<string, Promise<DaytonaSandbox>>();
   let openTerminals = 0;
 
@@ -87,17 +95,17 @@ export function daytonaBackend(opts: {
       sbx = undefined;
     }
     sbx ??= await client.create({
-      ...base,
+      ...isolated,
       labels,
       autoStopInterval: autoStop,
-    });
+    }, { timeout: SANDBOX_START_S });
     const st = sbx.state ?? "";
-    if (st === "started") return sbx;
-    if (st === "starting" || st === "creating" || st === "restoring") await sbx.waitUntilStarted();
-    else {
-      if (st === "stopping" || st === "archiving") await sbx.waitUntilStopped();
-      await sbx.start();
+    if (st === "starting" || st === "creating" || st === "restoring") await sbx.waitUntilStarted(SANDBOX_START_S);
+    else if (st !== "started") {
+      if (st === "stopping" || st === "archiving") await sbx.waitUntilStopped(SANDBOX_START_S);
+      await sbx.start(SANDBOX_START_S);
     }
+    if (sbx.networkBlockAll !== true) await sbx.updateNetworkSettings({ networkBlockAll: true });
     return sbx;
   }
 
@@ -350,6 +358,36 @@ export function daytonaBackend(opts: {
       return { entries, truncated: files.length > LIST_MAX_ENTRIES };
     },
 
+    async runChecks(code, language, tests) {
+      const token = randomUUID();
+      let sbx: DaytonaSandbox | undefined;
+      try {
+        sbx = await client.create({
+          ...isolated,
+          user: "root",
+          labels: { ...APP_LABEL, role: "check" },
+          ephemeral: true,
+          autoStopInterval: 2,
+          ttlMinutes: 3,
+        }, { timeout: SANDBOX_START_S });
+        const dir = "/root/learnquest-check";
+        const setup = await sbx.process.executeCommand(
+          `test "$(id -u)" = 0 && command -v setpriv >/dev/null && mkdir -m 700 -- ${dir}`,
+          undefined, undefined, SANDBOX_FILE_S,
+        );
+        if (setup.exitCode !== 0) throw new CheckUnavailableError("check setup failed");
+        const input = `${dir}/input.json`;
+        await sbx.fs.uploadFile(Buffer.from(encodeCheckInput(token, language, code, tests)), input, SANDBOX_FILE_S);
+        const command = `timeout -s KILL ${BUDGET_S} node -e ${shQuote(HARNESS_SOURCE)} < ${input}`;
+        const { exitCode, result } = await sbx.process.executeCommand(command, undefined, undefined, BUDGET_S);
+        return readCheckResults(result ?? "", exitCode, token, tests.length);
+      } catch (error) {
+        throw new CheckUnavailableError("Daytona check failed", { cause: error });
+      } finally {
+        if (sbx) await client.delete(sbx, SANDBOX_FILE_S).catch(() => {});
+      }
+    },
+
     runCode(learnerId, language, code, limits: RunLimits): RunHandle {
       return runInSandbox(client, { ...base, learner: learnerHash(learnerId), stopMinutes: opts.runnerStopMinutes ?? 2 }, language, code, limits);
     },
@@ -479,6 +517,7 @@ export async function daytonaBackendFromEnv(): Promise<SandboxBackend> {
   const { Daytona } = await import("@daytonaio/sdk");
   const client = new Daytona({
     apiKey: env.DAYTONA_API_KEY,
+    requestTimeoutMs: SANDBOX_START_S * 1000,
     ...(env.DAYTONA_API_URL && { apiUrl: env.DAYTONA_API_URL }),
     ...(env.DAYTONA_TARGET && { target: env.DAYTONA_TARGET }),
   }) as unknown as DaytonaClient;
