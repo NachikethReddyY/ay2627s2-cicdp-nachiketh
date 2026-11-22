@@ -192,9 +192,22 @@ test("a win is recorded only when the server says the game is complete", async (
   assert.deepEqual(await count(), [0, 0]);
 
   await check(cookie, 2, { kind: "order", order: ["first", "second", "third", "fourth"] });
-  assert.deepEqual(await count(), [1, 1]);
+  assert.deepEqual(await count(), [1, 0], "one win of six games does not complete the lesson");
   await check(cookie, 2, { kind: "order", order: ["first", "second", "third", "fourth"] });
-  assert.deepEqual(await count(), [1, 1], "idempotent");
+  assert.deepEqual(await count(), [1, 0], "idempotent");
   const [row] = await db.select().from(gameCompletions);
   assert.equal(row!.blockId, "order");
+});
+
+test("a game lesson completes only when its last game block is won", async () => {
+  const cookie = await signUp(app);
+  const order = (id: string) => game(id, id, [], { kind: "order", items: ["first", "second"] });
+  await addGame("games-two", { kind: "game-practice", intro: "Play.", doc: { v: 1, blocks: [order("o1"), order("o2")] } as never });
+  const count = async () => (await db.select().from(partCompletions)).length;
+  const win = (gameIndex: number) => check(cookie, gameIndex, { kind: "order", order: ["first", "second"] }, "games-two");
+
+  assert.equal(out(await win(0)).complete, true);
+  assert.equal(await count(), 0);
+  assert.equal(out(await win(1)).complete, true);
+  assert.equal(await count(), 1);
 });
