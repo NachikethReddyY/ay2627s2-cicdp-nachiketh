@@ -84,7 +84,8 @@ test("a completed learn lesson counts as done in course, path and home progress"
 test("games.check: only a real game of a game-practice lesson records a win", async () => {
   const cookie = await signUp(app);
   await addLesson("game-1", "game-practice", gamePart);
-  const win = { lessonId: "game-1", gameIndex: 0, submission: { kind: "quiz", answers: [1] } };
+  const versionId = out(await trpc(app, cookie).q("lessons.get", { id: "game-1" })).part.versionId;
+  const win = { lessonId: "game-1", versionId, gameIndex: 0, submission: { kind: "quiz", answers: [1] } };
 
   assert.equal((await m(cookie, "games.check", { ...win, gameIndex: 1 })).statusCode, 404);
   assert.deepEqual(out(await m(cookie, "games.check", { ...win, submission: { kind: "quiz", answers: [0] } })).complete, false);

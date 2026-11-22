@@ -23,6 +23,7 @@ const Body = z.discriminatedUnion("kind", [
 
 const conflict = (message: string) => new TRPCError({ code: "CONFLICT", message });
 const notFound = () => new TRPCError({ code: "NOT_FOUND", message: "Step not found" });
+const predictSkip = () => new TRPCError({ code: "BAD_REQUEST", message: "Predict steps cannot be skipped. Answer the step to finish the lesson." });
 
 async function mustStep(id: string, learnerId: string) {
   const step = await loadStep(id, learnerId);
@@ -64,15 +65,19 @@ const hintAt = (step: Step, rung: number) => {
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
 
-const scrimUnskipped = (step: Step, p: Progress): Progress =>
-  step.lessonKind === "scrim" && p.state === "skipped" ? { ...p, state: "predicting" } : p;
+const recoverSkipped = (step: Step, p: Progress): Progress => {
+  if (p.state !== "skipped") return p;
+  if (step.lessonKind === "predict") return { ...p, state: "predicting", attemptAllowed: true, retryAllowed: false };
+  if (step.lessonKind === "scrim") return { ...p, state: "predicting" };
+  return p;
+};
 
 async function readProgress(learnerId: string, step: Step): Promise<Progress> {
   const [p] = await db
     .select()
     .from(stepProgress)
     .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, step.id)));
-  return scrimUnskipped(step, p ?? fresh());
+  return recoverSkipped(step, p ?? fresh());
 }
 
 function mutate(
@@ -86,7 +91,7 @@ function mutate(
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
-    const r = next(scrimUnskipped(step, p), action, { hintCount: step.secret.hints.length });
+    const r = next(recoverSkipped(step, p), action, { hintCount: step.secret.hints.length });
     if ("conflict" in r) return r;
 
     await tx.update(stepProgress).set({ ...r.progress, updatedAt: new Date() }).where(where);
@@ -220,6 +225,7 @@ export const stepsRouter = router({
     .output(z.object({ state: z.literal("skipped") }))
     .mutation(async ({ ctx, input }) => {
       const step = await mustStep(input.id, ctx.learnerId);
+      if (step.lessonKind === "predict") throw predictSkip();
       if (step.lessonKind === "scrim") throw conflict("Scrim gates cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" }, null);
       if ("conflict" in out) throw conflict(out.conflict);

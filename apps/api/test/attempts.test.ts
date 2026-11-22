@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { attempts } from "../src/db/schema.ts";
+import { attempts, stepProgress } from "../src/db/schema.ts";
 
 const app = buildApp();
 after(() => app.close());
@@ -90,17 +90,19 @@ test("correct first try", async () => {
   const r = out(await mcq(c, 1));
   assert.deepEqual([r.correct, r.state, r.feedback, r.hintsUsed], [true, "revealed", "Correct!", 0]);
   assert.equal((await reveal(c, "s1")).statusCode, 200);
-  assert.equal((await skip(c, "s1")).statusCode, 409);
+  assert.equal((await skip(c, "s1")).statusCode, 400);
 });
 
-test("skip, then reveal", async () => {
+test("a predict step cannot be skipped", async () => {
   const c = await signUp(app);
-  assert.equal((await reveal(c, "s1")).statusCode, 409);
   const res = await skip(c, "s1");
-  assert.deepEqual(out(res), { state: "skipped" });
-  assert.equal((await reveal(c, "s1")).statusCode, 200);
-  const [row] = await db.select().from(attempts).where(eq(attempts.stepId, "s1"));
-  assert.deepEqual([row!.kind, row!.correct, row!.observed], ["skip", null, true]);
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body, /Predict steps cannot be skipped/);
+  assert.equal((await reveal(c, "s1")).statusCode, 409);
+  assert.deepEqual(await db.select().from(attempts).where(eq(attempts.stepId, "s1")), []);
+  assert.deepEqual(await db.select().from(stepProgress).where(eq(stepProgress.stepId, "s1")), []);
+  const r = out(await mcq(c, 1));
+  assert.deepEqual([r.correct, r.state], [true, "revealed"]);
 });
 
 test("cloze grading and body validation", async () => {
