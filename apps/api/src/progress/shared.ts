@@ -28,26 +28,40 @@ const gameBlockWon = (learnerId: string, lessonId: SQL, version: SQL, blockId: S
   WITH RECURSIVE revisions AS (
     SELECT history.version, row_number() OVER (ORDER BY history.version) AS position,
       ARRAY(SELECT game.id FROM ${gameBlocks(sql`history.content`)} game WHERE game.props = ${props}) AS ids
-    FROM lesson_versions history
-    WHERE history.lesson_id = ${lessonId} AND history.version <= ${version}
-      AND (history.published_at IS NOT NULL OR history.version = ${version} OR EXISTS (
-        SELECT 1 FROM game_completions gc WHERE gc.learner_id = ${learnerId}
-          AND gc.lesson_id = history.lesson_id AND gc.part_idx = history.version - 1))
-  ), wins AS (
-    SELECT revision.position, gc.block_id
-    FROM game_completions gc JOIN revisions revision ON revision.version = gc.part_idx + 1
-    WHERE gc.learner_id = ${learnerId} AND gc.lesson_id = ${lessonId} AND gc.block_id = ANY(revision.ids)
-    UNION
-    SELECT next.position, CASE
-      WHEN wins.block_id <> ALL(next.ids)
-        AND previous.ids = ARRAY[wins.block_id] AND cardinality(next.ids) = 1 THEN next.ids[1]
-      ELSE wins.block_id END
-    FROM wins
-    JOIN revisions previous ON previous.position = wins.position
-    JOIN revisions next ON next.position = wins.position + 1
+    FROM lesson_versions history JOIN lessons owner ON owner.id = history.lesson_id
+    WHERE history.lesson_id = ${lessonId}
+      AND (history.published_at IS NOT NULL OR history.version = ${version}
+        OR (owner.source_kind = 'ai' AND history.version < ${version})
+        OR EXISTS (SELECT 1 FROM game_completions gc
+          WHERE gc.lesson_id = history.lesson_id AND gc.part_idx = history.version - 1))
+  ), identities(position, ids, active, known) AS (
+    SELECT 0::bigint, ARRAY[]::text[], '{}'::jsonb, '{}'::jsonb
+    UNION ALL
+    SELECT revision.position, revision.ids, mapped.active, previous.known || mapped.active
+    FROM identities previous JOIN revisions revision ON revision.position = previous.position + 1
+    CROSS JOIN LATERAL (
+      SELECT coalesce(jsonb_object_agg(candidate.id, CASE WHEN candidate.priority = 1 AND candidate.identity IS NOT NULL
+        THEN candidate.identity ELSE jsonb_build_array(revision.version, candidate.id)::text END), '{}'::jsonb) AS active
+      FROM (
+        SELECT proposed.*, row_number() OVER (PARTITION BY proposed.identity
+          ORDER BY (previous.active ? proposed.id) DESC, proposed.id) AS priority
+        FROM (
+          SELECT id, coalesce(previous.known->>id, CASE
+            WHEN cardinality(previous.ids) = 1 AND cardinality(revision.ids) = 1
+            THEN previous.active->>previous.ids[1] END) AS identity
+          FROM unnest(revision.ids) block(id)
+        ) proposed
+      ) candidate
+    ) mapped
   )
-  SELECT 1 FROM wins JOIN revisions revision ON revision.position = wins.position
-  WHERE revision.version = ${version} AND wins.block_id = ${blockId})`;
+  SELECT 1
+  FROM game_completions gc
+  JOIN revisions earned ON earned.version = gc.part_idx + 1
+  JOIN identities earned_blocks ON earned_blocks.position = earned.position
+  JOIN revisions current ON current.version = ${version}
+  JOIN identities current_blocks ON current_blocks.position = current.position
+  WHERE gc.learner_id = ${learnerId} AND gc.lesson_id = ${lessonId}
+    AND earned_blocks.active->>gc.block_id = current_blocks.active->>${blockId})`;
 
 export const currentGameBlockWon = (learnerId: string, lessonId: string, versionId: string, blockId: string) => sql`EXISTS (
   SELECT 1 FROM lesson_versions v CROSS JOIN LATERAL ${gameBlocks(sql`v.content`)} b

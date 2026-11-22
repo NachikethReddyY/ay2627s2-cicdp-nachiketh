@@ -431,14 +431,50 @@ test("an unchanged rename keeps its win when a later version adds an identical b
   assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
   assert.equal(await xpOf(cookie), 10);
 
-  const [draft] = await db.insert(lessonVersions).values({
-    lessonId: lesson.lessonId, version: 3, content: gameContent([renamed, clone]),
-  }).returning();
-  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
-  await db.transaction(async (tx) => {
-    await tx.update(lessonVersions).set({ publishedAt: new Date() }).where(eq(lessonVersions.id, draft!.id));
-    await tx.update(lessons).set({ currentVersionId: draft!.id }).where(eq(lessons.id, lesson.lessonId));
+  await db.insert(lessonVersions).values({
+    lessonId: lesson.lessonId, version: 3, content: gameContent([clone, { ...clone, id: "draft-only" }]),
   });
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  await publishVersion(lesson, 4, [renamed, clone]);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+  await play(cookie, lesson, 1, true);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  assert.equal(await xpOf(cookie), 20);
+});
+
+test("restoring a previously separate game does not inherit another block's win", async () => {
+  const first = quizBlock("g1");
+  const second = { ...first, id: "g2" };
+  const lesson = await addGameLesson([first, second]);
+  const cookie = await signUp(app, emailOf("restore-distinct-game"));
+  await play(cookie, lesson, 0, true);
+  await publishVersion(lesson, 2, [first]);
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  await publishVersion(lesson, 3, [second]);
+  assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 20);
+});
+
+test("a playable AI draft can carry a renamed game's win into publication", async () => {
+  const first = quizBlock("g1");
+  const renamed = { ...first, id: "renamed" };
+  const clone = { ...first, id: "g2" };
+  const lesson = await addGameLesson([first]);
+  const cookie = await signUp(app, emailOf("draft-rename"));
+  await play(cookie, lesson, 0, true);
+  const [draft] = await db.insert(lessonVersions).values({
+    lessonId: lesson.lessonId, version: 2, content: gameContent([renamed]),
+  }).returning();
+  await db.update(lessons).set({ status: "draft", sourceKind: "ai", currentVersionId: draft!.id }).where(eq(lessons.id, lesson.lessonId));
+  assert.deepEqual(await progressOf(cookie, lesson), [1, 1]);
+  await play(cookie, lesson, 0, true);
+  assert.equal(await xpOf(cookie), 10);
+
+  await publishVersion(lesson, 3, [renamed, clone]);
+  await db.update(lessons).set({ status: "published" }).where(eq(lessons.id, lesson.lessonId));
   assert.deepEqual(await progressOf(cookie, lesson), [0, 1]);
   await play(cookie, lesson, 0, true);
   assert.equal(await xpOf(cookie), 10);
