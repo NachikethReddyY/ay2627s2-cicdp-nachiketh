@@ -23,24 +23,20 @@ const Outline = z.union([
   z.object({
     title: text(80),
     tagline: text(160),
-    subject: z.enum(["code", "other"]),
     courses: z
       .array(
         z.object({
           title: text(80),
           description: text(300),
           lessons: z
-            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["learn", "watch", "practice", "game-practice", "scrim"]) }))
+            .array(z.object({ title: text(80), level: z.number().int().min(1).max(5), concepts: z.array(text(60)).min(1).max(6), kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]) }))
             .min(3)
             .max(6),
         }),
       )
       .min(2)
       .max(4),
-  }).refine(
-    (o) => o.subject === "code" || o.courses.every((c) => c.lessons.every((l) => l.kind === "learn" || l.kind === "game-practice")),
-    "non-coding outline may only use learn and game-practice lessons",
-  ),
+  }),
 ]);
 
 const Lesson = z.object({ steps: z.array(Step).min(3).max(5) });

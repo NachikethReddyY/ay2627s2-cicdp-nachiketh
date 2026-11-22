@@ -77,13 +77,11 @@ def test_the_route_returns_durations_and_steps(fake_llm: FakeLLM) -> None:
     assert lesson["steps"][0]["answer"] == 0
 
 
-def test_outline_allows_scrim_for_code_only() -> None:
+def test_outline_allows_scrim() -> None:
     lesson = {"title": "Return values", "level": 1, "concepts": ["return"], "kind": "scrim"}
     course = {"title": "Functions", "description": "d", "lessons": [lesson] * 3}
-    base = {"title": "T", "tagline": "t", "courses": [course, course]}
-    assert Outline.model_validate({**base, "subject": "code"}).courses is not None
-    with pytest.raises(ValidationError, match="non-coding"):
-        Outline.model_validate({**base, "subject": "other"})
+    outline = Outline.model_validate({"title": "T", "tagline": "t", "courses": [course, course]})
+    assert outline.courses
 
 
 def test_a_gate_must_point_at_a_step() -> None:

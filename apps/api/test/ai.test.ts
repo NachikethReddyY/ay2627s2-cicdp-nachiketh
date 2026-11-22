@@ -14,7 +14,6 @@ import { EngineError } from "../src/engine-client/client.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
-import photosynthesis from "../../../services/engine/tests/fixtures/outline_photosynthesis.json" with { type: "json" };
 
 const app = buildApp();
 after(() => app.close());
@@ -22,7 +21,6 @@ after(() => app.close());
 const outline = {
   title: "Learn Rust",
   tagline: "Ownership first",
-  subject: "code",
   courses: [0, 1].map((c) => ({
     title: `Course ${c}`,
     description: "d",
@@ -80,25 +78,24 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
 });
 
-test("photosynthesis outline persists only non-coding lesson kinds", async () => {
-  const fixture = photosynthesis as typeof outline;
-  generator.outline = async () => fixture;
-  const { t, firstCourseSlug } = await setup("photosynthesis@example.com");
+test("an outline may include predict lessons and persists them as predict", async () => {
+  const withPredict = structuredClone(outline);
+  withPredict.courses[0]!.lessons[0]!.kind = "predict" as never;
+  generator.outline = async () => withPredict;
+  const { t, firstCourseSlug } = await setup("predict-outline@example.com");
   const course = out(await t.q("courses.get", { slug: firstCourseSlug }));
-  assert.deepEqual((course.lessons as { title: string; kind: string }[]).map(({ title, kind }) => [title, kind]),
-    fixture.courses[0]!.lessons.map(({ title, kind }) => [title, kind]));
-  assert.deepEqual(new Set((course.lessons as { kind: string }[]).map(({ kind }) => kind)), new Set(["learn", "game-practice"]));
+  assert.equal((course.lessons as { kind: string }[])[0]!.kind, "predict");
 });
 
-test("a non-coding outline with a watch lesson is rejected", async () => {
-  const t = trpc(app, await signUp(app, "noncode-watch@example.com"));
-  const bad = structuredClone(photosynthesis) as typeof outline;
-  bad.courses[0]!.lessons[0]!.kind = "watch";
+test("an outline with an unknown lesson kind is rejected", async () => {
+  const t = trpc(app, await signUp(app, "bad-kind@example.com"));
+  const bad = structuredClone(outline);
+  bad.courses[0]!.lessons[0]!.kind = "essay" as never;
   generator.outline = async () => bad;
-  assert.equal(code(await t.m("paths.generate", { prompt: "learn photosynthesis" })), "INTERNAL_SERVER_ERROR");
+  assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "INTERNAL_SERVER_ERROR");
 });
 
-test("missing key, non-coding topic and bad input", async () => {
+test("missing key, refused topic and bad input", async () => {
   const t = trpc(app, await signUp(app));
   env.ENGINE_TOKEN = undefined;
   assert.equal(code(await t.m("paths.generate", { prompt: "learn rust" })), "PRECONDITION_FAILED");

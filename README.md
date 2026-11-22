@@ -54,7 +54,7 @@ The script's tests run with `pnpm run test:scripts`.
 
 ## Lesson engine (inference engine)
 
-The "Learn anything" builder calls the Python engine in `services/engine`, which talks to any OpenAI-compatible model. Set `LLM_MODEL`, `LLM_API_BASE` and `LLM_API_KEY` in `services/engine/.env`, then:
+The "Learn a programming concept" builder calls the Python engine in `services/engine`, which talks to any OpenAI-compatible model. Set `LLM_MODEL`, `LLM_API_BASE` and `LLM_API_KEY` in `services/engine/.env`, then:
 
 ```bash
 cp services/engine/.env.example services/engine/.env
