@@ -124,7 +124,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
     const from = dispatched.current;
     const reached = commit({ type: "tick", t }).t;
     dispatched.current = Math.max(from, reached);
-    for (const crossing of runCrossed(scrim, state.answered, from, reached)) void runner.run(scrim.edits[crossing.edit].code);
+    for (const crossing of runCrossed(scrim, state.answered, from, reached)) void runner.runAuthored(scrim.edits[crossing.edit].code);
   };
 
   const endSegment = () => {
@@ -183,7 +183,7 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
             if (releasedGates.current.has(gate.key)) return;
             releasedGates.current = new Set(releasedGates.current).add(gate.key);
             const next = commit({ type: "answer", key: gate.key });
-            for (const released of runsReleased(scrim, state.answered, next.answered, state.t)) void runner.run(scrim.edits[released.edit].code);
+            for (const released of runsReleased(scrim, state.answered, next.answered, state.t)) void runner.runAuthored(scrim.edits[released.edit].code);
           }} />
         </section>
       )}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createShellSocket, type ShellSocket, type ShellState } from "../terminal/shellSocket";
-import { RunInShellError, runInShell } from "../terminal/runInShell";
+import { RunInShellError, STILL_RUNNING, runInShell } from "../terminal/runInShell";
 import { checkPractice, lintPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type LintFinding, type PyPoll } from "../runPython";
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
 import { lintErrorMessage } from "./lintModel";
@@ -19,6 +19,7 @@ const msg = (e: unknown) => {
 };
 
 type Options = { lessonId: string; language: PracticeLanguage; code: string; openTerminal: () => void };
+type RunJob = { source: string; authored: boolean };
 
 export function usePracticeRunner({ lessonId, language, code, openTerminal }: Options) {
   const [term, setTerm] = useState("");
@@ -41,9 +42,9 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const shellUnreachable = useRef(false);
   const readyTimeouts = useRef(0);
   const lintSeq = useRef(0);
-  const runNow = useRef<(source: string) => Promise<void>>(async () => {});
+  const runNow = useRef<(job: RunJob) => Promise<void>>(async () => {});
   const [runGate] = useState(createRunGate);
-  const [enqueue] = useState(() => createRunQueue<string>((source) => runNow.current(source), { isLive: () => live.current }));
+  const [enqueue] = useState(() => createRunQueue<RunJob>((job) => runNow.current(job), { isLive: () => live.current }));
   const [stopThenRelease] = useState(() => (id: string) => {
     void withDeadline((signal) => stopPython(id, signal), STOP_TIMEOUT_MS)
       .catch(() => {})
@@ -139,7 +140,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     setSid(id);
     await finished;
   };
-  const actionsFor = (enabled: boolean, source: string = code) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled });
+  const actionsFor = (enabled: boolean, source: string = code, authored = false) => practiceActions({ language, code: source, lessonId, sandboxEnabled: enabled, authored });
 
   useEffect(() => {
     lintSeq.current++;
@@ -171,8 +172,8 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setCheckBusy(false);
   };
-  runNow.current = async (source) => {
-    const a = actionsFor(sandboxEnabled, source).run;
+  runNow.current = async ({ source, authored }) => {
+    const a = actionsFor(sandboxEnabled, source, authored).run;
     if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
     if (skipShellWait(shellUnreachable.current, shell.state())) {
@@ -186,7 +187,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     stdout.current = "";
     setTerm("");
     try {
-      await runInShell({
+      const end = await runInShell({
         language: language === "python" ? "python" : "javascript",
         code: source,
         panel: { open: openTerminal },
@@ -194,6 +195,7 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
         putFile,
         refreshTree: () => {},
       });
+      if (end === "timeout" && live.current) setRunNote(STILL_RUNNING);
     } catch (e) {
       if (!live.current) return;
       if (e instanceof RunInShellError && e.kind === "starting") readyTimeouts.current += 1;
@@ -208,7 +210,8 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     }
     if (live.current) setShellRun(false);
   };
-  const run = (source: string = code) => enqueue(source);
+  const run = (source: string = code) => enqueue({ source, authored: false });
+  const runAuthored = (source: string) => enqueue({ source, authored: true });
   const stop = () => {
     if (!sid) return;
     stopThenRelease(sid);
@@ -229,6 +232,6 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     result, checkBusy, checkError, findings, lintBusy, lintError,
     busy: starting || sid !== null || shellRun,
     showOutput: sid !== null || starting || term !== "",
-    run, check, lint, stop, answer,
+    run, runAuthored, check, lint, stop, answer,
   };
 }

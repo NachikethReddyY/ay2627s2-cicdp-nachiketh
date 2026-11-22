@@ -8,9 +8,12 @@ export type PracticeActions = {
   check: { via: "check"; args: Parameters<typeof checkPractice> };
 };
 
-export function practiceActions(o: { language: PracticeLanguage; code: string; lessonId: string; sandboxEnabled: boolean }): PracticeActions {
+export const SHELL_LANGUAGES: readonly PracticeLanguage[] = ["python", "javascript"];
+
+export function practiceActions(o: { language: PracticeLanguage; code: string; lessonId: string; sandboxEnabled: boolean; authored?: boolean }): PracticeActions {
+  const shell = o.sandboxEnabled && !o.authored && SHELL_LANGUAGES.includes(o.language);
   return {
-    run: o.sandboxEnabled && o.language !== "typescript" ? { via: "shell" } : { via: "oneshot", args: [o.code, o.language] },
+    run: shell ? { via: "shell" } : { via: "oneshot", args: [o.code, o.language] },
     check: { via: "check", args: [{ code: o.code, language: o.language, lessonId: o.lessonId }] },
   };
 }

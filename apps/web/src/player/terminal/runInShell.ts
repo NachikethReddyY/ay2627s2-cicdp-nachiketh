@@ -2,8 +2,56 @@ import { ShellNotReadyError, type ShellSocket } from "./shellSocket.ts";
 
 export const READY_TIMEOUT_MS = 15_000;
 export const SETTLE_MS = 100;
+export const PROMPT_WAIT_MS = 2_000;
+export const FINISH_TIMEOUT_MS = 60_000;
+export const PROMPT_MARKER = "\u001b]777;learnquest-refresh\u0007";
 
-const CTRL_C = "\u0003";
+export const CTRL_C = "\u0003";
+export const STILL_RUNNING = `Your program is still running after ${FINISH_TIMEOUT_MS / 1000} seconds. The next Run stops it first.`;
+
+export type ShellRunEnd = "finished" | "timeout";
+type PromptEnd = ShellRunEnd | "lost";
+type PromptSocket = Pick<ShellSocket, "onOutput" | "onState">;
+type Deadline = (ms: number) => AbortSignal;
+
+const defaultDeadline: Deadline = (ms) => AbortSignal.timeout(ms);
+
+export function watchPrompts(socket: PromptSocket): { next(signal: AbortSignal): Promise<PromptEnd>; stop(): void } {
+  const decoder = new TextDecoder();
+  const waiters = new Set<(end: PromptEnd) => void>();
+  let tail = "";
+  const settle = (end: PromptEnd) => {
+    for (const waiter of [...waiters]) waiter(end);
+  };
+  const offOutput = socket.onOutput((bytes) => {
+    const text = tail + decoder.decode(bytes, { stream: true });
+    const at = text.lastIndexOf(PROMPT_MARKER);
+    tail = (at < 0 ? text : text.slice(at + PROMPT_MARKER.length)).slice(1 - PROMPT_MARKER.length);
+    if (at >= 0) settle("finished");
+  });
+  const offState = socket.onState((state) => {
+    if (state.kind !== "open") settle("lost");
+  });
+  return {
+    next: (signal) =>
+      new Promise<PromptEnd>((resolve) => {
+        if (signal.aborted) return resolve("timeout");
+        const done = (end: PromptEnd) => {
+          waiters.delete(done);
+          signal.removeEventListener("abort", expire);
+          resolve(end);
+        };
+        const expire = () => done("timeout");
+        signal.addEventListener("abort", expire, { once: true });
+        waiters.add(done);
+      }),
+    stop: () => {
+      offOutput();
+      offState();
+      waiters.clear();
+    },
+  };
+}
 
 export function runTarget(language: "python" | "javascript"): { file: "solution.py" | "solution.js"; command: string } {
   return language === "python"
@@ -61,11 +109,11 @@ export async function runInShell(o: {
   language: "python" | "javascript";
   code: string;
   panel: { open(): void };
-  socket: Pick<ShellSocket, "whenReady" | "send">;
+  socket: Pick<ShellSocket, "whenReady" | "send" | "onOutput" | "onState">;
   putFile(name: "solution.py" | "solution.js", content: string): Promise<void>;
   refreshTree(): void;
-  sleep?: (ms: number) => Promise<void>;
-}): Promise<void> {
+  deadline?: Deadline;
+}): Promise<ShellRunEnd> {
   const { file, command } = runTarget(o.language);
   o.panel.open();
 
@@ -78,8 +126,19 @@ export async function runInShell(o: {
     throw new RunInShellError("copy", `Could not copy your code to the sandbox: ${message}`);
   }
 
-  if (!o.socket.send(CTRL_C)) throw lostShell();
-  await (o.sleep ?? defaultSleep)(SETTLE_MS);
-  if (!o.socket.send(command)) throw lostShell();
-  o.refreshTree();
+  const deadline = o.deadline ?? defaultDeadline;
+  const prompts = watchPrompts(o.socket);
+  try {
+    const interrupted = prompts.next(deadline(PROMPT_WAIT_MS));
+    if (!o.socket.send(CTRL_C)) throw lostShell();
+    if ((await interrupted) === "lost") throw lostShell();
+    const finished = prompts.next(deadline(FINISH_TIMEOUT_MS));
+    if (!o.socket.send(command)) throw lostShell();
+    o.refreshTree();
+    const end = await finished;
+    if (end === "lost") throw new RunInShellError("unavailable", "The shell disconnected before your program finished");
+    return end;
+  } finally {
+    prompts.stop();
+  }
 }
