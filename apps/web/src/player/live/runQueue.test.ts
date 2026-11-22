@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createRunGate, createRunQueue } from "./runQueue.ts";
+import { createRunGate, createRunQueue, withDeadline } from "./runQueue.ts";
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -93,4 +93,68 @@ test("releasing a gate nobody waits on does nothing, and a new wait supersedes a
   gate.release();
   await waiting;
   assert.equal(second, true);
+});
+
+test("jobs queued behind an active run are dropped once the queue is no longer live", async () => {
+  const runner = oneShotRunner();
+  let live = true;
+  const run = createRunQueue(runner.execute, { isLive: () => live });
+  const first = run("a");
+  const second = run("b");
+  await tick();
+  live = false;
+  const late = run("c");
+  runner.gate.release();
+  await Promise.all([first, second, late]);
+  assert.deepEqual(runner.log, ["start a", "end a"]);
+});
+
+test("a job queued after unmount never starts", async () => {
+  const seen: string[] = [];
+  const run = createRunQueue(async (job: string) => { seen.push(job); }, { isLive: () => false });
+  await run("a");
+  assert.deepEqual(seen, []);
+});
+
+test("a request that never answers is rejected when its deadline passes, and the queue moves on", async () => {
+  const deadline = new AbortController();
+  const outcomes: string[] = [];
+  const run = createRunQueue(async (job: string) => {
+    if (job === "hung") {
+      await withDeadline(() => new Promise<never>(() => {}), 10_000, () => deadline.signal).catch((e: unknown) => outcomes.push(`hung ${(e as Error).message}`));
+      return;
+    }
+    outcomes.push(job);
+  });
+  const hung = run("hung");
+  const next = run("next");
+  await tick();
+  assert.deepEqual(outcomes, []);
+  deadline.abort(new Error("timed out"));
+  await Promise.all([hung, next]);
+  assert.deepEqual(outcomes, ["hung timed out", "next"]);
+});
+
+test("a request that answers before its deadline resolves with its value", async () => {
+  const deadline = new AbortController();
+  assert.equal(await withDeadline(() => Promise.resolve("ok"), 10_000, () => deadline.signal), "ok");
+  deadline.abort(new Error("late"));
+});
+
+test("a request that fails before its deadline rejects with its own error", async () => {
+  const deadline = new AbortController();
+  await assert.rejects(withDeadline(() => Promise.reject(new Error("refused")), 10_000, () => deadline.signal), /refused/);
+});
+
+test("a deadline that has already passed rejects at once", async () => {
+  const expired = new AbortController();
+  expired.abort(new Error("already late"));
+  await assert.rejects(withDeadline(() => new Promise<never>(() => {}), 10_000, () => expired.signal), /already late/);
+});
+
+test("the request gets the deadline's signal so it can cancel the network call", async () => {
+  const deadline = new AbortController();
+  let received: AbortSignal | undefined;
+  await withDeadline((signal) => { received = signal; return Promise.resolve(); }, 10_000, () => deadline.signal);
+  assert.equal(received, deadline.signal);
 });

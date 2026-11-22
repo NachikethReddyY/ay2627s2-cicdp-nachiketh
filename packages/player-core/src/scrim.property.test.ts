@@ -110,6 +110,19 @@ test("a clock whose offsets overlap or whose total disagrees with the durations 
   assert.doesNotThrow(() => buildScrimTimeline([], [], drift));
 });
 
+test("a clock whose offsets step backward by any amount is rejected, even within the drift tolerance", () => {
+  const tiny: ScrimClock = { offsets: [8e-10, 0], durations: [0, 1], total: 1 };
+  assert.throws(() => buildScrimTimeline([], [], tiny), RangeError);
+});
+
+test("float sums of 0.1 and 0.2 durations give a clock that is accepted and never steps backward", () => {
+  for (const durations of [[0.1, 0.2, 0.1, 0.2], [0.2, 0.1, 0.2, 0.1, 0.1], [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]) {
+    const clock = scrimClock(durations);
+    assert.doesNotThrow(() => buildScrimTimeline([], [], clock), durations.join());
+    clock.offsets.forEach((offset, i) => assert.ok(i === 0 || offset >= clock.offsets[i - 1]));
+  }
+});
+
 test("for any durations, the clock the scrim builds is accepted", () => {
   const rand = mulberry32(77);
   for (let n = 0; n < 500; n++) {

@@ -81,3 +81,10 @@ test("the demo shape gates segment 1 and edits 0, 1 and 2", () => {
   assert.equal(finished(state), true);
   assert.equal(playbackReducer(state, { type: "play" }).t, 0);
 });
+
+test("a scrim whose parts last 100 ms and 200 ms builds a clock that never steps backward", () => {
+  for (const ms of [[100, 200, 100, 200], [200, 100, 200, 100, 100], [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]]) {
+    const { clock } = scrimTimeline(ms.map((durationMs) => seg({ durationMs })));
+    clock.offsets.forEach((offset, i) => assert.ok(i === 0 || offset >= clock.offsets[i - 1], ms.join()));
+  }
+});

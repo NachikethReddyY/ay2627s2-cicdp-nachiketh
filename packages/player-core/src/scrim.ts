@@ -58,6 +58,9 @@ function validate(edits: readonly TimedEdit[], clock: ScrimClock): void {
     if (!Number.isFinite(offset) || Math.abs(offset - elapsed) > CLOCK_TOLERANCE) {
       throw new RangeError(`scrim part offset ${i} must equal the sum of the earlier part durations (${elapsed}), got ${offset}`);
     }
+    if (i > 0 && offset < clock.offsets[i - 1]) {
+      throw new RangeError(`scrim part offset ${i} must not be earlier than offset ${i - 1} (${clock.offsets[i - 1]}), got ${offset}`);
+    }
     elapsed += clock.durations[i];
   });
   if (Math.abs(clock.total - elapsed) > CLOCK_TOLERANCE) {

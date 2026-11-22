@@ -44,6 +44,8 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
   const playRef = useRef<HTMLButtonElement>(null);
   const editorRef = useRef<EditorHandle>(null);
   const pendingSeek = useRef<number | null>(null);
+  const dispatched = useRef(0);
+  const releasedGates = useRef<ReadonlySet<string>>(new Set());
   const speaker = useMemo(
     () =>
       typeof window === "undefined"
@@ -112,13 +114,17 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
     }
     applyCue(speechCue(speechView(state), speechView(next), { texts, silent: silentAt(failedAudio), jumped: action.type === "seek" }));
     editorRef.current?.show(frameAt(scrim, next.answered, next.t));
+    if (action.type !== "tick") dispatched.current = next.t;
     dispatch(action);
     return next;
   };
 
   const tickTo = (t: number) => {
-    const crossed = state.playing ? runCrossed(scrim, state.answered, state.t, commit({ type: "tick", t }).t) : [];
-    for (const crossing of crossed) void runner.run(scrim.edits[crossing.edit].code);
+    if (!state.playing) return;
+    const from = dispatched.current;
+    const reached = commit({ type: "tick", t }).t;
+    dispatched.current = Math.max(from, reached);
+    for (const crossing of runCrossed(scrim, state.answered, from, reached)) void runner.run(scrim.edits[crossing.edit].code);
   };
 
   const endSegment = () => {
@@ -174,6 +180,8 @@ export default function ScrimWatch({ lessonId, title, part, steps, media, onLab 
       {gate && gateStep && (
         <section role="region" aria-label="Predict" className="scrim-gate">
           <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => {
+            if (releasedGates.current.has(gate.key)) return;
+            releasedGates.current = new Set(releasedGates.current).add(gate.key);
             const next = commit({ type: "answer", key: gate.key });
             for (const released of runsReleased(scrim, state.answered, next.answered, state.t)) void runner.run(scrim.edits[released.edit].code);
           }} />

@@ -5,12 +5,18 @@ import { checkPractice, lintPractice, pollPython, putFile, sendPythonLine, start
 import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
 import { lintErrorMessage } from "./lintModel";
 import { outputTail } from "./lessonWorkbenchModel";
-import { createRunGate, createRunQueue } from "./runQueue";
+import { createRunGate, createRunQueue, withDeadline } from "./runQueue";
 import type { CheckResponse, PracticeLanguage } from "./checkModel";
 
 const MAX_POLL_FAILURES = 4;
 const MAX_OUTPUT = 100_000;
-const msg = (e: unknown) => (e instanceof Error ? e.message : "Could not run the code");
+const START_TIMEOUT_MS = 10_000;
+const POLL_TIMEOUT_MS = 5_000;
+const STOP_TIMEOUT_MS = 3_000;
+const msg = (e: unknown) => {
+  if (!(e instanceof Error)) return "Could not run the code";
+  return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
+};
 
 type Options = { lessonId: string; language: PracticeLanguage; code: string; openTerminal: () => void };
 
@@ -37,7 +43,12 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const lintSeq = useRef(0);
   const runNow = useRef<(source: string) => Promise<void>>(async () => {});
   const [runGate] = useState(createRunGate);
-  const [enqueue] = useState(() => createRunQueue<string>((source) => runNow.current(source)));
+  const [enqueue] = useState(() => createRunQueue<string>((source) => runNow.current(source), { isLive: () => live.current }));
+  const [stopThenRelease] = useState(() => (id: string) => {
+    void withDeadline((signal) => stopPython(id, signal), STOP_TIMEOUT_MS)
+      .catch(() => {})
+      .then(() => runGate.release());
+  });
   const append = (text: string) => setTerm((t) => outputTail(t + text, MAX_OUTPUT));
 
   const [shell, setShell] = useState<ShellSocket | null>(null);
@@ -70,10 +81,10 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     live.current = true;
     return () => {
       live.current = false;
-      runGate.release();
-      if (sidRef.current) void stopPython(sidRef.current).catch(() => {});
+      if (sidRef.current) stopThenRelease(sidRef.current);
+      else runGate.release();
     };
-  }, [runGate]);
+  }, [runGate, stopThenRelease]);
   useEffect(() => { sidRef.current = sid; }, [sid]);
 
   useEffect(() => {
@@ -85,14 +96,13 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     const poll = async () => {
       let p: PyPoll;
       try {
-        p = await pollPython(sid, from);
+        p = await withDeadline((signal) => pollPython(sid, from, signal), POLL_TIMEOUT_MS);
       } catch (e) {
         if (!alive) return;
         if (++failures < MAX_POLL_FAILURES) { timer = setTimeout(poll, 300 * failures); return; }
         append(`\n${msg(e)}\n`);
-        void stopPython(sid).catch(() => {});
+        stopThenRelease(sid);
         setSid(null);
-        runGate.release();
         return;
       }
       if (!alive) return;
@@ -107,15 +117,16 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
     };
     void poll();
     return () => { alive = false; clearTimeout(timer); };
-  }, [sid, runGate]);
+  }, [sid, runGate, stopThenRelease]);
 
   const oneShot = async (args: Parameters<typeof startPython>) => {
+    if (!live.current) return;
     stdout.current = "";
     setTerm("");
     setStarting(true);
     let id: string;
     try {
-      id = (await startPython(...args)).id;
+      id = (await withDeadline((signal) => startPython(args[0], args[1], args[2], signal), START_TIMEOUT_MS)).id;
     } catch (e) {
       if (!live.current) return;
       setStarting(false);
@@ -200,9 +211,8 @@ export function usePracticeRunner({ lessonId, language, code, openTerminal }: Op
   const run = (source: string = code) => enqueue(source);
   const stop = () => {
     if (!sid) return;
-    void stopPython(sid).catch(() => {});
+    stopThenRelease(sid);
     setSid(null);
-    runGate.release();
     append("\n[stopped]\n");
   };
   const answer = (e: FormEvent) => {
