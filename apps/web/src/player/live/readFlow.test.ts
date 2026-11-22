@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { advance, hasChecks, offersNext, startStage } from "./readFlow.ts";
+import { advance, hasChecks, offersNext, stageFor, startStage } from "./readFlow.ts";
 
 const open = { state: "predicting" as const };
 const wrong = { state: "hinting" as const };
@@ -57,4 +57,26 @@ test("only learn and watch lessons with two checks use the flow", () => {
   assert.equal(hasChecks("watch", [open, open]), true);
   assert.equal(hasChecks("learn", []), false);
   assert.equal(hasChecks("predict", [open, open]), false);
+});
+
+test("the closing page stays up while the learner is on it, even after the server reports completion", () => {
+  assert.equal(stageFor([done, wrong], true, "on", false), "closing");
+  assert.equal(stageFor([done, open], false, "on", true), "closing");
+});
+
+test("after Continue, a stale lesson cannot expose the reading stage while the refresh is in flight", () => {
+  assert.equal(stageFor([done, open], false, "leaving", true), "closing");
+  assert.equal(stageFor([done, wrong], false, "leaving", true), "closing");
+});
+
+test("after Continue, a refresh that reports completion wins and offers next", () => {
+  assert.equal(stageFor([done, done], true, "leaving", false), "done");
+  assert.equal(stageFor([done, done], true, "leaving", true), "done");
+});
+
+test("with no closing check in progress the stage is the served stage", () => {
+  assert.equal(stageFor([open, open], false, "off", false), "opening");
+  assert.equal(stageFor([done, open], false, "off", true), "reading");
+  assert.equal(stageFor([done, done], true, "off", false), "done");
+  assert.equal(stageFor([open, open], false, "on", false), "opening");
 });

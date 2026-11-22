@@ -15,7 +15,7 @@ const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 const ScrimLesson = lazy(() => import("./scrim/ScrimLesson"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
-  const { data, error, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
+  const { data, error, loading: refreshing, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
   const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
   const [slow, setSlow] = useState(false);
   const loading = !data && !error;
@@ -61,11 +61,11 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
   const reloadChecked = () => { reload(); courseState.reload(); };
   if (data.kind === "learn" && part?.kind === "learn") {
     const learn = (footer: ReactNode) => <div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div>;
-    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} next={next} onFinished={reloadChecked}>{learn}</CheckedLesson> : learn(next);
+    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} next={next} onFinished={reloadChecked}>{learn}</CheckedLesson> : learn(next);
   }
   if (data.kind === "watch" && part?.kind === "watch") {
     const watch = (footer: ReactNode) => <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={footer} /></Suspense>;
-    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} next={next} onFinished={reloadChecked}>{watch}</CheckedLesson> : watch(next);
+    return checked ? <CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} next={next} onFinished={reloadChecked}>{watch}</CheckedLesson> : watch(next);
   }
   if (data.kind === "practice" && part?.kind === "practice")
     return <Suspense fallback={fallback}><LessonWorkbench lessonId={data.id} title={data.title} part={part} next={next} /></Suspense>;

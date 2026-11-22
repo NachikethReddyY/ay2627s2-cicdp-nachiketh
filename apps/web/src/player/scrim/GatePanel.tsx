@@ -8,7 +8,7 @@ import { canHint, canSkip, canSubmit, stepMachine, type Reveal, type StepPublic 
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
 
-type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; skippable?: boolean; showCode?: boolean };
+type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; skippable?: boolean; showCode?: boolean };
 
 function Failure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -38,7 +38,7 @@ function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: Ga
   );
 }
 
-function GateRun({ stepId, ordinal, total, step, onDone, skippable = true, showCode = false }: GateProps & { step: StepPublic }) {
+function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, skippable = true, showCode = false }: GateProps & { step: StepPublic }) {
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: total, idx: ordinal, step } });
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
@@ -85,7 +85,7 @@ function GateRun({ stepId, ordinal, total, step, onDone, skippable = true, showC
         canSkip={skippable && canSkip(snap)}
         showSkip={skippable}
         showCode={showCode}
-        onSubmit={(answer) => run(async () => send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id: stepId, answer }) }))}
+        onSubmit={(answer) => run(async () => { send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id: stepId, answer }) }); onAttempt?.(); })}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id: stepId }) }))}
         onSkip={() => run(async () => { await trpc.steps.skip.mutate({ id: stepId }); send({ type: "SKIPPED" }); })}
       />
