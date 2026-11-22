@@ -35,30 +35,25 @@ test("a generated image's prompt is moderated once", async () => {
   let moderated = 0;
   setModerationClient(async () => { moderated++; return { flagged: false, scores }; });
   const http = async () => new Response(JSON.stringify({ data: [{ b64_json: PNG }] }), { status: 200 });
-  const r = await generateImage({ lessonVersionId, learnerId, prompt: "one prompt", description: "d", tier: "max" }, http);
+  const r = await generateImage({ lessonVersionId, learnerId, prompt: "one prompt", description: "d" }, http);
   assert.equal(r.status, "ready");
   assert.equal(moderated, 1);
 });
 
-test("resolveDocImages resolves blocks in parallel with a cap of four, keeping order", async () => {
+test("resolveDocImages keeps block order and stops at the one-image daily limit", async () => {
   const { lessonVersionId, learnerId } = await setup();
-  let active = 0;
-  let peak = 0;
+  let calls = 0;
   const http = async () => {
-    active++;
-    peak = Math.max(peak, active);
-    await new Promise((r) => setTimeout(r, 40));
-    active--;
+    calls++;
     return new Response(JSON.stringify({ data: [{ b64_json: PNG }] }), { status: 200 });
   };
-  const blocks = Array.from({ length: 8 }, (_, i) => ({ type: "image", id: `b${i}`, props: { source: "generate", prompt: `prompt ${i}`, alt: `alt ${i}` } }));
-  const first = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId, tier: "max" }, http)) as { blocks: { id: string; props: { source: string } }[] };
+  const blocks = Array.from({ length: 3 }, (_, i) => ({ type: "image", id: `b${i}`, props: { source: "generate", prompt: `prompt ${i}`, alt: `alt ${i}` } }));
+  const first = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId }, http)) as { blocks: { id: string; props: { source: string } }[] };
   assert.deepEqual(first.blocks.map((b) => b.id), blocks.map((b) => b.id));
-  assert.ok(first.blocks.every((b) => b.props.source === "generated-pending"));
   await idleImages();
-  assert.ok(peak > 1 && peak <= 4, `peak concurrency ${peak}`);
+  assert.equal(calls, 1);
 
-  const again = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId, tier: "max" }, async () => { throw new Error("network must not be called"); })) as typeof first;
+  const again = (await resolveDocImages({ v: 1, blocks }, { lessonVersionId, learnerId }, async () => { throw new Error("network must not be called"); })) as typeof first;
   assert.deepEqual(again.blocks.map((b) => b.id), blocks.map((b) => b.id));
-  assert.ok(again.blocks.every((b) => b.props.source === "generated"));
+  assert.equal(again.blocks.filter((b) => b.props.source === "generated").length, 1);
 });

@@ -104,7 +104,7 @@ export const lessonsRouter = router({
     .query(async ({ ctx, input }) => {
       const { id } = input;
       const [found] = await db
-        .select({ lesson: lessons, tier: learners.tier })
+        .select({ lesson: lessons })
         .from(lessons)
         .innerJoin(worlds, eq(worlds.id, lessons.worldId))
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
@@ -163,7 +163,7 @@ export const lessonsRouter = router({
         }
         case "learn":
         case "game-practice": {
-          const doc = content.doc && publicDoc(await resolveDocImages(content.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId, tier: found.tier }));
+          const doc = content.doc && publicDoc(await resolveDocImages(content.doc, { lessonVersionId: lesson.currentVersionId, learnerId: ctx.learnerId }));
           part = content.kind === "learn"
             ? { kind: "learn", body: content.body, doc }
             : { kind: "game-practice", intro: content.intro, doc };

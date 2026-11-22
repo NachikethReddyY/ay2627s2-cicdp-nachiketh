@@ -7,22 +7,10 @@ import { sql } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
 import { env } from "../src/env.ts";
 import { reserveAiSpend } from "../src/config/budget.ts";
+import { mvpLimits } from "../src/config/tiers.ts";
 
-test("TIERS_JSON parses overrides and merges them over defaults", () => {
-  const run = (tiers: string) => spawnSync(process.execPath, ["--input-type=module", "-e", `import { tiers } from './src/config/tiers.ts'; console.log(JSON.stringify(tiers))`], {
-    cwd: new URL("..", import.meta.url).pathname,
-    env: { ...process.env, TIERS_JSON: tiers }, encoding: "utf8",
-  });
-  const good = run(JSON.stringify({ free: { aiPathsPerDay: 9, imagesPerDay: 3 } }));
-  assert.equal(good.status, 0, good.stderr);
-  assert.deepEqual(JSON.parse(good.stdout), {
-    free: { aiPathsPerDay: 9, imagesPerDay: 3 },
-    pro: { aiPathsPerDay: 20, imagesPerDay: 4 },
-    max: { aiPathsPerDay: 50, imagesPerDay: 10 },
-  });
-  const bad = run("{");
-  assert.notEqual(bad.status, 0);
-  assert.match(bad.stderr, /TIERS_JSON must contain valid JSON/);
+test("every learner gets the same MVP limits", () => {
+  assert.deepEqual(mvpLimits, { aiPathsPerDay: 5, imagesPerDay: 1 });
 });
 
 test("a blank IMAGE_ESTIMATE_USD falls back to the 0.04 default instead of 0", () => {
