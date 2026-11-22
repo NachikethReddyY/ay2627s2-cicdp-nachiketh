@@ -16,7 +16,7 @@ export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unkno
   try {
     res = await fetch(new URL(path, env.ENGINE_URL), {
       method: "POST",
-      headers: { "content-type": "application/json", "x-engine-token": env.ENGINE_TOKEN },
+      headers: { "content-type": "application/json", "x-engine-token": env.ENGINE_TOKEN, "x-engine-timeout-ms": String(opts.timeoutMs ?? env.ENGINE_TIMEOUT_MS) },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(opts.timeoutMs ?? env.ENGINE_TIMEOUT_MS),
     });

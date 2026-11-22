@@ -10,7 +10,7 @@ const { guideRoutes } = await import("../src/dev/route.ts");
 
 async function appWithGuide(deps?: Parameters<typeof guideRoutes>[1]) {
   const app = Fastify();
-  app.register(guideRoutes, deps ?? {});
+  app.register(guideRoutes, { reserveAiSpend: async () => {}, isSafeText: async () => true, ...deps });
   return app;
 }
 
@@ -126,7 +126,7 @@ test("the engine body has exactly the allowed keys and no lesson data", async ()
   const res = await app.inject({
     method: "POST",
     url: "/guide/chat",
-    payload: { ...baseBody, lessonId: "l1", tests: [{ expectedStdout: "42" }], expectedStdout: "42", stdin: "x", checkResults: [], finding: { ruleId: "no-var", line: 2 } },
+    payload: { ...baseBody, tests: [{ expectedStdout: "42" }], expectedStdout: "42", stdin: "x", checkResults: [], finding: { ruleId: "no-var", line: 2 } },
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(Object.keys(calls[0]!).sort(), ["code", "fileName", "language", "lintFinding", "messages", "projectRoot", "selection", "workspaceFiles"]);
@@ -181,5 +181,61 @@ test("the guide re-lint uses a short timeout", async () => {
   });
   await app.inject({ method: "POST", url: "/guide/chat", payload: { ...baseBody, finding: { ruleId: "no-var", line: 2 } } });
   assert.equal(seen, 2_000);
+  await app.close();
+});
+
+test("the kill switch blocks Sloppy before moderation, spending or engine calls", async () => {
+  const { env } = await import("../src/env.ts");
+  const previous = env.AI_KILL_SWITCH;
+  let calls = 0;
+  const app = await appWithGuide({
+    resolveLearnerId: async () => "kill-switch-learner",
+    isSafeText: async () => { calls++; return true; },
+    reserveAiSpend: async () => { calls++; },
+    callEngine: (async () => { calls++; return {}; }) as never,
+  });
+  try {
+    env.AI_KILL_SWITCH = true;
+    const response = await app.inject({ method: "POST", url: "/guide/chat", payload: baseBody });
+    assert.equal(response.statusCode, 503);
+    assert.equal(calls, 0);
+  } finally {
+    env.AI_KILL_SWITCH = previous;
+    await app.close();
+  }
+});
+
+test("the spend cap and flagged learner input block engine requests", async () => {
+  const { TRPCError } = await import("@trpc/server");
+  let engineCalls = 0;
+  for (const safe of [false, true]) {
+    const app = await appWithGuide({
+      resolveLearnerId: async () => `blocked-${safe}`,
+      isSafeText: async () => safe,
+      reserveAiSpend: async () => { throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "AI budget limit reached" }); },
+      callEngine: (async () => { engineCalls++; return {}; }) as never,
+    });
+    const response = await app.inject({ method: "POST", url: "/guide/chat", payload: baseBody });
+    assert.equal(response.statusCode, safe ? 429 : 422);
+    await app.close();
+  }
+  assert.equal(engineCalls, 0);
+});
+
+test("Sloppy keeps structured cards, strips engine usage and sets a short deadline", async () => {
+  let timeout: number | undefined;
+  const guide = { message: "Follow the changing value.", widgets: [{ type: "question", text: "What changes on each iteration?" }] };
+  const app = await appWithGuide({
+    resolveLearnerId: async () => "structured-guide",
+    getBackend: (async () => ({})) as never,
+    callEngine: (async (_path: string, _body: unknown, options: { timeoutMs: number }) => {
+      timeout = options.timeoutMs;
+      return { guide, usage: { model: "private-model" }, attempts: 2 };
+    }) as never,
+  });
+  const response = await app.inject({ method: "POST", url: "/guide/chat", payload: baseBody });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { guide });
+  assert.equal(timeout, 30_000);
   await app.close();
 });

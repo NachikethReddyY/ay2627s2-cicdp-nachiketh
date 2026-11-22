@@ -70,3 +70,8 @@ export const out = (res: { json(): any }) => res.json().result.data;
 export const code = (res: { json(): any }) => res.json().error.data.code as string;
 
 export { readSteps, withChecks } from "./read-steps.ts";
+
+export async function openGeneratedLesson(api: ReturnType<typeof trpc>, input: { id: string }) {
+  const written = await api.m("lessons.write", input);
+  return written.statusCode === 200 ? api.q("lessons.get", input) : written;
+}

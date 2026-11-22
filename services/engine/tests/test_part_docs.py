@@ -20,12 +20,14 @@ def test_valid_game_doc_is_kept_and_catalog_is_in_prompt(fake_llm: FakeLLM) -> N
     assert "### game" in calls[0]["messages"][0]["content"]
 
 
-def test_invalid_learn_doc_is_dropped_and_body_kept(fake_llm: FakeLLM) -> None:
-    fake_llm("part_learn_doc_bad")
-    res = pipeline.lesson(ctx("learn"))
-    assert isinstance(res.value, LearnPart)
-    assert res.value.doc is None
-    assert res.value.body.startswith("Variables")
+def test_invalid_learn_doc_gets_a_repair(fake_llm: FakeLLM) -> None:
+    import pytest
+
+    calls = fake_llm("part_learn_doc_bad")
+    with pytest.raises(AssertionError, match="no recorded reply"):
+        pipeline.lesson(ctx("learn"))
+    assert len(calls) == 2
+    assert "fix_these_issues" in calls[1]["messages"][1]["content"]
 
 
 def test_part_prompt_puts_the_doc_in_the_doc_field(fake_llm: FakeLLM) -> None:

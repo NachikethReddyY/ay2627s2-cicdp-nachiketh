@@ -1,3 +1,4 @@
+import { openGeneratedLesson } from "./helpers.ts";
 import { code, out, signUp, trpc, withChecks } from "./helpers.ts";
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -64,10 +65,10 @@ async function setup(email = "a@example.com") {
 }
 
 async function predicted(t: ReturnType<typeof trpc>, slug: string) {
-  const before = out(await t.q("lessons.get", { id: slug }));
+  const before = out(await openGeneratedLesson(t, { id: slug }));
   assert.equal(before.part, null);
   out(await t.m("steps.attempt", { id: before.steps[0].id, answer: { kind: "mcq", choice: 0 } }));
-  return out(await t.q("lessons.get", { id: slug }));
+  return out(await openGeneratedLesson(t, { id: slug }));
 }
 
 test("outline creates a private path, courses, draft lessons and an enrollment", async () => {
@@ -81,7 +82,7 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   const other = trpc(app, await signUp(app, "b@example.com"));
   assert.equal(code(await other.q("paths.get", { slug })), "NOT_FOUND");
   assert.equal(code(await other.q("courses.get", { slug: firstCourseSlug })), "NOT_FOUND");
-  assert.equal(code(await other.q("lessons.get", { id: ls[0]!.slug })), "NOT_FOUND");
+  assert.equal(code(await openGeneratedLesson(other, { id: ls[0]!.slug })), "NOT_FOUND");
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
 });
 
@@ -183,7 +184,7 @@ test("a temporarily unavailable sandbox preserves a generated reference in the l
   lessonOut = (kind) => kind === "practice" ? { ...parts.practice, referenceSolution } : parts[kind as keyof typeof parts];
   const owner = await setup();
   const lessonId = owner.lessons[2]!.slug;
-  const response = await owner.t.q("lessons.get", { id: lessonId });
+  const response = await openGeneratedLesson(owner.t, { id: lessonId });
   assert.equal(response.statusCode, 200, response.body);
   assert.ok(!response.body.includes(referenceSolution));
   assert.deepEqual(out(response).part.solution, { attemptCount: 0, unlockAt: 3, gated: false });
@@ -192,7 +193,7 @@ test("a temporarily unavailable sandbox preserves a generated reference in the l
   assert.equal(stored?.content?.kind === "practice" && stored.content.referenceSolution, referenceSolution);
 
   const other = await setup("cache-solution@example.com");
-  const cached = await other.t.q("lessons.get", { id: other.lessons[2]!.slug });
+  const cached = await openGeneratedLesson(other.t, { id: other.lessons[2]!.slug });
   assert.equal(cached.statusCode, 200, cached.body);
   assert.equal(lessonCalls, 1);
   assert.deepEqual(out(cached).part.solution, { attemptCount: 0, unlockAt: 3, gated: false });
@@ -202,7 +203,7 @@ test("two concurrent plays write the part once", async () => {
   const { t, lessons: ls } = await setup();
   const last = ls[2]!.slug;
   const initialStepCount = (await db.select().from(steps)).length;
-  const [a, b] = await Promise.all([t.q("lessons.get", { id: last }), t.q("lessons.get", { id: last })]);
+  const [a, b] = await Promise.all([openGeneratedLesson(t, { id: last }), openGeneratedLesson(t, { id: last })]);
   assert.equal(a.statusCode, 200, a.body);
   assert.deepEqual(out(a), out(b));
   assert.equal(out(a).kind, "practice");
@@ -226,7 +227,7 @@ test("two concurrent plays write the part once", async () => {
 
 test("playing a part writes only that part, not the next one", async () => {
   const { t, lessons: ls } = await setup();
-  assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
+  assert.equal((await openGeneratedLesson(t, { id: ls[0]!.slug })).statusCode, 200);
   await idle();
   assert.equal(lessonCalls, 1);
   const [next] = await db.select().from(lessons).where(eq(lessons.slug, ls[1]!.slug));
@@ -251,7 +252,7 @@ test("invalid watch hunks are rejected after one retry, and a good retry succeed
   const { t, lessons: ls } = await setup();
   const watch = ls[1]!.slug;
   lessonOut = () => withChecks(badWatch);
-  const res = await t.q("lessons.get", { id: watch });
+  const res = await openGeneratedLesson(t, { id: watch });
   assert.equal(code(res), "INTERNAL_SERVER_ERROR");
   assert.equal(lessonCalls, 2);
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, watch));
@@ -286,9 +287,9 @@ test("a looping learn body is regenerated", async () => {
 test("private AI lesson is hidden from others until the path is published", async () => {
   const { t, slug, lessons: ls } = await setup();
   const last = ls[2]!.slug;
-  assert.equal((await t.q("lessons.get", { id: last })).statusCode, 200);
+  assert.equal((await openGeneratedLesson(t, { id: last })).statusCode, 200);
   const other = trpc(app, await signUp(app, "b@example.com"));
-  assert.equal(code(await other.q("lessons.get", { id: last })), "NOT_FOUND");
+  assert.equal(code(await openGeneratedLesson(other, { id: last })), "NOT_FOUND");
 
   assert.equal(code(await other.m("paths.publish", { slug })), "NOT_FOUND");
   assert.equal((await t.m("paths.publish", { slug })).statusCode, 200);
@@ -298,12 +299,12 @@ test("private AI lesson is hidden from others until the path is published", asyn
     .where(eq(lessons.slug, last));
   assert.equal(published?.status, "published");
   assert.ok(published.publishedAt instanceof Date);
-  assert.equal((await other.q("lessons.get", { id: last })).statusCode, 200);
+  assert.equal((await openGeneratedLesson(other, { id: last })).statusCode, 200);
 });
 
 test("a part generated for one learner is reused by another without a model call", async () => {
   const first = await setup("c@example.com");
-  assert.equal((await first.t.q("lessons.get", { id: first.lessons[0]!.slug })).statusCode, 200);
+  assert.equal((await openGeneratedLesson(first.t, { id: first.lessons[0]!.slug })).statusCode, 200);
   await idle();
   const before = lessonCalls;
 
@@ -328,11 +329,11 @@ test("the AI budget stops a lesson with its own message, before the model call a
   const old = { daily: env.AI_DAILY_BUDGET_USD, estimate: env.AI_CALL_ESTIMATE_USD };
   try {
     env.AI_CALL_ESTIMATE_USD = 0.01;
-    env.AI_DAILY_BUDGET_USD = 0.065;
+    env.AI_DAILY_BUDGET_USD = 0.095;
     const { t, lessons: ls } = await setup();
-    assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
+    assert.equal((await openGeneratedLesson(t, { id: ls[0]!.slug })).statusCode, 200);
     assert.equal(lessonCalls, 1);
-    const res = await t.q("lessons.get", { id: ls[1]!.slug });
+    const res = await openGeneratedLesson(t, { id: ls[1]!.slug });
     assert.equal(code(res), "TOO_MANY_REQUESTS");
     assert.equal(res.json().error.message, "AI budget limit reached");
     assert.equal(lessonCalls, 1);
@@ -366,7 +367,7 @@ test("flagged generated lesson text is rejected and not saved", async () => {
   setModerationClient(async (input) => ({ ...clean, flagged: input.includes("Variables hold values") }));
   try {
     const { t, lessons: ls } = await setup();
-    assert.equal(code(await t.q("lessons.get", { id: ls[0]!.slug })), "INTERNAL_SERVER_ERROR");
+    assert.equal(code(await openGeneratedLesson(t, { id: ls[0]!.slug })), "INTERNAL_SERVER_ERROR");
     const rows = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));
     assert.equal(rows[0]!.currentVersionId, null);
   } finally {
@@ -385,7 +386,7 @@ test("lessons.get returns the lesson with its image prompt resolved", async () =
     const doc = { v: 1, blocks: [{ type: "image", id: "i", props: { source: "generate", prompt: "A slow cell", alt: "cell" } }] };
     lessonOut = (kind) => withChecks(kind === "learn" ? { kind: "learn", body: "Variables hold values.", doc } : parts[kind as keyof typeof parts]);
     const { t, lessons: ls } = await setup();
-    assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
+    assert.equal((await openGeneratedLesson(t, { id: ls[0]!.slug })).statusCode, 200);
   } finally {
     await idle();
     Object.assign(env, { IMAGE_BASE_URL: old.u, IMAGE_API_KEY: old.k, IMAGE_MODEL: old.m, IMAGE_API_STYLE: old.s });
@@ -412,7 +413,7 @@ test("practice parts ask the engine for env.PRACTICE_STRETCH_TESTS stretch tests
     for (const [n, email] of [[3, "s3@example.com"], [5, "s5@example.com"]] as const) {
       env.PRACTICE_STRETCH_TESTS = n;
       const { t, lessons: ls } = await setup(email);
-      assert.equal((await t.q("lessons.get", { id: ls[2]!.slug })).statusCode, 200);
+      assert.equal((await openGeneratedLesson(t, { id: ls[2]!.slug })).statusCode, 200);
       await idle();
     }
     const practice = bodies.filter((b) => (b.lesson as { kind: string }).kind === "practice");
@@ -423,4 +424,13 @@ test("practice parts ask the engine for env.PRACTICE_STRETCH_TESTS stretch tests
     env.PRACTICE_STRETCH_TESTS = old.n;
     await new Promise((r) => srv.close(r));
   }
+});
+
+test("GET of an unwritten lesson never starts paid generation", async () => {
+  const { t, lessons: pending } = await setup("read-only-generation@example.com");
+  let calls = 0;
+  engineParts.lesson = async () => { calls++; throw new Error("GET must never call the engine"); };
+  const response = await t.q("lessons.get", { id: pending[pending.length - 1]!.slug });
+  assert.equal(response.statusCode, 404);
+  assert.equal(calls, 0);
 });

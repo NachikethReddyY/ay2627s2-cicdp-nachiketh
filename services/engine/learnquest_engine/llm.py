@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 
 import litellm
-from litellm.exceptions import BadRequestError, ContextWindowExceededError, Timeout
+from litellm.exceptions import APIError, BadRequestError, ContextWindowExceededError, Timeout
 from pydantic import BaseModel, ValidationError
 
 from .config import get_settings
@@ -33,9 +33,10 @@ def _is_format_error(e: BadRequestError) -> bool:
 _deadline: contextvars.ContextVar[float | None] = contextvars.ContextVar("deadline", default=None)
 
 
-def start_request_deadline() -> None:
+def start_request_deadline(timeout_s: float | None = None) -> None:
     """Call once per HTTP request: all generate() calls after it share one LLM_DEADLINE_S budget."""
-    _deadline.set(time.monotonic() + get_settings().LLM_DEADLINE_S)
+    budget = get_settings().LLM_DEADLINE_S
+    _deadline.set(time.monotonic() + min(budget, timeout_s if timeout_s is not None else budget))
 
 
 class Usage(TypedDict):
@@ -108,8 +109,10 @@ def generate[T: BaseModel](
             raise Timeout("LLM deadline exceeded", cfg.LLM_MODEL, "engine")
         return left
 
+    transient_retried = False
+
     def call() -> str:
-        nonlocal mode
+        nonlocal mode, transient_retried
         formats: dict[str, Any] = {
             "schema": {
                 "type": "json_schema",
@@ -117,7 +120,7 @@ def generate[T: BaseModel](
             },
             "object": {"type": "json_object"},
         }
-        for _ in range(2):
+        for _ in range(3):
             try:
                 res = litellm.completion(
                     model=cfg.LLM_MODEL,
@@ -136,6 +139,11 @@ def generate[T: BaseModel](
                     raise
                 mode = _auto_modes[cfg.LLM_MODEL] = "object"
                 messages[0]["content"] = _system(system, schema, mode)
+            except APIError as e:
+                status = getattr(e, "status_code", None)
+                if transient_retried or status is None or (status != 429 and status < 500):
+                    raise
+                transient_retried = True
         u = res.usage
         usage["prompt_tokens"] += getattr(u, "prompt_tokens", 0) or 0
         usage["completion_tokens"] += getattr(u, "completion_tokens", 0) or 0

@@ -46,6 +46,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
   const language = monacoLanguage(practice.language);
   const { fileName, languageLabel } = lessonFile(language);
   const [code, setCode] = useState(part.starterCode);
+  const [selection, setSelection] = useState<{ startLine: number; endLine: number; text: string } | null>(null);
   const [tab, setTab] = useState<Tab>("instructions");
   const [sloppyMounted, setSloppyMounted] = useState(false);
   const [revealDocs, setRevealDocs] = useState(0);
@@ -145,7 +146,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
       {sloppyMounted && (
         <div hidden={tab !== "sloppy"} className="flex min-h-0 min-w-0 flex-1">
           <Suspense fallback={null}>
-            <AIGuide fileName={fileName} filePath={fileName} projectRoot="." code={code} language={language} selection={null} pendingFinding={pendingFinding} onFindingSent={() => setPendingFinding(null)} pendingPrompt={pendingPrompt} onPromptSent={() => setPendingPrompt(null)} />
+            <AIGuide lessonId={lessonId} fileName={fileName} filePath={fileName} projectRoot="." code={code} language={language} selection={selection} pendingFinding={pendingFinding} onFindingSent={() => setPendingFinding(null)} pendingPrompt={pendingPrompt} onPromptSent={() => setPendingPrompt(null)} />
           </Suspense>
         </div>
       )}
@@ -209,7 +210,8 @@ export default function LessonWorkbench({ lessonId, title, part, next, video = t
         onDragMove: win.onDragMove,
         onDragEnd: win.onDragEnd,
       }}
-      aiContext={{ fileName, filePath: fileName, projectRoot: ".", code, language }}
+      onAskGuide={() => show("sloppy")}
+      onGuideSelection={setSelection}
     />
     {notepadOpen && host && createPortal(<Notepad onClose={() => setNotepadOpen(false)} instructions={part.instructions} />, host)}
     <EditorDock items={dockItems} />

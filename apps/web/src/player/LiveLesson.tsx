@@ -15,7 +15,10 @@ const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 const ScrimLesson = lazy(() => import("./scrim/ScrimLesson"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
-  const { data, error, loading: refreshing, reload } = useApi(`lesson:${slug}`, () => trpc.lessons.get.query({ id: slug }));
+  const { data, error, loading: refreshing, reload } = useApi(`lesson:${slug}`, async () => {
+    await trpc.lessons.write.mutate({ id: slug });
+    return trpc.lessons.get.query({ id: slug });
+  });
   const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
   const [slow, setSlow] = useState(false);
   const [upgrading, setUpgrading] = useState(false);

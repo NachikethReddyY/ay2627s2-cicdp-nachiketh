@@ -95,6 +95,7 @@ export type GuideWidget =
   | { type: "question"; text: string };
 export type GuideChatMessage = { role: "user" | "assistant"; content: string };
 export const askEditorGuide = (input: {
+  lessonId?: string;
   fileName: string;
   projectRoot: string;
   language: string;

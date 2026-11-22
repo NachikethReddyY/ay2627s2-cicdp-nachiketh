@@ -9,7 +9,10 @@ import { labTarget } from "./labTarget";
 const LessonWorkbench = lazy(() => import("../player/live/LessonWorkbench"));
 
 function Lab({ slug, course }: { slug: string; course?: string }) {
-  const { data, error, reload } = useApi(`lab:${slug}`, () => trpc.lessons.get.query({ id: slug }));
+  const { data, error, reload } = useApi(`lab:${slug}`, async () => {
+    await trpc.lessons.write.mutate({ id: slug });
+    return trpc.lessons.get.query({ id: slug });
+  });
   if (error)
     return (
       <Notice>

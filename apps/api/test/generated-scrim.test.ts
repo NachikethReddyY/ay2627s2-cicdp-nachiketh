@@ -1,3 +1,4 @@
+import { openGeneratedLesson } from "./helpers.ts";
 import { out, signUp, trpc } from "./helpers.ts";
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -102,7 +103,7 @@ function assertOmitted(body: unknown, markers: readonly string[]) {
 
 test("a generated scrim is stored without steps, and its gate steps are written as mcq rows", async () => {
   const { t, lessons: ls } = await setup();
-  assert.equal((await t.q("lessons.get", { id: ls[0]!.slug })).statusCode, 200);
+  assert.equal((await openGeneratedLesson(t, { id: ls[0]!.slug })).statusCode, 200);
   await idle();
 
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));
@@ -121,7 +122,7 @@ test("a generated scrim is stored without steps, and its gate steps are written 
 
 test("lessons.get points each gate at its step id and leaks no gate answer, hint, or hidden lab expectation", async () => {
   const { t, lessons: ls } = await setup("gen-scrim-get@example.com");
-  const res = await t.q("lessons.get", { id: ls[0]!.slug });
+  const res = await openGeneratedLesson(t, { id: ls[0]!.slug });
   assert.equal(res.statusCode, 200, res.body);
 
   const [row] = await db.select().from(lessons).where(eq(lessons.slug, ls[0]!.slug));

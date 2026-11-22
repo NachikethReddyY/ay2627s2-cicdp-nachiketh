@@ -1,3 +1,4 @@
+import { openGeneratedLesson } from "./helpers.ts";
 import { code, out, signUp, trpc } from "./helpers.ts";
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -56,6 +57,6 @@ test("AI kill switch blocks lazy lesson generation", async () => {
   const lastLesson = (course.lessons as { slug: string }[]).at(-1)!;
 
   env.AI_KILL_SWITCH = true;
-  assert.equal(code(await t.q("lessons.get", { id: lastLesson.slug })), "PRECONDITION_FAILED");
+  assert.equal(code(await openGeneratedLesson(t, { id: lastLesson.slug })), "PRECONDITION_FAILED");
   assert.equal(lessonCalls, 0);
 });
