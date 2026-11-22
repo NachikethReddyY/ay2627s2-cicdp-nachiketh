@@ -79,20 +79,58 @@ for (const kind of ["learn", "watch"] as const) {
   });
 }
 
-test("the upgrade requires ownership of a private AI lesson", async () => {
+test("the upgrade requires ownership of an AI lesson", async () => {
   let calls = 0;
   engineParts.lesson = async () => (calls++, withChecks(learn));
   const { get, upgrade, world, lesson, version } = await setup();
   const stranger = trpc(app, await signUp(app, "stranger@example.com"));
-  assert.equal((await stranger.m("lessons.upgradeReadChecks", { id: lesson.slug, versionId: version.id })).statusCode, 404);
+  const strangerUpgrade = () => stranger.m("lessons.upgradeReadChecks", { id: lesson.slug, versionId: version.id });
+  assert.equal((await strangerUpgrade()).statusCode, 404);
   await db.update(worlds).set({ visibility: "public" }).where(eq(worlds.id, world.id));
-  assert.equal(out(await get()).canUpgradeReadChecks, false);
-  assert.equal((await upgrade()).statusCode, 404);
-  await db.update(worlds).set({ visibility: "private" }).where(eq(worlds.id, world.id));
+  assert.equal(out(await get()).canUpgradeReadChecks, true);
+  assert.equal(out(await stranger.q("lessons.get", { id: lesson.slug })).canUpgradeReadChecks, false);
+  assert.equal((await strangerUpgrade()).statusCode, 404);
   await db.update(lessons).set({ sourceKind: "authored" }).where(eq(lessons.id, lesson.id));
   assert.equal(out(await get()).canUpgradeReadChecks, false);
   assert.equal((await upgrade()).statusCode, 404);
   assert.equal(calls, 0);
+});
+
+test("a public upgrade swaps versions only after the full replacement passes moderation", async () => {
+  const { get, upgrade, lesson, version } = await setup({ visibility: "public" });
+  engineParts.lesson = async () => withChecks(learn);
+  setModerationClient(async () => ({ flagged: true, scores: {} }));
+  assert.equal((await upgrade()).statusCode, 500);
+  assert.equal(out(await get()).versionId, version.id);
+  assert.deepEqual(await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id)), [version]);
+  assert.equal((await db.select().from(generationCache)).length, 0);
+
+  const moderationInputs: unknown[] = [];
+  setModerationClient(async (content) => {
+    moderationInputs.push(JSON.parse(content) as unknown);
+    return { flagged: false, scores: {} };
+  });
+  assert.deepEqual(out(await upgrade()), { ok: true });
+  assert.deepEqual(moderationInputs, [withChecks(learn)]);
+  const current = out(await get());
+  assert.notEqual(current.versionId, version.id);
+  assert.equal(current.steps.length, 2);
+  assert.equal(current.canUpgradeReadChecks, false);
+});
+
+test("an unavailable public moderator refuses even a valid private cache hit", async () => {
+  let calls = 0;
+  engineParts.lesson = async () => (calls++, withChecks(learn));
+  const { get, upgrade, world, lesson, version } = await setup();
+  assert.equal((await upgrade()).statusCode, 200);
+  await db.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
+  await db.update(worlds).set({ visibility: "public" }).where(eq(worlds.id, world.id));
+  setModerationClient(async () => { throw new Error("Moderator unavailable"); });
+
+  assert.equal((await upgrade()).statusCode, 500);
+  assert.equal(calls, 1);
+  assert.equal(out(await get()).versionId, version.id);
+  assert.equal((await db.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id))).length, 2);
 });
 
 test("a stale page cannot replace a newer legacy version or reserve spend", async () => {
@@ -163,7 +201,7 @@ for (const change of ["version", "visibility", "owner"] as const) {
     } finally {
       release.open();
     }
-    assert.equal(code(await pending), change === "version" ? "CONFLICT" : "NOT_FOUND");
+    assert.equal(code(await pending), change === "owner" ? "NOT_FOUND" : "CONFLICT");
     const [current] = await db.select().from(lessons).where(eq(lessons.id, lesson.id));
     assert.equal(current.currentVersionId, expected);
   });

@@ -128,7 +128,7 @@ export const lessonsRouter = router({
     .query(async ({ ctx, input }) => {
       const { id } = input;
       const [found] = await db
-        .select({ lesson: lessons, privateOwner: sql<boolean>`coalesce(${worlds.visibility} = 'private' AND ${worlds.ownerId} = ${learners.userId}, false)` })
+        .select({ lesson: lessons, isOwner: sql<boolean>`coalesce(${worlds.ownerId} = ${learners.userId}, false)` })
         .from(lessons)
         .innerJoin(worlds, eq(worlds.id, lessons.worldId))
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
@@ -224,7 +224,7 @@ export const lessonsRouter = router({
           state: lesson.kind === "scrim" ? scrimStepState(r.state) : (readLesson || lesson.kind === "predict") && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
         })),
         completed: completion !== undefined,
-        canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.privateOwner === true,
+        canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.isOwner === true,
         media: !readAllowed ? [] : await listMedia(lesson.currentVersionId).then((media) => {
           if (readLesson) {
             const revealed = new Set(rows.filter((row) => row.state === "revealed").map((row) => row.id));

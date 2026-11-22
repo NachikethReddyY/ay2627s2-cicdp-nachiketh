@@ -338,7 +338,7 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
 }
 
 function ownedReadLesson(tx: Db, ref: string, learnerId: string) {
-  return tx.select({ lesson: lessons })
+  return tx.select({ lesson: lessons, visibility: worlds.visibility })
     .from(lessons)
     .innerJoin(worlds, eq(worlds.id, lessons.worldId))
     .innerJoin(learners, eq(learners.id, learnerId))
@@ -347,7 +347,6 @@ function ownedReadLesson(tx: Db, ref: string, learnerId: string) {
       playableLesson(lessons),
       eq(lessons.sourceKind, "ai"),
       inArray(lessons.kind, ["learn", "watch"]),
-      eq(worlds.visibility, "private"),
       eq(worlds.ownerId, learners.userId),
     ));
 }
@@ -364,28 +363,28 @@ const readUpgrades = new Map<string, Promise<void>>();
 
 export async function upgradeReadChecks(ref: string, versionId: string, learnerId: string) {
   const [owned] = await ownedReadLesson(db, ref, learnerId);
-  const lesson = owned?.lesson;
-  if (!lesson?.currentVersionId) throw upgradeUnavailable();
+  if (!owned?.lesson.currentVersionId) throw upgradeUnavailable();
+  const { lesson, visibility } = owned;
   if (lesson.currentVersionId !== versionId) throw staleUpgrade();
   if (await hasReadChecks(db, versionId)) return;
 
   assertAiEnabled();
-  const key = `${learnerId}:${versionId}`;
+  const key = `${learnerId}:${versionId}:${visibility}`;
   const running = readUpgrades.get(key);
   if (running) return running;
-  const pending = replaceReadVersion(lesson, versionId, learnerId).finally(() => readUpgrades.delete(key));
+  const pending = replaceReadVersion(lesson, visibility, versionId, learnerId).finally(() => readUpgrades.delete(key));
   readUpgrades.set(key, pending);
   return pending;
 }
 
-async function replaceReadVersion(lesson: LessonRow, previousId: string, learnerId: string) {
+async function replaceReadVersion(lesson: LessonRow, visibility: typeof worlds.$inferSelect.visibility, previousId: string, learnerId: string) {
   const ctx = await lessonContext(lesson);
   const key = partCacheKey(ctx);
   const cached = await cachedPart(key, lesson.kind);
   if (!cached.part) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_PART);
   let part: GeneratedPart | null;
   try {
-    ({ part } = await generate(ctx, key, cached, false));
+    ({ part } = await generate(ctx, key, cached, visibility === "public"));
   } catch (cause) {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't update this lesson. Try again.", cause });
   }
@@ -395,9 +394,10 @@ async function replaceReadVersion(lesson: LessonRow, previousId: string, learner
   await withTx(async (tx) => {
     await tx.select({ id: lessons.id }).from(lessons).where(eq(lessons.id, lesson.id)).for("update");
     const [owned] = await ownedReadLesson(tx, lesson.id, learnerId).for("update", { of: worlds });
-    const current = owned?.lesson;
-    if (!current?.currentVersionId || current.worldId !== lesson.worldId || current.kind !== lesson.kind) throw upgradeUnavailable();
-    if (current.currentVersionId !== previousId) throw staleUpgrade();
+    if (!owned?.lesson.currentVersionId) throw upgradeUnavailable();
+    const current = owned.lesson;
+    if (current.worldId !== lesson.worldId || current.kind !== lesson.kind) throw upgradeUnavailable();
+    if (current.currentVersionId !== previousId || owned.visibility !== visibility) throw staleUpgrade();
     if (await hasReadChecks(tx, previousId)) return;
 
     const [{ latest }] = await tx.select({ latest: max(lessonVersions.version) }).from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id));
