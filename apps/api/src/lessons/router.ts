@@ -221,7 +221,7 @@ export const lessonsRouter = router({
           idx: r.idx,
           title: r.pub.title,
           hintCount: r.hintCount,
-          state: lesson.kind === "scrim" ? scrimStepState(r.state) : lesson.kind === "predict" && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
+          state: lesson.kind === "scrim" ? scrimStepState(r.state) : (readLesson || lesson.kind === "predict") && r.state === "skipped" ? "predicting" : r.state ?? "predicting",
         })),
         completed: completion !== undefined,
         canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.privateOwner === true,

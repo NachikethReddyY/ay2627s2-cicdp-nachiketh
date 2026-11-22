@@ -49,7 +49,7 @@ const useDesktop = () =>
     () => false,
   );
 
-type Live = { idx: number; finished?: boolean; panel: ReactNode | null; footer?: ReactNode; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
+type Live = { idx: number; finished?: boolean; panel: ReactNode | null; footer?: ReactNode; footerAfterReplay?: boolean; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
 type Sample = { mode: "task" | "video"; examples: string[] };
 type Props = { title: string; stepTitles: string[]; timeline: Timeline; live?: Live; sample?: Sample };
 
@@ -274,7 +274,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           {stepTitle}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {live?.footer && <div className="menu-next flex items-center gap-2">{live.footer}</div>}
+          {live?.footer && (!live.footerAfterReplay || ended) && <div className="menu-next flex items-center gap-2">{live.footer}</div>}
           <div role="group" aria-label={`Step ${cur + 1} of ${N}`} className="flex items-center gap-1.5">
             <div aria-hidden="true" className="flex gap-0.5">
               {stepTitles.map((t, i) => (

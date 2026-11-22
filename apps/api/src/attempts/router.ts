@@ -67,9 +67,11 @@ const hintAt = (step: Step, rung: number) => {
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
 
+const isReadLesson = (step: Step) => step.lessonKind === "learn" || step.lessonKind === "watch";
+
 const recoverSkipped = (step: Step, p: Progress): Progress => {
   if (p.state !== "skipped") return p;
-  if (step.lessonKind === "predict") return { ...p, state: "predicting", attemptAllowed: true, retryAllowed: false };
+  if (step.lessonKind === "predict" || isReadLesson(step)) return { ...p, state: "predicting", attemptAllowed: true, retryAllowed: false };
   if (step.lessonKind === "scrim") return { ...p, state: "predicting" };
   return p;
 };
@@ -81,8 +83,6 @@ async function readProgress(learnerId: string, step: Step): Promise<Progress> {
     .where(and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, step.id)));
   return recoverSkipped(step, p ?? fresh());
 }
-
-const isReadLesson = (step: Step) => step.lessonKind === "learn" || step.lessonKind === "watch";
 
 const TRIES_BEFORE_ANSWER = 3;
 const triesBeforeAnswer = (step: Step) => (isReadLesson(step) || step.lessonKind === "practice" ? TRIES_BEFORE_ANSWER : 0);

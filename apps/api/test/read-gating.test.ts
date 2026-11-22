@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { code, out, readSteps, signUp, trpc } from "./helpers.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { learners, lessons, lessonVersions, partCompletions, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { attempts, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
 
 const app = buildApp();
 after(() => app.close());
@@ -61,6 +61,34 @@ for (const kind of ["learn", "watch"] as const) {
       const result = out(await trpc(app, cookie).q("lessons.get", { id: `${kind}-${count}` }));
       assert.equal(result.completed, true);
       assert.equal(result.part.kind, kind);
+    }
+  });
+
+  test(`${kind} legacy skipped checks resume without erasing their history`, async () => {
+    const api = trpc(app, await signUp(app));
+    out(await api.q("home.get"));
+    const [learner] = await db.select({ id: learners.id }).from(learners).innerJoin(user, eq(user.id, learners.userId)).where(eq(user.email, "a@example.com"));
+    const { checks } = await addLesson(kind, 2);
+    const [opening, closing] = checks;
+    const learnerId = learner.id;
+    await db.insert(stepProgress).values(checks.map((check) => ({ learnerId, stepId: check.id, state: "skipped" as const, attemptAllowed: false })));
+    const skipped = await db.insert(attempts).values(checks.map((check) => ({ learnerId, stepId: check.id, kind: "skip" as const, observed: true }))).returning();
+
+    const get = async () => out(await api.q("lessons.get", { id: `${kind}-2` }));
+    const before = await get();
+    assert.equal(before.part, null);
+    assert.deepEqual(before.steps.map((step: { state: string }) => step.state), ["predicting", "predicting"]);
+    assert.equal(code(await api.q("steps.get", { id: closing.id })), "CONFLICT");
+    assert.equal(out(await api.q("steps.get", { id: opening.id })).attemptAllowed, true);
+
+    const answer = { kind: "mcq", choice: 1 };
+    out(await api.m("steps.attempt", { id: opening.id, answer }));
+    assert.equal((await get()).part.kind, kind);
+    assert.equal(out(await api.q("steps.get", { id: closing.id })).attemptAllowed, true);
+    out(await api.m("steps.attempt", { id: closing.id, answer }));
+    assert.equal((await get()).completed, true);
+    for (const snapshot of skipped) {
+      assert.deepEqual(await db.select().from(attempts).where(eq(attempts.id, snapshot.id)), [snapshot]);
     }
   });
 }
