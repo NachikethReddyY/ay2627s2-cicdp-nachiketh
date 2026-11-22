@@ -169,6 +169,13 @@
       "when": 1795142484571,
       "tag": "0023_blushing_marten_broadcloak",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795316616454,
+      "tag": "0024_learner_handles",
+      "breakpoints": true
     }
   ]
 }

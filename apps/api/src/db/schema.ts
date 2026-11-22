@@ -73,23 +73,30 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const learners = pgTable("learners", {
-  id: id(),
-  kind: text("kind", { enum: ["user"] })
-    .notNull()
-    .default("user"),
-  userId: text("user_id")
-    .notNull()
-    .unique()
-    .references(() => user.id, { onDelete: "cascade" }),
-  tier: text("tier", { enum: ["free", "pro", "max"] })
-    .notNull()
-    .default("free"),
-  timezone: text("timezone").notNull().default("UTC"),
-  dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
-  leaderboardOptIn: boolean("leaderboard_opt_in").notNull().default(true),
-  isAdmin: boolean("is_admin").notNull().default(false),
-});
+export const learners = pgTable(
+  "learners",
+  {
+    id: id(),
+    kind: text("kind", { enum: ["user"] })
+      .notNull()
+      .default("user"),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    tier: text("tier", { enum: ["free", "pro", "max"] })
+      .notNull()
+      .default("free"),
+    timezone: text("timezone").notNull().default("UTC"),
+    dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
+    leaderboardOptIn: boolean("leaderboard_opt_in").notNull().default(true),
+    isAdmin: boolean("is_admin").notNull().default(false),
+    handle: text("handle")
+      .notNull()
+      .default(sql`'learner-' || left(replace(gen_random_uuid()::text, '-', ''), 10)`),
+  },
+  (t) => [uniqueIndex("learners_handle_idx").on(t.handle)],
+);
 
 const visibility = () =>
   text("visibility", { enum: ["private", "public"] })

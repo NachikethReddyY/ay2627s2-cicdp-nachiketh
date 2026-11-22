@@ -11,7 +11,7 @@ export async function resolveLearnerId(headers: IncomingHttpHeaders): Promise<st
   const find = () => db.select({ id: learners.id }).from(learners).where(eq(learners.userId, session.user.id));
   let [learner] = await find();
   if (!learner) {
-    await db.insert(learners).values({ userId: session.user.id }).onConflictDoNothing();
+    await db.insert(learners).values({ userId: session.user.id }).onConflictDoNothing({ target: learners.userId });
     [learner] = await find();
   }
   return learner.id;
