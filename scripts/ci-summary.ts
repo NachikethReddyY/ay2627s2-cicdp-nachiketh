@@ -84,7 +84,7 @@ export function renderCiSummary(
 }
 
 if (import.meta.main) {
-  const jobs = JSON.parse(readFileSync(process.argv[2], "utf8")) as WorkflowJob[];
+  const jobs = JSON.parse(readFileSync(0, "utf8")) as WorkflowJob[];
   process.stdout.write(renderCiSummary(jobs, process.env.GITHUB_EVENT_NAME ?? "", process.env.PRODUCTION_RESULT ?? "", {
     apiCoverage: process.env.API_COVERAGE,
     e2eResult: process.env.E2E_RESULT,

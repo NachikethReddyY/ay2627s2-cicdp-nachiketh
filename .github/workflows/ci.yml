@@ -277,5 +277,5 @@ jobs:
           PRODUCTION_RESULT: ${{ needs.deploy-production.result }}
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100" --jq '.jobs[]' |
-            jq -s '.' > "$RUNNER_TEMP/ci-jobs.json"
-          node scripts/ci-summary.ts "$RUNNER_TEMP/ci-jobs.json" >> "$GITHUB_STEP_SUMMARY"
+            jq -s '.' |
+            node scripts/ci-summary.ts >> "$GITHUB_STEP_SUMMARY"
