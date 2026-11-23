@@ -2,6 +2,7 @@ import type { GuideChat } from "../workbench/PlannedParts";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ListChecks, Play } from "lucide-react";
+import { usePostHog } from "@posthog/react";
 import { usePanel } from "../terminal/usePanel";
 import DocsPanel from "../workbench/DocsPanel";
 import { DOCS } from "../workbench/docs";
@@ -49,6 +50,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   const practice = part as PracticePart;
   const language = monacoLanguage(practice.language);
   const { fileName, languageLabel } = lessonFile(language);
+  const posthog = usePostHog();
   const [code, setCode] = useState(part.starterCode);
   const [selection, setSelection] = useState<{ startLine: number; endLine: number; text: string } | null>(null);
   const [tab, setTab] = useState<Tab>("instructions");
@@ -94,6 +96,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   };
   const check = () => {
     if (!can.check) return;
+    posthog?.capture("practice_submission_started", { practice_language: language });
     show("results");
     void r.check();
   };

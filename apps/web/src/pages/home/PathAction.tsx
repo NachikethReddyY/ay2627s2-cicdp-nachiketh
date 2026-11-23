@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import type { PathCardData } from "../../lib/api";
 import { trpc } from "../../lib/trpc";
 
 export default function PathAction({ p, onDone, label }: { p: PathCardData; onDone: () => void; label: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+  const posthog = usePostHog();
   return (
     <>
       <button
@@ -13,7 +15,10 @@ export default function PathAction({ p, onDone, label }: { p: PathCardData; onDo
         onClick={() => {
           setBusy(true);
           setErr(false);
-          trpc.paths.enroll.mutate({ slug: p.slug }).then(onDone, () => setErr(true)).finally(() => setBusy(false));
+          trpc.paths.enroll.mutate({ slug: p.slug }).then(() => {
+            posthog?.capture("learning_path_enrolled", { enrollment_source: label.toLowerCase() });
+            onDone();
+          }, () => setErr(true)).finally(() => setBusy(false));
         }}
       >
         {label}

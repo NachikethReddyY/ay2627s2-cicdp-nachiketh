@@ -2,6 +2,7 @@ import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { Link, Outlet, RouterProvider, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { TRPCClientError } from "@trpc/client";
+import { PostHogProvider } from "@posthog/react";
 import "./index.css";
 import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
@@ -27,12 +28,46 @@ const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) 
 const EditorLab = lazy(() => import("./pages/EditorLab"));
 const TestPlayer = import.meta.env.DEV ? lazy(() => import("./pages/TestPlayer")) : null;
 
+const posthogToken = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
+const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
+
+if (import.meta.env.DEV && !posthogToken) {
+  console.error("VITE_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_PUBLIC_POSTHOG_PROJECT_TOKEN is configured");
+}
+if (import.meta.env.DEV && !posthogHost) {
+  console.error("VITE_PUBLIC_POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_PUBLIC_POSTHOG_HOST is configured");
+}
+
 function Root() {
-  return (
+  const app = (
     <Suspense fallback={<div className="grid min-h-screen place-items-center"><Loader label="Loading your quest" /></div>}>
       <Outlet />
     </Suspense>
   );
+
+  return posthogToken && posthogHost ? (
+    <PostHogProvider apiKey={posthogToken} options={{
+      api_host: posthogHost,
+      capture_exceptions: {
+        capture_unhandled_errors: true,
+        capture_unhandled_rejections: true,
+        capture_console_errors: false,
+      },
+      logs: {
+        serviceName: "learnquest-web",
+        environment: import.meta.env.MODE,
+      },
+      loaded: (posthog) => {
+        void authClient.getSession().then(({ data }) => {
+          const user = data?.user;
+          if (user) posthog.identify(user.id, { email: user.email, name: user.name });
+        }, () => undefined);
+      },
+      debug: import.meta.env.DEV,
+    }}>
+      {app}
+    </PostHogProvider>
+  ) : app;
 }
 
 async function getSession() {
