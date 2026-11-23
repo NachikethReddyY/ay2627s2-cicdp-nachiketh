@@ -1,0 +1,50 @@
+name: Lesson problem
+description: Report a mistake or something confusing in a lesson.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This report and any attachments will be public on GitHub.
+        Leave out LearnSlop handles, email addresses, passwords, tokens and other personal details.
+  - type: textarea
+    id: actual
+    attributes:
+      label: What went wrong?
+      description: Describe what is wrong or confusing. Mention the step, question or example if you know it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+      description: Describe what you expected the lesson to say, show or do.
+  - type: input
+    id: where
+    attributes:
+      label: Where did it happen?
+      description: Give the lesson and course names. You can include a public URL without query parameters.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List what you did before you noticed the problem, if relevant.
+  - type: input
+    id: browser-device
+    attributes:
+      label: Browser and device (optional)
+      placeholder: Safari on iPhone
+  - type: upload
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Cover any personal details before attaching a screenshot.
+    validations:
+      accept: ".png,.jpg,.jpeg,.gif,.webp"
+  - type: input
+    id: contact
+    attributes:
+      label: Contact preference (optional)
+      description: Say if you would like a follow-up in the replies on this GitHub issue.

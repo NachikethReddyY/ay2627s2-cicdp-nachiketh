@@ -11,6 +11,8 @@
 
 LearnSlop asks for an email address and a password to create an account. During onboarding, you confirm or choose a public handle. The weekly leaderboard shows public handles and XP. Everyone participates. You can change your handle in Account once every 30 days. As you learn, the app stores your answers, the hints you open, the steps and parts you finish, and a mastery estimate for each concept. Each sign-in session stores your IP address and browser type, and the server logs record request details and errors. When you use the AI features, the text involved (lesson topics, the code you are editing, chat messages, and, when a lesson is generated, the names of concepts you missed) is sent to third-party providers: OpenAI for content moderation, the language model provider the engine is configured to use, an image provider for generated pictures, and Daytona when code runs in a sandbox. The app is hosted on Vercel, Render and Neon Postgres, and media files are stored in an S3-compatible bucket. Fonts are loaded from Google, which receives the IP address and browser details of each visitor. The product is not intended for children under 13, and we do not knowingly collect their data. Nothing enforces the age limit yet. The sign-up form has no age, date of birth or parent-consent field, and no analytics SDK appears in `package.json` or the source.
 
+Feedback submitted through the app's GitHub Issues link is public on GitHub, including screenshots and replies. The forms ask reporters to leave out LearnSlop handles, email addresses, passwords, tokens and other personal details. Reporters can ask for a follow-up in the issue replies.
+
 ## Data inventory
 
 "Kept until" describes what happens today. No deletion, export or retention job exists yet.
