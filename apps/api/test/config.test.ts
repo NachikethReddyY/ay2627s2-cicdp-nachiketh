@@ -5,8 +5,47 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
-import { env } from "../src/env.ts";
+import { env, parseEnv } from "../src/env.ts";
 import { reserveAiSpend } from "../src/config/budget.ts";
+
+const imageEnv = {
+  DATABASE_URL: "postgres://localhost/learnquest_test",
+  BETTER_AUTH_SECRET: "test-only-secret-not-for-production-0123456789",
+  IMAGE_MODEL: "image-model",
+};
+
+test("image generation prefers the TokenRouter key and honors an explicit base URL", () => {
+  const parsed = parseEnv({
+    ...imageEnv,
+    TOKENROUTER_API_KEY: "router-key",
+    IMAGE_API_KEY: "legacy-key",
+    IMAGE_BASE_URL: "https://images.example/v1",
+  });
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.IMAGE_API_KEY, "router-key");
+  assert.equal(parsed.data.IMAGE_BASE_URL, "https://images.example/v1");
+});
+
+test("image generation falls back to the legacy key and requires its base URL", () => {
+  const legacyEnv = { ...imageEnv, TOKENROUTER_API_KEY: "", IMAGE_API_KEY: "legacy-key" };
+  const parsed = parseEnv({ ...legacyEnv, IMAGE_BASE_URL: "https://images.example/v1" });
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.IMAGE_API_KEY, "legacy-key");
+  assert.equal(parsed.data.IMAGE_BASE_URL, "https://images.example/v1");
+  assert.equal(parseEnv(legacyEnv).data?.IMAGE_BASE_URL, undefined);
+});
+
+test("the default TokenRouter image URL enables the production spend-cap check", () => {
+  const productionEnv = { ...imageEnv, NODE_ENV: "production", TOKENROUTER_API_KEY: "router-key" };
+  const uncapped = parseEnv(productionEnv);
+  assert.equal(uncapped.success, false);
+  assert.deepEqual(uncapped.error?.issues[0]?.path, ["AI_DAILY_BUDGET_USD"]);
+  const parsed = parseEnv({ ...productionEnv, AI_DAILY_BUDGET_USD: "5" });
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.IMAGE_API_KEY, "router-key");
+  assert.equal(parsed.data.IMAGE_BASE_URL, "https://api.tokenrouter.com/v1");
+  assert.ok(parseEnv({ ...productionEnv, IMAGE_MODEL: undefined }).success);
+});
 
 test("a blank IMAGE_ESTIMATE_USD falls back to the 0.04 default instead of 0", () => {
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", `import { env } from './src/env.ts'; console.log(env.IMAGE_ESTIMATE_USD)`], {

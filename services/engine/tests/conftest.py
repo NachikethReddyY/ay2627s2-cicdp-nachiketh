@@ -21,6 +21,7 @@ def engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None
     monkeypatch.setenv("LLM_MODEL", "openai/test")
     monkeypatch.setenv("ENGINE_TOKEN", "x" * 32)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("TOKENROUTER_API_KEY", raising=False)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

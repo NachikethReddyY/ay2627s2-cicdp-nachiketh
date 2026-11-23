@@ -16,6 +16,7 @@ const schema = z
     MODERATION_BASE_URL: z.url().default("https://api.openai.com/v1/"),
     MODERATION_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     MODERATION_MODEL: z.string().min(1).default("omni-moderation-latest"),
+    TOKENROUTER_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
     IMAGE_BASE_URL: z.url().optional(),
     IMAGE_API_KEY: z.string().min(1).optional(),
     IMAGE_MODEL: z.string().min(1).optional(),
@@ -66,6 +67,11 @@ const schema = z
     },
     { message: "set all of S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, or none", path: ["S3_BUCKET"] },
   )
+  .transform(({ TOKENROUTER_API_KEY, ...e }) => ({
+    ...e,
+    IMAGE_API_KEY: TOKENROUTER_API_KEY ?? e.IMAGE_API_KEY,
+    IMAGE_BASE_URL: e.IMAGE_BASE_URL ?? (TOKENROUTER_API_KEY ? "https://api.tokenrouter.com/v1" : undefined),
+  }))
   .refine(
     (e) => {
       const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL));
