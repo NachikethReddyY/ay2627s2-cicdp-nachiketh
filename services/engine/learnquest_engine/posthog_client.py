@@ -4,6 +4,7 @@ import os
 
 import litellm
 from posthog import Posthog
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 log = logging.getLogger(__name__)
@@ -12,9 +13,12 @@ log = logging.getLogger(__name__)
 class PostHogSettings(BaseSettings):
     """PostHog keys, kept apart so importing this module never needs the LLM settings."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 
-    POSTHOG_API_KEY: str | None = None
+    POSTHOG_API_KEY: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("POSTHOG_API_KEY", "POSTHOG_PROJECT_TOKEN"),
+    )
     POSTHOG_HOST: str | None = None
 
 

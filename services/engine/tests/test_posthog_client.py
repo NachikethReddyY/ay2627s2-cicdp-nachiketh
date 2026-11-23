@@ -31,3 +31,12 @@ def test_configured_client_redacts_prompts_and_registers_callbacks(
     assert litellm.turn_off_message_logging is True
     assert litellm.success_callback == ["posthog"]
     assert litellm.failure_callback == ["posthog"]
+
+
+def test_project_token_name_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POSTHOG_API_KEY", raising=False)
+    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
+    monkeypatch.setenv("POSTHOG_HOST", "https://us.i.posthog.com")
+    client = posthog_client.create_posthog_client()
+    assert client is not None
+    client.shutdown()
