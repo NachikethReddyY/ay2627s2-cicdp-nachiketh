@@ -25,6 +25,14 @@ Fix the foundations before building on top. A strong inner loop (types, lint, bo
 4. Open the PR. A PR for a technical change carries a Mermaid diagram (see the `file-pr` skill).
 5. Use the trusted bootstrap command in [AGENTS.md](../../AGENTS.md#merging) for every PR. See [the merge gate guide](merge-gate.md) and [stacking PRs](stacking-prs.md).
 
+## GitHub Actions
+
+The [CI workflow](../../.github/workflows/ci.yml) starts all five checks in parallel. The unit job runs up to four API test files at a time, with a separate Postgres database per file and one coverage report for the whole API suite. Those databases live in the job's disposable Postgres service. Local API tests use one database and run serially. The E2E job builds the API and engine service images together through [Docker Bake](../../infra/docker/e2e.hcl), then runs the browser suite against Compose.
+
+On pushes to `main`, successful checks lead to `Prod / Images`, `Prod / Migrate`, `Prod / Rollout`, and `Prod / Verify`. The verification job writes the checked commit and smoke result to the run summary.
+
+The **Summary** job runs after the checks and any production jobs finish. Its table links to job logs and includes durations, API coverage, and Playwright results when available. The Playwright artifact includes the HTML report and any traces captured on failure.
+
 ## Where things live
 
 | Path | Contents |

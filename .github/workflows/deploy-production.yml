@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   build:
+    name: Images
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -86,6 +87,7 @@ jobs:
           build-args: GIT_SHA=${{ github.sha }}
 
   migrate:
+    name: Migrate
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -114,6 +116,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   deploy:
+    name: Rollout
     needs: [build, migrate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -183,6 +186,7 @@ jobs:
           "$VERCEL_BIN" deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
   smoke:
+    name: Verify
     needs: deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -197,4 +201,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The budget inside the script covers Render's free-tier cold start and the rollout.
-      - run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$SHA"
+      - name: Verify live services and web routing
+        id: smoke
+        run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$SHA"
+
+      - name: Summarize production verification
+        if: always()
+        env:
+          SMOKE_RESULT: ${{ steps.smoke.outcome }}
+        run: |
+          {
+            printf '### Production verification\n\n'
+            printf '| Commit | Smoke check |\n'
+            printf '| --- | --- |\n'
+            printf '| [%s](%s/%s/commit/%s) | %s |\n' "${SHA:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$SHA" "${SMOKE_RESULT:-skipped}"
+          } >> "$GITHUB_STEP_SUMMARY"

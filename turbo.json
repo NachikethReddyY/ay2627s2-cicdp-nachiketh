@@ -11,7 +11,8 @@
     },
     "lint": {},
     "test": {
-      "env": ["TEST_DATABASE_URL", "BETTER_AUTH_SECRET"]
+      "env": ["TEST_DATABASE_URL", "BETTER_AUTH_SECRET", "ISOLATE_API_TEST_DATABASES"],
+      "passThroughEnv": ["API_COVERAGE_FILE"]
     }
   }
 }
