@@ -129,7 +129,7 @@ export default function LiveLesson({ slug, course, entrySource }: { slug: string
   if (data.kind === "game-practice" && part?.kind === "game-practice")
     return <Suspense fallback={fallback}><div className="lq-moon flex h-dvh flex-col">{progress}<GamePracticeView lessonId={data.id} versionId={part.versionId} title={data.title} intro={part.intro} doc={part.doc} next={next} onComplete={courseState.reload} /></div></Suspense>;
   if (data.kind === "predict" && data.steps.length > 0)
-    return <>{progress}<Suspense fallback={fallback}><Steps lesson={data} next={next} onFinished={courseState.reload} /></Suspense></>;
+    return <Suspense fallback={fallback}><Steps lesson={data} progress={course ? <LessonProgress id={data.id} course={courseState} inline /> : null} next={next} onFinished={courseState.reload} /></Suspense>;
   return (
     <Notice>
       This lesson isn't ready yet.{" "}

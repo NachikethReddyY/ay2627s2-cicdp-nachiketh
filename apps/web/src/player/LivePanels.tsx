@@ -104,10 +104,11 @@ type RevealProps = {
   reveal: Reveal | null;
   last: boolean;
   nextLabel?: string;
+  showReplayHint?: boolean;
   onNext: () => void;
 };
 
-export function RevealPanel({ idx, total, state, correct, step, reveal, last, nextLabel, onNext }: RevealProps) {
+export function RevealPanel({ idx, total, state, correct, step, reveal, last, nextLabel, showReplayHint = true, onNext }: RevealProps) {
   const h = useRef<HTMLHeadingElement>(null);
   useEffect(() => h.current?.focus(), []);
   const heading = state === "skipped" ? "Skipped — here's the answer" : correct ? "Correct!" : "Here's the answer";
@@ -129,7 +130,7 @@ export function RevealPanel({ idx, total, state, correct, step, reveal, last, ne
             </div>
           )}
           <p className="mt-2 text-sm"><span className="font-semibold">Try it: </span>{reveal.explanations.practice}</p>
-          <p className="mt-2 text-xs text-[var(--mu)]">Watch the change in the player, then move on.</p>
+          {showReplayHint && <p className="mt-2 text-xs text-[var(--mu)]">Watch the change in the player, then move on.</p>}
           <button type="button" onClick={onNext} className={`btn mt-4 !px-5 !py-1.5 text-sm ${FOCUS}`}>{nextLabel ?? (last ? "Finish lesson" : "Next step")}</button>
         </>
       )}

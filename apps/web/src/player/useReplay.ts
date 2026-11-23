@@ -12,7 +12,7 @@ export function stepIndexAt(tl: Timeline, t: number) {
   return i;
 }
 
-export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) {
+export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void, start?: "play" | "end") {
   const [playing, setPlayingState] = useState(false);
   const [speed, setSpeedState] = useState<Speed>(() =>
     matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : 1,
@@ -26,10 +26,10 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
     frameRef.current = onFrame;
   });
 
-  const setPlaying = (p: boolean) => {
+  const setPlaying = useCallback((p: boolean) => {
     playingRef.current = p;
     setPlayingState(p);
-  };
+  }, []);
 
   const go = useCallback(
     (nt: number) => {
@@ -40,8 +40,6 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
     },
     [timeline],
   );
-
-  useEffect(() => go(0), [go]);
 
   useEffect(() => {
     if (!playing) return;
@@ -64,21 +62,27 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, timeline]);
+  }, [playing, timeline, setPlaying]);
 
   const pause = () => setPlaying(false);
 
-  const jumpToStepEnd = () => {
+  const jumpToStepEnd = useCallback(() => {
     setPlaying(false);
     const s = timeline.steps.find((x) => x.endT > tRef.current);
     if (s) go(s.endT);
-  };
+  }, [go, timeline, setPlaying]);
 
-  const play = () => {
+  const play = useCallback(() => {
     if (speedRef.current === "instant") return jumpToStepEnd();
     if (tRef.current >= timeline.duration) go(0);
     setPlaying(true);
-  };
+  }, [go, jumpToStepEnd, timeline.duration, setPlaying]);
+
+  useEffect(() => {
+    go(start === "end" ? timeline.duration : 0);
+    if (start === "play") play();
+    if (start === "end") setPlaying(false);
+  }, [go, play, setPlaying, start, timeline.duration]);
 
   const setSpeed = (s: Speed) => {
     speedRef.current = s;

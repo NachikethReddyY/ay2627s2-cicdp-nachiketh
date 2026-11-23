@@ -26,7 +26,7 @@ function usePrefersDark(): boolean {
   );
 }
 
-const langOf = (p: string) => (/\.tsx?$/.test(p) ? "typescript" : /\.jsx?$/.test(p) ? "javascript" : "plaintext");
+const langOf = (p: string) => (/\.tsx?$/.test(p) ? "typescript" : /\.jsx?$/.test(p) ? "javascript" : /\.py$/.test(p) ? "python" : "plaintext");
 
 type Props = {
   ref?: Ref<EditorHandle>;
@@ -222,7 +222,7 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
             renderLineHighlight: "all" as const,
             scrollbar: { vertical: "hidden" as const, horizontal: "hidden" as const },
           }),
-          padding: { top: fontFamily ? 8 : 0, bottom: edit ? 16 : 140 },
+          padding: { top: fontFamily ? 8 : 0, bottom: edit || fill ? 16 : 140 },
           hover: { enabled: help ? "on" : "off" },
           lightbulb: { enabled: "off" as never },
           occurrencesHighlight: "off",

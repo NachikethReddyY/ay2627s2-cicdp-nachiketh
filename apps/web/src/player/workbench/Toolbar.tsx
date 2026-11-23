@@ -12,7 +12,7 @@ type Props = {
   symbol?: string;
   split?: boolean;
   nav: Toggle;
-  terminal: Toggle;
+  terminal?: Toggle;
   util?: Toggle;
   onRun(): void;
   actions: ReactNode;
@@ -144,7 +144,7 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
         <span className="flex flex-none items-center gap-px">
           {trailing}
           <ToggleButton t={nav} icon={PanelLeft} />
-          <ToggleButton t={terminal} icon={PanelBottom} />
+          {terminal && <ToggleButton t={terminal} icon={PanelBottom} />}
           {util && <ToggleButton t={util} icon={PanelRight} />}
         </span>
       </div>
