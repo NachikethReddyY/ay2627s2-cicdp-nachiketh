@@ -27,7 +27,7 @@ export async function recordEngineCallSpend(header: string | null) {
   }
 }
 
-export async function recordImageCallSpend(promptTokens: number, completionTokens: number, cost: number | null) {
+export async function recordMediaCallSpend(promptTokens: number, completionTokens: number, cost: number | null) {
   try {
     await db.insert(aiCallSpend).values({ promptTokens, completionTokens, estimatedUsd: cost?.toFixed(12) ?? null });
   } catch {

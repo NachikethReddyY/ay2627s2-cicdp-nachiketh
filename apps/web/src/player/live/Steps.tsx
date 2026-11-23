@@ -108,7 +108,7 @@ export default function Steps({ lesson, progress, next, onFinished }: { lesson: 
       title={lesson.title}
       timeline={timeline}
       task={<>{progress}{panel}</>}
-      narration={answered && reveal && <PredictNarration url={narration} text={reveal.narration} />}
+      narration={answered && reveal && <PredictNarration stepId={id} url={narration} text={reveal.narration} />}
       revealed={reveal !== null}
       finished={state === "finished"}
     />

@@ -175,6 +175,14 @@ test("a private generated Python prediction opens from its course and reveals re
     await db.end();
   }
 
+  const narration = "/predict-explanation.wav";
+  const narrationRequests: unknown[] = [];
+  await page.route("**/api/trpc/steps.narration", (route) => {
+    narrationRequests.push(route.request().postDataJSON());
+    return route.fulfill({ json: { result: { data: { url: narration } } } });
+  });
+  await page.route(`**${narration}`, (route) =>
+    route.fulfill({ contentType: "audio/wav", body: Buffer.from(silentWav(2000)) }));
   await page.goto(`/courses/${course}`);
   const start = page.getByRole("link", { name: "Start", exact: true });
   const href = `/play?lesson=${lesson}&course=${course}`;
@@ -190,6 +198,9 @@ test("a private generated Python prediction opens from its course and reveals re
   await page.keyboard.type("should_not_edit");
   await expect(code).not.toContainText("should_not_edit");
   await expect(page.getByRole("slider", { name: "Timeline" })).toHaveCount(0);
+  const clip = page.locator('audio[aria-label="Explanation audio"]');
+  await expect(clip).toHaveCount(0);
+  expect(narrationRequests).toHaveLength(0);
   await expect(page.getByRole("button", { name: "Toggle terminal panel", exact: false })).toHaveCount(0);
   const editorBox = (await code.boundingBox())!;
   const taskBox = (await task.boundingBox())!;
@@ -203,6 +214,9 @@ test("a private generated Python prediction opens from its course and reveals re
   await task.getByRole("radio", { name: "Mia" }).check();
   await task.getByRole("button", { name: "Check" }).click();
   await expect(task.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  await expect(clip).toHaveAttribute("src", narration);
+  await expect.poll(() => clip.evaluate((el) => (el as unknown as { duration: number }).duration)).toBeGreaterThan(0);
+  expect(narrationRequests).toHaveLength(1);
   await expect(page.getByRole("slider", { name: "Timeline" })).toBeVisible();
   await page.getByRole("button", { name: "Go to end of replay" }).click();
   await expect(code).toContainText("print(name)");

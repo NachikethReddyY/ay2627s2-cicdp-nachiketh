@@ -74,15 +74,22 @@ test("saveMedia writes the object, then the row, under a server-built key", asyn
   );
 });
 
-test("lessons.get returns signed narration, and no images, for a visible lesson", async () => {
+test("lessons.get serves signed Predict narration only for the step each learner has revealed", async () => {
   const cookie = await signUp(app);
   const { versionId, stepId } = await lessonVersion();
   setStorage(memoryStorage());
   const key = await saveMedia({ lessonVersionId: versionId, stepId, kind: "narration", body: MP3, contentType: "audio/mpeg" });
   await saveMedia({ lessonVersionId: versionId, stepId, kind: "image", body: PNG, contentType: "image/png" });
 
-  const body = out(await trpc(app, cookie).q("lessons.get", { id: "lesson-1" }));
-  assert.deepEqual(body.media, [{ stepId, segment: null, kind: "narration", url: `memory://${key}` }]);
+  const a = trpc(app, cookie);
+  const b = trpc(app, await signUp(app, "b@example.com"));
+  const input = { id: "lesson-1" };
+  assert.deepEqual(out(await a.q("lessons.get", input)).media, []);
+  assert.equal((await a.m("steps.narration", { id: stepId })).statusCode, 409);
+  assert.equal((await a.m("steps.attempt", { id: stepId, answer: { kind: "mcq", choice: 1 } })).statusCode, 200);
+  assert.deepEqual(out(await a.q("lessons.get", input)).media, [{ stepId, segment: null, kind: "narration", url: `memory://${key}` }]);
+  assert.deepEqual(out(await a.m("steps.narration", { id: stepId })), { url: `memory://${key}` });
+  assert.deepEqual(out(await b.q("lessons.get", input)).media, []);
 });
 
 test("importNarration stores one MP3 per step and skips steps already stored", async () => {

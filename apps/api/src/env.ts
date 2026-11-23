@@ -16,6 +16,10 @@ const schema = z
     MODERATION_BASE_URL: z.url().default("https://api.openai.com/v1/"),
     MODERATION_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     MODERATION_MODEL: z.string().min(1).default("omni-moderation-latest"),
+    OPENROUTER_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    STUDIO_TTS_MODEL: z.preprocess(blankIsUnset, z.string().min(1).default("hexgrad/kokoro-82m")),
+    STUDIO_TTS_VOICE: z.preprocess(blankIsUnset, z.string().min(1).default("af_heart")),
+    STUDIO_TTS_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().min(0.0001).max(100).default(0.01)),
     TOKENROUTER_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
     IMAGE_BASE_URL: z.url().optional(),
     IMAGE_API_KEY: z.string().min(1).optional(),
@@ -76,7 +80,7 @@ const schema = z
   }))
   .refine(
     (e) => {
-      const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL));
+      const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL) || (e.OPENROUTER_API_KEY && e.S3_BUCKET));
       return e.NODE_ENV !== "production" || !ai || e.AI_BUDGET_UNLIMITED || e.AI_DAILY_BUDGET_USD > 0 || e.AI_MONTHLY_BUDGET_USD > 0;
     },
     {

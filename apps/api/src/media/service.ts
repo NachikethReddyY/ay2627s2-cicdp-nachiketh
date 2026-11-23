@@ -41,7 +41,7 @@ export type MediaInput = {
   promptHash?: string;
 };
 
-export async function storeMedia(input: MediaInput): Promise<string> {
+export async function storeMedia(input: MediaInput, signal?: AbortSignal): Promise<string> {
   if (!storage) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Media storage is not configured" });
   const spec = KINDS[input.kind];
   const type = Object.hasOwn(spec.types, input.contentType) ? spec.types[input.contentType] : undefined;
@@ -50,7 +50,7 @@ export async function storeMedia(input: MediaInput): Promise<string> {
   if (!type.magic(input.body)) throw new TRPCError({ code: "BAD_REQUEST", message: "Media bytes do not match type" });
 
   const key = `v/${input.lessonVersionId}/${randomUUID()}.${type.ext}`;
-  await storage.put(key, input.body, input.contentType);
+  await storage.put(key, input.body, input.contentType, signal && { signal });
   return key;
 }
 

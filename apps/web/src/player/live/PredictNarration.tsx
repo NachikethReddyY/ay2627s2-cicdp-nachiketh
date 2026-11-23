@@ -1,7 +1,22 @@
 import { useCallback, useMemo, useState } from "react";
+import { useApi } from "../../lib/api";
+import { trpcUnbatched } from "../../lib/trpc";
 import { createSpeaker, type Synth, type Utterance } from "../speech";
 
-export default function PredictNarration({ url, text }: { url?: string; text: string }) {
+export default function PredictNarration({ stepId, url, text }: { stepId: string; url?: string; text: string }) {
+  if (url) return <NarrationPlayer url={url} text={text} />;
+  return <GeneratedNarration stepId={stepId} text={text} />;
+}
+
+function GeneratedNarration({ stepId, text }: { stepId: string; text: string }) {
+  const { data, loading } = useApi(`predict-narration:${stepId}`, () =>
+    trpcUnbatched.steps.narration.mutate({ id: stepId }, { signal: AbortSignal.timeout(20_000) }),
+  );
+  if (loading) return <p className="mt-4 text-sm text-[var(--mu)]" role="status">Preparing narration…</p>;
+  return <NarrationPlayer url={data?.url ?? undefined} text={text} />;
+}
+
+function NarrationPlayer({ url, text }: { url?: string; text: string }) {
   const [failed, setFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const speaker = useMemo(
