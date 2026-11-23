@@ -5,12 +5,54 @@
   "path": "worlds/loops",
   "concepts": [
     {
-      "slug": "loops",
+      "slug": "js.loops",
       "name": "loops"
     },
     {
       "slug": "array map",
       "name": "array map"
+    },
+    {
+      "slug": "js.arrays",
+      "name": "arrays"
+    },
+    {
+      "slug": "array-filter",
+      "name": "array filter"
     }
+  ],
+  "edges": [
+    [
+      "js.values-types",
+      "js.variables"
+    ],
+    [
+      "js.variables",
+      "js.conditionals"
+    ],
+    [
+      "js.conditionals",
+      "js.loops"
+    ],
+    [
+      "js.variables",
+      "js.functions"
+    ],
+    [
+      "js.functions",
+      "js.return-values"
+    ],
+    [
+      "js.loops",
+      "js.arrays"
+    ],
+    [
+      "js.arrays",
+      "js.array-reduce"
+    ],
+    [
+      "js.functions",
+      "js.array-reduce"
+    ]
   ]
 }

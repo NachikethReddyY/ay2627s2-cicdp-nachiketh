@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { playableLesson } from "../access.ts";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { concepts, lessons, mastery, recommendations, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { engineLearner, type BktParams, type NextRequest, type NextResult, type UpdateRequest } from "../engine-client/learner.ts";
+import { catalogueName, edgesFor, isCatalogueConcept } from "./catalogue.ts";
 import { lessonDone, lessonTotal, listed } from "./shared.ts";
 
 export const MASTERED_AT = 0.95;
@@ -63,29 +64,28 @@ export function mergeBkt(raw: unknown, where: string): BktParams | undefined {
   return out;
 }
 
-function conceptNames(stepConcepts: unknown, lessonConcepts: string[], where: string) {
-  const own = validConcepts(stepConcepts, where);
-  const source = own.length ? own : validConcepts(lessonConcepts, where);
+function conceptNames(raw: unknown, where: string) {
+  const source = validConcepts(raw, where);
   const bySlug = new Map<string, string>();
   for (const c of source) if (slugOf(c)) bySlug.set(slugOf(c), c.trim());
   return bySlug;
 }
 
-export const resolveConcepts = (stepConcepts: unknown, lessonConcepts: string[], where: string): string[] => [
-  ...conceptNames(stepConcepts, lessonConcepts, where).values(),
+export const resolveConcepts = (raw: unknown, where: string): string[] => [
+  ...conceptNames(raw, where).values(),
 ];
 
 async function ensureConcepts(tx: Db, worldId: string, names: Map<string, string>) {
   if (names.size === 0) return new Map<string, string>();
   await tx
     .insert(concepts)
-    .values([...names].map(([slug, name]) => ({ worldId, slug, name })))
+    .values([...names].map(([slug, name]) => ({ worldId: isCatalogueConcept(slug) ? null : worldId, slug, name: catalogueName(slug) ?? name })))
     .onConflictDoNothing();
   const rows = await tx
-    .select({ id: concepts.id, slug: concepts.slug })
+    .select({ id: concepts.id, slug: concepts.slug, worldId: concepts.worldId })
     .from(concepts)
-    .where(and(eq(concepts.worldId, worldId), inArray(concepts.slug, [...names.keys()])));
-  return new Map(rows.map((r) => [r.slug, r.id]));
+    .where(and(or(eq(concepts.worldId, worldId), isNull(concepts.worldId)), inArray(concepts.slug, [...names.keys()])));
+  return new Map(rows.filter((r) => isCatalogueConcept(r.slug) === (r.worldId === null)).map((r) => [r.slug, r.id]));
 }
 
 async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
@@ -108,21 +108,22 @@ async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
     FROM lessons l WHERE l.world_id = ${worldId} AND ${listed}`);
   const complete = new Set(rows.filter((r) => r.total > 0 && r.done >= r.total).map((r) => r.id));
 
+  const [world] = await tx.select({ title: worlds.title, config: worlds.config }).from(worlds).where(eq(worlds.id, worldId));
+  const worldTitle = world?.title.trim() ?? "";
+  const edges = edgesFor(world?.config, names.keys());
+  const relevant = new Set([...names.keys(), ...edges.flat()]);
   const known = await tx
-    .select({ conceptId: mastery.conceptId, slug: concepts.slug, pKnown: mastery.pKnown })
+    .select({ conceptId: mastery.conceptId, slug: concepts.slug, pKnown: mastery.pKnown, worldId: concepts.worldId })
     .from(mastery)
     .innerJoin(concepts, eq(concepts.id, mastery.conceptId))
-    .where(and(eq(mastery.learnerId, learnerId), eq(concepts.worldId, worldId)))
+    .where(and(eq(mastery.learnerId, learnerId), or(eq(concepts.worldId, worldId), isNull(concepts.worldId))))
     .orderBy(asc(concepts.slug));
-
+  const relevantMastery = known.filter((k) => relevant.has(k.slug) && isCatalogueConcept(k.slug) === (k.worldId === null));
   const idOfSlug = new Map(ids);
-  for (const k of known) idOfSlug.set(k.slug, k.conceptId);
-
-  const [world] = await tx.select({ title: worlds.title }).from(worlds).where(eq(worlds.id, worldId));
-  const worldTitle = world?.title.trim() ?? "";
+  for (const k of relevantMastery) idOfSlug.set(k.slug, k.conceptId);
   const request: NextRequest = {
-    mastery: known.map((k) => ({ conceptId: k.slug, pKnown: k.pKnown })),
-    edges: [],
+    mastery: relevantMastery.map((k) => ({ conceptId: k.slug, pKnown: k.pKnown })),
+    edges,
     lessons: worldLessons.map((l, order) => ({
       lessonId: l.id,
       ...(l.title.trim() && { title: l.title.trim() }),
@@ -271,7 +272,7 @@ async function processObservations(learnerId: string, opts: { worldId?: string }
       await lockLearner(tx, learnerId);
       const a = await nextObservation(tx, learnerId, failed);
       if (!a) return null;
-      const names = conceptNames(a.step_concepts, a.lesson_concepts, `observation ${a.id}`);
+      const names = conceptNames(a.source === "attempts" ? a.step_concepts : a.lesson_concepts, `observation ${a.id}`);
       const ids = await ensureConcepts(tx, a.world_id, names);
       const conceptIds = [...ids.values()];
       return { a, conceptIds, priors: await priorsFor(tx, learnerId, conceptIds) };

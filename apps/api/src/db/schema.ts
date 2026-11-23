@@ -213,13 +213,14 @@ export const concepts = pgTable(
   "concepts",
   {
     id: id(),
-    worldId: text("world_id")
-      .notNull()
-      .references(() => worlds.id),
+    worldId: text("world_id").references(() => worlds.id),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
   },
-  (t) => [uniqueIndex("concepts_world_slug").on(t.worldId, t.slug)],
+  (t) => [
+    uniqueIndex("concepts_world_slug").on(t.worldId, t.slug),
+    uniqueIndex("concepts_global_slug").on(t.slug).where(sql`${t.worldId} IS NULL`),
+  ],
 );
 
 export const mastery = pgTable(

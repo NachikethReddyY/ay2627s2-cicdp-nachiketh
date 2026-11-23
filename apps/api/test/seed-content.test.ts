@@ -8,7 +8,7 @@ import fixture from "../../web/src/player/fixtures/lesson1.ts";
 import { db } from "../src/db/client.ts";
 import { applyHunks, assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "../src/db/lesson-file.ts";
 import { concepts, lessons, steps } from "../src/db/schema.ts";
-import { slugOf } from "../src/progress/mastery.ts";
+import { isCatalogueConcept, JS_EDGES } from "../src/progress/catalogue.ts";
 import { seed } from "../src/db/seed.ts";
 
 const DIR = join(import.meta.dirname, "../../../worlds/codequest/lessons");
@@ -30,7 +30,7 @@ test("the web fixture and lesson-1.json describe the same lesson", async () => {
       explanations: s.explanations,
     },
   }));
-  const fromJson = file.steps.map(({ secret: { narration: _n, ...secret }, ...s }) => ({ ...s, secret }));
+  const fromJson = file.steps.map(({ secret: { narration: _n, concepts: _c, ...secret }, ...s }) => ({ ...s, secret }));
   assert.deepEqual(fromJson, fromFixture);
   assert.ok(file.steps.every((s) => s.secret.narration), "every lesson 1 step has narration text");
 });
@@ -67,18 +67,19 @@ test("seed is idempotent and gives the expected ids", async () => {
   const first = await count();
   await seed();
   assert.deepEqual(await count(), first);
-  const expected = { lessons: 0, steps: 0, concepts: 0 };
+  const expected = { lessons: 0, steps: 0 };
+  const conceptKeys = new Set<string>();
   for (const slug of ["codequest", "variables", "loops", "scrim-demo"]) {
     const world = join(DIR, "../..", slug);
     const manifest = Manifest.parse(JSON.parse(await readFile(join(world, "manifest.json"), "utf8")));
-    expected.concepts += manifest.concepts.length;
+    for (const c of manifest.concepts) conceptKeys.add(isCatalogueConcept(c.slug) ? c.slug : `${slug}:${c.slug}`);
     const files = (await readdir(join(world, "lessons"))).filter((file) => file.endsWith(".json"));
     expected.lessons += files.length;
     for (const file of files) {
       expected.steps += LessonFile.parse(JSON.parse(await readFile(join(world, "lessons", file), "utf8"))).steps.length;
     }
   }
-  assert.deepEqual(first, expected);
+  assert.deepEqual(first, { ...expected, concepts: conceptKeys.size });
 
   const l1 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-1")))[0]!;
   const l2 = (await db.select().from(lessons).where(eq(lessons.slug, "lesson-2")))[0]!;
@@ -145,10 +146,14 @@ test("a hunk that does not apply is rejected, naming the step and file", async (
 });
 
 test("manifest concept slugs equal what mastery computes", async () => {
-  const manifest = JSON.parse(await readFile(join(DIR, "../manifest.json"), "utf8")) as { concepts: { slug: string; name: string }[] };
-  for (const c of manifest.concepts) assert.equal(c.slug, slugOf(c.name));
-  const names = (await Promise.all((await readdir(DIR)).map((n) => load(n)))).flatMap((l) => l.concepts.map(slugOf));
-  for (const slug of names) assert.ok(manifest.concepts.some((c) => c.slug === slug), `no seeded concept for ${slug}`);
+  const manifest = Manifest.parse(JSON.parse(await readFile(join(DIR, "../manifest.json"), "utf8")));
+  assert.deepEqual(manifest.edges, JS_EDGES);
+  for (const lesson of await Promise.all((await readdir(DIR)).map((n) => load(n)))) {
+    for (const step of lesson.steps) {
+      assert.ok(step.secret.concepts.length > 0);
+      for (const slug of step.secret.concepts) assert.ok(manifest.concepts.some((c) => c.slug === slug));
+    }
+  }
 });
 
 test("mcq steps allow at most four options and need an in-range answer", async () => {

@@ -5,12 +5,50 @@
   "path": "worlds/variables",
   "concepts": [
     {
-      "slug": "variables",
+      "slug": "js.variables",
       "name": "variables"
     },
     {
       "slug": "constants",
       "name": "constants"
+    },
+    {
+      "slug": "js.values-types",
+      "name": "values and types"
     }
+  ],
+  "edges": [
+    [
+      "js.values-types",
+      "js.variables"
+    ],
+    [
+      "js.variables",
+      "js.conditionals"
+    ],
+    [
+      "js.conditionals",
+      "js.loops"
+    ],
+    [
+      "js.variables",
+      "js.functions"
+    ],
+    [
+      "js.functions",
+      "js.return-values"
+    ],
+    [
+      "js.loops",
+      "js.arrays"
+    ],
+    [
+      "js.arrays",
+      "js.array-reduce"
+    ],
+    [
+      "js.functions",
+      "js.array-reduce"
+    ]
   ]
 }

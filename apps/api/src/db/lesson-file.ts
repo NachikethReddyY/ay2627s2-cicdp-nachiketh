@@ -6,6 +6,7 @@ const Hunk = z.object({ id: z.string(), file: z.string(), oldStart: z.number().i
 const Hint = z.object({ text: z.string().min(1), eliminate: z.number().int().min(0).optional() });
 
 const StepSecretFile = z.object({
+  concepts: z.array(z.string().trim().min(1)).min(1),
   beforeFiles: z.record(z.string(), z.string()),
   hunks: z.array(Hunk).min(1),
   answer: z.union([z.number().int(), z.string()]),
@@ -69,6 +70,7 @@ export const Manifest = z.object({
   description: z.string().default(""),
   path: z.string().min(1),
   concepts: z.array(z.object({ slug: z.string().min(1), name: z.string().min(1) })),
+  edges: z.array(z.tuple([z.string().min(1), z.string().min(1)])),
 });
 export type Manifest = z.infer<typeof Manifest>;
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { saveMedia } from "../media/service.ts";
 import { silentWav } from "../media/silent-wav.ts";
 import { storage } from "../media/storage.ts";
-import { slugOf } from "../progress/mastery.ts";
+import { catalogueName, isCatalogueConcept, JS_EDGES } from "../progress/catalogue.ts";
 import { db, pool } from "./client.ts";
 import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
 import { attempts, hintEvents, stepProgress, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
@@ -33,12 +33,18 @@ async function loadWorld(world: string) {
   );
   assertUniqueAcrossFiles(files);
   files.forEach(assertHunksApply);
-  for (const c of manifest.concepts)
-    if (c.slug !== slugOf(c.name)) throw new Error(`manifest concept "${c.name}": slug must be "${slugOf(c.name)}"`);
-  const known = new Set(manifest.concepts.map((c) => c.name));
+  const known = new Set(manifest.concepts.map((c) => c.slug));
+  const edges = new Set(JS_EDGES.map((edge) => edge.join(":")));
+  if (manifest.edges.some((edge) => !edges.has(edge.join(":")))) {
+    throw new Error(`${world}: prerequisite edges must match the catalogue`);
+  }
   for (const f of files) {
     const missing = f.concepts.filter((c) => !known.has(c));
     if (missing.length) throw new Error(`${f.slug}: concepts not in the manifest: ${missing.join(", ")}`);
+    for (const step of f.steps) {
+      const unknown = step.secret.concepts.filter((c) => !known.has(c));
+      if (unknown.length) throw new Error(`${f.slug}: step concepts not in the manifest: ${unknown.join(", ")}`);
+    }
   }
   return { manifest, files };
 }
@@ -96,12 +102,15 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
     .onConflictDoUpdate({ target: worlds.slug, set: course });
   const [world] = await tx.select().from(worlds).where(eq(worlds.slug, manifest.slug));
   const worldId = world.id;
+  await tx.update(worlds).set({
+    config: sql`jsonb_set(${worlds.config}, '{conceptEdges}', ${JSON.stringify(manifest.edges)}::jsonb)`,
+  }).where(eq(worlds.id, worldId));
 
   for (const c of manifest.concepts) {
     await tx
       .insert(concepts)
-      .values({ worldId, ...c })
-      .onConflictDoUpdate({ target: [concepts.worldId, concepts.slug], set: { name: c.name } });
+      .values({ ...c, name: catalogueName(c.slug) ?? c.name, worldId: isCatalogueConcept(c.slug) ? null : worldId })
+      .onConflictDoNothing();
   }
 
   for (const file of files) {

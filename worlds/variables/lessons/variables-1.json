@@ -2,10 +2,10 @@
   "slug": "variables-1",
   "title": "Name a value that never changes",
   "concepts": [
-    "variables",
+    "js.variables",
     "constants"
   ],
-  "position": 0,
+  "position": 1,
   "status": "published",
   "steps": [
     {
@@ -52,7 +52,10 @@
           "workedExample": "const names a value that cannot be reassigned. TAX_RATE is read by the total, never changed, so const says that to the reader.",
           "practice": "Declare a DISCOUNT constant that holds 0.1."
         },
-        "narration": "A tax rate is set once and then read many times. const makes that promise in the code, so nobody can reassign it by accident."
+        "narration": "A tax rate is set once and then read many times. const makes that promise in the code, so nobody can reassign it by accident.",
+        "concepts": [
+          "js.variables"
+        ]
       }
     },
     {
@@ -90,7 +93,10 @@
           "workedExample": "Swapping let for const turns a value that could change into one that cannot. The line still reads the same otherwise.",
           "practice": "Change var API_URL to a constant."
         },
-        "narration": "let allows reassignment. Changing one word to const stops that, and the rest of the file stays the same."
+        "narration": "let allows reassignment. Changing one word to const stops that, and the rest of the file stays the same.",
+        "concepts": [
+          "js.variables"
+        ]
       }
     }
   ]

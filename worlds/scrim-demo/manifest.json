@@ -5,12 +5,46 @@
   "path": "worlds/scrim-demo",
   "concepts": [
     {
-      "slug": "functions",
+      "slug": "js.functions",
       "name": "functions"
     },
     {
-      "slug": "return values",
+      "slug": "js.return-values",
       "name": "return values"
     }
+  ],
+  "edges": [
+    [
+      "js.values-types",
+      "js.variables"
+    ],
+    [
+      "js.variables",
+      "js.conditionals"
+    ],
+    [
+      "js.conditionals",
+      "js.loops"
+    ],
+    [
+      "js.variables",
+      "js.functions"
+    ],
+    [
+      "js.functions",
+      "js.return-values"
+    ],
+    [
+      "js.loops",
+      "js.arrays"
+    ],
+    [
+      "js.arrays",
+      "js.array-reduce"
+    ],
+    [
+      "js.functions",
+      "js.array-reduce"
+    ]
   ]
 }

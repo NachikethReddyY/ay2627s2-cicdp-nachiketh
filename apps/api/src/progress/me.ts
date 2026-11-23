@@ -51,7 +51,9 @@ const meMastery = protectedProcedure
     await catchUpMastery(ctx.learnerId, worldId);
     const { rows } = await db.execute<{ slug: string; name: string; p_known: number; n_obs: number }>(sql`
       SELECT c.slug, c.name, m.p_known, m.n_obs FROM mastery m JOIN concepts c ON c.id = m.concept_id
-      WHERE m.learner_id = ${ctx.learnerId} AND c.world_id = ${worldId}
+      WHERE m.learner_id = ${ctx.learnerId} AND (c.world_id = ${worldId} OR (c.world_id IS NULL AND EXISTS (
+        SELECT 1 FROM lessons l WHERE l.world_id = ${worldId} AND ${listed} AND c.slug = ANY(l.concepts)
+      )))
       ORDER BY c.name, c.slug`);
     return rows.map((r) => ({
       conceptSlug: r.slug,

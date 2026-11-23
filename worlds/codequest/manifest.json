@@ -5,16 +5,50 @@
   "path": "worlds/codequest",
   "concepts": [
     {
-      "slug": "functions",
+      "slug": "js.functions",
       "name": "functions"
     },
     {
-      "slug": "array reduce",
+      "slug": "js.array-reduce",
       "name": "array reduce"
     },
     {
-      "slug": "conditionals",
+      "slug": "js.conditionals",
       "name": "conditionals"
     }
+  ],
+  "edges": [
+    [
+      "js.values-types",
+      "js.variables"
+    ],
+    [
+      "js.variables",
+      "js.conditionals"
+    ],
+    [
+      "js.conditionals",
+      "js.loops"
+    ],
+    [
+      "js.variables",
+      "js.functions"
+    ],
+    [
+      "js.functions",
+      "js.return-values"
+    ],
+    [
+      "js.loops",
+      "js.arrays"
+    ],
+    [
+      "js.arrays",
+      "js.array-reduce"
+    ],
+    [
+      "js.functions",
+      "js.array-reduce"
+    ]
   ]
 }

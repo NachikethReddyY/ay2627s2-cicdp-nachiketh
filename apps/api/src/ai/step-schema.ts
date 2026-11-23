@@ -13,7 +13,7 @@ const Common = {
   hunks: z.array(Hunk).min(1).max(6),
   hints: z.array(Hint).min(1).max(2),
   explanations: z.object({ workedExample: text(1000), practice: text(500) }),
-  concepts: z.array(text(60)).max(6).default([]),
+  concepts: z.array(text(60)).min(1).max(6),
 };
 
 type LeakCheckStep = {
@@ -26,6 +26,7 @@ type LeakCheckStep = {
   answer: number | string;
   options?: ReadonlyArray<string>;
   accepted?: ReadonlyArray<string>;
+  concepts: ReadonlyArray<string>;
 };
 
 const OPTION_WHITESPACE = "\\t-\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff";
@@ -50,6 +51,7 @@ function answerLeaks(step: LeakCheckStep): boolean {
     step.explanations.workedExample,
     step.explanations.practice,
     ...step.hints.map((h) => h.text),
+    ...step.concepts,
   ];
   if (step.kind === "mcq") {
     const answer = step.options?.[typeof step.answer === "number" ? step.answer : Number(step.answer)] ?? "";
@@ -63,7 +65,7 @@ function answerLeaks(step: LeakCheckStep): boolean {
 }
 
 const leakMessage = (step: LeakCheckStep) =>
-  `step "${step.title}": hints, title, prompt, explanations or starter code leak the answer`;
+  `step "${step.title}": hints, title, prompt, explanations, concept tags or starter code leak the answer`;
 
 function noLeak(step: LeakCheckStep, ctx: z.RefinementCtx) {
   if (answerLeaks(step)) ctx.addIssue({ code: "custom", message: leakMessage(step) });

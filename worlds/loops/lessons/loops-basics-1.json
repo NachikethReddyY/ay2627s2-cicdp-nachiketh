@@ -1,0 +1,134 @@
+{
+  "slug": "loops-basics-1",
+  "title": "Repeat with a loop",
+  "concepts": [
+    "js.loops"
+  ],
+  "position": 0,
+  "status": "published",
+  "steps": [
+    {
+      "public": {
+        "title": "Repeat with a loop",
+        "prompt": "How many times will the loop print a value?",
+        "kind": "mcq",
+        "options": [
+          "0",
+          "1",
+          "3",
+          "4"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.loops"
+        ],
+        "beforeFiles": {
+          "src/example.js": "let count = 0;\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+for (let i = 0; i < 3; i++) console.log(count++);"
+            ]
+          }
+        ],
+        "answer": 2,
+        "hints": [
+          {
+            "text": "Follow i as it starts at 0 and increases by 1."
+          }
+        ],
+        "explanations": {
+          "workedExample": "The loop runs for i values 0, 1 and 2.",
+          "practice": "Change the upper bound and count again."
+        }
+      }
+    },
+    {
+      "public": {
+        "title": "Repeat with a loop 2",
+        "prompt": "How many times does this loop run?",
+        "kind": "mcq",
+        "options": [
+          "0",
+          "1",
+          "3",
+          "4"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.loops"
+        ],
+        "beforeFiles": {
+          "src/example.js": "let count = 0;\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+for (let i = 0; i < 1; i++) console.log(count++);"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "List the values of i that satisfy the condition."
+          }
+        ],
+        "explanations": {
+          "workedExample": "The loop runs once, for i equal to zero.",
+          "practice": "Change the upper bound and count again."
+        }
+      }
+    },
+    {
+      "public": {
+        "title": "Repeat with a loop 3",
+        "prompt": "How many values does this loop print?",
+        "kind": "mcq",
+        "options": [
+          "0",
+          "1",
+          "3",
+          "4"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.loops"
+        ],
+        "beforeFiles": {
+          "src/example.js": "let count = 0;\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+for (let i = 0; i < 4; i++) console.log(count++);"
+            ]
+          }
+        ],
+        "answer": 3,
+        "hints": [
+          {
+            "text": "Track the counter until the condition fails."
+          }
+        ],
+        "explanations": {
+          "workedExample": "The loop runs for i equal to zero through three.",
+          "practice": "Change the upper bound and count again."
+        }
+      }
+    }
+  ]
+}

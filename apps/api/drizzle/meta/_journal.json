@@ -218,6 +218,13 @@
       "when": 1795402791639,
       "tag": "0030_first-try-observations",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795403012919,
+      "tag": "0031_global-concepts",
+      "breakpoints": true
     }
   ]
 }

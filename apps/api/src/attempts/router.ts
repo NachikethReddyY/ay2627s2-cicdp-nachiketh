@@ -6,6 +6,7 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db, type Db } from "../db/client.ts";
 import { attempts, hintEvents, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
+import { containsAnswer } from "../ai/answer-leak.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
 import { scrimGateOpen } from "../lessons/scrim.ts";
@@ -41,7 +42,7 @@ async function scrimGateReachable(step: { versionId: string; idx: number }, lear
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
+    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -60,7 +61,12 @@ async function loadStep(id: string, learnerId: string) {
 }
 type Step = NonNullable<Awaited<ReturnType<typeof loadStep>>>;
 
-const missedOf = (step: Step) => resolveConcepts(step.secret.concepts, step.lessonConcepts, `step ${step.id}`);
+const missedOf = (step: Step) => {
+  const answer = step.pub.kind === "mcq" ? step.pub.options?.[Number(step.secret.answer)] : String(step.secret.answer);
+  const hidden = [answer, ...(step.secret.accepted ?? [])].filter((value): value is string => Boolean(value));
+  return resolveConcepts(step.secret.concepts, `step ${step.id}`)
+    .filter((concept) => !hidden.some((value) => containsAnswer(concept, value)));
+};
 
 const hintAt = (step: Step, rung: number) => {
   const h = step.secret.hints[rung - 1];

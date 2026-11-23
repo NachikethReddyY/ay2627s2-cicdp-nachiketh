@@ -81,7 +81,7 @@ test("enrolled learner gets continue, progress and XP", async () => {
   assert.equal(body.stats.todayXp, 45);
   assert.equal(body.stats.streak, 1);
   assert.equal(body.continue, null, "only lesson is finished");
-  assert.deepEqual(body.paths[0].courses[0], { slug: "codequest", title: "Shopping Cart Basics", lessonsDone: 1, lessonsTotal: 1 });
+  assert.deepEqual(body.paths[0].courses[0], { slug: "codequest", title: "Shopping Cart Basics", lessonsDone: 1, lessonsTotal: 2 });
 });
 
 test("game completion grants XP once and leaves lesson mastery unchanged", async () => {
@@ -118,6 +118,7 @@ test("courses.get: published lessons only, private courses only for the owner", 
   );
   assert.deepEqual(body.lessons.map(({ slug, level, done, total }: Record<string, number | string>) => ({ slug, level, done, total })), [
     { slug: "lesson-1", level: 1, done: 0, total: 3 },
+    { slug: "conditionals-1", level: 1, done: 0, total: 3 },
   ]);
 
   await answer(cookie, "s1", { kind: "mcq", choice: 1 });

@@ -1,0 +1,134 @@
+{
+  "slug": "values-types-1",
+  "title": "Values have types",
+  "concepts": [
+    "js.values-types"
+  ],
+  "position": 0,
+  "status": "published",
+  "steps": [
+    {
+      "public": {
+        "title": "Values have types",
+        "prompt": "What type does typeof report for 42?",
+        "kind": "mcq",
+        "options": [
+          "number",
+          "string",
+          "boolean",
+          "undefined"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.values-types"
+        ],
+        "beforeFiles": {
+          "src/example.js": "const value = 42;\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+console.log(typeof value);"
+            ]
+          }
+        ],
+        "answer": 0,
+        "hints": [
+          {
+            "text": "Compare a literal without quotes with one inside quotes."
+          }
+        ],
+        "explanations": {
+          "workedExample": "typeof reports the type of the value.",
+          "practice": "Try typeof on a quoted value."
+        }
+      }
+    },
+    {
+      "public": {
+        "title": "Values have types 2",
+        "prompt": "What type does typeof report for a quoted value?",
+        "kind": "mcq",
+        "options": [
+          "number",
+          "string",
+          "boolean",
+          "undefined"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.values-types"
+        ],
+        "beforeFiles": {
+          "src/example.js": "const value = \"42\";\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+console.log(typeof value);"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "Look at the quotation marks around the value."
+          }
+        ],
+        "explanations": {
+          "workedExample": "A quoted value is text.",
+          "practice": "Try typeof on a quoted value."
+        }
+      }
+    },
+    {
+      "public": {
+        "title": "Values have types 3",
+        "prompt": "What type does typeof report for true?",
+        "kind": "mcq",
+        "options": [
+          "number",
+          "string",
+          "boolean",
+          "undefined"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.values-types"
+        ],
+        "beforeFiles": {
+          "src/example.js": "const value = true;\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+console.log(typeof value);"
+            ]
+          }
+        ],
+        "answer": 2,
+        "hints": [
+          {
+            "text": "This literal represents a yes-or-no value."
+          }
+        ],
+        "explanations": {
+          "workedExample": "true is one of the two logical values.",
+          "practice": "Try typeof on a quoted value."
+        }
+      }
+    }
+  ]
+}

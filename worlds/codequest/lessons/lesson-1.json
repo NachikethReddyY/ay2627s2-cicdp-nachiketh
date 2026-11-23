@@ -2,8 +2,8 @@
   "slug": "lesson-1",
   "title": "Build a shopping cart total",
   "concepts": [
-    "functions",
-    "array reduce"
+    "js.functions",
+    "js.array-reduce"
   ],
   "position": 0,
   "status": "published",
@@ -59,7 +59,11 @@
           "workedExample": "Write cartTotal(cart), which adds up the price of every item in the cart. Notice how reduce starts from 0 so an empty cart totals 0.",
           "practice": "Write cartCount(cart) that returns how many items are in the cart, using reduce."
         },
-        "narration": "The cart needs a total. Reduce walks the items and keeps a running sum. It starts at zero, so an empty cart totals zero instead of throwing. That is why reduce with an initial value of zero is the right choice here."
+        "narration": "The cart needs a total. Reduce walks the items and keeps a running sum. It starts at zero, so an empty cart totals zero instead of throwing. That is why reduce with an initial value of zero is the right choice here.",
+        "concepts": [
+          "js.functions",
+          "js.array-reduce"
+        ]
       }
     },
     {
@@ -107,7 +111,10 @@
           "workedExample": "Give cartTotal an optional discount between 0 and 1. Watch how the subtotal is computed first, then scaled by (1 - discount).",
           "practice": "Add an optional taxRate parameter that defaults to no tax."
         },
-        "narration": "Old callers pass only the cart, so the discount must be optional. A default of zero means no discount. The subtotal is computed first, then scaled by one minus the discount."
+        "narration": "Old callers pass only the cart, so the discount must be optional. A default of zero means no discount. The subtotal is computed first, then scaled by one minus the discount.",
+        "concepts": [
+          "js.functions"
+        ]
       }
     },
     {
@@ -156,7 +163,10 @@
           "workedExample": "Add console.assert checks for a plain total and for a 50% discount, so the behaviour from the last two steps is pinned down.",
           "practice": "Add an assertion for a 20% discount on the same items."
         },
-        "narration": "The plain total is fifteen. A fifty percent discount multiplies it by one minus point five, which gives seven and a half. The test pins down both behaviours."
+        "narration": "The plain total is fifteen. A fifty percent discount multiplies it by one minus point five, which gives seven and a half. The test pins down both behaviours.",
+        "concepts": [
+          "js.functions"
+        ]
       }
     }
   ]
