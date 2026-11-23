@@ -2,9 +2,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { authClient } from "../lib/auth";
 import { Logo } from "./landing/Logo";
+import HandleForm, { type HandleProfile } from "./HandleForm";
 import "./home.css";
 
-export default function Account() {
+export default function Account({ profile }: { profile: HandleProfile }) {
   const { data, error: sessionError, isPending, refetch } = authClient.useSession();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,10 @@ export default function Account() {
       </header>
       <main className="lq-wrap" style={{ maxWidth: 520 }}>
         <h1 className="lq-hero-title" style={{ marginBottom: 20 }}>Account</h1>
+        <section className="lq-card mb-5 grid gap-4 p-7" aria-labelledby="account-profile">
+          <h2 id="account-profile" className="text-lg">Profile</h2>
+          <HandleForm profile={profile} />
+        </section>
         <section className="lq-card" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 20 }} aria-labelledby="account-h">
           <h2 id="account-h" style={{ fontSize: 16 }}>Signed in as</h2>
           {sessionError ? (

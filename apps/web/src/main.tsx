@@ -4,6 +4,8 @@ import { Outlet, RouterProvider, createRootRoute, createRoute, createRouter, red
 import "./index.css";
 import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
+import { safeRedirect } from "./lib/redirect";
+import { trpc } from "./lib/trpc";
 import Loader from "./components/Loader";
 import { NotFound, RouteError } from "./components/RouteStates";
 import { clearReloadGuard, reloadOnce } from "./lib/chunkReload";
@@ -16,6 +18,7 @@ const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Account = lazy(() => import("./pages/Account"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const EditorLab = lazy(() => import("./pages/EditorLab"));
 const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
@@ -29,7 +32,7 @@ function Root() {
   );
 }
 
-async function requireSession(here: string) {
+async function getSession() {
   let result: Awaited<ReturnType<typeof authClient.getSession>>;
   try {
     result = await authClient.getSession();
@@ -38,25 +41,71 @@ async function requireSession(here: string) {
   }
   const { data, error } = result;
   if (error && error.status !== 401 && error.status !== 403) throw new Error("Couldn't check your session. Check your connection and try again.");
-  if (!data) throw redirect({ to: "/login", search: { redirect: here } });
-}
-const guard = ({ location }: { location: { href: string } }) => requireSession(location.href);
-
-function Index(): React.ReactElement | null {
-  const { data, isPending } = authClient.useSession();
-  return isPending ? null : data ? <Home /> : <Landing />;
+  return data;
 }
 
+async function requireProfile(here: string) {
+  if (!await getSession()) throw redirect({ to: "/login", search: { redirect: here } });
+  return trpc.me.handle.profile.query();
+}
+
+async function guard({ location }: { location: { href: string } }) {
+  const profile = await requireProfile(location.href);
+  if (profile.onboardingRequired) throw redirect({ to: "/onboarding", search: { redirect: location.href } });
+  return { profile };
+}
+
+const redirectSearch = (s: Record<string, unknown>): { redirect?: string } => ({ redirect: typeof s.redirect === "string" ? s.redirect : undefined });
 const root = createRootRoute({ component: Root });
 const r = { getParentRoute: () => root };
+const indexRoute = createRoute({
+  ...r,
+  path: "/",
+  beforeLoad: async () => {
+    if (!await getSession()) return { signedIn: false };
+    const profile = await trpc.me.handle.profile.query();
+    if (profile.onboardingRequired) throw redirect({ to: "/onboarding" });
+    return { signedIn: true };
+  },
+  component: Index,
+});
+const accountRoute = createRoute({ ...r, path: "/account", component: AccountRoute, beforeLoad: guard });
+const onboardingRoute = createRoute({
+  ...r,
+  path: "/onboarding",
+  validateSearch: redirectSearch,
+  beforeLoad: async ({ location, search }) => {
+    const profile = await requireProfile(location.href);
+    if (!profile.onboardingRequired) throw redirect({ to: "/" });
+    const target = safeRedirect(search.redirect);
+    const path = new URL(target, window.location.origin).pathname;
+    return { profile, next: path === "/onboarding" || path === "/login" ? "/" : target };
+  },
+  component: OnboardingRoute,
+});
+
+function Index() {
+  return indexRoute.useRouteContext().signedIn ? <Home /> : <Landing />;
+}
+
+function AccountRoute() {
+  const { profile } = accountRoute.useRouteContext();
+  return <Account profile={profile} />;
+}
+
+function OnboardingRoute() {
+  const { profile, next } = onboardingRoute.useRouteContext();
+  return <Onboarding profile={profile} next={next} />;
+}
+
 const routeTree = root.addChildren([
-  createRoute({ ...r, path: "/", component: Index }),
+  indexRoute,
   createRoute({ ...r, path: "/changelog", component: () => <Changelog /> }),
   createRoute({
     ...r,
     path: "/login",
     component: () => <Login />,
-    validateSearch: (s: Record<string, unknown>): { redirect?: string } => ({ redirect: typeof s.redirect === "string" ? s.redirect : undefined }),
+    validateSearch: redirectSearch,
   }),
   createRoute({
     ...r,
@@ -70,7 +119,8 @@ const routeTree = root.addChildren([
   }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
-  createRoute({ ...r, path: "/account", component: () => <Account />, beforeLoad: guard }),
+  accountRoute,
+  onboardingRoute,
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
   ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),

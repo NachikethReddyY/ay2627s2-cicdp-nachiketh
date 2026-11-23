@@ -52,7 +52,7 @@ export default function Login() {
           ? await authClient.signIn.email({ email, password })
           : await authClient.signUp.email({ email, password, name: "Learner" });
       if (result.error) setError(describeAuthError(result.error, action));
-      else location.assign("/");
+      else location.assign(action === "up" ? "/onboarding" : "/");
     } catch {
       setError("Can't reach the server. Check your connection and try again.");
     } finally {

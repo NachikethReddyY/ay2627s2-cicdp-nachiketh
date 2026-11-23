@@ -3,13 +3,13 @@
 | | |
 |---|---|
 | **Date** | 2026-11-09 |
-| **Status** | Draft for the project record, WP15. Not a published privacy policy. No user-facing notice exists yet. |
+| **Status** | Draft for the project record, WP15. Not a published privacy policy. Handle onboarding explains what appears on the leaderboard. |
 | **Audience** | Learners aged 13 and over (AGENTS.md, plan §4 NFR1). Not intended for children under 13; the age limit is not enforced yet. |
 | **Companion** | `docs/sdlc/threat-model.md` (security findings, including F10, F11 and F22) |
 
 ## What we collect, and who gets it
 
-LearnSlop asks for an email address and a password to create an account. The name shown in the app is copied from the part of the email before the "@", so it can contain a real name (`apps/web/src/pages/Login.tsx:21`). As you learn, the app stores your answers, the hints you open, the steps and parts you finish, and a mastery estimate for each concept. Each sign-in session stores your IP address and browser type, and the server logs record request details and errors. When you use the AI features, the text involved (lesson topics, the code you are editing, chat messages, and, when a lesson is generated, the names of concepts you missed) is sent to third-party providers: OpenAI for content moderation, the language model provider the engine is configured to use, an image provider for generated pictures, and Daytona when code runs in a sandbox. The app is hosted on Vercel, Render and Neon Postgres, and media files are stored in an S3-compatible bucket. Fonts are loaded from Google, which receives the IP address and browser details of each visitor. The product is not intended for children under 13, and we do not knowingly collect their data. Nothing enforces the age limit yet. The sign-up form has no age, date of birth or parent-consent field, and no analytics SDK appears in `package.json` or the source.
+LearnSlop asks for an email address and a password to create an account. During onboarding, you confirm or choose a public handle. The weekly leaderboard shows public handles and XP. Everyone participates. You can change your handle in Account once every 30 days. As you learn, the app stores your answers, the hints you open, the steps and parts you finish, and a mastery estimate for each concept. Each sign-in session stores your IP address and browser type, and the server logs record request details and errors. When you use the AI features, the text involved (lesson topics, the code you are editing, chat messages, and, when a lesson is generated, the names of concepts you missed) is sent to third-party providers: OpenAI for content moderation, the language model provider the engine is configured to use, an image provider for generated pictures, and Daytona when code runs in a sandbox. The app is hosted on Vercel, Render and Neon Postgres, and media files are stored in an S3-compatible bucket. Fonts are loaded from Google, which receives the IP address and browser details of each visitor. The product is not intended for children under 13, and we do not knowingly collect their data. Nothing enforces the age limit yet. The sign-up form has no age, date of birth or parent-consent field, and no analytics SDK appears in `package.json` or the source.
 
 ## Data inventory
 
@@ -18,7 +18,8 @@ LearnSlop asks for an email address and a password to create an account. The nam
 | Data | Where stored | Why | Who receives it | Kept until (today) |
 |---|---|---|---|---|
 | Email address | `user.email` (Neon Postgres) | Sign-in and account identity | Neon, Render (API) | Indefinitely. No deletion route. |
-| Name (copied from email before "@") | `user.name` | Shown in the app (where it is shown is not yet checked) | Neon, Render | Indefinitely |
+| Auth account name | `user.name` | Account metadata. New accounts use “Learner.” | Neon, Render | Indefinitely |
+| Public handle and last confirmed or changed time | `learners.handle`, `learners.handle_updated_at` | Identify learners on the weekly leaderboard and enforce the 30-day change interval | Other learners see the handle. Neon and Render process both fields. | Indefinitely |
 | Password hash | `account.password` | Sign-in | Neon | Indefinitely. Hash algorithm not yet verified (threat model F12). |
 | Session: token, IP address, user agent | `session` (`ip_address`, `user_agent`; `apps/api/src/db/schema.ts:42-43`) | Keeps you signed in | Neon; IP also in Render request logs | Session expiry not yet verified. Rows are not purged. |
 | Email verification tokens | `verification` | Reserved for email verification | Neon | Indefinitely. No email verification flow in code yet. |
@@ -47,9 +48,9 @@ These are not built or not checked. None is a promise.
 - **No account deletion or data export.** Not yet built (threat model F10). Deleting a learner would also fail while attempts, hint events or step progress rows exist, because those foreign keys use `ON DELETE NO ACTION` (`apps/api/drizzle/0000_workable_forge.sql:133`, `:136`, `:142`; threat model F11).
 - **No retention job.** Attempts, hints, mastery, AI usage records, sessions and verification rows are kept indefinitely. Session lifetime is not yet verified (threat model F12).
 - **Age gate not enforced.** The audience is 13 and over, but sign-up has no age input and no check (threat model F22). Enforcing it needs a product decision.
-- **Name taken from email.** The display name is the email's local part (`apps/web/src/pages/Login.tsx:21`), which can hold a real name. Where the name is displayed to other people is not yet checked (threat model F23).
+- **Legacy account names.** Older account records may still contain an email local part as the auth account name. The weekly leaderboard uses public handles (threat model F23).
 - **Google Fonts sends visitor IP and browser details.** The CSP allows fonts from Google (`apps/web/vercel.json`). Consider self-hosting the font files so visitors' requests stay with us.
 - **Provider retention and training terms unverified.** OpenAI, the LLM provider (`LLM_API_BASE` is set outside the repo), the image provider, Daytona, Vercel, Render, Neon and the bucket host each need their current data policy checked and dated (threat model O4).
 - **Log retention unverified.** Render, Vercel and Neon log and backup retention is not known.
 - **Guide chat storage unverified.** Whether the API keeps a copy of editor code or chat messages is not yet confirmed.
-- **No user-facing privacy notice.** Plan §15.6 calls for one paragraph; this document is the source for it. Before launch, a learner-facing version should be reviewed by the user.
+- **No full user-facing privacy notice.** Plan §15.6 calls for one paragraph; this document is the source for it. Before launch, a learner-facing version should be reviewed by the user.

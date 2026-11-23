@@ -6,6 +6,7 @@ import { db } from "../db/client.ts";
 import { userOfLearner, visibleWorld } from "../access.ts";
 import { applyObservations, MASTERED_AT } from "./mastery.ts";
 import { Slug, listed } from "./shared.ts";
+import { handleRouter } from "./handle.ts";
 
 const TimeZone = z.string().max(64);
 
@@ -106,4 +107,4 @@ const meNext = protectedProcedure
     return { action: r.action, lessonSlug: r.lesson_slug, lessonTitle: r.lesson_title, conceptSlug: r.concept_slug, reason: r.reason, reasonCode: r.reason_code };
   });
 
-export const meRouter = router({ update: meUpdate, mastery: meMastery, next: meNext });
+export const meRouter = router({ update: meUpdate, mastery: meMastery, next: meNext, handle: handleRouter });
