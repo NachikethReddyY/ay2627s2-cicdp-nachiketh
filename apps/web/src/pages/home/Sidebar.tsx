@@ -18,7 +18,7 @@ export default function Sidebar({ stats, leaderboard }: { stats: HomeData["stats
             const label = new Date(`${d.day}T00:00`).toLocaleDateString(undefined, { weekday: "long" });
             return (
               <li key={d.day} className={`lq-day${on ? " on" : ""}${today ? " today" : ""}${d.state === "future" ? " future" : ""}`}>
-                <span className="sr">{today ? `${label}, today` : label}: {d.solved} solved</span>
+                <span className="sr">{today ? `${label}, today` : label}: {d.solved} observed attempts</span>
                 <span className="lq-dot" aria-hidden="true">{on ? <Check size={18} /> : `${d.solved}/3`}</span>
                 <span aria-hidden="true">{label[0]}</span>
               </li>

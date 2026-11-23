@@ -11,7 +11,7 @@ export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }
       <div className="lq-hero-main">
         <p className="lq-hero-eyebrow">{c.path.title} · Course {c.course.index + 1} of {c.course.count}</p>
         <h2 id="hero-h" className="lq-hero-title">{c.course.title}</h2>
-        <p className="lq-hero-lesson">Level {lesson.level} · {lesson.title}</p>
+        <p className="lq-hero-lesson">{recommendation?.action !== "assess" && `Level ${lesson.level} · `}{lesson.title}</p>
         {recommendation && <p className="lq-hero-reason">{recommendation.reason}</p>}
         <div className="lq-hero-meter">
           <div
@@ -23,7 +23,9 @@ export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }
           <span className="lq-hero-count">{c.lesson.done} / {c.lesson.total}</span>
         </div>
         <div className="lq-hero-cta">
-          <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">{label}<Arrow /></Link>
+          {recommendation?.action === "review"
+            ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Review<Arrow /></Link>
+            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">{label}<Arrow /></Link>}
         </div>
       </div>
       {snippet && (

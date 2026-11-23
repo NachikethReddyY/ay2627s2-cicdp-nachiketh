@@ -42,7 +42,7 @@ async function scrimGateReachable(step: { versionId: string; idx: number }, lear
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source })
+    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, assessment: lessons.assessment, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -136,6 +136,7 @@ function mutate(
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
     const { made } = await triesOf(tx, learnerId, stepId);
     const r = next(recoverSkipped(step, p), action, {
+      oneTry: step.assessment !== null,
       hintCount: step.secret.hints.length,
       triesBeforeAnswer: triesBeforeAnswer(step),
       triesMade: made,
@@ -277,7 +278,7 @@ export const stepsRouter = router({
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);
       const out = await mutate(ctx.learnerId, step, { type: "attempt", correct });
       if ("conflict" in out) throw conflict(out.conflict);
-      if (out.observed) await catchUpMastery(ctx.learnerId);
+      if (out.observed && !step.assessment) await catchUpMastery(ctx.learnerId);
       return {
         attemptId: out.attemptId!,
         correct,

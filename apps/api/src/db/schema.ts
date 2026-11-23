@@ -302,6 +302,7 @@ export const lessons = pgTable(
     .notNull()
     .default("predict"),
   source: jsonb("source").$type<LessonSource>(),
+  assessment: text("assessment", { enum: ["pre", "post"] }),
   concepts: text("concepts").array().notNull().default(sql`'{}'::text[]`),
   status: text("status", { enum: ["draft", "published", "archived"] })
     .notNull()
@@ -453,7 +454,8 @@ export const lessonObservations = pgTable(
     learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
     lessonVersionId: text("lesson_version_id").notNull().references(() => lessonVersions.id, { onDelete: "cascade" }),
     activityKey: text("activity_key").notNull(),
-    kind: text("kind", { enum: ["mcq", "practice"] }).notNull(),
+    kind: text("kind", { enum: ["mcq", "cloze", "practice"] }).notNull(),
+    conceptSlugs: text("concept_slugs").array(),
     optionCount: integer("option_count"),
     correct: boolean("correct").notNull(),
     hintsUsed: integer("hints_used").notNull().default(0),
@@ -461,6 +463,17 @@ export const lessonObservations = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("lesson_observations_first_try").on(t.learnerId, t.lessonVersionId, t.activityKey)],
+);
+
+export const reviewSchedule = pgTable(
+  "review_schedule",
+  {
+    learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
+    conceptId: text("concept_id").notNull().references(() => concepts.id, { onDelete: "cascade" }),
+    stage: integer("stage").notNull().default(0),
+    dueAt: timestamp("due_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.conceptId] })],
 );
 
 export const gameAttempts = pgTable(

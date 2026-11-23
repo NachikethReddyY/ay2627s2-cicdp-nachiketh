@@ -14,19 +14,18 @@ END AS slug
 FROM concepts c JOIN worlds w ON w.id = c.world_id
 WHERE w.slug IN ('codequest', 'variables', 'loops', 'scrim-demo')
   AND lower(trim(c.slug)) IN ('values and types', 'variables', 'conditionals', 'loops', 'functions', 'return values', 'arrays', 'array reduce');--> statement-breakpoint
-CREATE TEMP TABLE lq117_map ON COMMIT DROP AS
-SELECT id, slug, min(id) OVER (PARTITION BY slug) AS canonical_id FROM lq117_concepts;--> statement-breakpoint
-CREATE TEMP TABLE lq117_mastery ON COMMIT DROP AS
-SELECT DISTINCT ON (m.learner_id, x.canonical_id) m.learner_id, x.canonical_id, m.p_known,
-  sum(m.n_obs) OVER (PARTITION BY m.learner_id, x.canonical_id) AS n_obs, m.updated_at
-FROM mastery m JOIN lq117_map x ON m.concept_id = x.id
-ORDER BY m.learner_id, x.canonical_id, m.updated_at DESC, m.concept_id;--> statement-breakpoint
-DELETE FROM mastery m USING lq117_map x WHERE m.concept_id = x.id;--> statement-breakpoint
+INSERT INTO concepts (id, world_id, slug, name)
+SELECT DISTINCT ON (x.slug) 'catalogue:' || x.slug, NULL, x.slug, c.name
+FROM lq117_concepts x JOIN concepts c ON c.id = x.id
+ORDER BY x.slug, c.id
+ON CONFLICT DO NOTHING;--> statement-breakpoint
 INSERT INTO mastery (learner_id, concept_id, p_known, n_obs, updated_at)
-SELECT learner_id, canonical_id, p_known, n_obs, updated_at FROM lq117_mastery;--> statement-breakpoint
-UPDATE recommendations r SET concept_id = x.canonical_id FROM lq117_map x WHERE r.concept_id = x.id AND x.id <> x.canonical_id;--> statement-breakpoint
-DELETE FROM concepts c USING lq117_map x WHERE c.id = x.id AND x.id <> x.canonical_id;--> statement-breakpoint
-UPDATE concepts c SET slug = x.slug, world_id = NULL FROM lq117_map x WHERE c.id = x.id AND x.id = x.canonical_id;--> statement-breakpoint
+SELECT DISTINCT ON (m.learner_id, g.id) m.learner_id, g.id, m.p_known,
+  sum(m.n_obs) OVER (PARTITION BY m.learner_id, g.id), m.updated_at
+FROM mastery m JOIN lq117_concepts x ON m.concept_id = x.id
+JOIN concepts g ON g.slug = x.slug AND g.world_id IS NULL
+ORDER BY m.learner_id, g.id, m.updated_at DESC, m.concept_id
+ON CONFLICT DO NOTHING;--> statement-breakpoint
 CREATE TEMP TABLE lq117_alias (old_slug text PRIMARY KEY, new_slug text NOT NULL) ON COMMIT DROP;--> statement-breakpoint
 INSERT INTO lq117_alias VALUES ('values and types', 'js.values-types'), ('variables', 'js.variables'), ('conditionals', 'js.conditionals'), ('loops', 'js.loops'), ('functions', 'js.functions'), ('return values', 'js.return-values'), ('arrays', 'js.arrays'), ('array reduce', 'js.array-reduce');--> statement-breakpoint
 UPDATE lessons l SET concepts = ARRAY(SELECT COALESCE(a.new_slug, item.value) FROM unnest(l.concepts) WITH ORDINALITY AS item(value, position) LEFT JOIN lq117_alias a ON a.old_slug = lower(trim(item.value)) ORDER BY item.position)

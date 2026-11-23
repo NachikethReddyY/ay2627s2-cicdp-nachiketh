@@ -1,12 +1,13 @@
 import { and, eq, sql } from "drizzle-orm";
 import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { saveMedia } from "../media/service.ts";
 import { silentWav } from "../media/silent-wav.ts";
 import { storage } from "../media/storage.ts";
 import { catalogueName, isCatalogueConcept, JS_EDGES } from "../progress/catalogue.ts";
 import { db, pool } from "./client.ts";
-import { assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
+import { AssessmentFile, assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "./lesson-file.ts";
 import { attempts, hintEvents, stepProgress, concepts, lessonMedia, lessons, lessonVersions, pathCourses, paths, steps, worlds } from "./schema.ts";
 
 const WORLDS_DIR = join(import.meta.dirname, "../../../../worlds");
@@ -46,7 +47,11 @@ async function loadWorld(world: string) {
       if (unknown.length) throw new Error(`${f.slug}: step concepts not in the manifest: ${unknown.join(", ")}`);
     }
   }
-  return { manifest, files };
+  const assessmentPath = join(WORLDS_DIR, world, "assessments.json");
+  const assessments = existsSync(assessmentPath) ? AssessmentFile.parse(await readJson(assessmentPath)) : null;
+  for (const item of [...(assessments?.pre ?? []), ...(assessments?.post ?? [])])
+    if (!known.has(item.concept)) throw new Error(`${world}/assessments.json: concept not in the manifest: ${item.concept}`);
+  return { manifest, files, assessments };
 }
 
 type Loaded = Awaited<ReturnType<typeof loadWorld>>;
@@ -94,7 +99,7 @@ async function seedSteps(tx: Tx, versionId: string, file: LessonFile) {
   }
 }
 
-async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
+async function seedWorld(tx: Tx, { manifest, files, assessments }: Loaded) {
   const course = { title: manifest.title, description: manifest.description };
   await tx
     .insert(worlds)
@@ -145,7 +150,46 @@ async function seedWorld(tx: Tx, { manifest, files }: Loaded) {
 
     await seedSteps(tx, version.id, file);
   }
+  if (assessments) for (const phase of ["pre", "post"] as const) await seedAssessment(tx, worldId, manifest, phase, assessments[phase]);
   return worldId;
+}
+
+async function seedAssessment(tx: Tx, worldId: string, manifest: Manifest, phase: "pre" | "post", items: AssessmentFile["pre"]) {
+  const slug = `${manifest.slug}-${phase}test`;
+  const values = {
+    slug,
+    worldId,
+    title: `${phase === "pre" ? "Pre-test" : "Post-test"}: ${manifest.title}`,
+    position: 0,
+    level: phase === "pre" ? 0 : 99,
+    sourceKind: "authored" as const,
+    kind: "predict" as const,
+    assessment: phase,
+    concepts: [...new Set(items.map((i) => i.concept))],
+  };
+  await tx.insert(lessons).values({ ...values, status: "published" }).onConflictDoUpdate({ target: lessons.slug, set: values });
+  const [lesson] = await tx.select().from(lessons).where(eq(lessons.slug, slug));
+  await tx.insert(lessonVersions).values({ lessonId: lesson.id, version: 1, publishedAt: new Date() }).onConflictDoNothing();
+  const [version] = await tx.select().from(lessonVersions).where(eq(lessonVersions.lessonId, lesson.id));
+  await tx.update(lessons).set({ currentVersionId: version.id }).where(eq(lessons.id, lesson.id));
+  for (const [idx, item] of items.entries()) {
+    const row = {
+      id: `${slug}-${idx}`,
+      lessonVersionId: version.id,
+      idx,
+      public: { title: item.title, prompt: item.prompt, kind: item.kind, ...(item.options && { options: item.options }) },
+      secret: {
+        beforeFiles: {},
+        hunks: [],
+        answer: item.answer,
+        ...(item.accepted && { accepted: item.accepted }),
+        hints: [],
+        explanations: { workedExample: "", practice: "" },
+        concepts: [item.concept],
+      },
+    };
+    await tx.insert(steps).values(row).onConflictDoUpdate({ target: steps.id, set: row });
+  }
 }
 
 async function seedNarration(file: LessonFile) {

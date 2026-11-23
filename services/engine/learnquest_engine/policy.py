@@ -7,7 +7,8 @@ Rules, first match wins (docs/lq-22-plan.md section 4):
   3. nothing weak and a lesson remains -> advance, naming only concepts at or above mastered_at
   4. nothing remains -> done
 
-Prioritise available lessons and select the lowest observed mastery first. lesson_id is None only for done.
+Prioritise available lessons and select the lowest observed mastery first.
+lesson_id is None only for done.
 Reasons never contain step content, hints or expected output.
 """
 

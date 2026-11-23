@@ -266,6 +266,7 @@ test("a watch game serves frames without the solution and completes only through
   assert.deepEqual(out(first), { correct: true, complete: true, remainingAttempts: 3 });
   assert.equal(out(await m(cookie, "games.completeWatch", { lessonId: "watch-1", versionId, gameIndex: 0 })).complete, true, "a repeat is accepted");
   assert.equal(out(await q(cookie, "lessons.get", { id: "watch-1" })).completed, true);
+  assert.equal(out(await q(cookie, "home.get")).stats.xp, 0);
 });
 
 test("completeWatch refuses other game kinds and stale versions", async () => {

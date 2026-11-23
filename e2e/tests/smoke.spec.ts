@@ -81,37 +81,70 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   expect((await session.json()).user.email).toBe(email);
 });
 
-test("answers a seeded quiz step: feedback comes from the server and the attempt is saved", async ({ page }) => {
+test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {
   const email = newEmail();
-  await signUp(page, email, `/courses/${COURSE}`);
-  await expect(page.getByRole("heading", { name: "Shopping Cart Basics" })).toBeVisible();
+  await signUp(page, email, "/");
+  await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
+  const card = page.locator(".lq-continue-photo");
+  await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
+  await expect(card).toContainText("Pre-test");
+  await card.getByRole("link", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/lesson=codequest-pretest/);
+  await page.getByRole("radio", { name: "4", exact: true }).check();
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByRole("row", { name: /functions Correct/ })).toBeVisible();
 
+  await page.goto(`/courses/${COURSE}`);
+  await expect(page.getByRole("heading", { name: "Shopping Cart Basics" })).toBeVisible();
   await page.locator(`a.lesson-hit[href*="lesson=${LESSON}"]`).click();
   await page.locator(`a.lesson-pop-btn[href*="lesson=${LESSON}"]`).click();
   await expect(page).toHaveURL(new RegExp(`lesson=${LESSON}`));
-  const check = page.getByRole("button", { name: "Check" });
-  await expect(check).toBeDisabled();
-  await expect(page.getByRole("heading", { name: "Correct!" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Check" })).toBeDisabled();
+  await page.getByText("A for loop that pushes each price into a new array", { exact: true }).click();
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByText("Not quite. Take a hint to try again.", { exact: true })).toBeVisible();
 
-  await page.getByLabel(CORRECT_OPTION).check();
-  await check.click();
+  await page.goto("/");
+  await expect(card.getByRole("link", { name: "Review" })).toBeVisible();
+  await expect(card.locator(".lq-hero-reason")).toContainText(/is at \d+%\. Review this concept/);
+  await expect(page.getByRole("heading", { name: "What you know" })).toBeVisible();
+
+  await card.getByRole("link", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Hint", exact: true }).click();
+  await page.getByRole("radio", { name: CORRECT_OPTION, exact: true }).check();
+  await page.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  await page.goto("/");
+  await expect(card.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/review/codequest");
+  await card.getByRole("link", { name: "Review" }).click();
+  await expect(page.getByRole("heading", { name: "Review array reduce" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await page.getByRole("radio", { name: CORRECT_OPTION, exact: true }).check();
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByRole("status")).toContainText("Correct!");
 
   const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
   try {
-    const { rows } = await pool.query<{ kind: string; correct: boolean; response: null; feedback: null }>(
-      `select a.kind, a.correct, a.response, a.feedback
+    const { rows } = await pool.query<{ observed: boolean; correct: boolean; response: null; hints_used: number }>(
+      `select a.observed, a.correct, a.response, a.hints_used
          from attempts a
          join learners l on l.id = a.learner_id
          join "user" u on u.id = l.user_id
-        where u.email = $1 and a.step_id = $2`,
+        where u.email = $1 and a.step_id = $2
+        order by a.created_at`,
       [email, FIRST_STEP_ID],
     );
-    expect(rows).toEqual([{ kind: "mcq", correct: true, response: null, feedback: null }]);
+    expect(rows).toEqual([
+      { observed: true, correct: false, response: null, hints_used: 0 },
+      { observed: false, correct: true, response: null, hints_used: 1 },
+    ]);
   } finally {
     await pool.end();
   }
 });
+
 
 test("practice workbench opens the scrim lab, runs code, lints, and submits", async ({ page }) => {
   await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => ws.close({ code: 4503, reason: "Sandbox busy" }));
@@ -274,21 +307,4 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
   const lastToggle = () =>
     page.evaluate(() => (globalThis as unknown as { __calls: string[] }).__calls.at(-1));
   await expect.poll(lastToggle).toBe("resume");
-});
-
-test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {
-  await signUp(page, newEmail(), "/");
-  await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
-  const card = page.locator(".lq-continue-photo");
-  await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
-
-  await page.goto(`/play?lesson=${LESSON}&course=${COURSE}`);
-  await page.getByText("A for loop that pushes each price into a new array", { exact: true }).click();
-  await page.getByRole("button", { name: "Check" }).click();
-  await expect(page.getByText("Not quite.", { exact: true }).first()).toBeVisible();
-
-  await page.goto("/");
-  await expect(card.getByRole("link", { name: "Review" })).toBeVisible();
-  await expect(card.locator(".lq-hero-reason")).toContainText(/is at \d+%\. Review this concept/);
-  await expect(page.getByRole("heading", { name: "What you know" })).toBeVisible();
 });

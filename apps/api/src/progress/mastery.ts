@@ -6,6 +6,7 @@ import { concepts, lessons, mastery, recommendations, worlds } from "../db/schem
 import { withTx } from "../db/tx.ts";
 import { engineLearner, type BktParams, type NextRequest, type NextResult, type UpdateRequest } from "../engine-client/learner.ts";
 import { catalogueName, edgesFor, isCatalogueConcept, unmetPrerequisites } from "./catalogue.ts";
+import { recordReviewEvidence } from "./review-schedule.ts";
 import { lessonDone, lessonTotal, listed } from "./shared.ts";
 
 export const MASTERED_AT = 0.95;
@@ -96,6 +97,7 @@ async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
       and(
         eq(lessons.worldId, worldId),
         playableLesson(lessons),
+        isNull(lessons.assessment),
       ),
     )
     .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.slug));
@@ -223,6 +225,7 @@ type PendingObservation = {
   question_type: UpdateRequest["questionType"];
   option_count: number | null;
   step_concepts: unknown;
+  review: boolean;
   lesson_concepts: string[];
   world_id: string;
   config: { bkt?: unknown } | null;
@@ -234,13 +237,13 @@ async function nextObservation(tx: Db, learnerId: string, failed: string[]) {
       SELECT a.id, 'attempts' AS source, a.kind, a.correct, a.hints_used, a.mastery_failures,
         s.public->>'kind' AS question_type,
         CASE WHEN jsonb_typeof(s.public->'options') = 'array' THEN jsonb_array_length(s.public->'options') END AS option_count,
-        s.secret->'concepts' AS step_concepts, s.lesson_version_id, a.created_at
+        s.secret->'concepts' AS step_concepts, s.lesson_version_id, a.created_at, false AS review
       FROM attempts a JOIN steps s ON s.id = a.step_id
       WHERE a.learner_id = ${learnerId} AND a.observed AND a.mastery_applied_at IS NULL
         AND (a.mastery_retry_at IS NULL OR a.mastery_retry_at <= now())
       UNION ALL
       SELECT o.id, 'lesson_observations', o.kind, o.correct, o.hints_used, o.mastery_failures,
-        o.kind, o.option_count, NULL, o.lesson_version_id, o.created_at
+        o.kind, o.option_count, to_jsonb(o.concept_slugs), o.lesson_version_id, o.created_at, o.concept_slugs IS NOT NULL
       FROM lesson_observations o
       WHERE o.learner_id = ${learnerId} AND o.mastery_applied_at IS NULL
         AND (o.mastery_retry_at IS NULL OR o.mastery_retry_at <= now())
@@ -250,7 +253,7 @@ async function nextObservation(tx: Db, learnerId: string, failed: string[]) {
     JOIN lesson_versions v ON v.id = p.lesson_version_id
     JOIN lessons l ON l.id = v.lesson_id
     JOIN worlds w ON w.id = l.world_id
-    WHERE p.id <> ALL(ARRAY[${sql.join(failed.map((id) => sql`${id}`), sql`,`)}]::text[])
+    WHERE l.assessment IS NULL AND p.id <> ALL(ARRAY[${sql.join(failed.map((id) => sql`${id}`), sql`,`)}]::text[])
     ORDER BY p.created_at, p.id LIMIT 1`);
   return row;
 }
@@ -274,7 +277,7 @@ async function processObservations(learnerId: string, opts: { worldId?: string }
       await lockLearner(tx, learnerId);
       const a = await nextObservation(tx, learnerId, failed);
       if (!a) return null;
-      const names = conceptNames(a.source === "attempts" ? a.step_concepts : a.lesson_concepts, `observation ${a.id}`);
+      const names = conceptNames(a.source === "attempts" || a.review ? a.step_concepts : a.lesson_concepts, `observation ${a.id}`);
       const ids = await ensureConcepts(tx, a.world_id, names);
       const conceptIds = [...ids.values()];
       return { a, conceptIds, priors: await priorsFor(tx, learnerId, conceptIds) };
@@ -328,6 +331,7 @@ async function processObservations(learnerId: string, opts: { worldId?: string }
           .onConflictDoUpdate({ target: [mastery.learnerId, mastery.conceptId],
             set: { pKnown: u.pNext, nObs: sql`${mastery.nObs} + 1`, updatedAt: new Date() } });
       }
+      if (obs && !a.review) await recordReviewEvidence(tx, learnerId, updates, obs === "correct");
       return true;
     });
     if (applied && updates.length) touched.add(a.world_id);

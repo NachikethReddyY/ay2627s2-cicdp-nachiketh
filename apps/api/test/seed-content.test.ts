@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { eq } from "drizzle-orm";
 import fixture from "../../web/src/player/fixtures/lesson1.ts";
 import { db } from "../src/db/client.ts";
-import { applyHunks, assertHunksApply, assertUniqueAcrossFiles, LessonFile, Manifest } from "../src/db/lesson-file.ts";
+import { applyHunks, assertHunksApply, assertUniqueAcrossFiles, AssessmentFile, LessonFile, Manifest } from "../src/db/lesson-file.ts";
 import { concepts, lessons, steps } from "../src/db/schema.ts";
 import { isCatalogueConcept, JS_EDGES } from "../src/progress/catalogue.ts";
 import { seed } from "../src/db/seed.ts";
@@ -74,7 +74,10 @@ test("seed is idempotent and gives the expected ids", async () => {
     const manifest = Manifest.parse(JSON.parse(await readFile(join(world, "manifest.json"), "utf8")));
     for (const c of manifest.concepts) conceptKeys.add(isCatalogueConcept(c.slug) ? c.slug : `${slug}:${c.slug}`);
     const files = (await readdir(join(world, "lessons"))).filter((file) => file.endsWith(".json"));
-    expected.lessons += files.length;
+    const assessment = AssessmentFile.parse(JSON.parse(await readFile(join(world, "assessments.json"), "utf8")));
+    expected.lessons += files.length + 2;
+    expected.steps += assessment.pre.length + assessment.post.length;
+    assert.deepEqual(assessment.pre.map((q) => q.concept).sort(), manifest.concepts.map((c) => c.slug).sort());
     for (const file of files) {
       expected.steps += LessonFile.parse(JSON.parse(await readFile(join(world, "lessons", file), "utf8"))).steps.length;
     }

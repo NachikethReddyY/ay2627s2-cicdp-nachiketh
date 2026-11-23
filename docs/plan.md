@@ -474,9 +474,9 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 - **Hint ladder:** MCQ has 2 rungs (rung 1 eliminates a distractor; rung 2 is the worked example). Cloze has 3 rungs. Rung 1 is allowed from `predicting`; each later rung comes from `hinting`. One attempt per rung. After the last rung, a wrong attempt sets `retry_allowed`; one more wrong attempt reveals. A correct answer after any hint is an incorrect observation (§8.2).
 - The grader never sees other learners' data. Feedback never reveals an answer above the current rung.
 
-**15.2 Learner model.** Wheel-spinning and style rules: §8.2 only. Stretch: SM-2-lite review over `review_schedule`, re-asking missed questions (cut 7). Each recommendation stores `reason`, shown in the UI.
+**15.2 Learner model.** Wheel-spinning and style rules: §8.2 only. Spaced review re-asks previously attempted questions using `review_schedule`. Home and the lesson-end screen show the next recommendation with its reason.
 
-**15.3 Quest layer (stretch, cut 7).** The mastery list is core. XP is derived from mastery gains and not stored, so watching earns nothing. Badges are `badges(learner_id, badge_slug)`. Badges avoid streaks, leaderboards and loss aversion (App. A).
+**15.3 Learning progress.** Home shows per-concept mastery and seeded-course pre/post results. XP and streaks are derived from observed predictions and checks. Three observed attempts make a streak day. A correct unhinted first prediction earns 15 XP and a passed lab or game earns 10 XP.
 
 **15.4 Replay realism.** Char-level diff within each hunk (`diff-match-patch`), a typing cadence model, speeds 0.5×–4× with an "instant" mode, and file switches as explicit events. Limits per lesson: ≤ 8 files, ≤ 400 changed lines, no lockfiles or generated or binary files. Replay plays only after reveal (`revealed` or `skipped`). Pause-edits are a local overlay, discarded on resume after a prompt. Fork is stretch.
 

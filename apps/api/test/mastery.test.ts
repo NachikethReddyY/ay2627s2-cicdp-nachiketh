@@ -205,6 +205,7 @@ test("both rate limits and unexpected errors leave evidence pending", async () =
 
 test("two reads with no change make one engine next call; new information makes one more", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
   assert.equal((await read()).statusCode, 200);
   assert.equal((await read()).statusCode, 200);
@@ -227,6 +228,7 @@ test("two reads with no change make one engine next call; new information makes 
 
 test("a response from another policy version is not stored under the current hash", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   engineLearner.next = async (req) => {
     nextCalls++;
     lastNext = req;
@@ -250,6 +252,7 @@ test("a response from another policy version is not stored under the current has
 
 test("a changed world title changes the hash and the engine receives display titles", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
   await read();
   const [w] = await db.select().from(worlds);
@@ -263,6 +266,7 @@ test("a changed world title changes the hash and the engine receives display tit
 
 test("a changed lesson title changes the hash and asks the engine again", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
   await read();
   await read();
@@ -438,6 +442,7 @@ test("a private course is not found", async () => {
 
 test("me.next carries a reason, even before any attempt", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const first = out(await trpc(app, c).q("me.next", { world: "codequest" }));
   assert.ok(first.reason.length > 0);
   assert.equal(first.reasonCode, "stub");

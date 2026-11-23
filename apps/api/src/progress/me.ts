@@ -6,7 +6,9 @@ import { db } from "../db/client.ts";
 import { userOfLearner, visibleWorld } from "../access.ts";
 import { catchUpMastery, MASTERED_AT } from "./mastery.ts";
 import { catalogueName } from "./catalogue.ts";
-import { Slug, listed } from "./shared.ts";
+import { Slug, listed, unshadowedMastery } from "./shared.ts";
+import { assessmentDue, learning } from "./assessment.ts";
+import { dueReview, reviewRouter } from "./review.ts";
 import { handleRouter } from "./handle.ts";
 
 const TimeZone = z.string().max(64);
@@ -52,7 +54,7 @@ const meMastery = protectedProcedure
     await catchUpMastery(ctx.learnerId, worldId);
     const { rows } = await db.execute<{ slug: string; name: string; p_known: number; n_obs: number }>(sql`
       SELECT c.slug, c.name, m.p_known, m.n_obs FROM mastery m JOIN concepts c ON c.id = m.concept_id
-      WHERE m.learner_id = ${ctx.learnerId} AND (c.world_id = ${worldId} OR (c.world_id IS NULL AND EXISTS (
+      WHERE m.learner_id = ${ctx.learnerId} AND ${unshadowedMastery} AND (c.world_id = ${worldId} OR (c.world_id IS NULL AND EXISTS (
         SELECT 1 FROM lessons l WHERE l.world_id = ${worldId} AND ${listed} AND c.slug = ANY(l.concepts)
       )))
       ORDER BY c.name, c.slug`);
@@ -66,7 +68,7 @@ const meMastery = protectedProcedure
   });
 
 export const NextStep = z.object({
-  action: z.enum(["start", "learn", "practice", "advance", "done"]),
+  action: z.enum(["start", "learn", "practice", "advance", "done", "assess", "review"]),
   lessonSlug: z.string().nullable(),
   lessonTitle: z.string().nullable(),
   conceptSlug: z.string().nullable(),
@@ -75,7 +77,23 @@ export const NextStep = z.object({
 });
 
 export async function nextForWorld(learnerId: string, worldId: string): Promise<z.infer<typeof NextStep> | null> {
+  const assessment = await assessmentDue(learnerId, worldId);
+  if (assessment) {
+    const pre = assessment.assessment === "pre";
+    return {
+      action: "assess", lessonSlug: assessment.slug, lessonTitle: assessment.title, conceptSlug: null,
+      reason: pre ? "Take a short pre-test to see where you are starting." : "Take the post-test to see what you learned.",
+      reasonCode: pre ? "PRE_TEST" : "POST_TEST",
+    };
+  }
   await catchUpMastery(learnerId, worldId);
+  const review = await dueReview(learnerId, { id: worldId });
+  if (review) {
+    return {
+      action: "review", lessonSlug: review.slug, lessonTitle: review.title, conceptSlug: review.concept_slug,
+      reason: `Review ${review.concept_name}. It is due for another prediction.`, reasonCode: "REVIEW",
+    };
+  }
   const { rows } = await db.execute<{
     action: "start" | "learn" | "practice" | "advance" | "done";
     lesson_slug: string | null;
@@ -101,4 +119,7 @@ const meNext = protectedProcedure
   .output(NextStep.nullable())
   .query(async ({ ctx, input }) => nextForWorld(ctx.learnerId, await mustWorld(ctx.learnerId, input.world)));
 
-export const meRouter = router({ update: meUpdate, mastery: meMastery, next: meNext, handle: handleRouter });
+const meLearning = protectedProcedure.input(Slug).query(async ({ ctx, input }) =>
+  learning(ctx.learnerId, await mustWorld(ctx.learnerId, input.slug)));
+
+export const meRouter = router({ update: meUpdate, mastery: meMastery, next: meNext, learning: meLearning, review: reviewRouter, handle: handleRouter });
