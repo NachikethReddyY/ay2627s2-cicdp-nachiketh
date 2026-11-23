@@ -5,7 +5,7 @@ export type Finding = { ruleId: string; line: number; column: number; message: s
 
 export class LintUnavailableError extends Error {}
 
-export const LINT_TIMEOUT_MS = 2_000;
+export const LINT_TIMEOUT_MS = 5_000;
 const STARTUP_TIMEOUT_MS = 15_000;
 
 type Reply = { ready?: true; id?: number; findings?: Finding[]; error?: string };

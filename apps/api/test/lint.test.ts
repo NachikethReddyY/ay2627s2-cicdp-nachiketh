@@ -43,7 +43,7 @@ test("lintCode: TypeScript unused variable is reported, types are not flagged", 
 });
 
 test("lintCode: clean TypeScript returns no findings", async () => {
-  assert.deepEqual(await lintCode("interface P { n: string }\nconst p: P = { n: 'a' };\nconsole.log(p.n);\n", "typescript"), []);
+  assert.deepEqual(await lintCode("interface P {\n  n: string;\n}\nconst p: P = { n: 'a' };\nconsole.log(p.n);\n", "typescript"), []);
 });
 
 test("lintCode: Python unused import is F401 on line 1", async () => {
@@ -55,11 +55,25 @@ test("lintCode: Python unused import is F401 on line 1", async () => {
 });
 
 test("lintCode: clean Python returns no findings; a syntax error is a finding", async () => {
-  assert.deepEqual(await lintCode("print('hi')\n", "python"), []);
+  assert.deepEqual(await lintCode('print("hi")\n', "python"), []);
   const f = await lintCode("def (:\n", "python");
   assert.ok(f.length > 0);
   assert.equal(f[0]!.ruleId, "invalid-syntax");
+  assert.ok(f.every(({ ruleId }) => ruleId === "invalid-syntax"));
 });
+
+for (const { language, code, formatted, ruleId, tool } of [
+  { language: "javascript", code: "console.log( 1 )\n", formatted: "console.log(1);\n", ruleId: "prettier-format", tool: "Prettier" },
+  { language: "typescript", code: "console.log(1 as  number)\n", formatted: "console.log(1 as number);\n", ruleId: "prettier-format", tool: "Prettier" },
+  { language: "python", code: "print( 1 )\n", formatted: "print(1)\n", ruleId: "ruff-format", tool: "Ruff" },
+] as const) {
+  test(`lintCode: ${language} formatting identifies the affected source and accepts the suggestion`, async () => {
+    assert.deepEqual(await lintCode(code, language), [{
+      ruleId, line: 1, column: 1, message: `${tool} formatting suggestion\n${formatted.trimEnd()}`,
+    }]);
+    assert.deepEqual(await lintCode(formatted, language), []);
+  });
+}
 
 test("lintCode: exceeding the timeout rejects with LintUnavailableError, and the next call still works", async () => {
   const huge = `const a = [${"1,".repeat(2_000_000)}];\n`;
@@ -103,9 +117,9 @@ test("POST /practice/lint: 401 signed out", async () => {
 
 test("POST /practice/lint: findings, 400 for a bad body and for code over 20000 characters", async () => {
   const cookie = await signUp(app);
-  const ok = await post(cookie, { code: "var x = 1;\nconsole.log(x);\n", language: "javascript" });
+  const ok = await post(cookie, { code: "var x=1;\nconsole.log(x);\n", language: "javascript" });
   assert.equal(ok.statusCode, 200);
-  assert.ok((ok.json().findings as { ruleId: string }[]).some((f) => f.ruleId === "no-var"));
+  assert.deepEqual((ok.json().findings as { ruleId: string }[]).map((f) => f.ruleId), ["no-var", "prettier-format"]);
   const long = await post(cookie, { code: "a".repeat(20_001), language: "javascript" });
   assert.equal(long.statusCode, 400);
   assert.equal(long.json().error.code, "bad_request");
