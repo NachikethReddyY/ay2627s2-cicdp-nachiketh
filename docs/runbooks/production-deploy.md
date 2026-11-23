@@ -42,7 +42,7 @@ Course lesson writes are queued in memory, three engine calls at a time across t
 ## What a run does
 
 1. `build`: builds `ghcr.io/<owner>/learnquest-api:<sha>` and `…/learnquest-engine:<sha>`. An image that already exists for the SHA is reused, so a rerun does not rebuild.
-2. `migrate`: runs `db:migrate` against production. Migrations must be expand-only, so the previous SHA keeps working until it is replaced.
+2. `migrate`: runs `db:migrate` against production. Migrations must be expand-only, so the previous SHA keeps working until it is replaced. To remove a column, ship two releases: first one that stops reading and writing it (no migration), then, once that release is live, a migration that drops it.
 3. `deploy`: refuses any SHA that is not the head of `main`, then calls both Render hooks with `imgURL`, then builds the web app with the production API origin written into a CI-only copy of `vercel.json`, then deploys it with `--prod` to the production project.
 4. `smoke`: waits for the API and the engine to report the new SHA (`/api/healthz` and `/healthz`), then checks `/api/readyz`, the auth gate on `/api/trpc/home.get`, and the web origin's `/` and `/api` rewrite. An unauthenticated shell-ticket request with the production web origin checks Render's origin configuration.
 

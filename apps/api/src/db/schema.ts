@@ -78,9 +78,6 @@ export const learners = pgTable(
   "learners",
   {
     id: id(),
-    kind: text("kind", { enum: ["user"] })
-      .notNull()
-      .default("user"),
     userId: text("user_id")
       .notNull()
       .unique()
@@ -392,11 +389,9 @@ export const attempts = pgTable(
       .notNull()
       .references(() => steps.id),
     kind: text("kind", { enum: ["mcq", "cloze", "skip"] }).notNull(),
-    response: jsonb("response"),
     observed: boolean("observed").notNull(),
     correct: boolean("correct"),
     hintsUsed: integer("hints_used").notNull().default(0),
-    feedback: jsonb("feedback"),
     missedConcepts: text("missed_concepts")
       .array()
       .notNull()
