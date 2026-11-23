@@ -27,8 +27,8 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const EditorLab = lazy(() => import("./pages/EditorLab"));
 const TestPlayer = import.meta.env.DEV ? lazy(() => import("./pages/TestPlayer")) : null;
-const posthogToken = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
-const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
+const posthogToken = __POSTHOG_PROJECT_TOKEN__;
+const posthogHost = __POSTHOG_HOST__;
 
 function SessionIdentity() {
   const { data: session } = authClient.useSession();
@@ -49,7 +49,7 @@ function SessionIdentity() {
 function Root() {
   if (!posthogToken || !posthogHost) {
     if (import.meta.env.DEV) {
-      const missingVariable = posthogToken ? "VITE_PUBLIC_POSTHOG_HOST" : "VITE_PUBLIC_POSTHOG_PROJECT_TOKEN";
+      const missingVariable = posthogToken ? "POSTHOG_HOST" : "POSTHOG_PROJECT_TOKEN";
       console.warn(`${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This warning stops appearing once ${missingVariable} is configured`);
     }
 
