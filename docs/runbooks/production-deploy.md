@@ -14,6 +14,7 @@ These steps are outside the repo. The workflow fails clearly until they are done
    - `DATABASE_URL`: the production Postgres connection string (Neon production branch, **direct host, not the `-pooler` one**). Migrations need a session connection; a transaction pooler can misbehave with them.
    - `RENDER_DEPLOY_HOOK_API`: deploy hook URL of `learnquest-api`.
    - `RENDER_DEPLOY_HOOK_ENGINE`: deploy hook URL of `learnquest-engine`.
+   - `RENDER_API_KEY` (recommended): a Render API key (Account settings → API keys). With it, CI deploys through Render's API, which also saves the image on each service. Without it CI uses the hooks, which deploy the image but leave the service's saved image old, so a later settings change in the dashboard redeploys that old image. The service ids default to the production ones and can be overridden with the variables `RENDER_API_SERVICE_ID` and `RENDER_ENGINE_SERVICE_ID`.
    - `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`: for the production Vercel project.
 4. **Variables** (environment level):
    - `API_ORIGIN`: `https://learnquest-api.onrender.com` (no path, no trailing slash).

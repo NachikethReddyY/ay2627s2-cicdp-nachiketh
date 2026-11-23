@@ -169,12 +169,16 @@ jobs:
       - name: Render api
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
-        run: scripts/render-deploy.sh "$HOOK" "$API_IMAGE"
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: ${{ vars.RENDER_API_SERVICE_ID || 'srv-dbqpii5g1s2s73f1pi70' }}
+        run: scripts/render-deploy.sh "$HOOK" "$API_IMAGE" "$SERVICE_ID"
 
       - name: Render engine
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_ENGINE }}
-        run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE"
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: ${{ vars.RENDER_ENGINE_SERVICE_ID || 'srv-dbqpe9tg1s2s73f1e6j0' }}
+        run: scripts/render-deploy.sh "$HOOK" "$ENGINE_IMAGE" "$SERVICE_ID"
 
       - name: Vercel deploy (production project)
         env:
