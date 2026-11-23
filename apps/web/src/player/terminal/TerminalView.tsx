@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GhosttyCore } from "@wterm/ghostty";
 import { Terminal, useTerminal } from "@wterm/react";
-import type { TerminalThemeColors } from "@wterm/dom";
+import type { TerminalThemeColors, WTerm } from "@wterm/dom";
 import "@wterm/react/css";
 import type { ShellSocket } from "./shellSocket";
 import { isToggleKey } from "./usePanel";
@@ -54,18 +54,16 @@ const ROOT_TERM_VARS = {
 const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 
 export default function TerminalView({ shell, active = true, fitKey }: TerminalViewProps) {
-  const { ref, write, focus } = useTerminal();
+  const { ref, focus } = useTerminal();
   const [core, setCore] = useState<GhosttyCore | null>(null);
   const [coreError, setCoreError] = useState(false);
+  const [terminal, setTerminal] = useState<WTerm | null>(null);
   const activeRef = useRef(active);
   const connectedRef = useRef(false);
-  const terminalRef = useRef<import("@wterm/dom").WTerm | null>(null);
   const priorFocusRef = useRef<Element | null>(null);
   activeRef.current = active;
 
-  const applyWorkbenchTheme = useCallback(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
+  const applyWorkbenchTheme = useCallback((terminal: WTerm) => {
     const workbench = terminal.element.closest<HTMLElement>(".wb");
     if (!workbench) {
       for (const [name, value] of Object.entries(ROOT_TERM_VARS)) terminal.element.style.setProperty(name, value);
@@ -95,16 +93,19 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
   }, [shell, active, focus]);
 
   useEffect(() => {
-    if (!active) return;
-    const frame = requestAnimationFrame(() => terminalRef.current?.fit());
+    if (!active || !terminal) return;
+    const frame = requestAnimationFrame(() => terminal.fit());
     return () => cancelAnimationFrame(frame);
-  }, [active, fitKey]);
-
-  useEffect(() => shell.onOutput(write), [shell, write]);
+  }, [active, fitKey, terminal]);
 
   useEffect(() => {
-    const element = ref.current?.instance?.element;
-    if (!element) return;
+    if (!terminal) return;
+    return shell.onOutput((bytes) => terminal.write(bytes));
+  }, [shell, terminal]);
+
+  useEffect(() => {
+    if (!terminal) return;
+    const { element } = terminal;
     const onKey = (e: KeyboardEvent) => {
       if (!isToggleKey(e)) return;
       e.preventDefault();
@@ -112,21 +113,23 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
     };
     element.addEventListener("keydown", onKey, true);
     return () => element.removeEventListener("keydown", onKey, true);
-  }, [core, ref]);
+  }, [terminal]);
 
   useEffect(() => {
-    const workbench = ref.current?.instance?.element.closest<HTMLElement>(".wb");
+    if (!terminal) return;
+    const workbench = terminal.element.closest<HTMLElement>(".wb");
+    const applyTheme = () => applyWorkbenchTheme(terminal);
     if (!workbench) {
       const scheme = colorScheme();
-      scheme?.addEventListener("change", applyWorkbenchTheme);
-      applyWorkbenchTheme();
-      return () => scheme?.removeEventListener("change", applyWorkbenchTheme);
+      scheme?.addEventListener("change", applyTheme);
+      applyTheme();
+      return () => scheme?.removeEventListener("change", applyTheme);
     }
-    const observer = new MutationObserver(applyWorkbenchTheme);
+    const observer = new MutationObserver(applyTheme);
     observer.observe(workbench, { attributes: true, attributeFilter: ["data-resolved"] });
-    applyWorkbenchTheme();
+    applyTheme();
     return () => observer.disconnect();
-  }, [applyWorkbenchTheme, core, ref]);
+  }, [applyWorkbenchTheme, terminal]);
 
   useEffect(() => {
     let live = true;
@@ -161,9 +164,8 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
       onBinary={(data) => { shell.sendBytes(data); }}
       onResize={onResize}
       onReady={(terminal) => {
-        terminalRef.current = terminal;
+        setTerminal(terminal);
         connectOnce(terminal.cols, terminal.rows);
-        applyWorkbenchTheme();
         if (activeRef.current) {
           focus();
         } else {

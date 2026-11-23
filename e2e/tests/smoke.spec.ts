@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
+import { silentWav } from "../../apps/api/src/media/silent-wav.ts";
 
 const COURSE = "codequest";
 const LESSON = "lesson-1";
@@ -33,8 +34,31 @@ async function signUp(page: Page, email: string, next: string) {
   await page.goto(next);
 }
 
+async function checkAdminSpend(page: Page, email: string) {
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Admin access required" })).toBeVisible();
+
+  const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
+  try {
+    await pool.query('UPDATE learners SET is_admin = true WHERE user_id = (SELECT id FROM "user" WHERE email = $1)', [email]);
+    await pool.query("INSERT INTO ai_call_spend (prompt_tokens, completion_tokens, estimated_usd) VALUES (42, 4, 0.0123)");
+    await page.goto("/account");
+    await page.getByRole("link", { name: "Admin", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "AI spend", exact: true })).toBeVisible();
+    const month = page.getByRole("row", { name: /Month to date/ });
+    await expect(month.getByRole("cell")).toHaveText(["1", "42", "4", "46", "$0.0123"]);
+    await expect(page.getByRole("row", { name: /^\d{4}-\d{2}-\d{2}/ }).getByRole("cell")).toHaveText(["1", "42", "4", "46", "$0.0123"]);
+  } finally {
+    await pool.query('UPDATE learners SET is_admin = false WHERE user_id = (SELECT id FROM "user" WHERE email = $1)', [email]);
+    await pool.query("DELETE FROM ai_call_spend WHERE prompt_tokens = 42 AND completion_tokens = 4 AND estimated_usd = 0.0123");
+    await pool.end();
+  }
+}
+
 test("signs up, confirms and edits a public handle, and stays signed in on /play", async ({ page }) => {
   const email = newEmail();
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/login\?/);
   await createAccount(page, email);
   await page.goto("/");
   await expect(page).toHaveURL(/\/onboarding$/);
@@ -79,6 +103,8 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   const session = await page.request.get("/api/auth/get-session");
   expect(session.ok()).toBe(true);
   expect((await session.json()).user.email).toBe(email);
+
+  await test.step("AI spend is visible only to admins and shows aggregate totals", () => checkAdminSpend(page, email));
 
   await test.step("phone Home shows progress and offers Explore or one-click resume", async () => {
     await page.setViewportSize({ width: 375, height: 667 });
@@ -248,6 +274,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
   await expect(page.locator(".view-lines").first()).toContainText("function double(n)");
+  await expect(page.getByRole("tree", { name: "Lesson files" }).getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Watch", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Source control", exact: true })).toHaveCount(0);
 
@@ -289,7 +316,97 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(feedback).toHaveCount(0);
   await expect(page.getByText(/Prettier formatting suggestion/)).toHaveCount(0);
   await expect(page.locator(".squiggly-warning")).toHaveCount(0);
+
+  await test.step("narrated practice plays Watch and runs in the connected terminal", async () => {
+    const narratedPage = await page.context().newPage();
+    try {
+      await verifyNarratedPractice(narratedPage);
+    } finally {
+      await narratedPage.close();
+    }
+  });
 });
+
+async function verifyNarratedPractice(page: Page) {
+  const title = "Print a greeting";
+  const starter = 'console.log("hello practice");';
+  const narration = "/practice-narration.wav";
+  let written = false;
+  await page.route("**/api/trpc/lessons.get?*", (route) => route.fulfill({
+    json: [{ result: { data: {
+      id: "practice-greeting",
+      versionId: "v1",
+      title,
+      kind: "practice",
+      part: { kind: "practice", language: "javascript", starterCode: starter, instructions: "Print a greeting." },
+      steps: [],
+      media: [{ kind: "narration", stepId: null, segment: null, url: narration }],
+    } } }],
+  }));
+  await page.route("**/api/trpc/lessons.write?*", (route) =>
+    route.fulfill({ json: [{ result: { data: { ok: true } } }] }));
+  await page.route(`**${narration}`, (route) =>
+    route.fulfill({ contentType: "audio/wav", body: Buffer.from(silentWav(2000)) }));
+  await page.route("**/api/sandbox/files", (route) => route.fulfill({ json: {
+    entries: [
+      { name: "notes", type: "dir", size: 0 },
+      ...(written ? [{ name: "solution.js", type: "file", size: starter.length }] : []),
+    ],
+    truncated: false,
+  } }));
+  await page.route("**/api/sandbox/files?dir=notes", (route) => route.fulfill({
+    json: { entries: [{ name: "scratch.txt", type: "file", size: 0 }], truncated: false },
+  }));
+  await page.route("**/api/sandbox/files/solution.js", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    expect(route.request().postDataJSON()).toEqual({ content: starter });
+    written = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => {
+    ws.onMessage((message) => {
+      if (typeof message === "string") return;
+      const command = message.toString();
+      const ready = /LQ_READY_([0-9a-f]+)/.exec(command);
+      if (ready) ws.send(Buffer.from(`\u001eLQ_READY_${ready[1]}\u001f\r\n`));
+      const run = /LQ_RUN_([0-9a-f]+)/.exec(command);
+      if (run) {
+        expect(command).toContain("cd ~ && node solution.js");
+        expect(written).toBe(true);
+        ws.send(Buffer.from(`hello practice\r\n\u001eLQ_RUN_${run[1]}:0\u001f\r\n`));
+      }
+    });
+    ws.send(Buffer.from("sandbox ready\r\n"));
+  });
+  await page.goto("/play?lesson=practice-greeting");
+  const watch = page.getByRole("button", { name: "Watch", exact: true });
+  await watch.click();
+  await expect(page.getByRole("group", { name: `Lesson video: ${title}` })).toBeVisible();
+
+  await page.evaluate(() => localStorage.setItem("lq.terminal", JSON.stringify({ open: true, height: 240 })));
+  await page.goto("/editor?lesson=practice-greeting");
+  await watch.click();
+  const video = page.getByRole("group", { name: `Lesson video: ${title}` });
+  await video.getByRole("button", { name: "Play video" }).click();
+  await expect.poll(() => video.locator("video").evaluate((element) => (element as unknown as { currentTime: number }).currentTime)).toBeGreaterThan(0);
+
+  const lessonFiles = page.getByRole("tree", { name: "Lesson files" });
+  const sandboxFiles = page.getByRole("tree", { name: "Sandbox files" });
+  await sandboxFiles.getByRole("treeitem", { name: "notes" }).click();
+  await expect(sandboxFiles.getByRole("treeitem", { name: "scratch.txt" })).toBeVisible();
+  await lessonFiles.getByRole("treeitem", { name: "Lesson", exact: true }).click();
+  await expect(lessonFiles.getByRole("treeitem", { name: "solution.js" })).toHaveCount(0);
+  await lessonFiles.getByRole("treeitem", { name: "Lesson", exact: true }).click();
+  await lessonFiles.getByRole("treeitem", { name: "solution.js" }).click();
+  await expect(page.getByRole("textbox", { name: "Your code. Press Escape to leave the editor." })).toBeFocused();
+
+  const terminal = page.getByRole("region", { name: "Terminal panel" }).locator(".wb-terminal");
+  await expect(terminal).toContainText("sandbox ready");
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(terminal).toContainText("hello practice");
+  await expect(sandboxFiles.getByRole("treeitem", { name: "solution.js" })).toBeVisible();
+  await expect(lessonFiles.getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
+}
 
 test("a scrim keeps later code hidden until its prediction and shows the updated replay", async ({ page }) => {
   await signUp(page, newEmail(), "/play?lesson=scrim-return-values&course=scrim-demo");

@@ -74,17 +74,13 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
     onLint: (findings) => editorRef.current?.showLint(findings),
   });
   const sandboxReady = r.shellState.kind === "open" && r.shellState.ready;
+  const [lessonFolderOpen, setLessonFolderOpen] = useState(true);
+  const openLessonFile = () => editorRef.current?.focus();
 
   const changeCode = (value: string) => {
     r.resetResults();
     setCode(value);
   };
-
-  const mountedOpen = useRef(panel.state.open);
-  const [interacted, setInteracted] = useState(false);
-  useEffect(() => {
-    if (panel.state.open !== mountedOpen.current) setInteracted(true);
-  }, [panel.state.open]);
 
   const show = (t: Tab) => {
     setTab(t);
@@ -112,14 +108,11 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   };
 
   const tree = useMemo(() => [{ name: ROOT, open: true, children: [{ name: fileName }] }], [fileName]);
-  const open = useMemo(() => new Set([ROOT]), []);
+  const open = useMemo(() => new Set(lessonFolderOpen ? [ROOT] : []), [lessonFolderOpen]);
   const navigator = (
     <div className="min-w-0">
-      {sandboxReady ? (
-        <SandboxFiles key={treeKey} selected={fileName} onRefresh={refreshTree} />
-      ) : (
-        <FileTreeView label="Lesson files" nodes={tree} open={open} selected={`${ROOT}/${fileName}`} onToggle={() => {}} onSelect={() => {}} />
-      )}
+      <FileTreeView label="Lesson files" nodes={tree} open={open} selected={`${ROOT}/${fileName}`} onToggle={() => setLessonFolderOpen((value) => !value)} onSelect={openLessonFile} />
+      {sandboxReady && <SandboxFiles key={treeKey} onRefresh={refreshTree} />}
     </div>
   );
 
@@ -185,7 +178,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
     </div>
   );
 
-  const bottom = <RunBottom runner={r} terminalActive={panel.state.open && interacted} />;
+  const bottom = <RunBottom runner={r} terminalActive={panel.state.open} />;
 
   const status: WorkbenchStatus = r.checkBusy ? { text: "Checking…", tone: "busy" }
     : r.lintBusy ? { text: "Linting…", tone: "busy" }
@@ -222,7 +215,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
       paletteFiles={[{ id: fileName, title: fileName, sub: ROOT }]}
       paletteCommands={paletteCommands}
       paletteDocs={paletteDocs}
-      onOpenFile={() => {}}
+      onOpenFile={openLessonFile}
       onOpenDoc={(id) => {
         setSelectedDoc(id);
         show("docs");

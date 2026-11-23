@@ -56,6 +56,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
 - **Data.** Learner data includes account and session records, a public handle, role and leaderboard settings, timezone and daily goal, enrollments, attempts and hint use, lesson and game progress, mastery (BKT per concept), recommendations, first game and lab checks, pre/post assessment results and review schedules, workspace check results and import jobs. Learner-owned content records include generated and imported courses. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
+- **AI spend.** Call spend records contain the UTC day, prompt and completion token counts, and estimated cost. See [AI spend dashboard](docs/ai-spend.md).
 - **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment follow the merge gate (see Merging).
 
 ## Foundations first

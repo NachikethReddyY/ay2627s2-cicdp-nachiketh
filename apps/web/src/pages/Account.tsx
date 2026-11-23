@@ -34,6 +34,7 @@ export default function Account({ profile }: { profile: HandleProfile }) {
           <Link to="/" className="lq-topnav-link">Home</Link>
           <Link to="/explore" className="lq-topnav-link">Explore</Link>
           <Link to="/account" className="lq-topnav-link" aria-current="page">Account</Link>
+          {profile.isAdmin && <Link to="/admin" className="lq-topnav-link">Admin</Link>}
         </nav>
       </header>
       <main className="lq-wrap" style={{ maxWidth: 520 }}>

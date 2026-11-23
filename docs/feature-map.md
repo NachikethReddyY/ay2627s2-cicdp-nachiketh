@@ -16,13 +16,14 @@ Routes marked dev or test only exist in non-production builds.
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Searches and browses paths in **Official**, **Community**, and **Mine**. The creator can publish a private path through `paths.publish` after automatic moderation. |
 | Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. A generated course writes all its lessons in the background, three at a time. While some are still writing the page shows how many are ready, with **Check again**. A lesson tagged **Writing…** is still being written; **Couldn't write** or **Not written yet** lessons offer **Write now** (`lessons.write`). Write states come from `courses.get` (`writeState`) and live in process memory (`apps/api/src/ai/service.ts`). |
 | Lesson player | `/play` | `apps/web/src/player/` | Opens a saved lesson directly. If its content has yet to be written, the player requests a write and opens the resulting lesson. See below. |
-| Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the same **Workbench** as `/play`, with Run, Submit, Lint and Sloppy. A scrim lab opens after all its predictions are confirmed. **Results** offers the reference solution after three graded submissions for the current lesson version, when the exercise has a saved solution. Run and Lint do not count. All expected output and hidden test inputs stay server-side. |
+| Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the same **Workbench** as `/play`, with Run, Lint, Submit, the terminal, the file tree and Sloppy. Narrated practice lessons also have a **Watch** tab. A scrim lab opens after all its predictions are confirmed. **Results** offers the reference solution after three graded submissions for the current lesson version, when the exercise has a saved solution. Run and Lint do not count. All expected output and hidden test inputs stay server-side. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Changes their public handle under **Profile** once every 30 days after confirming it and sees when they can change it again. |
+| AI spend | `/admin` | `apps/web/src/pages/Admin.tsx` | Admins see daily and month-to-date calls, token totals, and estimated USD. See [AI spend dashboard](ai-spend.md). |
 | Docs | `/docs` | `apps/web/src/pages/Docs.tsx` | Reads how lessons work, sees the Free limits and planned Pro limits, and finds the feedback link. |
 | Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads the committed release notes and can report a problem on GitHub. Refresh the release notes with `pnpm --filter @learnquest/web changelog:sync`. |
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
-| Editor / player fixtures (test) | `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
+| Player replay fixture (test) | `/test/player` | `apps/web/src/pages/TestPlayer.tsx`, `TestEditor.tsx` | Development harness for the replay transport and editor. Browser tests for practice use the Editor lab and Lesson player routes. |
 
 The Course Path track labels one lesson **Up next** and distinguishes it from other available, complete and locked lessons. The syllabus shows the same states.
 
@@ -33,8 +34,8 @@ The Course Path track labels one lesson **Up next** and distinguishes it from ot
 | Workbench | `player/live/LessonWorkbench.tsx` | The one surface that holds the editor, panels and status bar. |
 | Steps | `player/live/Steps.tsx`, `player/stepMachine.ts` | The lesson step sequence. **Predict before reveal** is enforced here and on the server. |
 | Editor pane | `player/EditorPane.tsx` | Monaco editor for practice code. |
-| Explorer / file tree | `player/workbench/SandboxFiles.tsx`, `player/workbench/FileTreeView.tsx` | Browse the sandbox home when the shell connects. The listing refreshes after Run and can be refreshed manually after terminal commands. |
-| Terminal | `player/terminal/` | Output of a practice run. |
+| Explorer / file tree | `player/workbench/SandboxFiles.tsx`, `player/workbench/FileTreeView.tsx` | Select the lesson file to focus its editor. A separate tree lists sandbox files and folders while the shell is connected. The listing refreshes after a terminal run and can be refreshed manually after terminal commands. |
+| Terminal | `player/terminal/`, `player/live/RunBottom.tsx` | Run opens the terminal panel. JavaScript and Python use the interactive shell when available. TypeScript and fallback runs show their output in the same panel. |
 | Check results | `player/live/LessonResults.tsx`, `player/live/checkModel.ts` | Sample tests show expected output. Hidden tests never do. |
 | AI design feedback | `player/live/PracticeDesignFeedback.tsx`, `apps/api/src/ai/design-feedback.ts` | After Submit is graded, **Get design feedback** requests one line-specific design suggestion in Results. Only the submitted code and language go to the model. The request shares Sloppy's AI budget and rate limit, and editing the code clears the card. |
 | Hint | server `stepsRouter.hint` (`apps/api/src/attempts/router.ts`) | Requested by the learner. Returns the next fixed hint rung stored on the step. |

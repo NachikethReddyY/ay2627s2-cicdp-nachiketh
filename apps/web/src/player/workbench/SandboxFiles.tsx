@@ -5,7 +5,7 @@ import FileTreeView from "./FileTreeView";
 import { toggleFolder } from "./fileTree";
 import { sandboxNodes, type DirState } from "./sandboxTree";
 
-export default function SandboxFiles({ selected, onRefresh }: { selected: string; onRefresh: () => void }) {
+export default function SandboxFiles({ onRefresh }: { onRefresh: () => void }) {
   const root = useApi("sandbox-files:home", () => listFiles());
   const [dirs, setDirs] = useState<ReadonlyMap<string, DirState>>(() => new Map());
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
@@ -38,7 +38,7 @@ export default function SandboxFiles({ selected, onRefresh }: { selected: string
       <div className="px-2 py-1 text-xs">
         <button type="button" className="underline" onClick={onRefresh}>Refresh sandbox files</button>
       </div>
-      <FileTreeView label="Sandbox files" nodes={sandboxNodes(root.data, dirs)} open={open} selected={selected} onToggle={toggle} onSelect={() => {}} />
+      <FileTreeView label="Sandbox files" nodes={sandboxNodes(root.data, dirs)} open={open} onToggle={toggle} />
     </>
   );
 }

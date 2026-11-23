@@ -239,6 +239,13 @@
       "when": 1795414645400,
       "tag": "0033_drop-legacy-columns",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795426198644,
+      "tag": "0034_ai-call-spend",
+      "breakpoints": true
     }
   ]
 }

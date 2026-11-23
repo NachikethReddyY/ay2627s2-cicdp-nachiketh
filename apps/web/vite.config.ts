@@ -16,22 +16,7 @@ const gitBranch = (() => {
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   define: { __LEARNQUEST_GIT_BRANCH__: JSON.stringify(gitBranch) },
-  plugins: [
-    react(),
-    tailwindcss(),
-    {
-      name: "webcontainer-test-editor-isolation",
-      configureServer(server) {
-        server.middlewares.use((request, response, next) => {
-          if (request.url?.split("?", 1)[0] === "/test/editor") {
-            response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-            response.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-          }
-          next();
-        });
-      },
-    },
-  ],
+  plugins: [react(), tailwindcss()],
   server: { proxy },
   preview: { proxy },
 });
