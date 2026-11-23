@@ -136,12 +136,24 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   });
 });
 
-test("a private generated Python prediction opens from its course and reveals replay after an answer", async ({ page, browser }) => {
+function visualLineCount(text: Locator) {
+  return text.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
+  });
+}
+
+test("a private generated Python prediction distinguishes multiline choices and reveals replay after an answer", async ({ page, browser }) => {
   const email = newEmail();
   const suffix = randomUUID().slice(0, 12);
+  const stepId = randomUUID();
   const course = `python-foundations-${suffix}`;
   const lesson = `predict-what-python-prints-${suffix}`;
   const title = "Predict What Python Prints";
+  const singleLine = "Hello, Leo Welcome to Python!";
+  const multiline = "Hello, Leo\nWelcome to Python!";
+  const spokenMultiline = "Hello, Leo new line Welcome to Python!";
   await page.emulateMedia({ colorScheme: "light" });
   await signUp(page, email, "/");
   await page.evaluate("localStorage.setItem('lq.theme', 'system')");
@@ -159,15 +171,16 @@ test("a private generated Python prediction opens from its course and reveals re
     );
     const { rows: [version] } = await db.query("INSERT INTO lesson_versions (id, lesson_id, version) VALUES (gen_random_uuid()::text, $1, 1) RETURNING id", [draft.id]);
     await db.query("UPDATE lessons SET current_version_id = $1 WHERE id = $2", [version.id, draft.id]);
-    await db.query("INSERT INTO steps (id, lesson_version_id, idx, public, secret) VALUES (gen_random_uuid()::text, $1, 0, $2, $3)", [
+    await db.query("INSERT INTO steps (id, lesson_version_id, idx, public, secret) VALUES ($1, $2, 0, $3, $4)", [
+      stepId,
       version.id,
-      { title: "Print a string variable", prompt: "What will the program print?", kind: "mcq", options: ["Mia", "Noah"] },
+      { title: "Read two print calls", prompt: "What will the program print?", kind: "mcq", options: [singleLine, "Hello, Leo", multiline, "Welcome to Python!"] },
       {
-        beforeFiles: { "main.py": 'name = "Mia"\n' },
-        hunks: [{ id: "print", file: "main.py", oldStart: 2, lines: ["+print(name)"] }],
-        answer: 0,
+        beforeFiles: { "main.py": 'name = "Leo"\n' },
+        hunks: [{ id: "print", file: "main.py", oldStart: 2, lines: ['+print("Hello,", name)', '+print("Welcome to Python!")'] }],
+        answer: 2,
         hints: [{ text: "Follow the assignment." }],
-        explanations: { workedExample: "Print reads the string assigned to the variable.", practice: "Try another name." },
+        explanations: { workedExample: "Each print call ends its output with a line break.", practice: "Try another name." },
       },
     ]);
     await db.query("COMMIT");
@@ -190,10 +203,10 @@ test("a private generated Python prediction opens from its course and reveals re
   await start.click();
   const task = page.getByRole("region", { name: "Predict", exact: true });
   const code = page.locator(".monaco-editor .view-lines");
-  await expect(task.getByRole("heading", { name: "Print a string variable" })).toBeVisible();
+  await expect(task.getByRole("heading", { name: "Read two print calls" })).toBeVisible();
   await expect(page.locator(".wb")).toHaveAttribute("data-resolved", "light");
-  await expect(code).toContainText('name = "Mia"');
-  await expect(code).not.toContainText("print(name)");
+  await expect(code).toContainText('name = "Leo"');
+  await expect(code).not.toContainText('print("Hello,", name)');
   await page.getByRole("textbox", { name: /Code replay, read only/ }).press("End");
   await page.keyboard.type("should_not_edit");
   await expect(code).not.toContainText("should_not_edit");
@@ -206,20 +219,36 @@ test("a private generated Python prediction opens from its course and reveals re
   const taskBox = (await task.boundingBox())!;
   expect(editorBox.x + editorBox.width).toBeLessThanOrEqual(taskBox.x);
 
+  const singleLineChoice = task.getByRole("radio", { name: singleLine, exact: true });
+  const multilineChoice = task.getByRole("radio", { name: spokenMultiline, exact: true });
+  const choices = task.locator("label");
+  await expect(singleLineChoice).toBeVisible();
+  await expect(multilineChoice).toBeVisible();
+  await expect.poll(() => visualLineCount(choices.filter({ has: page.getByRole("radio", { name: singleLine, exact: true }) }).getByText(singleLine, { exact: true }))).toBe(1);
+  await expect.poll(() => visualLineCount(choices.filter({ has: page.getByRole("radio", { name: spokenMultiline, exact: true }) }).getByText(singleLine, { exact: true }))).toBe(2);
+  await expect(task.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(task.getByText("Answer:", { exact: false })).toHaveCount(0);
+  const input = encodeURIComponent(JSON.stringify({ id: stepId }));
+  const earlyReveal = await page.request.get(`/api/trpc/steps.reveal?input=${input}`);
+  expect(earlyReveal.status()).toBe(409);
+
   await page.setViewportSize({ width: 375, height: 667 });
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator(".wb")).toHaveAttribute("data-resolved", "dark");
   await expect(task.getByRole("button", { name: "Check" })).toBeVisible();
   expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
-  await task.getByRole("radio", { name: "Mia" }).check();
+  await multilineChoice.check();
   await task.getByRole("button", { name: "Check" }).click();
   await expect(task.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  const answer = task.locator("code");
+  await expect(answer).toMatchAriaSnapshot(`- code: ${spokenMultiline}`);
+  await expect.poll(() => visualLineCount(answer.getByText(singleLine, { exact: true }))).toBe(2);
   await expect(clip).toHaveAttribute("src", narration);
   await expect.poll(() => clip.evaluate((el) => (el as unknown as { duration: number }).duration)).toBeGreaterThan(0);
   expect(narrationRequests).toHaveLength(1);
   await expect(page.getByRole("slider", { name: "Timeline" })).toBeVisible();
   await page.getByRole("button", { name: "Go to end of replay" }).click();
-  await expect(code).toContainText("print(name)");
+  await expect(code).toContainText('print("Hello,", name)');
   await task.getByRole("button", { name: "Finish lesson" }).click();
   await expect(task.getByRole("link", { name: "Back to course" })).toHaveAttribute("href", `/courses/${course}`);
   await expect(page.getByRole("slider", { name: "Timeline" })).toHaveCount(0);
