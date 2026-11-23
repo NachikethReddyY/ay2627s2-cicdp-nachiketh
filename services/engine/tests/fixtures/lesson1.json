@@ -46,13 +46,15 @@
     },
     {
       "title": "Support a discount",
-      "prompt": "cartTotal gets a second, optional parameter for a discount. Type that parameter exactly as it will appear in the signature.",
-      "kind": "cloze",
-      "answer": "discount = 0",
-      "accepted": [
+      "prompt": "Which parameter lets callers omit the discount without changing the subtotal?",
+      "kind": "mcq",
+      "options": [
+        "discount",
         "discount = 0",
-        "discount=0"
+        "discount = 1",
+        "discount = 0.5"
       ],
+      "answer": 1,
       "hints": [
         {
           "text": "Old callers pass only the cart, so the parameter must be optional."

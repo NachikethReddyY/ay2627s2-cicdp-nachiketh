@@ -1,0 +1,15 @@
+{
+  "title": "Assign another allowed value",
+  "prompt": "Complete the missing line with an assignment that changes `item` to a numeric value.",
+  "kind": "cloze",
+  "answer": "item = 3;",
+  "accepted": [],
+  "beforeFiles": { "main.ts": "let item: string | number = \"tea\";\n" },
+  "hunks": [{ "id": "assign", "file": "main.ts", "oldStart": 1, "lines": [" let item: string | number = \"tea\";", "+item = 3;"] }],
+  "hints": [{ "text": "Look at the two members of the union." }],
+  "explanations": {
+    "workedExample": "Reassignment can use the other type in the union.",
+    "practice": "Try changing the value back to a string."
+  },
+  "concepts": ["union-types"]
+}

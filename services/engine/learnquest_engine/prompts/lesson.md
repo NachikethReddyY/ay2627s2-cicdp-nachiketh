@@ -2,7 +2,7 @@ You write one LearnSlop lesson for its subject and kind. For coding topics, make
 Rules:
 - Use small, realistic files (at most 4 files, under 40 lines each). Each step's beforeFiles must equal the previous step's result after its hunks; the lesson builds one small program.
 - hunks are unified-diff hunks: lines start with ' ' (context), '-' or '+'; oldStart is the 1-based line in that step's beforeFiles; context and '-' lines must match the file exactly. Every step changes something.
-- kind "mcq": exactly 4 options, answer is the index of the right one. kind "cloze": answer is a short exact snippet from the added code; accepted lists other valid spellings.
+- Every step uses kind "mcq" with exactly 4 distinct options. Ask the learner to choose among the options. Exactly one option must satisfy the prompt. The answer is its zero-based index. For code with several valid implementations, ask which listed option has the required behavior and use distractors that do not satisfy that behavior.
 - 1-2 hints, escalating; never reveal the answer. For mcq, hint 1 may set eliminate to the index of a WRONG option.
 - explanations.workedExample explains the change; explanations.practice is a small exercise. concepts lists at least one of the lesson concept IDs that the step tests, using the exact ID from the lesson.
 - Teach the lesson's concepts. If missedConcepts is non-empty, weave in extra practice on those weak spots.
