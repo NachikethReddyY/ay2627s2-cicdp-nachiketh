@@ -25,6 +25,12 @@ if "$here/render-vercel-config.sh" "$origin" "$out" >/dev/null; then
     echo "FAIL configured origin missing from rewrite or CSP"
     failures=$((failures + 1))
   fi
+  if python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["git"]["deploymentEnabled"] == {"main": False}' "$out"; then
+    echo "PASS only the production workflow deploys main"
+  else
+    echo "FAIL Vercel Git builds can replace the production deployment"
+    failures=$((failures + 1))
+  fi
 else
   echo "FAIL script exited non-zero for a valid origin"
   failures=$((failures + 1))
