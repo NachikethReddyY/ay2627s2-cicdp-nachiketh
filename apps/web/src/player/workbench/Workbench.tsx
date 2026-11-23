@@ -30,7 +30,9 @@ type Props = {
   navigator: ReactNode;
   editor: ReactNode;
   playerOverlay?: ReactNode;
-  bottom: ReactNode;
+  bottom?: ReactNode;
+  editorFooter?: ReactNode;
+  task?: ReactNode;
   bottomTitle?: string;
   terminalSessions?: {
     items: { id: string; label: string }[];
@@ -53,7 +55,7 @@ type Props = {
   gitBranch?: string;
   languageLabel?: string;
   noCursor?: boolean;
-  panel: ReturnType<typeof usePanel>;
+  panel?: ReturnType<typeof usePanel>;
   showPlanned?: boolean;
   floatingWindow?: {
     style: CSSProperties;
@@ -90,7 +92,8 @@ type Overlay = "nav" | "docs" | null;
 export default function Workbench(p: Props) {
   const [storedLayout, dispatch] = useLayout();
   const hasDocs = p.docs !== undefined;
-  const layout = hasDocs ? storedLayout : { ...storedLayout, showUtil: false };
+  const hasTask = p.task != null;
+  const layout = hasDocs ? storedLayout : { ...storedLayout, showUtil: hasTask };
   const wide = useMedia(WIDE);
   const hasPlayerOverlay = p.playerOverlay != null;
   const measurePlayer = wide || hasPlayerOverlay;
@@ -137,7 +140,9 @@ export default function Workbench(p: Props) {
   }, []);
   const view: NavView = planned ? navView : "files";
   const bottomView = planned ? bottomTab : "main";
-  const { state: panel, dispatch: panelDispatch } = p.panel;
+  const panel = p.panel?.state;
+  const panelDispatch = p.panel?.dispatch;
+  const panelOpen = panel?.open ?? false;
   useEffect(() => setProblems([]), [p.fileName]);
   useEffect(() => {
     try { window.localStorage.setItem("lq.editor.wordWrap", String(wordWrap)); } catch { }
@@ -183,9 +188,10 @@ export default function Workbench(p: Props) {
   const leftResizeContainer = shown.showUtil ? resizeContainerForPanel(avail, layout.utilW, shown.utilW) : avail;
   const utilResizeContainer = shown.showLeft ? resizeContainerForPanel(avail, layout.leftW, shown.leftW) : avail;
 
-  const panelH = measurePlayer && centerH > 0 ? clampHeight(panel.height, centerH) : panel.height;
+  const panelH = panel && measurePlayer && centerH > 0 ? clampHeight(panel.height, centerH) : panel?.height ?? 0;
 
   useEffect(() => {
+    if (!panelDispatch) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!isToggleKey(e)) return;
       e.preventDefault();
@@ -219,7 +225,7 @@ export default function Workbench(p: Props) {
   };
   const viewCommands: PaletteCommand[] = [
     { id: "view.sidebar", title: "Toggle sidebar", run: toggleNav },
-    { id: "view.terminal", title: "Toggle terminal panel", hint: "Ctrl+`", run: () => panelDispatch({ type: "toggle" }) },
+    ...(panelDispatch ? [{ id: "view.terminal", title: "Toggle terminal panel", hint: "Ctrl+`", run: () => panelDispatch({ type: "toggle" }) }] : []),
     ...(hasDocs ? [{ id: "view.docs", title: "Toggle docs panel", run: toggleUtil }] : []),
     { id: "theme.light", title: "Color theme: Light", run: () => dispatch({ type: "theme", theme: "light" }) },
     { id: "theme.dark", title: "Color theme: Dark", run: () => dispatch({ type: "theme", theme: "dark" }) },
@@ -228,14 +234,14 @@ export default function Workbench(p: Props) {
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const termBtn = useRef<HTMLButtonElement>(null);
-  const panelWasOpen = useRef(panel.open);
+  const panelWasOpen = useRef(panelOpen);
   useEffect(() => {
-    if (panelWasOpen.current && !panel.open) {
+    if (panelWasOpen.current && !panelOpen) {
       const a = document.activeElement;
       if (!a || a === document.body || a.closest(`[aria-label="${p.bottomTitle ?? "Terminal"} panel"]`)) termBtn.current?.focus();
     }
-    panelWasOpen.current = panel.open;
-  }, [panel.open, p.bottomTitle]);
+    panelWasOpen.current = panelOpen;
+  }, [panelOpen, p.bottomTitle]);
   const revealRef = useRef({ wide, showUtil: layout.showUtil, dispatch });
   revealRef.current = { wide, showUtil: layout.showUtil, dispatch };
   const lastReveal = useRef(p.revealDocs ?? 0);
@@ -267,8 +273,8 @@ export default function Workbench(p: Props) {
     [resolved, wordWrap, p.fileName, onGuideSelection],
   );
 
-  const bottomPanel = panel.everOpened && (
-    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} hidden={!panel.open} style={maximized ? undefined : { height: panelH }} className={`wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)] ${maximized ? "absolute inset-0 z-20" : ""}`}>
+  const bottomPanel = panel?.everOpened && panelDispatch && (
+    <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} hidden={!panelOpen} style={maximized ? undefined : { height: panelH }} className={`wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)] ${maximized ? "absolute inset-0 z-20" : ""}`}>
       <div className="wb-bottom-toolbar flex h-[43px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
         {planned ? (
@@ -331,12 +337,12 @@ export default function Workbench(p: Props) {
         onClick: toggleNav,
         ref: navBtn,
       }}
-      terminal={{
+      terminal={panelDispatch ? {
         label: "Toggle terminal panel (Ctrl+`)",
-        pressed: panel.open,
+        pressed: panelOpen,
         onClick: () => panelDispatch({ type: "toggle" }),
         ref: termBtn,
-      }}
+      } : undefined}
       util={hasDocs ? {
         label: wide ? "Toggle docs panel" : "Show docs",
         pressed: wide ? layout.showUtil : openOverlay === "docs",
@@ -445,7 +451,8 @@ export default function Workbench(p: Props) {
                     {p.editor}
                     {planned && navView === "debug" && <Suspense fallback={null}><DebugBar /></Suspense>}
                   </div>
-                  {panel.open && !panelMaximized && (
+                  {p.editorFooter}
+                  {panelOpen && panelDispatch && !panelMaximized && (
                     <Splitter
                       orientation="horizontal"
                       label="Resize terminal panel"
@@ -466,19 +473,19 @@ export default function Workbench(p: Props) {
                   {bottomPanel}
                 </main>
                 </div>
-              {hasDocs && shown.showUtil && (
+              {(hasDocs || hasTask) && shown.showUtil && (
                 <>
                   <Splitter
                     orientation="vertical"
-                    label="Resize docs"
+                    label={hasTask ? "Resize task" : "Resize docs"}
                     value={shown.utilW}
                     min={UTIL_MIN}
                     max={utilMax}
                     after
                     onResize={(px) => dispatch({ type: "resizeUtil", px, container: utilResizeContainer })}
                   />
-                  <aside aria-label="Docs" style={{ width: shown.utilW }} className="wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
-                    {p.docs}
+                  <aside aria-label={hasTask ? "Prediction task" : "Docs"} style={{ width: shown.utilW }} className="wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
+                    {p.task ?? p.docs}
                   </aside>
                 </>
               )}
@@ -490,6 +497,8 @@ export default function Workbench(p: Props) {
               {toolbar(false)}
               <main ref={hasPlayerOverlay ? centerRef : undefined} className={`flex min-w-0 flex-col bg-[var(--code)] ${hasPlayerOverlay ? "min-h-0 flex-1" : ""}`}>
                 {p.editor}
+                {p.editorFooter}
+                {p.task}
                 {p.instructions && (
                   <section aria-label="Instructions" className="border-t border-[var(--line)] bg-[var(--tbar)] px-4 py-4">
                     <h2 className="mb-2 text-[13px] font-semibold">Instructions</h2>

@@ -136,6 +136,91 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   });
 });
 
+test("a private generated Python prediction opens from its course and reveals replay after an answer", async ({ page, browser }) => {
+  const email = newEmail();
+  const suffix = randomUUID().slice(0, 12);
+  const course = `python-foundations-${suffix}`;
+  const lesson = `predict-what-python-prints-${suffix}`;
+  const title = "Predict What Python Prints";
+  await page.emulateMedia({ colorScheme: "light" });
+  await signUp(page, email, "/");
+  await page.evaluate("localStorage.setItem('lq.theme', 'system')");
+  const db = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL });
+  await db.connect();
+  try {
+    await db.query("BEGIN");
+    const { rows: [world] } = await db.query(
+      `INSERT INTO worlds (id, slug, title, visibility, origin, owner_id)
+        SELECT gen_random_uuid()::text, $1, 'Python Foundations', 'private', 'ai', id FROM "user" WHERE email = $2 RETURNING id`, [course, email],
+    );
+    const { rows: [draft] } = await db.query(
+      "INSERT INTO lessons (id, slug, title, world_id, source_kind, kind) VALUES (gen_random_uuid()::text, $1, $2, $3, 'ai', 'predict') RETURNING id",
+      [lesson, title, world.id],
+    );
+    const { rows: [version] } = await db.query("INSERT INTO lesson_versions (id, lesson_id, version) VALUES (gen_random_uuid()::text, $1, 1) RETURNING id", [draft.id]);
+    await db.query("UPDATE lessons SET current_version_id = $1 WHERE id = $2", [version.id, draft.id]);
+    await db.query("INSERT INTO steps (id, lesson_version_id, idx, public, secret) VALUES (gen_random_uuid()::text, $1, 0, $2, $3)", [
+      version.id,
+      { title: "Print a string variable", prompt: "What will the program print?", kind: "mcq", options: ["Mia", "Noah"] },
+      {
+        beforeFiles: { "main.py": 'name = "Mia"\n' },
+        hunks: [{ id: "print", file: "main.py", oldStart: 2, lines: ["+print(name)"] }],
+        answer: 0,
+        hints: [{ text: "Follow the assignment." }],
+        explanations: { workedExample: "Print reads the string assigned to the variable.", practice: "Try another name." },
+      },
+    ]);
+    await db.query("COMMIT");
+  } finally {
+    await db.end();
+  }
+
+  await page.goto(`/courses/${course}`);
+  const start = page.getByRole("link", { name: "Start", exact: true });
+  const href = `/play?lesson=${lesson}&course=${course}`;
+  await expect(start).toHaveAttribute("href", href);
+  await start.click();
+  const task = page.getByRole("region", { name: "Predict", exact: true });
+  const code = page.locator(".monaco-editor .view-lines");
+  await expect(task.getByRole("heading", { name: "Print a string variable" })).toBeVisible();
+  await expect(page.locator(".wb")).toHaveAttribute("data-resolved", "light");
+  await expect(code).toContainText('name = "Mia"');
+  await expect(code).not.toContainText("print(name)");
+  await page.getByRole("textbox", { name: /Code replay, read only/ }).press("End");
+  await page.keyboard.type("should_not_edit");
+  await expect(code).not.toContainText("should_not_edit");
+  await expect(page.getByRole("slider", { name: "Timeline" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Toggle terminal panel", exact: false })).toHaveCount(0);
+  const editorBox = (await code.boundingBox())!;
+  const taskBox = (await task.boundingBox())!;
+  expect(editorBox.x + editorBox.width).toBeLessThanOrEqual(taskBox.x);
+
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator(".wb")).toHaveAttribute("data-resolved", "dark");
+  await expect(task.getByRole("button", { name: "Check" })).toBeVisible();
+  expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
+  await task.getByRole("radio", { name: "Mia" }).check();
+  await task.getByRole("button", { name: "Check" }).click();
+  await expect(task.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Timeline" })).toBeVisible();
+  await page.getByRole("button", { name: "Go to end of replay" }).click();
+  await expect(code).toContainText("print(name)");
+  await task.getByRole("button", { name: "Finish lesson" }).click();
+  await expect(task.getByRole("link", { name: "Back to course" })).toHaveAttribute("href", `/courses/${course}`);
+  await expect(page.getByRole("slider", { name: "Timeline" })).toHaveCount(0);
+
+  const other = await browser.newContext();
+  try {
+    const stranger = await other.newPage();
+    await signUp(stranger, newEmail(), href);
+    await expect(stranger.getByText("We couldn't find that lesson.")).toBeVisible();
+    await expect(stranger.getByRole("region", { name: "Predict", exact: true })).toHaveCount(0);
+  } finally {
+    await other.close();
+  }
+});
+
 test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {
   const email = newEmail();
   await signUp(page, email, "/");
@@ -515,19 +600,17 @@ for (const [path, ready] of SIGNED_OUT_PAGES) {
   });
 }
 
-for (const [path, ready] of SIGNED_IN_PAGES) {
-  test(`axe: no serious or critical violations on ${path} (signed in)`, async ({ page }) => {
-    await signUp(page, newEmail(), path);
-    await expectNoSeriousA11yViolations(page, path, ready(page));
-  });
-}
+test("axe: no serious or critical violations on signed-in pages", async ({ page }) => {
+  await signUp(page, newEmail(), "/");
+  for (const [path, ready] of SIGNED_IN_PAGES) {
+    await test.step(path, () => expectNoSeriousA11yViolations(page, path, ready(page)));
+  }
+});
 
 test("a step with no narration audio is spoken with browser speech on reveal", async ({ page }) => {
   await page.addInitScript(() => {
     const spoken: string[] = [];
-    const calls: string[] = [];
-    (globalThis as unknown as { __spoken: string[]; __calls: string[] }).__spoken = spoken;
-    (globalThis as unknown as { __calls: string[] }).__calls = calls;
+    (globalThis as unknown as { __spoken: string[] }).__spoken = spoken;
     class FakeUtterance {
       volume = 1;
       onend: (() => void) | null = null;
@@ -543,20 +626,22 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
       value: {
         speak: (u: { text: string }) => spoken.push(u.text),
         cancel() {},
-        pause: () => calls.push("pause"),
-        resume: () => calls.push("resume"),
+        pause() {},
+        resume() {},
       },
     });
   });
   await signUp(page, newEmail(), `/courses/${COURSE}`);
   await page.locator(`a.lesson-hit[href*="lesson=${LESSON}"]`).click();
   await page.locator(`a.lesson-pop-btn[href*="lesson=${LESSON}"]`).click();
-  await expect(page.getByRole("button", { name: "Mute" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Listen to explanation" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop narration" })).toHaveCount(0);
   await page.getByLabel(CORRECT_OPTION).check();
   await page.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
 
-  await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
+  const stop = page.getByRole("button", { name: "Stop narration" });
+  await expect(stop).toBeVisible();
   const spoken = () => page.evaluate(() => (globalThis as unknown as { __spoken: string[] }).__spoken.join(" "));
   const file = JSON.parse(readFileSync(new URL("../../worlds/codequest/lessons/lesson-1.json", import.meta.url), "utf8")) as {
     steps: { id: string; secret: { narration: string } }[];
@@ -565,8 +650,7 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
   const firstSentence = narration.match(/.+?[.!?](?=\s|$)/s)![0].trim();
   await expect.poll(spoken).toBe(firstSentence);
 
-  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
-  const lastToggle = () =>
-    page.evaluate(() => (globalThis as unknown as { __calls: string[] }).__calls.at(-1));
-  await expect.poll(lastToggle).toBe("resume");
+  await stop.click();
+  await page.getByRole("button", { name: "Listen to explanation" }).click();
+  await expect.poll(spoken).toBe(`${firstSentence} ${firstSentence}`);
 });

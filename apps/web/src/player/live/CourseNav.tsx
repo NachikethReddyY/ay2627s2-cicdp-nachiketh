@@ -20,13 +20,13 @@ export const NextLink = ({ href, action, children }: { href: string; action?: "l
   return <a href={href} onClick={go} className="btn mt-4">{children}</a>;
 };
 
-export function LessonProgress({ id, course }: { id: string; course: CourseState }) {
+export function LessonProgress({ id, course, inline }: { id: string; course: CourseState; inline?: boolean }) {
   const data = course.data;
   const i = data?.lessons.findIndex((l) => l.slug === id) ?? -1;
   if (!data || i < 0) return null;
   const { done, total } = courseProgress(data.lessons);
   return (
-    <div className="sticky top-0 z-30 px-4 pt-3 pb-2 border-b border-[var(--line)] bg-[var(--glass)] backdrop-blur-xl">
+    <div className={inline ? "pb-4" : "sticky top-0 z-30 px-4 pt-3 pb-2 border-b border-[var(--line)] bg-[var(--glass)] backdrop-blur-xl"}>
       <div className="mx-auto max-w-3xl">
         <Bar value={done} total={total} label="Course progress" />
       </div>

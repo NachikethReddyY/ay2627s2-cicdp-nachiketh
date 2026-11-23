@@ -5,13 +5,14 @@ import { TRPCClientError } from "@trpc/client";
 import { trpc } from "../../lib/trpc";
 import { PredictPanel, RevealPanel } from "../LivePanels";
 import { canHint, canSubmit, stepMachine, type Reveal } from "../stepMachine";
-import { Player } from "./LazyPlayer";
+import PredictWorkbench from "./PredictWorkbench";
+import PredictNarration from "./PredictNarration";
 import type { Lesson } from "./types";
 import { useLessonAnalytics } from "./lessonAnalytics";
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
 
-export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; next?: ReactNode; onFinished?: () => void }) {
+export default function Steps({ lesson, progress, next, onFinished }: { lesson: Lesson; progress?: ReactNode; next?: ReactNode; onFinished?: () => void }) {
   const n = lesson.steps.length;
   const start = Math.max(0, lesson.steps.findIndex((s) => s.state !== "revealed" && s.state !== "skipped"));
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: n, idx: start } });
@@ -66,8 +67,6 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
   const answered = state === "revealed" || state === "skipped";
   const narration = answered ? lesson.media.find((m) => m.stepId === stepId && m.kind === "narration")?.url : undefined;
 
-  const narrationText = answered ? reveal?.narration : undefined;
-
   const id = stepId ?? "";
   let panel: ReactNode;
   if (state === "finished") {
@@ -85,7 +84,7 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
       </div>
     );
   } else if (step && (state === "revealed" || state === "skipped")) {
-    panel = <RevealPanel key={id} idx={idx} total={n} state={state} correct={snap.context.lastCorrect} step={step} reveal={reveal} last={idx + 1 >= n} onNext={() => send({ type: "NEXT" })} />;
+    panel = <RevealPanel key={id} idx={idx} total={n} state={state} correct={snap.context.lastCorrect} step={step} reveal={reveal} showReplayHint={timeline.duration > 0} last={idx + 1 >= n} onNext={() => send({ type: "NEXT" })} />;
   } else if (step && (state === "predicting" || state === "hinting")) {
     panel = (
       <PredictPanel
@@ -104,11 +103,14 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
   }
 
   return (
-    <Player
+    <PredictWorkbench
+      key={id}
       title={lesson.title}
-      stepTitles={lesson.steps.map((s) => s.title)}
       timeline={timeline}
-      live={{ idx: Math.min(idx, n - 1), finished: state === "finished", panel, playKey: reveal, narration, narrationText }}
+      task={<>{progress}{panel}</>}
+      narration={answered && reveal && <PredictNarration url={narration} text={reveal.narration} />}
+      revealed={reveal !== null}
+      finished={state === "finished"}
     />
   );
 }

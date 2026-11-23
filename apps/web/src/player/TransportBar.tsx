@@ -15,6 +15,7 @@ type Props = {
   onMute(): void;
   onHover(over: boolean): void;
   faded: boolean;
+  inline?: boolean;
   playRef: React.RefObject<HTMLButtonElement | null>;
   onToggle(): void;
   onSeek(t: number): void;
@@ -39,7 +40,7 @@ const icons = {
 const btn =
   `grid size-9 place-items-center pill ${FOCUS}`;
 
-export default function TransportBar({ timeline, t, playing, speed, volume, muted, audio, onVolume, onMute, onHover, faded, playRef, onToggle, onSeek, onStep, onSpeed }: Props) {
+export default function TransportBar({ timeline, t, playing, speed, volume, muted, audio, onVolume, onMute, onHover, faded, inline, playRef, onToggle, onSeek, onStep, onSpeed }: Props) {
   const { steps } = timeline;
   const n = steps.length;
 
@@ -66,7 +67,7 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
     <div
       onPointerEnter={() => onHover(true)}
       onPointerLeave={() => onHover(false)}
-      className={`absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-32px)] max-w-[640px] -translate-x-1/2 flex-col gap-2 chunk rounded-2xl px-3 py-2 text-ink transition-opacity duration-300 motion-reduce:transition-none has-focus-visible:pointer-events-auto has-focus-visible:opacity-100 ${faded ? "pointer-events-none opacity-0" : ""}`}
+      className={inline ? "flex w-full flex-col gap-1 border-t border-[var(--line)] bg-[var(--tbar)] px-3 py-2 text-ink" : `absolute bottom-4 left-1/2 z-10 flex w-[calc(100%-32px)] max-w-[640px] -translate-x-1/2 flex-col gap-2 chunk rounded-2xl px-3 py-2 text-ink transition-opacity duration-300 motion-reduce:transition-none has-focus-visible:pointer-events-auto has-focus-visible:opacity-100 ${faded ? "pointer-events-none opacity-0" : ""}`}
     >
       <Slider.Root
         className="relative flex h-6 w-full touch-none items-center select-none"
@@ -90,17 +91,17 @@ export default function TransportBar({ timeline, t, playing, speed, volume, mute
       </Slider.Root>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label="Previous step" className={btn} onClick={() => onStep(-1)}>
+        <button type="button" aria-label={inline ? "Go to start of replay" : "Previous step"} className={btn} onClick={() => onStep(-1)}>
           {icon("prev")}
         </button>
         <button ref={playRef} type="button" aria-label={playing ? "Pause" : "Play"} className={`${btn} ${playing ? "bg-[var(--sel)]" : ""}`} onClick={onToggle}>
           {icon(playing ? "pause" : "play")}
         </button>
-        <button type="button" aria-label="Next step" className={btn} onClick={() => onStep(1)}>
+        <button type="button" aria-label={inline ? "Go to end of replay" : "Next step"} className={btn} onClick={() => onStep(1)}>
           {icon("next")}
         </button>
         <span className="ml-1 font-mono text-sm font-medium text-[var(--mu)]" aria-hidden="true">
-          {mmss(t)} / {mmss(timeline.duration)}
+          {inline && timeline.duration < 1000 ? `${(t / 1000).toFixed(1)} / ${(timeline.duration / 1000).toFixed(1)}s` : `${mmss(t)} / ${mmss(timeline.duration)}`}
         </span>
         {audio && <div className="group/vol ml-auto flex items-center gap-1">
           <button type="button" aria-label={muted ? "Unmute" : "Mute"} className={`grid size-8 place-items-center rounded-lg ${FOCUS}`} onClick={onMute}>
