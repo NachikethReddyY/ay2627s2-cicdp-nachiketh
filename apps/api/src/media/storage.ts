@@ -3,7 +3,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../env.ts";
 
 export interface Storage {
-  put(key: string, body: Uint8Array, contentType: string, options?: { cacheControl: string; signal: AbortSignal }): Promise<void>;
+  put(key: string, body: Uint8Array, contentType: string, options?: { cacheControl?: string; signal: AbortSignal }): Promise<void>;
   get(key: string, signal: AbortSignal): Promise<Uint8Array | undefined>;
   signGet(key: string): Promise<string>;
 }

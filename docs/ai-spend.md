@@ -31,7 +31,7 @@ Catalogs refresh in the background per process. A successful read stays fresh fo
 
 Audio generation and transcription run only on the Studio branch. To price audio, capture the response's billed USD, or the exact provider and model rate alongside metered duration in seconds or minutes, or measured audio input/output token counts for a token-priced model. Text token totals and file size do not establish the audio bill.
 
-`AI_DAILY_BUDGET_USD` and `AI_MONTHLY_BUDGET_USD` continue to apply to reservations in `spend_ledger` using `AI_CALL_ESTIMATE_USD`, `IMAGE_ESTIMATE_USD`, or `MODERATION_ESTIMATE_USD` as applicable.
+`AI_DAILY_BUDGET_USD` and `AI_MONTHLY_BUDGET_USD` continue to apply to reservations in `spend_ledger` using `AI_CALL_ESTIMATE_USD`, `IMAGE_ESTIMATE_USD`, `STUDIO_TTS_ESTIMATE_USD`, or `MODERATION_ESTIMATE_USD` as applicable.
 
 ## Counting unpriced calls in PostHog
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { env } from "../env.ts";
 import { isSafe } from "../safety/moderation.ts";
-import { recordImageCallSpend } from "../admin/ai-spend.ts";
+import { recordMediaCallSpend } from "../admin/ai-spend.ts";
 import { imageCallSpend, warmImagePrices } from "./image-pricing.ts";
 import { reserveAiSpend } from "../config/budget.ts";
 import { mvpLimits } from "@learnquest/product-limits";
@@ -92,7 +92,7 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
       ? data.data.filter((image) => typeof image?.b64_json === "string" && image.b64_json.length > 0).length
       : 0;
     const spend = imageCallSpend(base, env.IMAGE_MODEL!, env.IMAGE_API_STYLE, data?.usage, imageCount);
-    await recordImageCallSpend(spend.promptTokens, spend.completionTokens, spend.cost);
+    await recordMediaCallSpend(spend.promptTokens, spend.completionTokens, spend.cost);
     const message = data?.choices?.[0]?.message;
     let encoded = data?.data?.[0]?.b64_json ?? (message ? chatImage(message) : undefined);
     if (env.IMAGE_API_STYLE === "chat") encoded = encoded?.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");

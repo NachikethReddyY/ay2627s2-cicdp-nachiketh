@@ -285,9 +285,9 @@ export const lessonsRouter = router({
         completed: completion !== undefined,
         canUpgradeReadChecks: readLesson && rows.length < 2 && lesson.sourceKind === "ai" && found?.isOwner === true,
         media: !readAllowed ? [] : await listMedia(lesson.currentVersionId).then((media) => {
-          if (readLesson) {
+          if (readLesson || lesson.kind === "predict") {
             const revealed = new Set(rows.filter((row) => row.state === "revealed").map((row) => row.id));
-            return media.filter((item) => item.stepId === null || revealed.has(item.stepId));
+            return media.filter((item) => item.stepId === null ? readLesson : revealed.has(item.stepId));
           }
           if (lesson.kind !== "scrim" || part?.kind !== "scrim") return media;
           const revealedStepIds = new Set(servedRows.filter((row) => row.state === "revealed").map((row) => row.id));

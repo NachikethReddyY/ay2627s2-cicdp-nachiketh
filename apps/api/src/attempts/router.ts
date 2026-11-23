@@ -12,6 +12,7 @@ import { gradeMcq } from "../grading/mcq.ts";
 import { scrimGateOpen } from "../lessons/scrim.ts";
 import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { catchUpMastery, resolveConcepts } from "../progress/mastery.ts";
+import { predictNarration } from "../media/predict-narration.ts";
 import { lessonDone, lessonTotal } from "../progress/shared.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
@@ -74,6 +75,8 @@ const hintAt = (step: Step, rung: number) => {
   const eliminate = step.pub.kind === "mcq" && rung === 1 ? h.eliminate : undefined;
   return { rung, text: h.text, ...(eliminate !== undefined && { eliminate }) };
 };
+
+const narrationText = (step: Step) => step.secret.narration?.trim() || step.secret.explanations.workedExample;
 
 const isReadLesson = (step: Step) => step.lessonKind === "learn" || step.lessonKind === "watch";
 
@@ -328,6 +331,16 @@ export const stepsRouter = router({
       return { state: "skipped" as const };
     }),
 
+  narration: protectedProcedure
+    .input(Id)
+    .output(z.object({ url: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const step = await mustStep(input.id, ctx.learnerId);
+      if (step.lessonKind !== "predict") throw notFound();
+      if ((await readProgress(ctx.learnerId, step)).state !== "revealed") throw conflict("Not revealed yet");
+      return { url: await predictNarration({ lessonVersionId: step.versionId, stepId: step.id, text: narrationText(step) }) };
+    }),
+
   reveal: protectedProcedure
     .input(Id)
     .output(
@@ -357,7 +370,7 @@ export const stepsRouter = router({
             : { type: "cloze" as const, text: s.answer as string },
         hunks: s.hunks,
         explanations: { ...s.explanations, inferred: true as const },
-        narration: s.narration ?? s.explanations.workedExample,
+        narration: narrationText(step),
         source: step.source,
       };
     }),

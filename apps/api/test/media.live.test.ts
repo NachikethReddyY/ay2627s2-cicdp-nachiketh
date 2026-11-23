@@ -37,7 +37,7 @@ test("real bucket: objects carry their type and cache headers, signed URLs work,
   const cookie = await signUp(app);
   const [lesson] = await db.select().from(lessons).where(eq(lessons.slug, "lesson-1"));
   const versionId = lesson!.currentVersionId!;
-  const [first] = await db.select({ idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
+  const [first] = await db.select({ id: steps.id, idx: steps.idx }).from(steps).where(eq(steps.lessonVersionId, versionId)).limit(1);
 
   const r = await importNarration("lesson-1", [{ idx: first!.idx, body: MP3 }]);
   const [narration] = await db.select({ key: lessonMedia.key }).from(lessonMedia).where(eq(lessonMedia.kind, "narration"));
@@ -47,7 +47,9 @@ test("real bucket: objects carry their type and cache headers, signed URLs work,
   const pngKey = await saveMedia({ lessonVersionId: versionId, kind: "image", body: PNG, contentType: "image/png" });
   written.push(pngKey);
 
-  const body = out(await trpc(app, cookie).q("lessons.get", { id: "lesson-1" }));
+  const api = trpc(app, cookie);
+  assert.equal((await api.m("steps.attempt", { id: first.id, answer: { kind: "mcq", choice: 1 } })).statusCode, 200);
+  const body = out(await api.q("lessons.get", { id: "lesson-1" }));
   assert.equal(body.media.length, 1);
   const audioUrl: string = body.media[0].url;
   assert.equal(decodeURIComponent(new URL(audioUrl).pathname.split("/").slice(2).join("/")), mp3Key);

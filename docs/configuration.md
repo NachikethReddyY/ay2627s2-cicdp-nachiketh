@@ -8,15 +8,27 @@ Selected environment variables for the API and engine.
 | --- | --- | --- | --- | --- | --- |
 | Text | TokenRouter via LiteLLM when configured | `TOKENROUTER_API_KEY` or `LLM_API_KEY` | `LLM_MODEL` | Required. The engine example uses `openai/gpt-5.1-mini`. | Live |
 | Image | TokenRouter | `TOKENROUTER_API_KEY` or `IMAGE_API_KEY` | `IMAGE_MODEL` | No default | Off in production |
-| Text-to-speech | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_TTS_MODEL` | `hexgrad/kokoro-82m` | Studio branch only |
+| Text-to-speech | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_TTS_MODEL` | `hexgrad/kokoro-82m` | Predict narration when configured |
 | Speech-to-text | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_STT_MODEL` | `openai/whisper-large-v3` | Studio branch only |
 | Moderation | OpenAI by default | `MODERATION_API_KEY` | `MODERATION_MODEL` | `omni-moderation-latest` | Live |
 
 - For text on TokenRouter, set `LLM_API_BASE=https://api.tokenrouter.com/v1` and `LLM_MODEL=openai/<confirmed-model-id>` on the engine. `TOKENROUTER_API_KEY` takes precedence over `LLM_API_KEY` when both have values.
 - For images, set `TOKENROUTER_API_KEY` and `IMAGE_MODEL` on the API. The TokenRouter key takes precedence over `IMAGE_API_KEY` and defaults `IMAGE_BASE_URL` to `https://api.tokenrouter.com/v1`. An explicit `IMAGE_BASE_URL` overrides the default. Set `IMAGE_API_STYLE=chat` for models served through chat completions. The default `images` uses the image generations endpoint. The legacy key requires an explicit base URL.
-- Studio uses `https://openrouter.ai/api/v1/audio/speech` for text-to-speech and `https://openrouter.ai/api/v1/audio/transcriptions` for speech-to-text. The default `STUDIO_TTS_VOICE` is `af_heart`.
 
 Confirm the exact model ID in the router's model list. Within an already configured provider and endpoint style, change only `LLM_MODEL` or `IMAGE_MODEL` and redeploy. Spend reporting resolves the new model's applicable rate automatically. [Pricing source coverage and rollout](ai-spend.md)
+
+## Predict narration
+
+Set these variables on the **Render API service** (`learnquest-api`). The API also needs its existing private S3-compatible media settings (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and optional `S3_REGION`).
+
+| Variable | Value |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Secret key from OpenRouter. Sets up generation when the media bucket is configured. |
+| `STUDIO_TTS_MODEL` | Defaults to `hexgrad/kokoro-82m`. Choose a model with MP3 output if overriding. |
+| `STUDIO_TTS_VOICE` | Defaults to `af_heart`. Choose a voice supported by the configured model. |
+| `STUDIO_TTS_ESTIMATE_USD` | Defaults to `0.01` per provider request. The API reserves this amount against its shared daily and monthly AI budgets. |
+
+After a learner reveals a prediction, the API requests MP3 audio from `https://openrouter.ai/api/v1/audio/speech` and caches the clip in private storage for that lesson version and step. The reveal text and code replay load independently. If audio generation or playback fails, the player uses browser speech when available. The API waits 24 hours before retrying failed generation for a step. MP3 playback needs no sample-rate variable or speech-to-text setup.
 
 ## Sandbox (LQ-76)
 
