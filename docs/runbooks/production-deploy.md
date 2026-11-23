@@ -34,7 +34,7 @@ Run a single API instance. Sandbox runs, shell tickets and rate limits use in-pr
 
 1. Use the production Vercel project (`pip-learnquest`) with root directory `apps/web`.
 2. Ensure the production alias in `WEB_ORIGIN` is publicly reachable by the smoke checks.
-3. Add a **Production** environment variable `VITE_SHELL_WS_ORIGIN=wss://learnquest-api.onrender.com` (the API's `wss://` origin, no path). The terminal opens its WebSocket straight to the API, and Vercel cannot forward WebSockets, so without this the terminal fails on production. `vercel pull --environment=production` writes it into the build. Changing `vercel.json` does not set it.
+3. The production workflow derives `VITE_SHELL_WS_ORIGIN` from `API_ORIGIN` during the web build. The terminal connects directly to Render via `wss://` because Vercel rewrites do not forward WebSocket upgrades. For a manual build, set the same variable to the API's `wss://` origin.
 4. Copy the token, org ID and project ID into the GitHub secrets above.
 
 ## What a run does
@@ -42,7 +42,7 @@ Run a single API instance. Sandbox runs, shell tickets and rate limits use in-pr
 1. `build`: builds `ghcr.io/<owner>/learnquest-api:<sha>` and `…/learnquest-engine:<sha>`. An image that already exists for the SHA is reused, so a rerun does not rebuild.
 2. `migrate`: runs `db:migrate` against production. Migrations must be expand-only, so the previous SHA keeps working until it is replaced.
 3. `deploy`: refuses any SHA that is not the head of `main`, then calls both Render hooks with `imgURL`, then builds the web app with the production API origin written into a CI-only copy of `vercel.json`, then deploys it with `--prod` to the production project.
-4. `smoke`: waits for the API and the engine to report the new SHA (`/api/healthz` and `/healthz`), then checks `/api/readyz`, the auth gate on `/api/trpc/home.get` (401 expected), and the web origin's `/` and `/api` rewrite.
+4. `smoke`: waits for the API and the engine to report the new SHA (`/api/healthz` and `/healthz`), then checks `/api/readyz`, the auth gate on `/api/trpc/home.get`, and the web origin's `/` and `/api` rewrite. An unauthenticated shell-ticket request with the production web origin checks Render's origin configuration.
 
 If smoke times out with a stale SHA, Render has not finished rolling out. Check the Render deploy log before rerunning.
 
