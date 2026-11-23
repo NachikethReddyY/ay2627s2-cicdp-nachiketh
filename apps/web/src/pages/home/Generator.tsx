@@ -15,18 +15,27 @@ export default function Generator() {
   const navigate = useNavigate();
   const posthog = usePostHog();
   const waiting = useRef(job.status === "running");
+  const failureReported = useRef(false);
   const busy = job.status === "running";
   const err = job.status === "failed" ? generatorError(job.code) : null;
 
   useEffect(() => {
     if (job.status === "done" && waiting.current) {
+      posthog?.logger.info("learning path generation completed", { generation_source: "home_generator" });
       waiting.current = false;
       dismissJob();
       void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } });
     }
-  }, [job, navigate]);
+    if (job.status === "failed" && waiting.current && !failureReported.current) {
+      posthog?.logger.warn("learning path generation failed", { generation_failure: job.code });
+      failureReported.current = true;
+    }
+  }, [job, navigate, posthog]);
 
   const run = (prompt: string) => {
+    posthog?.capture("learning_path_generation_requested");
+    posthog?.logger.info("learning path generation requested", { generation_source: "home_generator" });
+    failureReported.current = false;
     waiting.current = true;
     void startGeneration(prompt, (p) => trpc.paths.generate.mutate({ prompt: p }));
   };
