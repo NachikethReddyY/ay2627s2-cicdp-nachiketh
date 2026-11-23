@@ -191,6 +191,24 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.route("**/api/practice/lint", (route) => route.fulfill({ json: {
     findings: [{ ruleId: "style-example", line: 1, column: 1, message: "Example style finding" }],
   } }));
+  const cards = [
+    { type: "hint", title: "Follow the value", body: "Trace `double` from the call site." },
+    { type: "steps", title: "Trace a call", items: ["Choose a sample input.", "Follow the value back to the caller."] },
+    { type: "question", text: "What value do you expect the caller to receive?" },
+  ];
+  let guideTurn = 0;
+  await page.route("**/api/guide/chat", async (route) => {
+    const input = route.request().postDataJSON();
+    expect(input.lessonId).toEqual(expect.any(String));
+    if (guideTurn++ === 0) {
+      expect(input.finding).toEqual({ ruleId: "style-example", line: 1, column: 1 });
+      await route.fulfill({ json: { guide: { message: "Start at the call site.", widgets: cards } } });
+      return;
+    }
+    expect(input.messages).toContainEqual({ role: "assistant", content: "Start at the call site.", widgets: cards });
+    expect(input.messages.at(-1)).toEqual({ role: "user", content: "I think nothing gets back to the caller. Why?" });
+    await route.fulfill({ json: { guide: { message: "You traced the call. Now look at how the function ends.", widgets: [] } } });
+  });
   await page.route("**/api/sandbox/check", async (route) => {
     const input = route.request().postDataJSON();
     expect(input).toMatchObject({ lessonId: "scrim-return-values", language: "javascript" });
@@ -233,6 +251,18 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Example style finding", { exact: true })).toBeVisible();
   await expect(page.locator(".squiggly-warning").first()).toBeVisible();
+  await page.getByRole("button", { name: "Ask Sloppy about line 1: style-example" }).click();
+  const sloppy = page.getByRole("region", { name: "AI learning guide" });
+  await expect(sloppy.getByText("Follow the value", { exact: true })).toBeVisible();
+  await expect(sloppy.getByText("Trace double from the call site.")).toBeVisible();
+  await expect(sloppy.locator("code")).toHaveText("double");
+  const steps = sloppy.getByRole("list");
+  await expect(steps.getByRole("listitem")).toHaveText(["Choose a sample input.", "Follow the value back to the caller."]);
+  await expect(steps).toHaveCSS("list-style-type", "decimal");
+  await expect(sloppy.getByText("What value do you expect the caller to receive?")).toBeVisible();
+  await sloppy.getByRole("textbox", { name: "Ask about this code" }).fill("I think nothing gets back to the caller. Why?");
+  await sloppy.getByRole("button", { name: "Send" }).click();
+  await expect(sloppy.getByText("You traced the call. Now look at how the function ends.")).toBeInViewport();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
   expect(submitted).toBe(true);
