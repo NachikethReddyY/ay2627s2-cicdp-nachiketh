@@ -81,10 +81,13 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   expect((await session.json()).user.email).toBe(email);
 });
 
-test("Continue opens a ready lesson without a write request", async ({ page }) => {
-  await signUp(page, newEmail(), "/");
+test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {
+  const email = newEmail();
+  await signUp(page, email, "/");
   await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
   const card = page.locator(".lq-continue-photo");
+  await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
+  await expect(card).toContainText("Pre-test");
   const writes: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/trpc/lessons.write")) writes.push(request.url());
@@ -93,18 +96,6 @@ test("Continue opens a ready lesson without a write request", async ({ page }) =
   await expect(page).toHaveURL(/lesson=codequest-pretest/);
   await page.getByRole("radio", { name: "4", exact: true }).check();
   expect(writes).toEqual([]);
-});
-
-test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {
-  const email = newEmail();
-  await signUp(page, email, "/");
-  await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
-  const card = page.locator(".lq-continue-photo");
-  await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
-  await expect(card).toContainText("Pre-test");
-  await card.getByRole("link", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/lesson=codequest-pretest/);
-  await page.getByRole("radio", { name: "4", exact: true }).check();
   await page.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
   await page.goto("/");
