@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { containsAnswer } from "../src/ai/answer-leak.ts";
-import { McqStep } from "../src/ai/step-schema.ts";
+import { McqStep, PredictStep, type GeneratedMcqStep } from "../src/ai/step-schema.ts";
 import { gradeCloze } from "../src/grading/cloze.ts";
 
 type LeakVector = { name: string; text: string; answer: string; leaks: boolean };
 
 const leakVectors: LeakVector[] = JSON.parse(
   readFileSync(new URL("../../../services/engine/tests/fixtures/leak_vectors.json", import.meta.url), "utf8"),
+);
+const predictScenarios: { hiddenPrompt: string; vagueScenario: string; unrevealedLine: string; step: GeneratedMcqStep & { scenario: string } }[] = JSON.parse(
+  readFileSync(new URL("../../../services/engine/tests/fixtures/predict_scenarios.json", import.meta.url), "utf8"),
 );
 const step = {
   kind: "mcq",
@@ -29,6 +32,23 @@ test("an mcq option in starter code is not a leak", () => {
     beforeFiles: { "src/add.js": `// return a + b is what add should do\n${step.beforeFiles["src/add.js"]}` },
   };
   assert.equal(McqStep.safeParse(mcq).success, true);
+});
+
+for (const { step, hiddenPrompt, vagueScenario, unrevealedLine } of predictScenarios) {
+  test(`Predict requires visible context for "${step.title}"`, () => {
+    const { scenario, ...question } = step;
+    const parsed = PredictStep.parse(step);
+    assert.equal(parsed.prompt, `${scenario} ${question.prompt}`);
+    assert.throws(() => PredictStep.parse({ ...question, prompt: hiddenPrompt }), /scenario/);
+    assert.throws(() => PredictStep.parse({ ...step, scenario: " " }), /scenario/);
+    assert.throws(() => PredictStep.parse({ ...step, prompt: hiddenPrompt }), /hidden edit/);
+    assert.throws(() => PredictStep.parse({ ...step, scenario: vagueScenario }), /hidden edit/);
+    assert.throws(() => PredictStep.parse({ ...step, scenario: `Suppose we run \`${unrevealedLine}\`.` }), /newly added source lines/);
+  });
+}
+
+test("the Predict scenario is checked for answer leaks", () => {
+  assert.throws(() => PredictStep.parse({ ...step, scenario: "Next, return a + b." }), /leak the answer/);
 });
 
 test("MCQ options use literal matching for code-like options", () => {

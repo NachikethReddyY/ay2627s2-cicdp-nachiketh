@@ -2,7 +2,7 @@
   "steps": [
     {
       "title": "Add a cartTotal function",
-      "prompt": "cartTotal(cart) is added next. How will it add up the prices?",
+      "prompt": "Which implementation meets both requirements?",
       "kind": "mcq",
       "options": [
         "A for loop that pushes each price into a new array",
@@ -42,11 +42,14 @@
           ]
         }
       ],
-      "concepts": ["functions"]
+      "concepts": [
+        "functions"
+      ],
+      "scenario": "Implement cartTotal with a single reduction that returns zero for an empty cart and sums the price fields."
     },
     {
       "title": "Support a discount",
-      "prompt": "Which parameter lets callers omit the discount without changing the subtotal?",
+      "prompt": "Which parameter declaration meets that requirement?",
       "kind": "mcq",
       "options": [
         "discount",
@@ -86,11 +89,14 @@
           ]
         }
       ],
-      "concepts": ["functions"]
+      "concepts": [
+        "functions"
+      ],
+      "scenario": "Give cartTotal an optional discount while preserving the subtotal when callers omit it."
     },
     {
       "title": "Test the total and the discount",
-      "prompt": "The test adds a check for a 50% discount on items priced 10 and 5. What value will it assert?",
+      "prompt": "What value will that call return?",
       "kind": "mcq",
       "options": [
         "15",
@@ -130,7 +136,10 @@
           ]
         }
       ],
-      "concepts": ["functions"]
+      "concepts": [
+        "functions"
+      ],
+      "scenario": "Call cartTotal with items priced 10 and 5 and a discount of 50%."
     }
   ]
 }

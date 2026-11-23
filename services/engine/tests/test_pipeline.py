@@ -50,6 +50,7 @@ def test_lesson_repairs_once(fake_llm: Callable[[str], list[dict[str, Any]]]) ->
     assert res.attempts == 2
     assert res.usage["prompt_tokens"] == 20
     assert len(calls) == 2
+    assert "instead of referring to a hidden edit" in calls[1]["messages"][-1]["content"]
 
 
 @pytest.mark.parametrize(

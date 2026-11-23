@@ -45,15 +45,40 @@ function answerLeaks(step: GeneratedMcqStep): boolean {
 const leakMessage = (step: GeneratedMcqStep) =>
   `step "${step.title}": hints, title, prompt, explanations or concept tags leak the answer`;
 
-export const McqStep = z.object({
+const Mcq = z.object({
   ...Common,
   kind: z.literal("mcq"),
   options: z.array(text(200)).length(4),
   answer: z.number().int().min(0).max(3),
-}).superRefine((step, ctx) => {
+});
+export type GeneratedMcqStep = z.infer<typeof Mcq>;
+
+export const McqStep = Mcq.superRefine((step, ctx) => {
   if (answerLeaks(step)) ctx.addIssue({ code: "custom", message: leakMessage(step) });
 });
-export type GeneratedMcqStep = z.infer<typeof McqStep>;
+
+const hiddenChange = /\b(?:the|this|that)\s+(?:(?:hidden|next|proposed|upcoming)\s+)?(?:diffs?|patch(?:es)?|hunks?|reveal|changes?|edits?|updates?)\b/i;
+
+function quotesNewCode(step: GeneratedMcqStep): boolean {
+  const starter = Object.values(step.beforeFiles);
+  return step.hunks.some(({ lines }) => lines.some((line) => {
+    if (!line.startsWith("+")) return false;
+    const code = line.slice(1).trim();
+    return code.length >= 4 && step.prompt.includes(code) && !starter.some((file) => file.includes(code));
+  }));
+}
+
+export const PredictStep = Mcq.extend({ scenario: text(300) })
+  .transform(({ scenario, ...step }) => ({ ...step, prompt: `${scenario} ${step.prompt}` }))
+  .superRefine((step, ctx) => {
+    if (hiddenChange.test(step.prompt)) {
+      ctx.addIssue({ code: "custom", path: ["prompt"], message: "State the specific change or input instead of referring to a hidden edit" });
+    }
+    if (quotesNewCode(step)) {
+      ctx.addIssue({ code: "custom", path: ["prompt"], message: "Describe the change in plain language without quoting newly added source lines" });
+    }
+    if (answerLeaks(step)) ctx.addIssue({ code: "custom", message: leakMessage(step) });
+  });
 
 export function checkStep(step: GeneratedMcqStep) {
   const tl = buildTimeline([{ beforeFiles: step.beforeFiles, hunks: step.hunks }]);

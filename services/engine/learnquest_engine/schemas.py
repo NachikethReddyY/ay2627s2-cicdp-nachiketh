@@ -138,8 +138,42 @@ class McqStep(BaseModel):
         return self
 
 
+def _added_lines(step: McqStep) -> list[str]:
+    lines = [line[1:].strip() for h in step.hunks for line in h.lines if line.startswith("+")]
+    return [line for line in lines if len(line) >= 4]
+
+
+_HIDDEN_CHANGE = re.compile(
+    r"\b(?:the|this|that)\s+(?:(?:hidden|next|proposed|upcoming)\s+)?"
+    r"(?:diffs?|patch(?:es)?|hunks?|reveal|changes?|edits?|updates?)\b",
+    re.IGNORECASE,
+)
+
+
+class PredictStep(McqStep):
+    scenario: T300
+
+    @model_validator(mode="after")
+    def _check_scenario(self) -> "PredictStep":
+        stem = f"{self.scenario} {self.prompt}"
+        if _HIDDEN_CHANGE.search(stem):
+            raise ValueError(
+                "State the specific change or input instead of referring to a hidden edit"
+            )
+        if any(
+            line in stem and not any(line in file for file in self.beforeFiles.values())
+            for line in _added_lines(self)
+        ):
+            raise ValueError(
+                "Describe the change in plain language without quoting newly added source lines"
+            )
+        if _contains_mcq_option(stem, self.options[self.answer]):
+            raise ValueError(f"step {self.title!r}: the prediction stem leaks the answer")
+        return self
+
+
 class Lesson(BaseModel):
-    steps: list[McqStep] = Field(min_length=3, max_length=5)
+    steps: list[PredictStep] = Field(min_length=3, max_length=5)
 
 
 _Loose200 = Annotated[str, StringConstraints(max_length=200)]
@@ -263,7 +297,6 @@ SCRIM_MS_PER_WORD = 420
 SCRIM_MIN_SEGMENT_MS = 3000
 SCRIM_MAX_SEGMENT_MS = 40000
 SCRIM_LEAK_MIN_CHARS = 3
-SCRIM_ADDED_LINE_MIN_CHARS = 4
 
 
 def segment_duration_ms(text: str) -> int:
@@ -285,11 +318,6 @@ class ScrimSegmentDraft(BaseModel):
 
 class ScrimSegment(ScrimSegmentDraft):
     durationMs: int = Field(ge=SCRIM_MIN_SEGMENT_MS, le=SCRIM_MAX_SEGMENT_MS)
-
-
-def _added_lines(step: McqStep) -> list[str]:
-    lines = [line[1:].strip() for h in step.hunks for line in h.lines if line.startswith("+")]
-    return [line for line in lines if len(line) >= SCRIM_ADDED_LINE_MIN_CHARS]
 
 
 def _check_scrim(

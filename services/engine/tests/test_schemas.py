@@ -7,10 +7,11 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from learnquest_engine.schemas import Lesson, Outline, json_schema
+from learnquest_engine.schemas import Lesson, Outline, PredictStep, json_schema
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RAW = json.loads((FIXTURES / "lesson1.json").read_text())
+PREDICT_SCENARIOS = json.loads((FIXTURES / "predict_scenarios.json").read_text())
 
 
 def lesson(mutate: Callable[[list[dict[str, Any]]], object]) -> Lesson:
@@ -26,12 +27,38 @@ def test_fixture_validates() -> None:
 def test_generated_predict_rejects_ambiguous_union_assignment_cloze() -> None:
     cloze = json.loads((FIXTURES / "ambiguous_union_cloze.json").read_text())
     with pytest.raises(ValidationError) as error:
-        lesson(lambda steps: steps.__setitem__(1, cloze))
+        lesson(lambda steps: steps.__setitem__(1, {**cloze, "scenario": steps[1]["scenario"]}))
 
     assert any(
         issue["loc"] == ("steps", 1, "kind") and issue["type"] == "literal_error"
         for issue in error.value.errors()
     )
+
+
+@pytest.mark.parametrize("case", PREDICT_SCENARIOS, ids=["javascript", "python"])
+def test_predict_requires_visible_context(case: dict[str, Any]) -> None:
+    step = case["step"]
+    assert PredictStep.model_validate(step).scenario == step["scenario"]
+    missing = {**step, "prompt": case["hiddenPrompt"]}
+    del missing["scenario"]
+    with pytest.raises(ValidationError, match="scenario"):
+        PredictStep.model_validate(missing)
+    with pytest.raises(ValidationError, match="scenario"):
+        PredictStep.model_validate({**step, "scenario": " "})
+    with pytest.raises(ValidationError, match="hidden edit"):
+        PredictStep.model_validate({**step, "prompt": case["hiddenPrompt"]})
+    with pytest.raises(ValidationError, match="hidden edit"):
+        PredictStep.model_validate({**step, "scenario": case["vagueScenario"]})
+    with pytest.raises(ValidationError, match="newly added source lines"):
+        PredictStep.model_validate(
+            {**step, "scenario": f"Suppose we run `{case['unrevealedLine']}`."}
+        )
+
+
+def test_predict_scenario_cannot_leak_answer() -> None:
+    step = PREDICT_SCENARIOS[0]["step"]
+    with pytest.raises(ValidationError, match="prediction stem leaks the answer"):
+        PredictStep.model_validate({**step, "scenario": "Start with false."})
 
 
 def test_leak_in_hint() -> None:
