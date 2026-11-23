@@ -1,16 +1,19 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     LLM_MODEL: str = Field(min_length=1)
     LLM_API_BASE: str | None = None
-    LLM_API_KEY: SecretStr | None = None
+    LLM_API_KEY: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TOKENROUTER_API_KEY", "LLM_API_KEY"),
+    )
     LLM_JSON_MODE: Literal["schema", "object", "off"] | None = None
     LLM_INPUT_USD_PER_MTOK: float | None = None
     LLM_OUTPUT_USD_PER_MTOK: float | None = None

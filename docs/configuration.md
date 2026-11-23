@@ -1,6 +1,22 @@
 # Configuration
 
-Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, guide and practice ones are listed here.
+Selected environment variables for the API and engine.
+
+## Models and routers
+
+| Modality | Router | Key variable | Model variable | Current value or default | Status |
+| --- | --- | --- | --- | --- | --- |
+| Text | TokenRouter via LiteLLM when configured | `TOKENROUTER_API_KEY` or `LLM_API_KEY` | `LLM_MODEL` | Required. The engine example uses `openai/gpt-5.1-mini`. | Live |
+| Image | TokenRouter | `TOKENROUTER_API_KEY` or `IMAGE_API_KEY` | `IMAGE_MODEL` | No default | Off in production |
+| Text-to-speech | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_TTS_MODEL` | `hexgrad/kokoro-82m` | Studio branch only |
+| Speech-to-text | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_STT_MODEL` | `openai/whisper-large-v3` | Studio branch only |
+| Moderation | OpenAI by default | `MODERATION_API_KEY` | `MODERATION_MODEL` | `omni-moderation-latest` | Live |
+
+- For text on TokenRouter, set `LLM_API_BASE=https://api.tokenrouter.com/v1` and `LLM_MODEL=openai/<confirmed-model-id>` on the engine. `TOKENROUTER_API_KEY` takes precedence over `LLM_API_KEY` when both have values.
+- For images, set `TOKENROUTER_API_KEY` and `IMAGE_MODEL` on the API. The TokenRouter key takes precedence over `IMAGE_API_KEY` and defaults `IMAGE_BASE_URL` to `https://api.tokenrouter.com/v1`. An explicit `IMAGE_BASE_URL` overrides the default. Set `IMAGE_API_STYLE=chat` for models served through chat completions. The default `images` uses the image generations endpoint. The legacy key requires an explicit base URL.
+- Studio uses `https://openrouter.ai/api/v1/audio/speech` for text-to-speech and `https://openrouter.ai/api/v1/audio/transcriptions` for speech-to-text. The default `STUDIO_TTS_VOICE` is `af_heart`.
+
+To pick the cheapest model, check each router's model list with its own key and compare prices for models that support the required modality and endpoint. Confirm the exact model ID before configuring it.
 
 ## Sandbox (LQ-76)
 
