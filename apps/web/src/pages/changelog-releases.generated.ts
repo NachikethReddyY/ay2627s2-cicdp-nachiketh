@@ -3,6 +3,34 @@ export type ReleaseEntry = { date: string; tag: string; title: string; url: stri
 
 export const releases: ReleaseEntry[] = [
   {
+    "date": "2026-11-22T14:55:12Z",
+    "tag": "v0.0.2",
+    "title": "v0.0.2",
+    "url": "https://github.com/NachikethReddyY/ay2627s2-cicdp-nachiketh/releases/tag/v0.0.2",
+    "summary": "LearnSlop 0.0.2 brings the lessons, practice workbench, and AI coaching together around predict before reveal. It also ships the fixes from the November codebase review described below.",
+    "changes": [
+      "Play scrim lessons in the main player with sound, timeline scrubbing, and queued code runs. Playback resumes at the right point after a prediction and handles seeking, tied cues, and very short segments.",
+      "Enforce scrim prediction gates on the server, so later edits and answers stay behind the required prediction. Preserve attempt history when lesson authors remove a gate.",
+      "Give Learn and Watch lessons an opening prediction and a closing check. Save completion after a closing attempt and restore the correct stage when the learner returns.",
+      "Count predict lessons only after a real attempt. Keep answer keys and hidden tests server-side, and screen generated prompts, starter code, and explanations for answer leaks.",
+      "Bring Run, Submit, Lint, Results, and Sloppy into one workbench in the player and the lesson lab at `/editor`. Reset stale results after edits and show Watch when lesson media is available.",
+      "Run graded checks through the configured Docker or Daytona backend for the lesson language. Tighten sandbox limits and stop idle shells sooner.",
+      "Unlock a saved reference solution after three graded submissions for the current lesson version. Run and Lint are available for experimentation between submissions.",
+      "Add server-side game attempt limits and a progressive hint ladder. Record hint progress, require a win in every block for completion, and preserve wins and XP when a game is unchanged or renamed. Games embedded in Learn documents are read-only.",
+      "Add a retry state to Account and show a more specific message when generation fails on the server.",
+      "Generate a single-section programming path and write the lessons in the background up front. Show which lessons are ready and let learners retry failed writes. Generated paths start private, and creators can share them after automatic moderation passes.",
+      "Apply shared daily generation limits. Give Sloppy an AI enable switch, spend limits, request moderation, and a short timeout. Keep paid generation on explicit actions.",
+      "Give Sloppy trusted lesson context and render its hints, observations, and prediction questions as coaching cards. Check replies for finished code and known answers, and record help on open predictions.",
+      "Improve next-lesson reasoning by naming concepts with mastery evidence. Free database connections before calling the engine and reject stale or incompatible recommendations.",
+      "Publish the JavaScript and TypeScript concept catalogue. Update Home with a lesson snippet, mastery, daily goal, weekly streak, and XP leaderboard. The leaderboard displays public handles and XP.",
+      "Refresh Landing, Sign-in, Home, Explore, and Course with the shared design, improve contrast, and seed variables and loops sample courses for Explore.",
+      "Make reseeding update authored lessons without losing learner progress. Add cascade cleanup for learner-owned records and a Postgres health check.",
+      "Trim the player bundle by loading lesson blocks on demand and limiting Monaco to the languages used by the app. Remove unused routes, assets, and dependencies, and make normal builds use committed changelog data.",
+      "Run the merge gate from trusted base code and verify the exact PR commit. Expand repository checks for generated files, imports, and types, and make model review advisory.",
+      "Add regression coverage for prediction and completion rules, scrim timelines and permissions, reseeding, AI response validation, and practice flows. Skip unnecessary CUDA downloads on CPU CI runners."
+    ]
+  },
+  {
     "date": "2026-11-15T14:38:04Z",
     "tag": "v0.0.1",
     "title": "v0.0.1",

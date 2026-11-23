@@ -3,6 +3,8 @@ import { GuessMock, HintMock, MasteryMock, ReplayMock, TopicMock } from "./landi
 import "./landing.css";
 import "./landing/sections.css";
 import { Logo } from "./landing/Logo";
+import { plans } from "@learnquest/product-limits";
+import { FEEDBACK_URL } from "./feedback";
 
 const tiles = [
   { id: "a", src: "/images/tech/html.svg" },
@@ -59,6 +61,7 @@ export default function Landing() {
       <header className="lp-nav">
         <a href="/" className="lp-logo" aria-label="LearnSlop home"><Logo /></a>
         <nav className="lp-navr" aria-label="Main">
+          <a href="/docs">Docs</a>
           <a href="/changelog">Changelog</a>
           <a href="/login" className="lp-ghost">Sign in</a>
         </nav>
@@ -99,8 +102,29 @@ export default function Landing() {
           </section>
         ))}
 
+        <section className="lp-plans" aria-labelledby="plans-title">
+          <h2 id="plans-title" className="lp-h2">Plans and limits</h2>
+          <p className="lp-lede">Free is what you can use today. Pro is planned, with higher limits and no price yet.</p>
+          <div className="lp-plan-grid">
+            {plans.map((plan) => (
+              <article key={plan.id} className="lp-plan">
+                <div className="lp-plan-head">
+                  <h3>{plan.name}</h3>
+                  <span className={`lp-plan-status is-${plan.status}`}>{plan.status === "available" ? "Available now" : "Coming soon"}</span>
+                </div>
+                <p>{plan.summary}</p>
+                <ul className="lp-ticks">
+                  {plan.limits.map((line) => (
+                    <li key={line}><Check size={16} strokeWidth={2} aria-hidden />{line}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+          <a href="/docs#limits" className="lp-sub">Read the full limits in the docs</a>
+        </section>
+
         <section className="lp-close" aria-labelledby="final-title">
-          <p className="lp-lede">Pro, coming soon<br />Real code changes: advanced track, coming soon</p>
           <h2 id="final-title" className="lp-h2">What does the next line do?</h2>
           <a href="/login" className="lp-btn">Start learning <ArrowRight size={17} strokeWidth={2.25} aria-hidden /></a>
         </section>
@@ -109,7 +133,9 @@ export default function Landing() {
       <footer className="lp-footer">
         <span className="lp-logo"><Logo /></span>
         <span>For beginners and early-career developers, 13 and over. A CICDP course project.</span>
+        <a href="/docs">Docs</a>
         <a href="/changelog">Changelog</a>
+        <a href={FEEDBACK_URL}>Feedback</a>
       </footer>
     </div>
   );
