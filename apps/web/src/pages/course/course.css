@@ -1,6 +1,5 @@
 /* Course page: calm editor-style header, level path and lesson tiles, scoped under .course.
-   Same language as the landing page and workbench: Geist, 1px hairlines, one blue accent, glass panels.
-   State colours: done = --ok, current = --ac, locked = --mu. Tokens come from :root in index.css and home.css. */
+   State colours: done = --ok, current = --ac, locked = --mu. */
 
 .lq.course {
   --surface: var(--code);
@@ -286,14 +285,12 @@
   gap: 7px;
   width: 176px;
   padding: 10px 12px 12px;
-  background: var(--glass);
-  border: 1px solid var(--glass-line);
+  background: var(--code);
+  border: 1px solid transparent;
   border-radius: 12px;
-  box-shadow: var(--lift-sm);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: var(--geist-ring);
 }
-.course .lesson-tag.cur { border-color: color-mix(in srgb, var(--ac) 55%, transparent); }
+.course .lesson-tag.cur { box-shadow: 0 0 0 1px var(--ac-g); }
 .course .lesson-tag.locked { box-shadow: none; background: transparent; border-color: var(--line); }
 .course .lesson-tag-wrap.left .lesson-tag { align-items: flex-end; text-align: right; }
 .course .lesson-tag-top {
@@ -351,12 +348,10 @@
   width: min(256px, calc(100vw - 64px));
   padding: 16px;
   transform: translateX(-50%);
-  background: var(--glass);
-  border: 1px solid var(--glass-line);
-  border-radius: 16px;
-  box-shadow: var(--lift);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background: var(--side);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: var(--geist-ring), var(--lift);
 }
 .course .lesson-pop-title {
   color: var(--tx);
@@ -392,12 +387,10 @@
   max-width: 640px;
   margin: 0 auto;
   padding: 12px 14px 12px 18px;
-  background: var(--glass);
-  border: 1px solid var(--glass-line);
-  border-radius: 20px;
-  box-shadow: var(--lift);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background: var(--code);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: var(--geist-ring), var(--lift);
 }
 .course .course-cta-text { flex: 1 1 auto; min-width: 0; }
 .course .course-cta-meta {

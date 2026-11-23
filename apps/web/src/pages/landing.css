@@ -1,17 +1,17 @@
 /* Landing page, shared base and hero. Geist system adapted to a dark page with one accent: the LearnSlop
    blue. Scoped under .lp. Sections below the hero live in landing/sections.css. Geist loads from index.html. */
 
-html:has(.lp), body:has(.lp) { background: #000; }
+html:has(.lp), body:has(.lp) { background: var(--geist-black); }
 html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
 @media (prefers-reduced-motion: no-preference) { html:has(.lp) { scroll-behavior: smooth; } }
 
 .lp {
   /* gray ramp, borders drawn as 1px shadows like Geist */
-  --bg: #000; --g1: #0a0a0a; --g2: #141414; --g3: #1f1f1f;
-  --tx: #ededed; --mu: #a1a1a1; --faint: #8f8f8f;
-  --ring: 0 0 0 1px rgba(255, 255, 255, 0.1); --ring-hi: 0 0 0 1px rgba(255, 255, 255, 0.24);
-  --lift: 0 2px 2px rgba(0, 0, 0, 0.3), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
-  --ac: #3262e6; --acH: #5583ff; --acD: #2552c4; --ok: #3fc07a; --bad: #ff6369;
+  --bg: var(--geist-black); --g1: var(--geist-gray-1); --g2: var(--geist-gray-2); --g3: var(--geist-gray-3);
+  --tx: var(--geist-text); --mu: var(--geist-muted); --faint: var(--geist-faint);
+  --ring: var(--geist-ring); --ring-hi: var(--geist-ring-hover);
+  --lift: var(--geist-lift);
+  --ac: var(--geist-blue); --acH: var(--geist-blue-bright); --acD: var(--geist-blue-hover); --ok: #3fc07a; --bad: #ff6369;
   --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
   --sans: "Geist", system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, Menlo, monospace;
   --out: cubic-bezier(0.22, 1, 0.36, 1);

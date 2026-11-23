@@ -277,22 +277,31 @@
   .lq > main > .lq-layout .chunk { max-width: 100%; }
 }
 
-/* Home in the sign-in look: the moonlit photo behind dark glass panels with light text. Scoped to .lq-moon, so the
-   other .lq pages keep the app theme. */
-.lq.lq-moon {
-  background: #000;
-  --tx: #ededed; --mu: #c4c4c4; --faint: #b0b0b0;
-  --code: rgba(10, 10, 10, 0.72); --chip: rgba(255, 255, 255, 0.06); --hov: rgba(255, 255, 255, 0.08);
-  --line: rgba(255, 255, 255, 0.12); --line-strong: rgba(255, 255, 255, 0.2); --pane2: rgba(255, 255, 255, 0.06); --track: rgba(255, 255, 255, 0.1);
-  --glass: rgba(14, 14, 16, 0.86); --glass-line: rgba(255, 255, 255, 0.12);
-  --ring: 0 0 0 1px rgba(255, 255, 255, 0.1);
-  --lift: 0 2px 2px rgba(0, 0, 0, 0.3), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
+.lq.lq-moon { --r-lg: 12px; }
+.lq.lq-moon .lq-card {
+  background: var(--code);
+  border-color: transparent;
+  border-radius: var(--r-lg);
+  box-shadow: var(--geist-ring), var(--lift);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
-.lq.lq-moon .lq-bg-sun { background: color-mix(in srgb, var(--warn) 10%, var(--glass)); }
-/* one neutral panel surface on the home: cards share the glass tone and a 14px radius; accent color stays on icons and buttons */
-.lq.lq-moon { --r-lg: 14px; }
-.lq.lq-moon .lq-card.lq-bg-blue, .lq.lq-moon .lq-card.lq-bg-sun, .lq.lq-moon .lq-card.lq-bg-pink, .lq.lq-moon .lq-card.lq-bg-lilac, .lq.lq-moon .lq-card.lq-bg-mint { background: var(--glass); }
-.lq.lq-moon .lq-stat, .lq.lq-moon .lq-empty-card { border-radius: 14px; }
+.lq.lq-moon :is(.lq-chip, .lq-pill, .lq-btn-surface) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: inset var(--geist-ring);
+}
+.lq.lq-moon :is(.lq-chip, .lq-pill, .lq-btn-surface):hover { box-shadow: inset var(--geist-ring-hover); }
+.lq.lq-moon :is(.lq-btn-sun, .lq-btn-ink, .lq-btn-blue):hover:not([disabled]) {
+  background: var(--geist-blue-hover);
+  box-shadow: none;
+}
+.lq.lq-moon .lq-avatar {
+  background: var(--side);
+  color: var(--tx);
+  box-shadow: var(--geist-ring);
+}
+.lq.lq-moon .lq-avatar:hover { box-shadow: var(--geist-ring-hover); }
 
 .lq .lq-hero-title { font-size: 26px; line-height: 1.2; margin-top: 10px; }
 

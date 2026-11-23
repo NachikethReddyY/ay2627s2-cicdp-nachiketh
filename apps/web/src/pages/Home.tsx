@@ -36,7 +36,7 @@ export default function Home() {
   }, [stored, reload]);
 
   return (
-    <div className="lq lq-dashboard">
+    <div className="lq lq-moon lq-dashboard">
       <header className="lq-dashboard-header">
         <div className="lq-topbar">
           <Link to="/" className="lq-logo">

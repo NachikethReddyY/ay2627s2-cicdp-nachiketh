@@ -39,7 +39,7 @@ export const DEFAULT_LAYOUT: Layout = {
   showUtil: true,
   leftView: "files",
   utilTab: "instructions",
-  theme: "system",
+  theme: "dark",
 };
 
 const THEMES: readonly Theme[] = ["light", "dark", "system"];
