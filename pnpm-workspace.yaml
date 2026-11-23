@@ -8,4 +8,5 @@ allowBuilds:
   node-pty: true
   onnxruntime-node: true
   agent-browser: true
+  core-js: false
   protobufjs: false # postinstall only prints a version-scheme notice; pulled in by the Daytona SDK

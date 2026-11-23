@@ -39,10 +39,7 @@ function SessionIdentity() {
     if (!node || !user?.id || identifiedUserId.current === user.id) return;
 
     if (identifiedUserId.current) posthog.reset();
-    posthog.identify(user.id, {
-      email: user.email,
-      name: user.name,
-    });
+    posthog.identify(user.id);
     identifiedUserId.current = user.id;
   }, [posthog, user]);
 
@@ -53,7 +50,7 @@ function Root() {
   if (!posthogToken || !posthogHost) {
     if (import.meta.env.DEV) {
       const missingVariable = posthogToken ? "VITE_PUBLIC_POSTHOG_HOST" : "VITE_PUBLIC_POSTHOG_PROJECT_TOKEN";
-      throw new Error(`${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${missingVariable} is configured`);
+      console.warn(`${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This warning stops appearing once ${missingVariable} is configured`);
     }
 
     return (
@@ -69,6 +66,8 @@ function Root() {
       options={{
         api_host: posthogHost,
         defaults: "2025-05-24",
+        autocapture: false,
+        disable_session_recording: true,
         capture_exceptions: true,
         debug: import.meta.env.DEV,
         logs: { serviceName: "learnquest-web", environment: import.meta.env.MODE },
