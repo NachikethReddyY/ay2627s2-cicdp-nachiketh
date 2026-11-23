@@ -2,7 +2,12 @@ import { createRequire, registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 import { parentPort } from "node:worker_threads";
 import { Linter } from "eslint";
+import { format } from "prettier/standalone";
+import babel from "prettier/plugins/babel";
+import estree from "prettier/plugins/estree";
+import typescript from "prettier/plugins/typescript";
 import ruff from "@astral-sh/ruff-wasm-nodejs";
+import { formatFindings } from "./format.ts";
 import { JS_RULES, NODE_GLOBALS, PYTHON_RULES, SYNTAX_RULE_ID, TS_RULES } from "./rules.ts";
 import type { Finding, LintLanguage } from "./index.ts";
 
@@ -54,14 +59,31 @@ function lintPython(code: string): Finding[] {
   }));
 }
 
-function lint(code: string, language: LintLanguage): Finding[] {
+async function lint(code: string, language: LintLanguage): Promise<Finding[]> {
   const found = language === "python" ? lintPython(code) : lintEslint(code, language);
+  if (!found.some(({ ruleId }) => ruleId === SYNTAX_RULE_ID || ruleId === "invalid-syntax")) {
+    if (language === "python") {
+      found.push(...formatFindings(code, workspace.format(code), "Ruff"));
+    } else {
+      try {
+        const isTypeScript = language === "typescript";
+        const formatted = await format(code, {
+          parser: isTypeScript ? "typescript" : "babel",
+          plugins: [isTypeScript ? typescript : babel, estree],
+          singleQuote: true,
+        });
+        found.push(...formatFindings(code, formatted, "Prettier"));
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+      }
+    }
+  }
   return found.sort((a, b) => a.line - b.line || a.column - b.column);
 }
 
-parentPort!.on("message", (msg: { id: number; code: string; language: LintLanguage }) => {
+parentPort!.on("message", async (msg: { id: number; code: string; language: LintLanguage }) => {
   try {
-    parentPort!.postMessage({ id: msg.id, findings: lint(msg.code, msg.language) });
+    parentPort!.postMessage({ id: msg.id, findings: await lint(msg.code, msg.language) });
   } catch (e) {
     parentPort!.postMessage({ id: msg.id, error: e instanceof Error ? e.message : "lint failed" });
   }

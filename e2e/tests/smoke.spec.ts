@@ -191,9 +191,6 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     await route.fulfill({ json: { id: "run-1" } });
   });
   await page.route("**/api/sandbox/run/run-1?*", (route) => route.fulfill({ json: { output: "Practice output", next: 15, done: true } }));
-  await page.route("**/api/practice/lint", (route) => route.fulfill({ json: {
-    findings: [{ ruleId: "style-example", line: 1, column: 1, message: "Example style finding" }],
-  } }));
   const cards = [
     { type: "hint", title: "Follow the value", body: "Trace `double` from the call site." },
     { type: "steps", title: "Trace a call", items: ["Choose a sample input.", "Follow the value back to the caller."] },
@@ -204,7 +201,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     const input = route.request().postDataJSON();
     expect(input.lessonId).toEqual(expect.any(String));
     if (guideTurn++ === 0) {
-      expect(input.finding).toEqual({ ruleId: "style-example", line: 1, column: 1 });
+      expect(input.finding).toEqual({ ruleId: "prettier-format", line: 1, column: 1 });
       await route.fulfill({ json: { guide: { message: "Start at the call site.", widgets: cards } } });
       return;
     }
@@ -260,11 +257,11 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
 
   await page.getByRole("button", { name: "Lint", exact: true }).click();
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Example style finding", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Style findings" }).getByText(/Prettier formatting suggestion/).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".squiggly-warning").first()).toBeVisible();
   const feedback = page.getByRole("region", { name: "AI design feedback" });
   await expect(feedback).toHaveCount(0);
-  await page.getByRole("button", { name: "Ask Sloppy about line 1: style-example" }).click();
+  await page.getByRole("button", { name: "Ask Sloppy about line 1: prettier-format" }).click();
   const sloppy = page.getByRole("region", { name: "AI learning guide" });
   await expect(sloppy.getByText("Follow the value", { exact: true })).toBeVisible();
   await expect(sloppy.getByText("Trace double from the call site.")).toBeVisible();
@@ -290,6 +287,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.keyboard.type(" ");
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toHaveCount(0);
   await expect(feedback).toHaveCount(0);
+  await expect(page.getByText(/Prettier formatting suggestion/)).toHaveCount(0);
   await expect(page.locator(".squiggly-warning")).toHaveCount(0);
 });
 
