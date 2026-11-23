@@ -18,10 +18,10 @@ const msg = (e: unknown) => {
   return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
 };
 
-type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void };
+type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; refreshTree?: () => void };
 type RunJob = { source: string; authored: boolean };
 
-export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal }: Options) {
+export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, refreshTree }: Options) {
   const [term, setTerm] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
   const [result, setResult] = useState<CheckResponse | null>(null);
@@ -200,7 +200,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
         panel: { open: openTerminal },
         socket: shell,
         putFile,
-        refreshTree: () => {},
+        refreshTree: () => refreshTree?.(),
         onTimeout: () => live.current && setRunNote(STILL_RUNNING),
       });
       if (end === "timeout" && live.current) setRunNote(undefined);

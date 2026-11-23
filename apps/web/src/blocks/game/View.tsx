@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactElement } from "react";
-import { DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type PublicGameProps, type GridCommand, type GridProgram, type GridProps, type GridRun } from "@learnquest/ui-catalog";
+import { DIRS, MAX_PROGRAM_STEPS, simulate, type Cell, type PublicGameProps, type PublicGridProps, type GridCommand, type GridProgram, type GridRun } from "@learnquest/ui-catalog";
 import { useApi } from "../../lib/api.ts";
 import type { BlockViewProps, GameCompletionContext } from "../registry.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
@@ -8,7 +8,7 @@ import Shell, { btn, btnPrimary } from "./Shell.tsx";
 import DragGame from "./DragGame.tsx";
 import PhysicsGame from "./PhysicsGame.tsx";
 import QuizGame from "./QuizGame.tsx";
-import { announceRun, announceStep, controls, edit, keyIntent, stepText, type Intent, type Outcome } from "./model.ts";
+import { announceFrame, announceRun, controls, edit, keyIntent, stepText, type Intent, type Outcome } from "./model.ts";
 
 const C = 40;
 const LABEL: Record<GridCommand, string> = { forward: "Forward", left: "Turn left", right: "Turn right", pick: "Pick" };
@@ -24,7 +24,7 @@ function Robot({ dir, stroke }: { dir: At["dir"]; stroke?: boolean }) {
   );
 }
 
-function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
+function Board({ g, at, reduced }: { g: PublicGridProps; at: At; reduced: boolean }) {
   const cells: ReactElement[] = [];
   for (let y = 0; y < g.size.h; y++)
     for (let x = 0; x < g.size.w; x++) {
@@ -52,12 +52,12 @@ function Board({ g, at, reduced }: { g: GridProps; at: At; reduced: boolean }) {
   );
 }
 
-function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: ActiveGameApi }) {
+function GridGame({ p, g, api }: { p: PublicGameProps; g: PublicGridProps; api: ActiveGameApi }) {
   const reduced = useReducedMotion();
   const c = controls(g.mode);
   const start: At = { x: g.start.x, y: g.start.y, dir: g.start.dir, collected: [] };
   const init = useMemo<GridProgram>(() => (g.mode === "debug" ? g.starter ?? [] : []), [g]);
-  const watch = useMemo(() => (g.mode === "watch" && g.solution ? simulate(g.solution, g) : null), [g]);
+  const frames = g.frames ?? [];
   const maxLives = api.maxAttempts;
   const [program, setProgram] = useState(init);
   const [draft, setDraft] = useState<{ times: number; body: GridCommand[] }>({ times: 2, body: [] });
@@ -69,31 +69,29 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: Active
   const [busy, setBusy] = useState(false);
   const gen = useRef(0);
   const over = outcome === "win" || outcome === "lose";
-  const run = watch ?? ran;
-  const at: At = idx > 0 && run ? run.trace[idx - 1] : start;
+  const trail = g.mode === "watch" ? frames : ran?.trace;
+  const at: At = trail?.[idx - 1] ?? start;
   const max = g.maxBlocks ?? MAX_PROGRAM_STEPS;
 
   const dispatch = (i: Intent) => {
     if (over) return;
     if (busy) return;
     if (i.type === "step") {
-      if (!watch || !g.solution) return setLive("");
-      const atEnd = idx >= watch.trace.length;
-      const text = atEnd ? "" : announceStep(watch, idx);
+      if (g.mode !== "watch") return setLive("");
+      const atEnd = idx >= frames.length;
+      const text = atEnd ? "" : announceFrame(frames, idx);
       if (!atEnd) setIdx(idx + 1);
-      if (!atEnd && idx + 1 < watch.trace.length) return setLive(text);
+      if (!atEnd && idx + 1 < frames.length) return setLive(text);
       setBusy(true);
       const mine = gen.current;
-      const solution = g.solution;
-      api.check({ kind: "grid", program: solution })
+      api.completeWatch()
         .then((r) => {
           if (mine !== gen.current) return;
           setLives(r.remainingAttempts);
-          if (r.complete) return (setOutcome("win"), setLive(`${text} End of the solution.`.trim()));
-          if (r.remainingAttempts === 0) return setOutcome("lose");
-          setLive(atEnd ? "Couldn't confirm the run. Step again to retry." : text);
+          setOutcome("win");
+          setLive(`${text} End of the solution.`.trim());
         })
-        .catch(() => { if (mine === gen.current) setLive(`${text} Couldn't check the run. Step again to retry.`.trim()); })
+        .catch(() => { if (mine === gen.current) setLive(`${text} Couldn't record the run. Step again to retry.`.trim()); })
         .finally(() => setBusy(false));
       return;
     }
@@ -176,9 +174,9 @@ function GridGame({ p, g, api }: { p: PublicGameProps; g: GridProps; api: Active
             <p className="text-xs">Keys: arrows add steps (up forward, down pick), Enter runs, Backspace removes the last step, Escape clears.</p>
           </>
         )}
-        {run && idx > 0 && (
+        {ran && idx > 0 && (
           <ol aria-label="Move log" className="list-decimal break-words pl-5 text-sm">
-            {run.moves.slice(0, idx).map((m, i) => <li key={i}>{m}</li>)}
+            {ran.moves.slice(0, idx).map((m, i) => <li key={i}>{m}</li>)}
           </ol>
         )}
       </div>

@@ -13,6 +13,7 @@ export type Submission =
 
 export type GameApi = {
   check: (submission: Submission) => Promise<RouterOutputs["games"]["check"]>;
+  completeWatch: () => Promise<RouterOutputs["games"]["completeWatch"]>;
   hint: (index: number) => Promise<string>;
   status: () => Promise<RouterOutputs["games"]["status"]>;
 };
@@ -30,6 +31,11 @@ export function gameApi(ctx: GameCompletionContext, gameIndex: number): GameApi 
     check: (submission) =>
       trpc.games.check.mutate({ ...input, submission }).then((verdict) => {
         if (verdict.complete) ctx.onComplete?.();
+        return verdict;
+      }).catch(handleError),
+    completeWatch: () =>
+      trpc.games.completeWatch.mutate(input).then((verdict) => {
+        ctx.onComplete?.();
         return verdict;
       }).catch(handleError),
     hint: async (hintIndex) => (await trpc.games.hint.mutate({ ...input, hintIndex }).catch(handleError)).text,

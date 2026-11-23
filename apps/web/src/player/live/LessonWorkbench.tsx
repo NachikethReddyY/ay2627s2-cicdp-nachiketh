@@ -6,6 +6,7 @@ import { usePanel } from "../terminal/usePanel";
 import DocsPanel from "../workbench/DocsPanel";
 import { DOCS } from "../workbench/docs";
 import FileTreeView from "../workbench/FileTreeView";
+import SandboxFiles from "../workbench/SandboxFiles";
 import Segmented from "../workbench/Segmented";
 import Workbench from "../workbench/Workbench";
 import { useFloatingWindow } from "../workbench/useFloatingWindow";
@@ -62,7 +63,10 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   const panel = usePanel();
   const { dispatch: panelDispatch } = panel;
   const runRef = useRef<HTMLButtonElement>(null);
-  const r = usePracticeRunner({ lessonId, versionId: part.versionId, revision: part.revision, language, code, openTerminal: () => panelDispatch({ type: "open" }) });
+  const [treeKey, setTreeKey] = useState(0);
+  const refreshTree = () => setTreeKey((k) => k + 1);
+  const r = usePracticeRunner({ lessonId, versionId: part.versionId, revision: part.revision, language, code, openTerminal: () => panelDispatch({ type: "open" }), refreshTree });
+  const sandboxReady = r.shellState.kind === "open" && r.shellState.ready;
 
   const changeCode = (value: string) => {
     r.resetResults();
@@ -104,7 +108,11 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   const open = useMemo(() => new Set([ROOT]), []);
   const navigator = (
     <div className="min-w-0">
-      <FileTreeView label="Lesson files" nodes={tree} open={open} selected={`${ROOT}/${fileName}`} onToggle={() => {}} onSelect={() => {}} />
+      {sandboxReady ? (
+        <SandboxFiles key={treeKey} selected={fileName} onRefresh={refreshTree} />
+      ) : (
+        <FileTreeView label="Lesson files" nodes={tree} open={open} selected={`${ROOT}/${fileName}`} onToggle={() => {}} onSelect={() => {}} />
+      )}
     </div>
   );
 
