@@ -4,7 +4,7 @@ export const MAX_STDOUT = 4000;
 export const MAX_STDERR = 500;
 export const TOTAL_MS = 24000;
 
-export const HARNESS_SOURCE = String.raw`
+export const checkHarnessSource = (learnerUid = 1001) => String.raw`
 const TEST_TIMEOUT_MS = ${TEST_TIMEOUT_MS};
 const MAX_STDOUT = ${MAX_STDOUT};
 const MAX_STDERR = ${MAX_STDERR};
@@ -14,10 +14,10 @@ const COMMANDS = {
   javascript: ["node", ["solution.js"], "solution.js"],
   typescript: ["node", ["solution.ts"], "solution.ts"],
 };
-// Drops root before exec: uid/gid 1001, no supplementary groups, and no effective, permitted or inheritable capabilities.
+// Drops root before exec with no supplementary groups or effective, permitted or inheritable capabilities.
 // --bounding-set=-all needs CAP_SETPCAP, which the harness does not hold, so the bounding set keeps KILL, SETGID and SETUID.
 // That is harmless: the learner cannot raise them, because no-new-privileges is set and its own sets are empty.
-const DROP = ["--no-new-privs", "--reuid=1001", "--regid=1001", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
+const DROP = ["--no-new-privs", "--reuid=${learnerUid}", "--regid=${learnerUid}", "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--"];
 
 function runOne(deps, cmd, args, cwd, stdin) {
   return new Promise((resolve) => {
@@ -86,3 +86,5 @@ if (!globalThis.__LQ_HARNESS_TEST__) {
   }).catch(() => process.exit(2));
 }
 `;
+
+export const HARNESS_SOURCE = checkHarnessSource();

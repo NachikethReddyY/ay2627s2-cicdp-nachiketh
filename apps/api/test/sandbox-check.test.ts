@@ -69,14 +69,14 @@ async function withSandbox<T>(enabled: boolean, fn: () => Promise<T>) {
   try { return await fn(); } finally { env.SANDBOX_ENABLED = was; }
 }
 
-test("lessons.get: hidden tests leak no stdin, expected output or answers; sample tests show both", async () => {
+test("lessons.get exposes sample inputs and hides every test's expected output", async () => {
   const cookie = await signUp(app, "reader@example.com");
   await addLesson("multi", "practice", part());
   const res = await trpc(app, cookie).q("lessons.get", { id: "multi" });
   assert.equal(res.statusCode, 200, res.body);
   const p = out(res).part;
   assert.deepEqual(p.tests, [
-    { id: "s1", name: "Sample sum", visibility: "sample", stretch: false, stdin: "2 3", expectedStdout: "5" },
+    { id: "s1", name: "Sample sum", visibility: "sample", stretch: false, stdin: "2 3" },
     { id: "h1", name: "Hidden sum", visibility: "hidden", stretch: false },
     { id: "b1", name: "Bonus", visibility: "hidden", stretch: true },
   ]);
@@ -224,7 +224,7 @@ test("POST /sandbox/check: scores, hides hidden tests, and records completion on
     assert.deepEqual(r.stretch, { passed: 1, total: 1 });
     assert.deepEqual([r.points, r.maxPoints, r.complete], [2, 3, false]);
     assert.deepEqual(r.best, { points: 2, maxPoints: 3 });
-    assert.deepEqual(r.results[0], { id: "s1", name: "Sample sum", stretch: false, visibility: "sample", status: "pass", stdin: "2 3", expectedStdout: "5", actualStdout: "5" });
+    assert.deepEqual(r.results[0], { id: "s1", name: "Sample sum", stretch: false, visibility: "sample", status: "pass", stdin: "2 3" });
     assert.deepEqual(r.results[1], { id: "h1", name: "Hidden sum", stretch: false, visibility: "hidden", status: "fail" });
     assert.deepEqual(r.results[2], { id: "b1", name: "Bonus", stretch: true, visibility: "hidden", status: "pass" });
     for (const leak of ["HIDDEN-IN", "HIDDEN-OUT", "BONUS-IN", "BONUS-OUT", "wrong"]) assert.ok(!res.body.includes(leak), leak);

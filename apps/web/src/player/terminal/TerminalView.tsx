@@ -79,7 +79,8 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
   const connectOnce = useCallback((cols: number, rows: number) => {
     if (connectedRef.current) return false;
     connectedRef.current = true;
-    shell.connect(cols, rows);
+    if (shell.state().kind === "open" || shell.state().kind === "connecting") shell.resize(cols, rows);
+    else shell.connect(cols, rows);
     return true;
   }, [shell]);
 

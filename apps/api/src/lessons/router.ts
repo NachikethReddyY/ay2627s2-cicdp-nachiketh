@@ -12,7 +12,7 @@ import { listMedia } from "../media/service.ts";
 import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
 import { countPracticeAttempts, PRACTICE_REVEAL_ATTEMPTS, practiceRevision, practiceTests } from "../parts/practice.ts";
 import { parseScrim } from "../parts/scrim-schema.ts";
-import { malformedScrim, publicScrimMedia, publicScrimSegments, scrimGateStates, scrimStepState, servedGateIds } from "./scrim.ts";
+import { malformedScrim, publicScrimMedia, publicScrimSegments, scrimGateStates, scrimLabLocked, scrimStepState, servedGateIds } from "./scrim.ts";
 import { catalogueName, prerequisitesForLesson } from "../progress/catalogue.ts";
 import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { loadScrimGates } from "./scrim-gates.ts";
@@ -28,7 +28,7 @@ const PublicPractice = z.object({
   revision: z.string(),
   solution: z.object({ attemptCount: z.number().int(), unlockAt: z.number().int(), gated: z.boolean() }).nullable(),
   tests: z.array(z.discriminatedUnion("visibility", [
-    PracticeTestSummary.extend({ visibility: z.literal("sample"), stdin: z.string(), expectedStdout: z.string() }),
+    PracticeTestSummary.extend({ visibility: z.literal("sample"), stdin: z.string() }),
     PracticeTestSummary.extend({ visibility: z.literal("hidden") }),
   ])),
 });
@@ -48,7 +48,7 @@ async function publicPractice(content: unknown, learnerId: string, versionId: st
       : null,
     tests: practice.tests.map((t) =>
       t.visibility === "sample"
-        ? { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch, stdin: t.stdin, expectedStdout: t.expectedStdout }
+        ? { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch, stdin: t.stdin }
         : { id: t.id, name: t.name, visibility: t.visibility, stretch: t.stretch },
     ),
   };
@@ -90,6 +90,7 @@ const Lesson = z.object({
           gate: z.string().optional(),
         })),
         lab: PublicPractice,
+        labLocked: z.boolean(),
         started: z.boolean(),
       }),
       PublicPractice,
@@ -144,8 +145,8 @@ function authorizePracticeSolution(learnerId: string, input: z.infer<typeof Prac
     if (input.revision !== practiceRevision(found.versionId, found.practice))
       throw new TRPCError({ code: "CONFLICT", message: "Reload the lesson to view its current reference solution" });
     if (found.kind === "scrim") {
-      const { gates } = await loadScrimGates(found.versionId, learnerId, tx);
-      if ([...gates.values()].some((gate) => gate.state !== "revealed"))
+      const { scrim, gates } = await loadScrimGates(found.versionId, learnerId, tx);
+      if (scrimLabLocked(scrim, gates))
         throw new TRPCError({ code: "FORBIDDEN", message: "Finish the scrim predictions to unlock the reference solution" });
     }
     if (await countPracticeAttempts(learnerId, found.versionId, found.practice, tx) < PRACTICE_REVEAL_ATTEMPTS)
@@ -236,13 +237,15 @@ export const lessonsRouter = router({
           const scrim = parseScrim(content);
           if (!scrim) throw malformedScrim();
           const gates = scrimGateStates(scrim, rows);
+          const labLocked = scrimLabLocked(scrim, gates);
           const visible = publicScrimSegments(scrim, gates);
           for (const id of servedGateIds(visible.segments)) served.add(id);
           part = {
             kind: "scrim",
             language: scrim.language,
             segments: visible.segments,
-            lab: await publicPractice(scrim.lab, ctx.learnerId, lesson.currentVersionId, [...gates.values()].some((gate) => gate.state !== "revealed")),
+            lab: await publicPractice(scrim.lab, ctx.learnerId, lesson.currentVersionId, labLocked),
+            labLocked,
             started: rows.some((row) => row.state !== null),
           };
           break;

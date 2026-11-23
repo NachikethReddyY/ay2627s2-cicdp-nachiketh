@@ -22,6 +22,7 @@ Core loop: present a step → predict → hint ladder on a miss → reveal (repl
 - From **Scrim-Forge**: editable replay from commit history, narration. Dropped: any-repo import, recorded keystrokes, O(1) scrub, "AI knows why the author wrote it" (§12).
 - **Tracks** (code and schema name: `world`): CodeQuest, the JavaScript and TypeScript track, is core. A second language track is stretch (Appendix A). A track is a plugin (§8.4).
 - **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (the lesson's own file in the workbench: editor, Run, Check, Lint, Sloppy and a sandbox terminal), and game parts (order, match, sort, physics, quiz, grid). The player supports games as the `game-practice` lesson kind.
+- **Practice workbench:** `/play` and the standalone editor lab share the lesson workbench. Scrim labs unlock after the predictions are confirmed. Submissions grade the current lesson file, and all expected output stays on the server. Lint marks findings in the editor and lists them in Results.
 - **"Video injection"** (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won't.
 
 ---

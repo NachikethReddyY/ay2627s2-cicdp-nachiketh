@@ -7,6 +7,7 @@ import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../s
 function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; mktemp?: { exitCode?: number; result?: string }; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean; check?: { exitCode: number } } = {}) {
   const log = { created: [] as Record<string, unknown>[], network: [] as boolean[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], execs: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
   const createdFolders = new Set<string>();
+  const namedSandboxes = new Map<string, DaytonaSandbox>();
   let checkPayload: { token: string; tests: unknown[] } | undefined;
   let onData: (d: Uint8Array) => void = () => {};
   let endPty: (r: { exitCode?: number }) => void = () => {};
@@ -35,7 +36,7 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
       executeCommand: async (c) => {
         log.execs.push(c);
         if (c === "mktemp -d") return { exitCode: 0, result: "/tmp/tmp.Ab3dEf9x\n", ...opts.mktemp };
-        if (opts.check && c.startsWith("timeout")) {
+        if (opts.check && c.startsWith("exec 3<")) {
           const results = checkPayload?.tests.map(() => ({ exit: 0, timedOut: false, overflow: false, stdout: "ok", stderr: "" }));
           return { exitCode: opts.check.exitCode, result: JSON.stringify({ token: checkPayload?.token, results }) };
         }
@@ -81,7 +82,14 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
     create: async (p) => {
       log.created.push(p);
       if (opts.createDelay) await new Promise((r) => setTimeout(r, opts.createDelay));
-      return mk();
+      const sbx = mk({ labels: p.labels as Record<string, string> });
+      if (typeof p.name === "string") namedSandboxes.set(p.name, sbx);
+      return sbx;
+    },
+    get: async (name) => {
+      const sbx = namedSandboxes.get(name);
+      if (!sbx) throw Object.assign(new Error("not found"), { statusCode: 404 });
+      return sbx;
     },
     list: async function* (q) {
       log.listed.push(q);
@@ -112,10 +120,10 @@ test("openShell creates a labelled sandbox with auto-stop and opens a PTY", asyn
   assert.equal(f.log.created.length, 1);
   assert.deepEqual(f.log.created[0], {
     snapshot: "lq-snap",
+    name: `learnquest-shell-${learnerHash("learner-1").slice(0, 40)}`,
     labels: { app: "learnquest", role: "shell", learner: learnerHash("learner-1") },
     autoStopInterval: 7,
     networkBlockAll: true,
-    resources: { cpu: 1, memory: 1, disk: 3 },
   });
   assert.deepEqual(f.log.ptyOptions[0], {
     cwd: "/home/daytona/task-tracker",
@@ -136,6 +144,21 @@ test("openShell creates a labelled sandbox with auto-stop and opens a PTY", asyn
   f.end(3);
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(exits, [3]);
+});
+
+test("a newly opened shell is available for files before Daytona lists it", async () => {
+  const f = fake();
+  const backend = daytonaBackend({ client: f.client });
+  const shell = await backend.openShell("learner-1", { cols: 80, rows: 24 });
+  try {
+    await backend.listDir!("learner-1", "");
+    await backend.writeFile!("learner-1", "solution.js", "console.log(1)");
+    assert.deepEqual(f.log.listedPaths, ["/home/daytona"]);
+    assert.ok(f.log.uploaded.includes("/home/daytona/solution.js"));
+    assert.equal(f.log.listed.length, 1);
+  } finally {
+    shell.kill();
+  }
 });
 
 test("openShell reuses the learner's sandbox and starts it when stopped", async () => {
@@ -383,11 +406,14 @@ test("checks use a private input file in an isolated disposable Daytona sandbox"
     if (exitCode === 0) assert.equal((await result)[0]?.stdout, "ok");
     else await assert.rejects(result, /Daytona check failed/);
     assert.deepEqual(log.created[0], {
-      snapshot: "lesson-runtime", networkBlockAll: true, resources: { cpu: 1, memory: 1, disk: 3 },
+      snapshot: "lesson-runtime", networkBlockAll: true,
       user: "root", labels: { app: "learnquest", role: "check" }, ephemeral: true, autoStopInterval: 2, ttlMinutes: 3,
     });
-    assert.deepEqual(log.uploaded, ["/root/learnquest-check/input.json"]);
+    assert.deepEqual(log.uploaded, ["/home/daytona/.learnquest-check/input.json"]);
     assert.match(log.execs[0] ?? "", /mkdir -m 700/);
+    assert.match(log.execs[1] ?? "", /rm -- '\/home\/daytona\/\.learnquest-check\/input\.json'/);
+    assert.match(log.execs[1] ?? "", /sudo -n env "PATH=\$PATH" timeout/);
+    assert.match(log.execs[1] ?? "", /--reuid=10001/);
     assert.equal(log.deleted, 1);
   }
 });

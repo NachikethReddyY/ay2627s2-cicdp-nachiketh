@@ -17,6 +17,7 @@ import Notepad from "../../pages/Notepad";
 import WorkbenchEditor from "../workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../workbench/StatusBar";
 import type { LintFinding } from "../runPython";
+import type { EditorHandle } from "../EditorPane";
 import PracticeSolution from "./PracticeSolution";
 import LessonResults from "./LessonResults";
 import LessonVideo, { type VideoSource } from "./LessonVideo";
@@ -63,9 +64,14 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
   const panel = usePanel();
   const { dispatch: panelDispatch } = panel;
   const runRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<EditorHandle>(null);
   const [treeKey, setTreeKey] = useState(0);
   const refreshTree = () => setTreeKey((k) => k + 1);
-  const r = usePracticeRunner({ lessonId, versionId: part.versionId, revision: part.revision, language, code, openTerminal: () => panelDispatch({ type: "open" }), refreshTree });
+  const r = usePracticeRunner({
+    lessonId, versionId: part.versionId, revision: part.revision, language, code, startShell: true,
+    openTerminal: () => panelDispatch({ type: "open" }), refreshTree,
+    onLint: (findings) => editorRef.current?.showLint(findings),
+  });
   const sandboxReady = r.shellState.kind === "open" && r.shellState.ready;
 
   const changeCode = (value: string) => {
@@ -202,7 +208,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
       fileName={fileName}
       language={language}
       navigator={navigator}
-      editor={<WorkbenchEditor key={fileName} transportRef={runRef} edit={{ value: code, language, onChange: changeCode }} />}
+      editor={<WorkbenchEditor key={fileName} ref={editorRef} transportRef={runRef} edit={{ value: code, language, onChange: changeCode }} />}
       bottom={bottom}
       bottomTitle="Terminal"
       instructions={instructions}

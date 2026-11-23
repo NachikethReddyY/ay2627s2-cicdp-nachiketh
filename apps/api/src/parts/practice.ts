@@ -5,6 +5,8 @@ import { practiceAttempts } from "../db/schema.ts";
 import { env } from "../env.ts";
 import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 import { parsePractice, type Practice } from "./practice-schema.ts";
+import { loadScrimGates } from "../lessons/scrim-gates.ts";
+import { scrimLabLocked } from "../lessons/scrim.ts";
 
 export const PRACTICE_REVEAL_ATTEMPTS = 3;
 
@@ -20,8 +22,8 @@ export type PracticeCheck = { expected: string; record: () => Promise<void> };
 export async function practiceCheck(learnerId: string, lessonId: string): Promise<PracticeCheck | null> {
   const {
     rows: [lesson],
-  } = await db.execute<{ id: string; expected: string | null }>(sql`
-    SELECT l.id, COALESCE(v.content->>'expectedOutput', v.content->'lab'->>'expectedOutput') AS expected FROM lessons l
+  } = await db.execute<{ id: string; version_id: string; kind: "practice" | "scrim"; expected: string | null }>(sql`
+    SELECT l.id, v.id AS version_id, l.kind, COALESCE(v.content->>'expectedOutput', v.content->'lab'->>'expectedOutput') AS expected FROM lessons l
     JOIN worlds w ON w.id = l.world_id
     JOIN learners me ON me.id = ${learnerId}
     JOIN lesson_versions v ON v.id = l.current_version_id
@@ -32,6 +34,10 @@ export async function practiceCheck(learnerId: string, lessonId: string): Promis
       AND (l.kind = 'practice' OR v.content->'lab'->'tests' IS NULL)
       AND ${visibleWorld(meUser)}`);
   if (!lesson || lesson.expected === null) return null;
+  if (lesson.kind === "scrim") {
+    const { scrim, gates } = await loadScrimGates(lesson.version_id, learnerId);
+    if (scrimLabLocked(scrim, gates)) return null;
+  }
   return {
     expected: lesson.expected,
     record: () => recordCompletion(learnerId, lesson.id),

@@ -23,10 +23,9 @@ function Row({ row }: { row: CheckRow }) {
         <span className="min-w-0 flex-1 font-semibold">{row.name}</span>
         <span className={`flex-none rounded-full px-2 py-0.5 text-xs font-semibold ${badge(row.status)}`}>{row.label}</span>
       </div>
-      {d && (d.stdin !== undefined || d.expectedStdout !== undefined || d.actualStdout !== undefined || d.error) && (
+      {d && (d.stdin !== undefined || d.actualStdout !== undefined || d.error) && (
         <div>
           {d.stdin !== undefined && <Block label="Input" text={d.stdin} />}
-          {d.expectedStdout !== undefined && <Block label="Expected output" text={d.expectedStdout} />}
           {d.actualStdout !== undefined && <Block label="Your output" text={d.actualStdout} />}
           {d.error && <Block label="Error" text={d.error} />}
         </div>

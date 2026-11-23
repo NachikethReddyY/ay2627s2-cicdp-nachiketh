@@ -126,6 +126,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let generation = 0;
   let pending: Pending[] = [];
+  let earlyOutput: Uint8Array | undefined;
   const outputCbs = new Set<(b: Uint8Array) => void>();
   const stateCbs = new Set<(s: ShellState) => void>();
 
@@ -212,6 +213,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     const gen = ++generation;
     opened = false;
     ready = false;
+    earlyOutput = undefined;
     lastError = "";
     setState({ kind: "connecting" });
     if (!wsOrigin) return connectSocket(gen);
@@ -274,6 +276,13 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
         markReady();
       }
       const bytes = new Uint8Array(data);
+      if (!outputCbs.size) {
+        const tail = bytes.subarray(-65_536);
+        const prefix = tail.length < 65_536 ? earlyOutput?.subarray(-(65_536 - tail.length)) : undefined;
+        earlyOutput = new Uint8Array((prefix?.length ?? 0) + tail.length);
+        if (prefix) earlyOutput.set(prefix);
+        earlyOutput.set(tail, prefix?.length ?? 0);
+      }
       for (const cb of [...outputCbs]) cb(bytes);
     };
     socket.onclose = (ev) => onDrop(gen, ev.code);
@@ -351,6 +360,11 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
     },
     onOutput(cb) {
       outputCbs.add(cb);
+      if (earlyOutput) {
+        const bytes = earlyOutput;
+        earlyOutput = undefined;
+        cb(bytes);
+      }
       return () => outputCbs.delete(cb);
     },
     onState(cb) {
@@ -374,6 +388,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
         p.reject(new ShellNotReadyError("exited"));
       }
       outputCbs.clear();
+      earlyOutput = undefined;
       stateCbs.clear();
     },
   };
