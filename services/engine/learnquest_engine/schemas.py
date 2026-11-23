@@ -11,6 +11,7 @@ from pydantic import (
     ValidationInfo,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 
 def _c(n: int) -> StringConstraints:
@@ -168,7 +169,13 @@ class PredictStep(McqStep):
                 "Describe the change in plain language without quoting newly added source lines"
             )
         if _contains_mcq_option(stem, self.options[self.answer]):
-            raise ValueError(f"step {self.title!r}: the prediction stem leaks the answer")
+            raise PydanticCustomError(
+                "predict_stem_answer_leak",
+                "The prediction stem leaks the answer. Rewrite the scenario and question to state "
+                "the same operation or input without repeating the correct option. If the wording "
+                "needs that option, ask about another consequence of the same edit and revise the "
+                "four choices, answer index, hints and explanations to match.",
+            )
         return self
 
 
