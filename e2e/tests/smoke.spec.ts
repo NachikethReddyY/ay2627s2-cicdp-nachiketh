@@ -275,3 +275,20 @@ test("a step with no narration audio is spoken with browser speech on reveal", a
     page.evaluate(() => (globalThis as unknown as { __calls: string[] }).__calls.at(-1));
   await expect.poll(lastToggle).toBe("resume");
 });
+
+test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {
+  await signUp(page, newEmail(), "/");
+  await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
+  const card = page.locator(".lq-continue-photo");
+  await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
+
+  await page.goto(`/play?lesson=${LESSON}&course=${COURSE}`);
+  await page.getByText("A for loop that pushes each price into a new array", { exact: true }).click();
+  await page.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByText("Not quite.", { exact: true }).first()).toBeVisible();
+
+  await page.goto("/");
+  await expect(card.getByRole("link", { name: "Review" })).toBeVisible();
+  await expect(card.locator(".lq-hero-reason")).toContainText(/is at \d+%\. Review this concept/);
+  await expect(page.getByRole("heading", { name: "What you know" })).toBeVisible();
+});

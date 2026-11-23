@@ -74,6 +74,7 @@ class LessonIn(BaseModel):
     conceptIds: list[str] = Field(max_length=50)
     kind: str = Field(min_length=1, max_length=40)
     done: bool
+    available: bool = True
     order: int
     title: str | None = Field(default=None, max_length=200)
 
@@ -101,7 +102,7 @@ def next_step(req: NextRequest) -> NextResponse:
         [policy.Mastery(m.conceptId, m.pKnown) for m in req.mastery],
         req.edges,
         [
-            policy.Lesson(x.lessonId, x.conceptIds, x.kind, x.done, x.order, x.title)
+            policy.Lesson(x.lessonId, x.conceptIds, x.kind, x.done, x.order, x.title, x.available)
             for x in req.lessons
         ],
         unlock_at=req.unlockAt,

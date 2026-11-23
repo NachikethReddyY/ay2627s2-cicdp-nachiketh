@@ -7,6 +7,7 @@ import { EmptyNote, Spinner } from "../components/Bits";
 import { Logo } from "./landing/Logo";
 import Continue from "./home/Continue";
 import Generator from "./home/Generator";
+import Mastery from "./home/Mastery";
 import PathAction from "./home/PathAction";
 import Sidebar from "./home/Sidebar";
 import YourPath from "./home/YourPath";
@@ -55,6 +56,7 @@ export default function Home() {
         <div className="lq-layout">
           <div className="lq-main">
             {data?.continue && <Continue c={data.continue} />}
+            {data && <Mastery items={data.mastery} />}
             <Generator />
 
             {error || !data ? (

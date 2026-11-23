@@ -7,7 +7,7 @@ Rules, first match wins (docs/lq-22-plan.md section 4):
   3. nothing weak and a lesson remains -> advance, naming only concepts at or above mastered_at
   4. nothing remains -> done
 
-Rules 2 and 3 compete in one pool, lowest mastery first. lesson_id is None only for done.
+Prioritise available lessons and select the lowest observed mastery first. lesson_id is None only for done.
 Reasons never contain step content, hints or expected output.
 """
 
@@ -47,6 +47,7 @@ class Lesson:
     done: bool
     order: int
     title: str | None = None
+    available: bool = True
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,7 @@ class Recommendation:
     reason: str
 
 
-POLICY_VERSION = "5"
+POLICY_VERSION = "6"
 
 LEARN_KINDS = ("learn", "watch")
 PRACTICE_KINDS = ("predict", "practice", "game-practice")
@@ -96,7 +97,7 @@ def _reason(
             mastered = " ".join(f"You've mastered {concept}." for concept in concepts[:3])
             return f"{mastered} Next up: {lesson}."
         case ReasonCode.REVIEW:
-            return f"{name} is at {_pct(p_known)}%. A quick re-do will lock it in."
+            return f"{name} is at {_pct(p_known)}%. Review this concept before moving on."
         case ReasonCode.DONE:
             return "You've finished every lesson here. Nothing left to do."
 
@@ -123,6 +124,8 @@ def recommend(
 ) -> Recommendation:
     ordered = sorted(lessons, key=lambda lesson: lesson.order)
     remaining = [lesson for lesson in ordered if not lesson.done]
+    available = [lesson for lesson in remaining if lesson.available]
+    remaining = available or remaining
     known = {m.concept_id: m.p_known for m in mastery}
     remaining_concepts = {c for lesson in remaining for c in lesson.concept_ids}
     if not remaining:
@@ -168,7 +171,7 @@ def recommend(
         covering = [lesson for lesson in remaining if concept in lesson.concept_ids]
         learning = p < learn_below and not locked
         action = Action.LEARN if learning else Action.PRACTICE
-        code = ReasonCode.LEARN if learning else ReasonCode.PRACTICE
+        code = ReasonCode.REVIEW if p < learn_below else ReasonCode.PRACTICE
         kinds = LEARN_KINDS if learning else PRACTICE_KINDS
         chosen = _pick(covering, kinds) or remaining[0]
         reason = _reason(code, [concept], p, locked=locked)

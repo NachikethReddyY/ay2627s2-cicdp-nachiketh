@@ -49,7 +49,7 @@ export default function Course() {
     body = <Spinner />;
   } else {
     const done = (l: CourseData["lessons"][number]) => l.total > 0 && l.done >= l.total;
-    const current = data.lessons.find((l) => !done(l));
+    const current = data.lessons.find((l) => !done(l) && l.missingPrerequisites.length === 0);
     const levels = [...new Set(data.lessons.map((l) => l.level))].sort((a, b) => a - b);
     const lvNow = current?.level ?? levels[levels.length - 1];
     const inLv = data.lessons.filter((l) => l.level === lvNow);
@@ -92,7 +92,7 @@ export default function Course() {
           {syl && (
             <ol id="syllabus" className="course-syl">
               {data.lessons.map((l) => {
-                const st = done(l) ? "done" : l === current ? "cur" : "locked";
+                const st = done(l) ? "done" : l.missingPrerequisites.length === 0 ? "cur" : "locked";
                 return (
                   <li key={l.slug} className={st}>
                     <span className="course-syl-mark" aria-hidden="true">
@@ -127,7 +127,7 @@ export default function Course() {
                     <PathTrack xs={xs} lit={lit} row={ROW} />
                     <ol className="course-nodes">
                       {ls.map((l, i) => {
-                        const state = done(l) ? "done" : l === current ? "cur" : "locked";
+                        const state = done(l) ? "done" : l.missingPrerequisites.length === 0 ? "cur" : "locked";
                         const cta = state === "done" ? "Review" : l.done > 0 ? "Continue" : "Start";
                         return <LessonNode key={l.slug} l={l} slug={slug} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} onWritten={reload} />;
                       })}

@@ -30,3 +30,16 @@ export function edgesFor(config: unknown, conceptSlugs: Iterable<string>): [stri
   }
   return [...conceptSlugs].some(isCatalogueConcept) ? JS_EDGES : [];
 }
+
+export function unmetPrerequisites(
+  lessonConcepts: readonly string[],
+  courseConcepts: ReadonlySet<string>,
+  edges: readonly [string, string][],
+  pKnown: ReadonlyMap<string, number>,
+  threshold: number,
+) {
+  const taught = new Set(lessonConcepts);
+  return [...new Set(edges.filter(([pre, target]) =>
+    taught.has(target) && courseConcepts.has(pre) && !taught.has(pre) && (pKnown.get(pre) ?? 0) < threshold,
+  ).map(([pre]) => pre))];
+}

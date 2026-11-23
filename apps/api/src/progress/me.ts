@@ -5,6 +5,7 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { userOfLearner, visibleWorld } from "../access.ts";
 import { catchUpMastery, MASTERED_AT } from "./mastery.ts";
+import { catalogueName } from "./catalogue.ts";
 import { Slug, listed } from "./shared.ts";
 import { handleRouter } from "./handle.ts";
 
@@ -64,41 +65,40 @@ const meMastery = protectedProcedure
     }));
   });
 
+export const NextStep = z.object({
+  action: z.enum(["start", "learn", "practice", "advance", "done"]),
+  lessonSlug: z.string().nullable(),
+  lessonTitle: z.string().nullable(),
+  conceptSlug: z.string().nullable(),
+  reason: z.string(),
+  reasonCode: z.string(),
+});
+
+export async function nextForWorld(learnerId: string, worldId: string): Promise<z.infer<typeof NextStep> | null> {
+  await catchUpMastery(learnerId, worldId);
+  const { rows } = await db.execute<{
+    action: "start" | "learn" | "practice" | "advance" | "done";
+    lesson_slug: string | null;
+    lesson_title: string | null;
+    concept_slug: string | null;
+    reason: string;
+    reason_code: string;
+  }>(sql`
+    SELECT r.action, l.slug AS lesson_slug, l.title AS lesson_title, c.slug AS concept_slug, r.reason, r.reason_code
+    FROM recommendations r
+    LEFT JOIN lessons l ON l.id = r.lesson_id
+    LEFT JOIN concepts c ON c.id = r.concept_id
+    WHERE r.learner_id = ${learnerId} AND r.world_id = ${worldId}
+      AND (r.lesson_id IS NULL OR EXISTS (SELECT 1 FROM lessons l WHERE l.id = r.lesson_id AND ${listed}))
+    ORDER BY r.created_at DESC, r.id DESC LIMIT 1`);
+  const r = rows[0];
+  if (!r) return null;
+  return { action: r.action, lessonSlug: r.lesson_slug, lessonTitle: r.lesson_title, conceptSlug: r.concept_slug, reason: r.reason.replace(/js\.[a-z-]+/g, (slug) => catalogueName(slug) ?? slug), reasonCode: r.reason_code };
+}
+
 const meNext = protectedProcedure
   .input(z.object({ world: Slug.shape.slug }))
-  .output(
-    z
-      .object({
-        action: z.enum(["start", "learn", "practice", "advance", "done"]),
-        lessonSlug: z.string().nullable(),
-        lessonTitle: z.string().nullable(),
-        conceptSlug: z.string().nullable(),
-        reason: z.string(),
-        reasonCode: z.string(),
-      })
-      .nullable(),
-  )
-  .query(async ({ ctx, input }) => {
-    const worldId = await mustWorld(ctx.learnerId, input.world);
-    await catchUpMastery(ctx.learnerId, worldId);
-    const { rows } = await db.execute<{
-      action: "start" | "learn" | "practice" | "advance" | "done";
-      lesson_slug: string | null;
-      lesson_title: string | null;
-      concept_slug: string | null;
-      reason: string;
-      reason_code: string;
-    }>(sql`
-      SELECT r.action, l.slug AS lesson_slug, l.title AS lesson_title, c.slug AS concept_slug, r.reason, r.reason_code
-      FROM recommendations r
-      LEFT JOIN lessons l ON l.id = r.lesson_id
-      LEFT JOIN concepts c ON c.id = r.concept_id
-      WHERE r.learner_id = ${ctx.learnerId} AND r.world_id = ${worldId}
-        AND (r.lesson_id IS NULL OR EXISTS (SELECT 1 FROM lessons l WHERE l.id = r.lesson_id AND ${listed}))
-      ORDER BY r.created_at DESC, r.id DESC LIMIT 1`);
-    const r = rows[0];
-    if (!r) return null;
-    return { action: r.action, lessonSlug: r.lesson_slug, lessonTitle: r.lesson_title, conceptSlug: r.concept_slug, reason: r.reason, reasonCode: r.reason_code };
-  });
+  .output(NextStep.nullable())
+  .query(async ({ ctx, input }) => nextForWorld(ctx.learnerId, await mustWorld(ctx.learnerId, input.world)));
 
 export const meRouter = router({ update: meUpdate, mastery: meMastery, next: meNext, handle: handleRouter });
