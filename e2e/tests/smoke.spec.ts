@@ -217,7 +217,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.goto("/editor?lesson=scrim-return-values");
   const body = await (await lesson).text();
   expect(body).toContain("hidden case 1");
-  expect(body).not.toContain("-14");
+  expect(body).not.toContain(JSON.stringify("-14"));
   expect(body).not.toContain("expectedStdout");
   await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();

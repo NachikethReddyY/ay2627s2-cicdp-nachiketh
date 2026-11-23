@@ -6,7 +6,7 @@ import { authClient } from "../lib/auth";
 import { isNotFound, trpc } from "../lib/trpc";
 import { Spinner } from "../components/Bits";
 import { Logo } from "./landing/Logo";
-import LessonNode from "./course/LessonNode";
+import LessonNode, { type LessonState } from "./course/LessonNode";
 import PathTrack from "./course/PathTrack";
 import { writeProgress } from "./course/writeProgress";
 import "./home.css";
@@ -50,6 +50,11 @@ export default function Course() {
   } else {
     const done = (l: CourseData["lessons"][number]) => l.total > 0 && l.done >= l.total;
     const current = data.lessons.find((l) => !done(l) && l.missingPrerequisites.length === 0);
+    const stateOf = (lesson: CourseData["lessons"][number]): LessonState => {
+      if (done(lesson)) return "done";
+      if (lesson.missingPrerequisites.length > 0) return "locked";
+      return lesson === current ? "cur" : "available";
+    };
     const levels = [...new Set(data.lessons.map((l) => l.level))].sort((a, b) => a - b);
     const lvNow = current?.level ?? levels[levels.length - 1];
     const inLv = data.lessons.filter((l) => l.level === lvNow);
@@ -92,15 +97,15 @@ export default function Course() {
           {syl && (
             <ol id="syllabus" className="course-syl">
               {data.lessons.map((l) => {
-                const st = done(l) ? "done" : l.missingPrerequisites.length === 0 ? "cur" : "locked";
+                const st = stateOf(l);
                 return (
                   <li key={l.slug} className={st}>
                     <span className="course-syl-mark" aria-hidden="true">
-                      {st === "done" ? <Check size={14} strokeWidth={2.5} /> : st === "cur" ? <Star size={13} strokeWidth={2.25} /> : <Lock size={12} strokeWidth={2.25} />}
+                      {st === "done" ? <Check size={14} strokeWidth={2.5} /> : st === "cur" ? <Star size={13} strokeWidth={2.25} /> : st === "locked" ? <Lock size={12} strokeWidth={2.25} /> : null}
                     </span>
                     <span className="course-syl-code">L{String(l.level).padStart(2, "0")}</span>
                     <span className="course-syl-title">{l.title}</span>
-                    <span className="sr">{st === "done" ? "Complete" : st === "cur" ? "Current lesson" : "Locked"}</span>
+                    <span className="sr">{st === "done" ? "Complete" : st === "cur" ? "Up next" : st === "locked" ? "Locked" : "Available"}</span>
                   </li>
                 );
               })}
@@ -127,7 +132,7 @@ export default function Course() {
                     <PathTrack xs={xs} lit={lit} row={ROW} />
                     <ol className="course-nodes">
                       {ls.map((l, i) => {
-                        const state = done(l) ? "done" : l.missingPrerequisites.length === 0 ? "cur" : "locked";
+                        const state = stateOf(l);
                         const cta = state === "done" ? "Review" : l.done > 0 ? "Continue" : "Start";
                         return <LessonNode key={l.slug} l={l} slug={slug} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} onWritten={reload} />;
                       })}
