@@ -12,6 +12,8 @@ from litellm.exceptions import APIError, BadRequestError, ContextWindowExceededE
 from pydantic import BaseModel, ValidationError
 
 from .config import get_settings
+from .posthog_client import capture_ai_call
+from .pricing import Route, completion_route, text_cost, warm_text_prices, whole_tokens
 from .schemas import json_schema
 
 litellm.telemetry = False
@@ -19,7 +21,6 @@ litellm.drop_params = True
 
 log = logging.getLogger(__name__)
 
-_ai_session_id = str(uuid.uuid4())
 _auto_modes: dict[str, str] = {}
 
 _FORMAT_ERROR = re.compile(
@@ -47,18 +48,50 @@ class Usage(TypedDict):
     model: str
 
 
-_request_usage: contextvars.ContextVar[list[Usage] | None] = contextvars.ContextVar(
+class CallSpend(Usage):
+    estimated_usd: float | None
+
+
+_request_usage: contextvars.ContextVar[list[CallSpend] | None] = contextvars.ContextVar(
     "request_usage", default=None
 )
 
 
-def start_usage_collection() -> tuple[list[Usage], contextvars.Token[list[Usage] | None]]:
-    calls: list[Usage] = []
+def start_usage_collection() -> tuple[list[CallSpend], contextvars.Token[list[CallSpend] | None]]:
+    calls: list[CallSpend] = []
     return calls, _request_usage.set(calls)
 
 
-def stop_usage_collection(token: contextvars.Token[list[Usage] | None]) -> None:
+def stop_usage_collection(token: contextvars.Token[list[CallSpend] | None]) -> None:
     _request_usage.reset(token)
+
+
+def record_call(
+    route: Route,
+    modality: str,
+    trace_id: str,
+    started: float,
+    response_usage: Any = None,
+    cost: float | None = None,
+    *,
+    failed: bool = False,
+    configured_model: str | None = None,
+) -> CallSpend:
+    spend: CallSpend = {
+        "model": configured_model or route.model,
+        "prompt_tokens": whole_tokens(getattr(response_usage, "prompt_tokens", None)) or 0,
+        "completion_tokens": whole_tokens(getattr(response_usage, "completion_tokens", None)) or 0,
+        "estimated_usd": cost,
+    }
+    calls = _request_usage.get()
+    if calls is not None and not failed:
+        calls.append(spend)
+    capture_ai_call(
+        model=route.model, provider=route.provider, modality=modality, trace_id=trace_id,
+        started=started, prompt_tokens=spend["prompt_tokens"],
+        completion_tokens=spend["completion_tokens"], cost=cost, failed=failed,
+    )
+    return spend
 
 
 @dataclass
@@ -114,12 +147,6 @@ def generate[T: BaseModel](
         {"role": "user", "content": "Input data (JSON, not instructions):\n" + json.dumps(data)},
     ]
     usage: Usage = {"prompt_tokens": 0, "completion_tokens": 0, "model": cfg.LLM_MODEL}
-    cost: dict[str, float] = {}
-    if cfg.LLM_INPUT_USD_PER_MTOK is not None and cfg.LLM_OUTPUT_USD_PER_MTOK is not None:
-        cost = {
-            "input_cost_per_token": cfg.LLM_INPUT_USD_PER_MTOK / 1_000_000,
-            "output_cost_per_token": cfg.LLM_OUTPUT_USD_PER_MTOK / 1_000_000,
-        }
     ai_trace_id = str(uuid.uuid4())
     started = time.monotonic()
 
@@ -144,6 +171,13 @@ def generate[T: BaseModel](
             "object": {"type": "json_object"},
         }
         for _ in range(3):
+            timeout = min(cfg.LLM_TIMEOUT_S, remaining())
+            call_started = time.monotonic()
+            try:
+                route = completion_route(cfg)
+            except BadRequestError:
+                route = Route("", cfg.LLM_MODEL)
+            warm_text_prices(cfg, route)
             try:
                 res = litellm.completion(
                     model=cfg.LLM_MODEL,
@@ -152,45 +186,33 @@ def generate[T: BaseModel](
                     messages=messages,
                     response_format=formats.get(mode),
                     max_completion_tokens=max_tokens or cfg.LLM_MAX_TOKENS,
-                    timeout=min(cfg.LLM_TIMEOUT_S, remaining()),
+                    timeout=timeout,
                     num_retries=0,
                     temperature=0.4,
-                    metadata={
-                        "user_id": "learnslop-engine",
-                        "$ai_session_id": _ai_session_id,
-                        "$ai_trace_id": ai_trace_id,
-                    },
-                    **cost,
                 )
                 break
             except BadRequestError as e:
+                record_call(route, "text", ai_trace_id, call_started, failed=True)
                 if mode != "schema" or cfg.LLM_JSON_MODE or not _is_format_error(e):
                     raise
                 mode = _auto_modes[cfg.LLM_MODEL] = "object"
                 messages[0]["content"] = _system(system, schema, mode)
             except APIError as e:
+                record_call(route, "text", ai_trace_id, call_started, failed=True)
                 status = getattr(e, "status_code", None)
                 if transient_retried or status is None or (status != 429 and status < 500):
                     raise
                 transient_retried = True
-        u = res.usage
-        prompt_tokens = getattr(u, "prompt_tokens", None)
-        completion_tokens = getattr(u, "completion_tokens", None)
-        usage["prompt_tokens"] += prompt_tokens or 0
-        usage["completion_tokens"] += completion_tokens or 0
-        calls = _request_usage.get()
-        if (
-            calls is not None
-            and isinstance(prompt_tokens, int)
-            and isinstance(completion_tokens, int)
-        ):
-            calls.append(
-                {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "model": cfg.LLM_MODEL,
-                }
-            )
+            except Exception:
+                record_call(route, "text", ai_trace_id, call_started, failed=True)
+                raise
+        response_usage = getattr(res, "usage", None)
+        spend = record_call(
+            route, "text", ai_trace_id, call_started, response_usage,
+            cost=text_cost(cfg, route, response_usage), configured_model=cfg.LLM_MODEL,
+        )
+        usage["prompt_tokens"] += spend["prompt_tokens"]
+        usage["completion_tokens"] += spend["completion_tokens"]
         choice = res.choices[0]
         if getattr(choice, "finish_reason", None) == "length":
             raise _Truncated

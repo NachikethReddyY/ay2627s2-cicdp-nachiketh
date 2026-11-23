@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -30,6 +31,7 @@ from learnquest_engine.config import get_settings
 from learnquest_engine.guide import LintFinding
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.posthog_client import posthog_client
+from learnquest_engine.pricing import Route, moderation_cost
 from learnquest_engine.schemas import LessonContext
 
 log = logging.getLogger(__name__)
@@ -225,13 +227,23 @@ def design_feedback_route(body: design_feedback.DesignFeedbackRequest) -> dict[s
 @app.post("/v1/moderation", dependencies=[Depends(require_token)])
 def moderation_route(body: ModerationRequest) -> dict[str, Any]:
     started = time.monotonic()
-    result = litellm.moderation(
-        input=body.input,
-        model=body.model,
-        api_base=body.apiBase,
-        api_key=body.apiKey,
-        timeout=4,
-        num_retries=0,
+    route = Route(body.apiBase.rstrip("/"), body.model)
+    trace_id = str(uuid.uuid4())
+    try:
+        result = litellm.moderation(
+            input=body.input,
+            model=body.model,
+            api_base=body.apiBase,
+            api_key=body.apiKey,
+            timeout=4,
+            num_retries=0,
+        )
+    except Exception:
+        llm.record_call(route, "moderation", trace_id, started, failed=True)
+        raise
+    llm.record_call(
+        route, "moderation", trace_id, started, getattr(result, "usage", None),
+        cost=moderation_cost(route),
     )
     log.info("moderation latency_ms=%d", (time.monotonic() - started) * 1000)
     return dict(result.model_dump())

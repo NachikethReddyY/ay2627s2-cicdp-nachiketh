@@ -15,8 +15,9 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("TOKENROUTER_API_KEY", "LLM_API_KEY"),
     )
     LLM_JSON_MODE: Literal["schema", "object", "off"] | None = None
-    LLM_INPUT_USD_PER_MTOK: float | None = None
-    LLM_OUTPUT_USD_PER_MTOK: float | None = None
+    LLM_PRICE_OVERRIDE_MODEL: str | None = None
+    LLM_INPUT_USD_PER_MTOK: float | None = Field(default=None, ge=0, lt=1e12)
+    LLM_OUTPUT_USD_PER_MTOK: float | None = Field(default=None, ge=0, lt=1e12)
     LLM_TIMEOUT_S: int = 120
     LLM_DEADLINE_S: int = 300
     LLM_MAX_TOKENS: int = 8000

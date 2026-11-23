@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { env } from "../env.ts";
 import { isSafe } from "../safety/moderation.ts";
+import { recordImageCallSpend } from "../admin/ai-spend.ts";
+import { imageCallSpend, warmImagePrices } from "./image-pricing.ts";
 import { reserveAiSpend } from "../config/budget.ts";
 import { mvpLimits } from "@learnquest/product-limits";
 import { saveMedia } from "./service.ts";
@@ -78,15 +80,21 @@ async function generateImageOnce(input: ImageInput, http: HttpClient): Promise<I
   }
   try {
     const base = env.IMAGE_BASE_URL!.replace(/\/$/, "");
+    warmImagePrices(base, env.IMAGE_API_STYLE);
     const signal = AbortSignal.timeout(30_000);
     const headers = { authorization: `Bearer ${env.IMAGE_API_KEY}`, "content-type": "application/json" };
     const response = env.IMAGE_API_STYLE === "chat"
       ? await http(`${base}/chat/completions`, { method: "POST", signal, headers, body: JSON.stringify({ model: env.IMAGE_MODEL, modalities: ["image", "text"], messages: [{ role: "user", content: `Create a safe educational illustration. ${input.prompt}` }] }) })
       : await http(`${base}/images/generations`, { method: "POST", signal, headers, body: JSON.stringify({ model: env.IMAGE_MODEL, prompt: input.prompt, response_format: "b64_json" }) });
     if (!response.ok) throw new Error("provider error");
-    const data = JSON.parse(await readCapped(response)) as { data?: Array<{ b64_json?: string }>; choices?: Array<{ message?: ChatMessage }> };
-    const message = data.choices?.[0]?.message;
-    let encoded = data.data?.[0]?.b64_json ?? (message ? chatImage(message) : undefined);
+    const data = JSON.parse(await readCapped(response)) as { data?: Array<{ b64_json?: string }>; choices?: Array<{ message?: ChatMessage }>; usage?: unknown } | null;
+    const imageCount = Array.isArray(data?.data)
+      ? data.data.filter((image) => typeof image?.b64_json === "string" && image.b64_json.length > 0).length
+      : 0;
+    const spend = imageCallSpend(base, env.IMAGE_MODEL!, env.IMAGE_API_STYLE, data?.usage, imageCount);
+    await recordImageCallSpend(spend.promptTokens, spend.completionTokens, spend.cost);
+    const message = data?.choices?.[0]?.message;
+    let encoded = data?.data?.[0]?.b64_json ?? (message ? chatImage(message) : undefined);
     if (env.IMAGE_API_STYLE === "chat") encoded = encoded?.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
     if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error("no image");
     const bytes = Buffer.from(encoded, "base64");

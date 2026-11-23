@@ -38,7 +38,10 @@ test("each reported model call stores only day, tokens and cost, and only admins
       headers: { "x-engine-usage": JSON.stringify([
         { model: "openai/gpt-5.1", prompt_tokens: 1_000, completion_tokens: 100, prompt: request.topic },
         { model: "openai/nvidia/nemotron-3.5-super-vl-120b-a12b", prompt_tokens: 1_000_000, completion_tokens: 100_000 },
-        { model: "unknown-model", prompt_tokens: 200, completion_tokens: 40, email },
+        { model: "openai/gpt-5.1", prompt_tokens: 200, completion_tokens: 40, estimated_usd: null, email },
+        { model: "openai/gpt-5.1", prompt_tokens: 300, completion_tokens: 50, estimated_usd: 0 },
+        { model: "unknown-model", prompt_tokens: 400, completion_tokens: 60, estimated_usd: 0.01234 },
+        { model: "openai/gpt-5.1", prompt_tokens: 500, completion_tokens: 30, estimated_usd: -2 },
       ]) },
     },
   ));
@@ -52,13 +55,16 @@ test("each reported model call stores only day, tokens and cost, and only admins
     .orderBy(aiCallSpend.promptTokens);
   deepEqual(rows, [
     { day: clock.day, promptTokens: 200, completionTokens: 40, estimatedUsd: null },
-    { day: clock.day, promptTokens: 1_000, completionTokens: 100, estimatedUsd: "0.002250000000" },
-    { day: clock.day, promptTokens: 1_000_000, completionTokens: 100_000, estimatedUsd: "0.200000000000" },
+    { day: clock.day, promptTokens: 300, completionTokens: 50, estimatedUsd: "0.000000000000" },
+    { day: clock.day, promptTokens: 400, completionTokens: 60, estimatedUsd: "0.012340000000" },
+    { day: clock.day, promptTokens: 500, completionTokens: 30, estimatedUsd: null },
+    { day: clock.day, promptTokens: 1_000, completionTokens: 100, estimatedUsd: null },
+    { day: clock.day, promptTokens: 1_000_000, completionTokens: 100_000, estimatedUsd: null },
   ]);
 
   const dashboard = await account.q("admin.dashboard");
   equal(dashboard.statusCode, 200);
-  const totals = { calls: 3, promptTokens: 1_001_200, completionTokens: 100_140, estimatedUsd: 0.20225, unpricedCalls: 1 };
+  const totals = { calls: 6, promptTokens: 1_002_400, completionTokens: 100_280, estimatedUsd: 0.01234, unpricedCalls: 4 };
   deepEqual(JSON.parse(dashboard.body), { result: { data: { monthToDate: totals, days: [{ day: clock.day, ...totals }] } } });
 
   await db.execute(sql`UPDATE learners SET is_admin = false WHERE is_admin`);

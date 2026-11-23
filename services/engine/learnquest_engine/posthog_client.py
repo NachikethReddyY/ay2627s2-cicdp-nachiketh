@@ -1,6 +1,8 @@
 import atexit
 import logging
 import os
+import time
+import uuid
 
 import litellm
 from posthog import Posthog
@@ -8,6 +10,7 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 log = logging.getLogger(__name__)
+_session_id = str(uuid.uuid4())
 
 
 class PostHogSettings(BaseSettings):
@@ -39,11 +42,7 @@ def create_posthog_client() -> Posthog | None:
             )
         return None
 
-    os.environ.setdefault("POSTHOG_API_KEY", settings.POSTHOG_API_KEY)
-    os.environ.setdefault("POSTHOG_API_URL", settings.POSTHOG_HOST)
     litellm.turn_off_message_logging = True
-    litellm.success_callback = ["posthog"]
-    litellm.failure_callback = ["posthog"]
 
     client = Posthog(
         settings.POSTHOG_API_KEY,
@@ -55,3 +54,40 @@ def create_posthog_client() -> Posthog | None:
 
 
 posthog_client = create_posthog_client()
+
+
+def capture_ai_call(
+    *,
+    model: str,
+    provider: str,
+    modality: str,
+    trace_id: str,
+    started: float,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    cost: float | None = None,
+    failed: bool = False,
+) -> None:
+    if posthog_client is None:
+        return
+    try:
+        posthog_client.capture(
+            "$ai_generation",
+            distinct_id="learnslop-engine",
+            properties={
+                "$ai_model": model,
+                "$ai_provider": provider,
+                "$ai_session_id": _session_id,
+                "$ai_trace_id": trace_id,
+                "$ai_span_id": str(uuid.uuid4()),
+                "$ai_input_tokens": prompt_tokens,
+                "$ai_output_tokens": completion_tokens,
+                **({"$ai_total_cost_usd": cost} if cost is not None else {}),
+                "pricing_status": "priced" if cost is not None else "unpriced",
+                "$ai_latency": time.monotonic() - started,
+                "$ai_is_error": failed,
+                "modality": modality,
+            },
+        )
+    except Exception:
+        log.warning("Could not capture AI call telemetry")

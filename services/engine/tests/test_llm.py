@@ -73,56 +73,25 @@ def test_repair_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[1]["messages"][-2]["role"] == "assistant"
 
 
-def test_ai_metadata_groups_repair_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = fake(monkeypatch, reply(json.dumps({"steps": []})), reply(GOOD))
-    generate("sys", {}, Lesson)
-    first = calls[0]["metadata"]
-    second = calls[1]["metadata"]
-    assert first["$ai_session_id"] == second["$ai_session_id"]
-    assert first["$ai_trace_id"] == second["$ai_trace_id"]
-    assert first["user_id"] == second["user_id"] == "learnslop-engine"
-
-
-def test_model_cost_rates_are_passed_as_cost_per_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LLM_INPUT_USD_PER_MTOK", "0.15")
-    monkeypatch.setenv("LLM_OUTPUT_USD_PER_MTOK", "0.50")
-    calls = fake(monkeypatch, reply(GOOD))
-    generate("sys", {}, Lesson)
-    assert calls[0]["input_cost_per_token"] == 0.15 / 1_000_000
-    assert calls[0]["output_cost_per_token"] == 0.50 / 1_000_000
-
-
-@pytest.mark.parametrize(("input_rate", "output_rate"), [("", ""), ("0.15", ""), ("", "0.50")])
-def test_blank_model_cost_rates_do_not_override_litellm_pricing(
-    monkeypatch: pytest.MonkeyPatch, input_rate: str, output_rate: str
-) -> None:
-    monkeypatch.setenv("LLM_INPUT_USD_PER_MTOK", input_rate)
-    monkeypatch.setenv("LLM_OUTPUT_USD_PER_MTOK", output_rate)
-    calls = fake(monkeypatch, reply(GOOD))
-    generate("sys", {}, Lesson)
-    assert "input_cost_per_token" not in calls[0]
-    assert "output_cost_per_token" not in calls[0]
-
-
-def test_litellm_mock_response_calculates_cost_from_custom_rates(
+def test_repair_calls_share_trace_and_have_individual_costs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LLM_MODEL", "openai/nvidia/nemotron-3.5-super-vl-120b-a12b")
+    fake(monkeypatch, reply(json.dumps({"steps": []})), reply(GOOD, p=20))
+    monkeypatch.setenv("LLM_PRICE_OVERRIDE_MODEL", "openai/test")
     monkeypatch.setenv("LLM_INPUT_USD_PER_MTOK", "0.15")
     monkeypatch.setenv("LLM_OUTPUT_USD_PER_MTOK", "0.50")
-    completion = litellm.completion
-    costs = []
-
-    def mock_completion(**kwargs: Any) -> Any:
-        response = completion(mock_response=GOOD, **kwargs)
-        costs.append(response._hidden_params["response_cost"])
-        return response
-
-    monkeypatch.setattr(litellm, "completion", mock_completion)
-    usage = generate("sys", {}, Lesson).usage
-    expected_cost = (usage["prompt_tokens"] * 0.15 + usage["completion_tokens"] * 0.50) / 1_000_000
-    assert expected_cost > 0
-    assert costs == [pytest.approx(expected_cost)]
+    events: list[dict[str, Any]] = []
+    monkeypatch.setattr(llm, "capture_ai_call", lambda **kwargs: events.append(kwargs))
+    calls, token = llm.start_usage_collection()
+    try:
+        generate("sys", {}, Lesson)
+    finally:
+        llm.stop_usage_collection(token)
+    assert len(events) == len(calls) == 2
+    assert events[0]["trace_id"] == events[1]["trace_id"]
+    assert [event["cost"] for event in events] == [
+        call["estimated_usd"] for call in calls
+    ] == [0.000004, 0.0000055]
 
 
 def test_invalid_twice(monkeypatch: pytest.MonkeyPatch) -> None:

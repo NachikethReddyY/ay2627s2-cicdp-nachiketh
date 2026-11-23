@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
 import { seed } from "../src/db/seed.ts";
-import { learners, lessons, spendLedger, user } from "../src/db/schema.ts";
+import { aiCallSpend, learners, lessons, spendLedger, user } from "../src/db/schema.ts";
 import { generateImage, idleImages, resolveDocImages, prewarmDocImages } from "../src/media/imagegen.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
@@ -266,4 +266,25 @@ test("prewarm respects the daily limit and the generated image is cached", async
   assert.equal(f.calls.length, 1, "reads reuse the generated image and respect the daily limit");
   assert.ok(JSON.stringify(shown).includes('"generated"'));
   assert.ok(!JSON.stringify(shown).includes("flat colours"), "prompt never appears in the client doc");
+});
+
+test("an image chat response records its reported cost once across generation and cache hit", async () => {
+  const callsBefore = await db.$count(aiCallSpend);
+  const lessonVersionId = await versionId();
+  const learnerId = await learnerId_();
+  configure("https://openrouter.ai/api/v1", "chat");
+  setModerationClient(clean);
+  setStorage(memoryStorage());
+  const input = { ...base, lessonVersionId, learnerId, prompt: "Price this image generation" };
+  const http = async () => Response.json({
+    choices: [{ message: { content: PNG } }],
+    usage: { prompt_tokens: 987, completion_tokens: 123, cost: 0.045 },
+  });
+  const first = await generateImage(input, http);
+  assert.equal(first.status, "ready");
+  assert.deepEqual(await generateImage(input, noNetwork), first);
+  assert.equal(await db.$count(aiCallSpend), callsBefore + 1);
+  const [call] = await db.select().from(aiCallSpend).where(eq(aiCallSpend.promptTokens, 987));
+  assert.equal(call?.completionTokens, 123);
+  assert.equal(call?.estimatedUsd, "0.045000000000");
 });
