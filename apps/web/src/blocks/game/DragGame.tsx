@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { Check, GripVertical, Plus } from "lucide-react";
 import type { PublicGameProps } from "@learnquest/ui-catalog";
 import type { ActiveGameApi } from "./api.ts";
 import { setupFor, type DragKind, type Item, type Placed, type Zone } from "./dragSetup.ts";
-import Shell, { btn, btnPrimary } from "./Shell.tsx";
+import Shell, { btnPrimary } from "./Shell.tsx";
 import type { Outcome } from "./model.ts";
 
 function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected: boolean; disabled: boolean; onTap: () => void }) {
@@ -19,14 +20,10 @@ function ItemButton({ item, selected, disabled, onTap }: { item: Item; selected:
       onClick={onTap}
       disabled={disabled}
       style={{ transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, touchAction: "none" }}
-      className={`${btn} relative z-10 max-w-full break-words text-left text-sm ${selected ? "!border-[var(--ac)] !bg-[color-mix(in_srgb,var(--ac)_16%,transparent)]" : ""} ${isDragging ? "opacity-60" : ""}`}
+      className={`relative flex min-h-11 max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-medium shadow-[var(--lift-sm)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ac)] disabled:opacity-60 ${selected ? "border-[var(--ac)] bg-[var(--sel)] text-[var(--acT)]" : "border-[var(--line)] bg-[var(--panel)] text-[var(--tx)] enabled:hover:border-[var(--ac)]"} ${isDragging ? "z-20 cursor-grabbing opacity-80" : "z-10 enabled:cursor-grab"}`}
     >
-      {selected && (
-        <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" className="mr-1 inline-block shrink-0 align-[-2px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 8.5l3.5 3.5L13 4.5" />
-        </svg>
-      )}
-      {item.label}
+      {selected ? <Check size={16} className="shrink-0" aria-hidden="true" /> : <GripVertical size={16} className="shrink-0 text-[var(--mu)]" aria-hidden="true" />}
+      <span className="min-w-0 [overflow-wrap:anywhere]">{item.label}</span>
     </button>
   );
 }
@@ -38,7 +35,7 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
       ref={setNodeRef}
       role="group"
       aria-label={zone.label}
-      className={`relative flex min-h-11 min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed p-2 ${over ? "border-[var(--ac)] bg-[color-mix(in_srgb,var(--ac)_12%,transparent)]" : "border-[var(--mu)] bg-[var(--code)]"}`}
+      className={`relative grid min-w-0 gap-2 rounded-xl border p-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:items-center ${over ? "border-[var(--ac)] bg-[var(--sel)]" : "border-[var(--line)] bg-[var(--glass)]"}`}
     >
       <button
         type="button"
@@ -46,8 +43,10 @@ function Box({ zone, occupant, over, onTap, children }: { zone: Zone; occupant: 
         onClick={onTap}
         className="absolute inset-0 rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ac)]"
       />
-      <span aria-hidden="true" className="pointer-events-none text-xs font-semibold text-[var(--mu)]">{zone.label}</span>
-      {children}
+      <span aria-hidden="true" className="pointer-events-none px-1 text-sm font-semibold [overflow-wrap:anywhere]">{zone.label}</span>
+      <div className={`flex min-h-12 min-w-0 flex-wrap items-center gap-2 rounded-lg ${occupant ? "" : "pointer-events-none border border-dashed border-[var(--mu)] bg-[var(--code)] px-3"}`}>
+        {occupant ? children : <span aria-hidden="true" className="flex items-center gap-2 text-sm text-[var(--mu)]"><Plus size={16} /> Drop here</span>}
+      </div>
     </div>
   );
 }
@@ -128,11 +127,14 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
   return (
     <Shell {...p} onHint={api.hint} lives={lives} maxLives={maxLives} outcome={outcome} live={live} onRetry={retry} busy={busy}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd} onDragOver={(e) => setHot(e.over ? String(e.over.id) : null)} onDragCancel={() => setHot(null)}>
-        <div role="group" aria-label={`${setup.title} game`} className="flex min-w-0 flex-col gap-3">
+        <div role="group" aria-label={`${setup.title} game`} className="flex min-w-0 flex-col gap-4">
+          <p className="text-sm text-[var(--mu)]">Drag an item into a box, or select an item and then select a box. With the keyboard, focus an item, press Space to pick it up, use the arrows to move, and press Space to drop.</p>
           {pool.length > 0 && (
-            <div role="group" aria-label="Pool" className="flex min-w-0 flex-wrap gap-2 rounded-xl border border-[var(--line)] p-2">
-              <span className="w-full text-xs font-semibold text-[var(--mu)]">Pool</span>
-              {pool.map(itemButton)}
+            <div role="group" aria-label="Pool" className="min-w-0 rounded-xl border border-[var(--line)] bg-[var(--code)] p-3">
+              <p className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 text-sm font-semibold">
+                Pool <span className="text-xs font-medium text-[var(--mu)]">{pool.length} left to place</span>
+              </p>
+              <div className="flex flex-wrap gap-2">{pool.map(itemButton)}</div>
             </div>
           )}
           <div className="flex min-w-0 flex-col gap-2">
@@ -145,7 +147,6 @@ function DragBoard({ p, kind, api }: { p: PublicGameProps; kind: DragKind; api: 
               );
             })}
           </div>
-          <p className="text-xs">Drag an item into a box, or tap an item and then tap a box. Keyboard: Tab to an item, press Space to pick it up, arrows to move, Space to drop.</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btnPrimary} disabled={over || busy} onClick={check}>Check</button>
           </div>

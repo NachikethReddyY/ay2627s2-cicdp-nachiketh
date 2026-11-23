@@ -39,7 +39,7 @@ The Course Path track labels one lesson **Up next** and distinguishes it from ot
 | Reveal | server `stepsRouter.reveal` | Only after the learner finishes or skips. |
 | Generation limits | `apps/api/src/config/limits.ts` | Every learner can generate five AI paths and one image per day. |
 | Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | One chat per lab for editor selections, lint findings, and video questions. Sloppy renders hints, observation steps, and prediction questions as cards. The server checks responses for code and known lesson answers. |
-| Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. |
+| Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. Order, match and sort show a distinct item pool where needed and labeled placement rows. |
 | Diagram and scene blocks | `blocks/diagram/`, `blocks/scene3d/` | From `packages/ui-catalog`. |
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
 | Transport bar | `player/TransportBar.tsx` | Replay controls for code replay. |
