@@ -46,7 +46,7 @@ export interface DaytonaClient {
   create(params: Record<string, unknown>, options?: { timeout?: number }): Promise<DaytonaSandbox>;
   get(idOrName: string): Promise<DaytonaSandbox>;
   list(query: { labels?: Record<string, string> }): AsyncIterableIterator<DaytonaSandbox>;
-  delete(sandbox: DaytonaSandbox, timeout?: number): Promise<void>;
+  delete(sandbox: DaytonaSandbox, timeout?: number, wait?: boolean): Promise<void>;
 }
 
 export const APP_LABEL = { app: "learnquest" } as const;
@@ -101,14 +101,20 @@ export function daytonaBackend(opts: {
   async function existingShell(labels: ShellLabels): Promise<DaytonaSandbox | undefined> {
     const named = await namedShell(labels);
     if (named) return named;
-    for await (const sbx of client.list({ labels })) return sbx;
+    const listed = client.list({ labels });
+    try {
+      const first = await listed.next();
+      return first.done ? undefined : first.value;
+    } finally {
+      await listed.return?.();
+    }
   }
 
   async function findOrCreate(learnerId: string): Promise<DaytonaSandbox> {
     const labels = shellLabels(learnerId);
     let sbx = await existingShell(labels);
     if (sbx && BROKEN.has(sbx.state ?? "")) {
-      await client.delete(sbx).catch(() => {});
+      await client.delete(sbx, SANDBOX_START_S, true);
       sbx = undefined;
     }
     sbx ??= await client.create({
@@ -389,16 +395,18 @@ export function daytonaBackend(opts: {
           autoStopInterval: 2,
           ttlMinutes: 3,
         }, { timeout: SANDBOX_START_S });
-        const dir = "/tmp/learnquest-check";
+        const home = await sbx.getUserHomeDir();
+        if (!home?.startsWith("/")) throw new CheckUnavailableError("check sandbox has no home directory");
+        const dir = `${home}/.learnquest-check`;
         const setup = await sbx.process.executeCommand(
-          `mkdir -m 700 -- ${dir}`,
+          `mkdir -m 700 -- ${shQuote(dir)}`,
           undefined, undefined, SANDBOX_FILE_S,
         );
         if (setup.exitCode !== 0) throw new CheckUnavailableError("check setup failed");
         const input = `${dir}/input.json`;
         await sbx.fs.uploadFile(Buffer.from(encodeCheckInput(token, language, code, tests)), input, SANDBOX_FILE_S);
         const harness = `timeout -s KILL ${BUDGET_S} node -e ${shQuote(checkHarnessSource(CHECK_LEARNER_UID))}`;
-        const command = `exec 3< ${input} && rm -- ${input} || exit 1
+        const command = `exec 3< ${shQuote(input)} && rm -- ${shQuote(input)} || exit 1
 if [ "$(id -u)" = 0 ]; then exec ${harness} <&3 3<&-; fi
 exec sudo -n env "PATH=$PATH" ${harness} <&3 3<&-`;
         const { exitCode, result } = await sbx.process.executeCommand(command, undefined, undefined, BUDGET_S);

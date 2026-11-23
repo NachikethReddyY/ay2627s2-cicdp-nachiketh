@@ -409,9 +409,9 @@ test("checks use a private input file in an isolated disposable Daytona sandbox"
       snapshot: "lesson-runtime", networkBlockAll: true,
       user: "root", labels: { app: "learnquest", role: "check" }, ephemeral: true, autoStopInterval: 2, ttlMinutes: 3,
     });
-    assert.deepEqual(log.uploaded, ["/tmp/learnquest-check/input.json"]);
+    assert.deepEqual(log.uploaded, ["/home/daytona/.learnquest-check/input.json"]);
     assert.match(log.execs[0] ?? "", /mkdir -m 700/);
-    assert.match(log.execs[1] ?? "", /rm -- \/tmp\/learnquest-check\/input.json/);
+    assert.match(log.execs[1] ?? "", /rm -- '\/home\/daytona\/\.learnquest-check\/input\.json'/);
     assert.match(log.execs[1] ?? "", /sudo -n env "PATH=\$PATH" timeout/);
     assert.match(log.execs[1] ?? "", /--reuid=10001/);
     assert.equal(log.deleted, 1);
