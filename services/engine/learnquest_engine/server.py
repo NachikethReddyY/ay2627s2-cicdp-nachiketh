@@ -49,11 +49,6 @@ class ModerationRequest(BaseModel):
     apiKey: str
 
 
-class GuideMessage(BaseModel):
-    role: str = Field(pattern="^(user|assistant)$")
-    content: str = Field(min_length=1, max_length=2000)
-
-
 class GuideWorkspaceFile(BaseModel):
     path: str = Field(min_length=1, max_length=240)
     content: str = Field(max_length=6000)
@@ -64,7 +59,7 @@ class GuideRequest(BaseModel):
     language: str = Field(min_length=1, max_length=40)
     code: str = Field(max_length=12000)
     selection: str = Field(default="", max_length=3000)
-    messages: list[GuideMessage] = Field(min_length=1, max_length=8)
+    messages: list[guide.GuideMessage] = Field(min_length=1, max_length=8)
     workspaceFiles: list[GuideWorkspaceFile] = Field(default_factory=list, max_length=24)
     lintFinding: LintFinding | None = None
     lessonContext: dict[str, Any] | None = None
@@ -201,7 +196,7 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 
 @app.post("/v1/guide/chat", dependencies=[Depends(require_token)])
 def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
-    result = guide.reply(body.model_dump(exclude_none=True))
+    result = guide.reply(body.model_dump(exclude_none=True), body.messages)
     return _body("guide", result)
 
 

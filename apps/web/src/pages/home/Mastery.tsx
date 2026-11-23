@@ -4,7 +4,7 @@ import { pct } from "./pct";
 export default function Mastery({ items }: { items: HomeData["mastery"] }) {
   if (items.length === 0) return null;
   return (
-    <section aria-labelledby="mastery-h" className="lq-card lq-rise d2 lq-mastery">
+    <section aria-labelledby="mastery-h" className="lq-card lq-dashboard-mastery">
       <div className="lq-sec-head">
         <h2 id="mastery-h">What you know</h2>
       </div>
@@ -17,7 +17,7 @@ export default function Mastery({ items }: { items: HomeData["mastery"] }) {
                 <span>{m.name}</span>
                 <span className="lq-unit">{value}%</span>
               </div>
-              <div className="lq-meter sm f-blue" role="progressbar" aria-label={`${m.name} mastery`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
+              <div className="lq-meter sm" role="progressbar" aria-label={`${m.name} mastery`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
                 <span style={{ width: `${value}%` }} />
               </div>
             </li>

@@ -22,7 +22,7 @@ export async function loadGuideContext(learnerId: string, lessonId: string) {
     context: {
       lessonId: found.lesson.id,
       title: found.lesson.title,
-      task: hint?.task ?? practice?.instructions ?? found.lesson.title,
+      task: practice?.instructions ?? hint?.task ?? found.lesson.title,
       concepts: found.lesson.concepts,
       hintRung: hint?.rung ?? 0,
     },

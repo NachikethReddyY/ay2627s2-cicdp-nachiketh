@@ -9,7 +9,7 @@ Routes marked dev or test only exist in non-production builds.
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
 | Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Reads the pitch and sees Pro and the advanced track marked coming soon. |
-| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. On phones, total XP, streak and path progress appear at the top. New learners can open Explore from Home. Home also shows **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
+| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. The next learning action appears first on both desktop and phones, followed by total XP, streak, daily goal and path progress. New learners can open Explore from Home. Home also shows **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
 | Spaced review | `/review/$slug` | `apps/web/src/pages/Review.tsx`, `apps/api/src/progress/review.ts` | Gets a due prediction from a previously answered lesson. Checks it server-side before showing the answer and scheduling the next review. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
 | Handle onboarding | `/onboarding` | `apps/web/src/pages/Onboarding.tsx` | New learners and existing learners who haven't confirmed a handle see how the leaderboard uses it, then accept or edit their generated handle before entering the app. |
@@ -40,7 +40,7 @@ The Course Path track labels one lesson **Up next** and distinguishes it from ot
 | Hint | server `stepsRouter.hint` (`apps/api/src/attempts/router.ts`) | Requested by the learner. Returns the next fixed hint rung stored on the step. |
 | Reveal | server `stepsRouter.reveal` | Only after the learner finishes or skips. |
 | Generation limits | `packages/product-limits/src/index.ts` | Free accounts can generate five AI paths and one image per rolling 24 hours. |
-| Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | One chat per lab for editor selections, lint findings, and video questions. Sloppy renders hints, observation steps, and prediction questions as cards. Requests are moderated and budgeted. The engine rejects code-like replies, the API filters known lesson answers, and a reply backed by an open prediction's hint records hint use. |
+| Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | One chat per lab for editor selections, lint findings, and video questions. Sloppy uses the lab instructions and recent replies, including their cards, to give a new clue. It displays hints, numbered observations, and prediction questions as cards and scrolls to the latest reply. Requests are moderated and budgeted. The engine rejects code-like replies and exact repeats, the API filters known lesson answers, and a reply backed by an open prediction's hint records hint use. |
 | Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. Order, match and sort show a distinct item pool where needed and labeled placement rows. Read-only games in Learn show the title, goal and description. |
 | Visual blocks | `blocks/VisualView.tsx`, `blocks/registry.ts`, `packages/ui-catalog` | Validates the document before rendering and loads each block renderer on demand. Rejected or unsupported blocks show fallback text. |
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
@@ -73,7 +73,7 @@ The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**) a
 | Practice grading and sandbox | `apps/api/src/grading/`, `apps/api/src/sandbox/`, `services/sandbox` |
 | Lesson generation | `apps/api/src/ai/`, `services/engine` |
 | Path sharing | `apps/api/src/progress/paths.ts` (`paths.publish`) |
-| Leaderboard | `apps/api/src/progress/home.ts` (`home.get`), `pages/home/Sidebar.tsx` |
+| Leaderboard | `apps/api/src/progress/home.ts` (`home.get`), `pages/home/Leaderboard.tsx` |
 | Handle onboarding and editing | `apps/api/src/progress/handle.ts` (`me.handle`) |
 | Sloppy chat endpoint | `apps/api/src/dev/route.ts` (`POST /api/guide/chat`), lesson context in `apps/api/src/ai/guide-context.ts` |
 | Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS` lists the sample courses; `worlds/scrim-demo` seeds one scrim, and its narration is silent placeholder audio) |
