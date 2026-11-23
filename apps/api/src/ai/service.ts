@@ -15,7 +15,7 @@ import { validatePart } from "../visuals/gate.ts";
 import { practiceOf } from "../parts/practice.ts";
 import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { prewarmDocImages } from "../media/imagegen.ts";
-import { mvpLimits } from "../config/limits.ts";
+import { mvpLimits } from "@learnquest/product-limits";
 import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, assertAiEnabled, reserveAiSpend } from "../config/budget.ts";
 import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";

@@ -1,0 +1,15 @@
+.dc-main { max-width: 760px; margin: 0 auto; padding: 56px 24px 0; }
+.dc-eyebrow { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.dc-h1 { margin-top: 12px; font-size: clamp(32px, 4.5vw, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.04em; }
+.dc-lede { margin-top: 16px; font-size: 18px; line-height: 1.6; color: var(--mu); }
+.dc-toc { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 32px; padding: 16px 0; box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.1), 0 1px 0 rgba(255, 255, 255, 0.1); font-size: 14px; }
+.dc-toc a { color: var(--mu); min-height: 32px; display: inline-flex; align-items: center; }
+.dc-toc a:hover { color: var(--tx); }
+.dc-section { margin-top: 48px; scroll-margin-top: 24px; }
+.dc-section p { margin-top: 12px; line-height: 1.7; color: var(--mu); }
+.dc-section a { color: var(--tx); text-decoration: underline; text-underline-offset: 3px; }
+.dc-h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.dc-plan { margin-top: 20px; padding: 20px 22px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring); }
+.dc-plan h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; }
+.dc-plan p { margin-top: 8px; color: var(--mu); line-height: 1.6; }
+.dc-plan ul { margin-top: 12px; padding-left: 20px; color: var(--mu); line-height: 1.7; }

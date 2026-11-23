@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest something you want to see in LearnSlop.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "LearnSlop teaches JavaScript and TypeScript only. Requests for other languages are noted but not planned yet."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to learn or do?
+      description: Describe the problem first, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to see?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of LearnSlop?
+      options: [Lessons, Practice, Hints and help chat, Learner progress, Generated paths, Explore, Account, Docs or changelog, Other]
+    validations:
+      required: true

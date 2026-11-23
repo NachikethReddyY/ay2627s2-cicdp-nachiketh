@@ -147,3 +147,14 @@
   .lp-ln { font-size: 12px; }
   .lp-diff { font-size: 12px; } .lp-steps { margin: 6px 12px 0; font-size: 11px; }
 }
+
+.lp-plans { max-width: 1080px; margin: 0 auto; padding: 112px 24px 0; }
+.lp-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 40px; }
+.lp-plan { padding: 28px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring); }
+.lp-plan-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lp-plan-head h3 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.lp-plan > p { margin-top: 12px; color: var(--mu); line-height: 1.6; }
+.lp-plan .lp-ticks { margin-top: 20px; }
+.lp-plan-status { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; box-shadow: var(--ring); color: var(--mu); }
+.lp-plan-status.is-available { color: var(--ok); }
+.lp-plans .lp-sub { display: inline-flex; margin-top: 24px; }

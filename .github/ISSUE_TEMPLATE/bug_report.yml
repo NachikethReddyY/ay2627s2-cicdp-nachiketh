@@ -1,0 +1,41 @@
+name: Bug report
+description: Something is broken or does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include passwords, tokens or personal details. Your handle is fine."
+  - type: input
+    id: where
+    attributes:
+      label: Where did it happen?
+      description: The lesson, course or page, for example /courses/loops or /practice.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      description: Numbered steps are best.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Include any error message, and a screenshot if you can.
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options: [Chrome, Safari, Firefox, Edge, Other]
+    validations:
+      required: false

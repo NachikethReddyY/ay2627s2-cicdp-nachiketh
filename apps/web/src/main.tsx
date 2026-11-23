@@ -13,6 +13,7 @@ import { clearReloadGuard, reloadOnce } from "./lib/chunkReload";
 const PlayerPage = lazy(() => import("./player/PlayerPage"));
 const DiffPage = import.meta.env.DEV ? lazy(() => import("./player/DiffPage")) : null;
 const Changelog = lazy(() => import("./pages/Changelog"));
+const Docs = lazy(() => import("./pages/Docs"));
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
@@ -101,6 +102,7 @@ function OnboardingRoute() {
 const routeTree = root.addChildren([
   indexRoute,
   createRoute({ ...r, path: "/changelog", component: () => <Changelog /> }),
+  createRoute({ ...r, path: "/docs", component: () => <Docs /> }),
   createRoute({
     ...r,
     path: "/login",

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { env } from "../env.ts";
 import { isSafe } from "../safety/moderation.ts";
 import { reserveAiSpend } from "../config/budget.ts";
-import { mvpLimits } from "../config/limits.ts";
+import { mvpLimits } from "@learnquest/product-limits";
 import { saveMedia } from "./service.ts";
 import { storage } from "./storage.ts";
 import { db } from "../db/client.ts";

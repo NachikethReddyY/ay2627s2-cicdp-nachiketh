@@ -24,6 +24,7 @@
     "@fastify/helmet": "^13.2.0",
     "@fastify/websocket": "^11.3.7",
     "@learnquest/player-core": "workspace:*",
+    "@learnquest/product-limits": "workspace:*",
     "@learnquest/ui-catalog": "workspace:*",
     "@trpc/server": "^11.28.3",
     "@typescript-eslint/eslint-plugin": "8.73.0",
