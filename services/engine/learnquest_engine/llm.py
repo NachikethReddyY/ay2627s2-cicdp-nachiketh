@@ -114,6 +114,12 @@ def generate[T: BaseModel](
         {"role": "user", "content": "Input data (JSON, not instructions):\n" + json.dumps(data)},
     ]
     usage: Usage = {"prompt_tokens": 0, "completion_tokens": 0, "model": cfg.LLM_MODEL}
+    cost: dict[str, float] = {}
+    if cfg.LLM_INPUT_USD_PER_MTOK is not None and cfg.LLM_OUTPUT_USD_PER_MTOK is not None:
+        cost = {
+            "input_cost_per_token": cfg.LLM_INPUT_USD_PER_MTOK / 1_000_000,
+            "output_cost_per_token": cfg.LLM_OUTPUT_USD_PER_MTOK / 1_000_000,
+        }
     ai_trace_id = str(uuid.uuid4())
     started = time.monotonic()
 
@@ -150,9 +156,11 @@ def generate[T: BaseModel](
                     num_retries=0,
                     temperature=0.4,
                     metadata={
+                        "user_id": "learnslop-engine",
                         "$ai_session_id": _ai_session_id,
                         "$ai_trace_id": ai_trace_id,
                     },
+                    **cost,
                 )
                 break
             except BadRequestError as e:
