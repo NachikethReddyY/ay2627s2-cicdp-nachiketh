@@ -1,6 +1,6 @@
 import { TRPCClientError } from "@trpc/client";
 import { Link } from "@tanstack/react-router";
-import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useState, type ReactNode } from "react";
 import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import { CourseNext, LessonProgress, NextLink } from "./live/CourseNav";
@@ -18,20 +18,25 @@ const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 const ScrimLesson = lazy(() => import("./scrim/ScrimLesson"));
 
 export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
+  const [writing, setWriting] = useState(false);
   const { data, error, loading: refreshing, reload } = useApi(`lesson:${slug}`, async () => {
-    await trpc.lessons.write.mutate({ id: slug });
-    return trpc.lessons.get.query({ id: slug });
+    const input = { id: slug };
+    try {
+      return await trpc.lessons.get.query(input);
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+    setWriting(true);
+    try {
+      await trpc.lessons.write.mutate(input);
+      return await trpc.lessons.get.query(input);
+    } finally {
+      setWriting(false);
+    }
   });
   const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
-  const [slow, setSlow] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [upgradeFailed, setUpgradeFailed] = useState(false);
-  const loading = !data && !error;
-  useEffect(() => {
-    if (!loading) return;
-    const t = setTimeout(() => setSlow(true), 1500);
-    return () => clearTimeout(t);
-  }, [loading]);
 
   if (error instanceof TRPCClientError && error.data?.code === "PRECONDITION_FAILED") {
     return (
@@ -54,7 +59,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     const title = courseState.data ? lessonTitle(courseState.data.lessons, slug) : undefined;
     return (
       <Notice>
-        <p>{slow ? "Writing this lesson…" : "Loading lesson…"}</p>
+        <p>{writing ? "Preparing this lesson…" : "Loading lesson…"}</p>
         {title && <p className="mt-1 text-sm font-normal">Up next: {title}</p>}
         <div className="mt-3 h-3 w-64 max-w-full overflow-hidden track" aria-hidden="true">
           <div className="sketch h-full w-1/3 rounded-full bg-blue" />

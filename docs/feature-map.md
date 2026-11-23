@@ -15,13 +15,15 @@ Routes marked dev or test only exist in non-production builds.
 | Handle onboarding | `/onboarding` | `apps/web/src/pages/Onboarding.tsx` | New learners and existing learners who haven't confirmed a handle see how the leaderboard uses it, then accept or edit their generated handle before entering the app. |
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses paths. The creator can publish a private path through `paths.publish` after automatic moderation. |
 | Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. A generated course writes all its lessons in the background, three at a time. While some are still writing the page shows how many are ready, with **Check again**. A lesson tagged **Writing…** is still being written; **Couldn't write** or **Not written yet** lessons offer **Write now** (`lessons.write`). Write states come from `courses.get` (`writeState`) and live in process memory (`apps/api/src/ai/service.ts`). |
-| Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
+| Lesson player | `/play` | `apps/web/src/player/` | Opens a saved lesson directly. If its content has yet to be written, the player requests a write and opens the resulting lesson. See below. |
 | Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the same **Workbench** as `/play`, with Run, Submit, Lint and Sloppy. A scrim lab opens after all its predictions are confirmed. **Results** offers the reference solution after three graded submissions for the current lesson version, when the exercise has a saved solution. Run and Lint do not count. All expected output and hidden test inputs stay server-side. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Changes their public handle under **Profile** once every 30 days after confirming it and sees when they can change it again. |
 | Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads the committed release notes. Refresh them with `pnpm --filter @learnquest/web changelog:sync`. |
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
 | Editor / player fixtures (test) | `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
+
+The Course Path track labels one lesson **Up next** and distinguishes it from other available, complete and locked lessons. The syllabus shows the same states.
 
 ## Inside the lesson player
 
@@ -37,7 +39,7 @@ Routes marked dev or test only exist in non-production builds.
 | Reveal | server `stepsRouter.reveal` | Only after the learner finishes or skips. |
 | Generation limits | `apps/api/src/config/limits.ts` | Every learner can generate five AI paths and one image per day. |
 | Sloppy chat | `player/workbench/PlannedParts.tsx`, opened by **Ask Sloppy** in `player/live/LessonResults.tsx` | One chat per lab for editor selections, lint findings, and video questions. Sloppy renders hints, observation steps, and prediction questions as cards. The server checks responses for code and known lesson answers. |
-| Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. |
+| Game practice | `player/GamePracticeView.tsx`, `blocks/game/` | Grid, order, match, sort, physics and quiz parts. Order, match and sort show a distinct item pool where needed and labeled placement rows. |
 | Diagram and scene blocks | `blocks/diagram/`, `blocks/scene3d/` | From `packages/ui-catalog`. |
 | Command palette | `player/workbench/CommandPalette.tsx` | Keyboard entry to actions. |
 | Transport bar | `player/TransportBar.tsx` | Replay controls for code replay. |

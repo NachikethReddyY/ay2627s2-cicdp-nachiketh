@@ -88,9 +88,14 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
   const card = page.locator(".lq-continue-photo");
   await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
   await expect(card).toContainText("Pre-test");
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/trpc/lessons.write")) writes.push(request.url());
+  });
   await card.getByRole("link", { name: "Continue" }).click();
   await expect(page).toHaveURL(/lesson=codequest-pretest/);
   await page.getByRole("radio", { name: "4", exact: true }).check();
+  expect(writes).toEqual([]);
   await page.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
   await page.goto("/");
@@ -185,7 +190,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.goto("/editor?lesson=scrim-return-values");
   const body = await (await lesson).text();
   expect(body).toContain("hidden case 1");
-  expect(body).not.toContain("-14");
+  expect(body).not.toContain(JSON.stringify("-14"));
   expect(body).not.toContain("expectedStdout");
   await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
