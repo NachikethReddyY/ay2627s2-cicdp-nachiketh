@@ -18,10 +18,10 @@ const msg = (e: unknown) => {
   return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
 };
 
-type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; refreshTree?: () => void; onLint?: (findings: LintFinding[]) => void; startShell?: boolean };
+type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; refreshTree?: () => void; onLint?: (findings: LintFinding[]) => void; startShell?: boolean; standalone?: boolean };
 type RunJob = { source: string; authored: boolean };
 
-export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, refreshTree, onLint, startShell = false }: Options) {
+export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, refreshTree, onLint, startShell = false, standalone = false }: Options) {
   const [term, setTerm] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
   const [result, setResult] = useState<CheckResponse | null>(null);
@@ -56,6 +56,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
 
   const [shell, setShell] = useState<ShellSocket | null>(null);
   useEffect(() => {
+    if (standalone) return;
     const s = createShellSocket();
     if (startShell) {
       s.setActive(false);
@@ -66,7 +67,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
       s.dispose();
       setShell(null);
     };
-  }, [startShell]);
+  }, [standalone, startShell]);
   useEffect(() => {
     if (!shell) return;
     const track = () => {
@@ -190,7 +191,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     if (live.current) setCheckBusy(false);
   };
   runNow.current = async ({ source, authored }) => {
-    const a = actionsFor(sandboxEnabled, source, authored).run;
+    const a = actionsFor(sandboxEnabled && !standalone, source, authored).run;
     if (a.via === "oneshot") { await oneShot(a.args); return; }
     if (!shell) return;
     if (shellUnreachable.current || skipShellWait(false, shell.state())) {

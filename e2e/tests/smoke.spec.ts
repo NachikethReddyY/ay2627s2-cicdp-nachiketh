@@ -227,9 +227,59 @@ test("a scrim keeps later code hidden until its prediction and shows the updated
   await expect(page.locator(".view-lines").first()).toContainText("return a + b");
 });
 
-test("a lesson with no lab says so at /editor", async ({ page }) => {
+test("a lesson with no lab can open a temporary Watch workspace", async ({ page }) => {
   await signUp(page, newEmail(), `/editor?lesson=${LESSON}`);
   await expect(page.getByText("so it has no lab", { exact: false })).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const start = 'console.log("start");';
+  const end = 'console.log("end");';
+  const edited = 'console.log("fork");';
+  await page.route("**/api/trpc/lessons.write?*", (route) =>
+    route.fulfill({ json: [{ result: { data: { ok: true } } }] }));
+  await page.route("**/api/trpc/lessons.get?*", (route) => route.fulfill({
+    json: [{ result: { data: {
+      id: "watch-fork",
+      versionId: "v1",
+      title: "Watch a log change",
+      kind: "watch",
+      part: {
+        kind: "watch",
+        beforeFiles: { "main.js": start, "notes.txt": "A note" },
+        hunks: [{ id: "log", file: "main.js", oldStart: 1, lines: [`-${start}`, `+${end}`] }],
+      },
+      steps: [],
+      completed: true,
+      canUpgradeReadChecks: false,
+      media: [],
+    } } }],
+  }));
+  const runId = randomUUID();
+  await page.route("**/api/sandbox/run", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ code: edited, language: "javascript" });
+    return route.fulfill({ json: { id: runId } });
+  });
+  await page.route(`**/api/sandbox/run/${runId}?*`, (route) =>
+    route.fulfill({ json: { output: "fork\n", next: 5, done: true } }));
+  await page.goto("/play?lesson=watch-fork");
+  await expect(page.locator(".monaco-editor .view-lines")).toContainText(end);
+  const edit = page.getByRole("button", { name: "Edit from here" });
+  await edit.click();
+  const fork = page.getByRole("dialog", { name: "Replay workspace" });
+  await expect(fork.locator(".view-lines")).toContainText(end);
+  await fork.getByLabel("File", { exact: true }).selectOption("notes.txt");
+  await expect(fork.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
+  await fork.getByLabel("File", { exact: true }).selectOption("main.js");
+  await fork.locator(".view-lines").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Shift+Home");
+  await page.keyboard.insertText(edited);
+  await expect(fork.locator(".view-lines")).toContainText(edited);
+  await fork.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(fork.getByRole("region", { name: "Terminal" })).toContainText("fork");
+  await fork.getByRole("button", { name: "Back to replay" }).click();
+  await expect(fork).not.toBeVisible();
+  await expect(edit).toBeFocused();
+  await expect(page.getByRole("main").locator(".monaco-editor .view-lines")).toContainText(end);
 });
 
 const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
