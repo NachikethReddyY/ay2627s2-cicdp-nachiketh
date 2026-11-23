@@ -7,9 +7,9 @@ type Props = {
   label: string;
   nodes: TreeNode[];
   open: ReadonlySet<string>;
-  selected: string;
+  selected?: string;
   onToggle(path: string): void;
-  onSelect(path: string): void;
+  onSelect?(path: string): void;
   rootActions?: ReactNode;
   onMoveFile?(source: string, targetDir: string): void;
 };
@@ -64,7 +64,7 @@ export default function FileTreeView({ label, nodes, open, selected, onToggle, o
           path={r.path}
           onMoveFile={onMoveFile}
           tabIndex={r.path === tabStop ? 0 : -1}
-          onClick={() => (r.isFolder ? onToggle(r.path) : onSelect(r.path))}
+          onClick={r.isFolder ? () => onToggle(r.path) : onSelect && (() => onSelect(r.path))}
         />
       ))}
     </ul>

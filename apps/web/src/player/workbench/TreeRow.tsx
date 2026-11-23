@@ -13,7 +13,7 @@ type Props = {
   status?: "M" | "A";
   icon?: ReactNode;
   strong?: boolean;
-  onClick(): void;
+  onClick?(): void;
   ref?: Ref<HTMLButtonElement>;
   tabIndex?: number;
   setSize?: number;
@@ -37,6 +37,7 @@ export default function TreeRow({ depth, kind, name, open = false, selected = fa
         aria-level={depth + 1}
         aria-expanded={folder ? open : undefined}
         aria-selected={selected}
+        aria-disabled={!onClick || undefined}
         aria-setsize={setSize}
         aria-posinset={posInSet}
         tabIndex={tabIndex}
@@ -60,7 +61,7 @@ export default function TreeRow({ depth, kind, name, open = false, selected = fa
           event.preventDefault();
           onMoveFile(source, path);
         } : undefined}
-        onClick={folder || !closeDrawer ? onClick : () => { onClick(); closeDrawer(); }}
+        onClick={folder || !closeDrawer || !onClick ? onClick : () => { onClick(); closeDrawer(); }}
       >
         {folder ? (
           <ChevronRight size={10} strokeWidth={1.25} absoluteStrokeWidth aria-hidden="true" className="flex-none opacity-65" style={{ transform: open ? "rotate(90deg)" : undefined }} />

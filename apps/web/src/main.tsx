@@ -23,7 +23,6 @@ const Review = lazy(() => import("./pages/Review"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const EditorLab = lazy(() => import("./pages/EditorLab"));
-const TestEditor = import.meta.env.DEV ? lazy(() => import("./pages/TestEditor")) : null;
 const TestPlayer = import.meta.env.DEV ? lazy(() => import("./pages/TestPlayer")) : null;
 
 function Root() {
@@ -127,7 +126,6 @@ const routeTree = root.addChildren([
   onboardingRoute,
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),
-  ...(TestEditor ? [createRoute({ ...r, path: "/test/editor", component: () => <TestEditor /> })] : []),
   ...(TestPlayer ? [createRoute({ ...r, path: "/test/player", component: () => <TestPlayer /> })] : []),
   createRoute({
     ...r,
