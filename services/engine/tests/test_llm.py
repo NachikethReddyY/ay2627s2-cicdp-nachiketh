@@ -71,6 +71,15 @@ def test_repair_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[1]["messages"][-2]["role"] == "assistant"
 
 
+def test_ai_metadata_groups_repair_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = fake(monkeypatch, reply(json.dumps({"steps": []})), reply(GOOD))
+    generate("sys", {}, Lesson)
+    first = calls[0]["metadata"]
+    second = calls[1]["metadata"]
+    assert first["$ai_session_id"] == second["$ai_session_id"]
+    assert first["$ai_trace_id"] == second["$ai_trace_id"]
+
+
 def test_invalid_twice(monkeypatch: pytest.MonkeyPatch) -> None:
     fake(monkeypatch, reply("not json"), reply("{}"))
     with pytest.raises(GenerationError) as e:

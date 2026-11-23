@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
 import litellm
@@ -20,18 +22,30 @@ from litellm.exceptions import (
     ServiceUnavailableError,
     Timeout,
 )
+from posthog.integrations.asgi import PosthogASGIMiddleware
 from pydantic import BaseModel, Field
 
 from learnquest_engine import design_feedback, guide, learner, llm, pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.guide import LintFinding
 from learnquest_engine.llm import GenerationError, Result
+from learnquest_engine.posthog_client import posthog_client
 from learnquest_engine.schemas import LessonContext
 
 log = logging.getLogger(__name__)
 MAX_BODY_BYTES = 64 * 1024
 
-app = FastAPI(title="LearnSlop engine", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    try:
+        yield
+    finally:
+        if posthog_client:
+            posthog_client.shutdown()
+
+
+app = FastAPI(title="LearnSlop engine", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 class OutlineRequest(BaseModel):
@@ -139,6 +153,8 @@ class CapBody:
 
 
 app.add_middleware(CapBody)
+if posthog_client:
+    app.add_middleware(PosthogASGIMiddleware, client=posthog_client)
 
 
 @app.get("/healthz")
