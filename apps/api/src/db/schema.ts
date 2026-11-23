@@ -90,7 +90,6 @@ export const learners = pgTable(
       .default("free"),
     timezone: text("timezone").notNull().default("UTC"),
     dailyGoalXp: integer("daily_goal_xp").notNull().default(50),
-    leaderboardOptIn: boolean("leaderboard_opt_in").notNull().default(true),
     isAdmin: boolean("is_admin").notNull().default(false),
     handle: text("handle")
       .notNull()

@@ -10,15 +10,12 @@ import { learners, user } from "../src/db/schema.ts";
 const app = buildApp();
 after(() => app.close());
 
-test("weekly leaderboard rows expose only generated handles and XP, even for legacy opt-outs", async () => {
+test("weekly leaderboard rows expose only generated handles and XP", async () => {
   const cookie = await signUp(app, "hidden-local-part@example.com");
   const learnerId = await resolveLearnerId({ cookie });
   assert.ok(learnerId);
   await db.update(user).set({ name: "hidden-local-part" }).where(eq(user.email, "hidden-local-part@example.com"));
-  const [learner] = await db.update(learners)
-    .set({ leaderboardOptIn: false })
-    .where(eq(learners.id, learnerId))
-    .returning({ handle: learners.handle });
+  const [learner] = await db.select({ handle: learners.handle }).from(learners).where(eq(learners.id, learnerId));
   assert.match(learner!.handle, /^learner_[0-9a-f]{10}$/);
 
   const viewer = trpc(app, await signUp(app, "viewer@example.com"));

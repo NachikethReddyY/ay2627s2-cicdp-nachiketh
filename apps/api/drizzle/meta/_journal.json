@@ -204,6 +204,13 @@
       "when": 1795398457778,
       "tag": "0028_handle_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795401415088,
+      "tag": "0029_drop_leaderboard_opt_in",
+      "breakpoints": true
     }
   ]
 }
