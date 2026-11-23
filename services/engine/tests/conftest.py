@@ -19,6 +19,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LLM_MODEL", "openai/test")
+    monkeypatch.setenv("LLM_API_BASE", "http://fake.invalid/v1")
+    for name in ("LLM_PRICE_OVERRIDE_MODEL", "LLM_INPUT_USD_PER_MTOK", "LLM_OUTPUT_USD_PER_MTOK"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("ENGINE_TOKEN", "x" * 32)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("TOKENROUTER_API_KEY", raising=False)

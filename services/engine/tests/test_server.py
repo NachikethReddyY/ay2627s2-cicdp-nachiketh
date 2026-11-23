@@ -53,7 +53,7 @@ def test_outline_shape(client: TestClient, fake_llm: Callable[[str], list[dict[s
     assert body["usage"]["prompt_tokens"] == 10
     assert body["attempts"] == 1
     assert json.loads(r.headers["x-engine-usage"]) == [
-        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test"}
+        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test", "estimated_usd": None}
     ]
 
 
@@ -72,9 +72,8 @@ def test_invalid_twice_is_422(
     assert r.status_code == 422
     assert r.json()["error"] == "invalid_output"
     assert json.loads(r.headers["x-engine-usage"]) == [
-        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test"},
-        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test"},
-    ]
+        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test", "estimated_usd": None}
+    ] * 2
 
 
 def test_upstream_timeout_is_504(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,3 +144,23 @@ def test_lesson_context_fields_are_capped(client: TestClient) -> None:
     ctx = {**CTX, "missedConcepts": ["x"] * 51}
     r = client.post("/v1/pipeline/lesson", json=ctx, headers=TOKEN)
     assert r.status_code == 422
+
+@pytest.mark.parametrize(
+    ("base", "cost"), [("https://api.openai.com/v1/", 0), ("http://local", None)]
+)
+def test_moderation_usage_header(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, base: str, cost: float | None,
+) -> None:
+    from unittest.mock import Mock
+
+    result = Mock(usage=None)
+    result.model_dump.return_value = {"results": [{"flagged": False}]}
+    monkeypatch.setattr(litellm, "moderation", Mock(return_value=result))
+    r = client.post("/v1/moderation", headers=TOKEN, json={
+        "input": "private", "model": "omni-moderation-latest", "apiBase": base, "apiKey": "secret",
+    })
+    assert r.status_code == 200
+    assert json.loads(r.headers["x-engine-usage"]) == [{
+        "model": "omni-moderation-latest", "prompt_tokens": 0, "completion_tokens": 0,
+        "estimated_usd": cost,
+    }]

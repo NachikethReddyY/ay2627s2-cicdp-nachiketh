@@ -1,14 +1,15 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { estimateModelCostUsd } from "../config/ai-model-prices.ts";
 import { db } from "../db/client.ts";
 import { aiCallSpend } from "../db/schema.ts";
 
-const tokenCount = z.int().min(0).max(2_147_483_647);
+export const tokenCount = z.int().min(0).max(2_147_483_647);
+export const spendAmount = z.number().min(0).lt(1e12);
 const usageHeader = z.array(z.object({
   model: z.string().min(1).max(240),
   prompt_tokens: tokenCount,
   completion_tokens: tokenCount,
+  estimated_usd: spendAmount.nullable().optional().catch(null),
 })).max(32);
 
 export async function recordEngineCallSpend(header: string | null) {
@@ -16,11 +17,19 @@ export async function recordEngineCallSpend(header: string | null) {
   try {
     const usage = usageHeader.parse(JSON.parse(header));
     if (usage.length === 0) return;
-    await db.insert(aiCallSpend).values(usage.map(({ model, prompt_tokens, completion_tokens }) => ({
+    await db.insert(aiCallSpend).values(usage.map(({ prompt_tokens, completion_tokens, estimated_usd }) => ({
       promptTokens: prompt_tokens,
       completionTokens: completion_tokens,
-      estimatedUsd: estimateModelCostUsd(model, prompt_tokens, completion_tokens),
+      estimatedUsd: estimated_usd?.toFixed(12) ?? null,
     })));
+  } catch {
+    console.warn("Could not record AI call spend");
+  }
+}
+
+export async function recordImageCallSpend(promptTokens: number, completionTokens: number, cost: number | null) {
+  try {
+    await db.insert(aiCallSpend).values({ promptTokens, completionTokens, estimatedUsd: cost?.toFixed(12) ?? null });
   } catch {
     console.warn("Could not record AI call spend");
   }

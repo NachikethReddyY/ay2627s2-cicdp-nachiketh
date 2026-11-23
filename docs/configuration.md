@@ -16,7 +16,7 @@ Selected environment variables for the API and engine.
 - For images, set `TOKENROUTER_API_KEY` and `IMAGE_MODEL` on the API. The TokenRouter key takes precedence over `IMAGE_API_KEY` and defaults `IMAGE_BASE_URL` to `https://api.tokenrouter.com/v1`. An explicit `IMAGE_BASE_URL` overrides the default. Set `IMAGE_API_STYLE=chat` for models served through chat completions. The default `images` uses the image generations endpoint. The legacy key requires an explicit base URL.
 - Studio uses `https://openrouter.ai/api/v1/audio/speech` for text-to-speech and `https://openrouter.ai/api/v1/audio/transcriptions` for speech-to-text. The default `STUDIO_TTS_VOICE` is `af_heart`.
 
-To pick the cheapest model, check each router's model list with its own key and compare prices for models that support the required modality and endpoint. Confirm the exact model ID before configuring it.
+Confirm the exact model ID in the router's model list. Within an already configured provider and endpoint style, change only `LLM_MODEL` or `IMAGE_MODEL` and redeploy. Spend reporting resolves the new model's applicable rate automatically. [Pricing source coverage and rollout](ai-spend.md)
 
 ## Sandbox (LQ-76)
 
