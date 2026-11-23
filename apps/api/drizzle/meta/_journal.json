@@ -232,6 +232,13 @@
       "when": 1795403406237,
       "tag": "0032_assessments-and-review",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795414645400,
+      "tag": "0033_drop-legacy-columns",
+      "breakpoints": true
     }
   ]
 }
