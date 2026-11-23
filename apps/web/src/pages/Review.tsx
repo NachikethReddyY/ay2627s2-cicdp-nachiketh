@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "@tanstack/react-router";
+import { usePostHog } from "@posthog/react";
 import { Spinner } from "../components/Bits";
 import { useApi } from "../lib/api";
 import { trpc, type RouterOutputs } from "../lib/trpc";
@@ -13,6 +14,7 @@ function Prediction({ slug, question }: { slug: string; question: Question }) {
   const [result, setResult] = useState<RouterOutputs["me"]["review"]["submit"]>();
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
+  const posthog = usePostHog();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,7 +26,9 @@ function Prediction({ slug, question }: { slug: string; question: Question }) {
     setSaving(true);
     setFailed(false);
     try {
-      setResult(await trpc.me.review.submit.mutate({ slug, token: question.token, answer }));
+      const submission = await trpc.me.review.submit.mutate({ slug, token: question.token, answer });
+      setResult(submission);
+      posthog?.capture("review_answer_submitted", { answer_correct: submission.correct });
     } catch {
       setFailed(true);
     } finally {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
+import { usePostHog } from "@posthog/react";
 import { useApi, type ExplorePath } from "../lib/api";
 import { trpc } from "../lib/trpc";
 import { authClient } from "../lib/auth";
@@ -20,6 +21,7 @@ const covers: Record<string, string> = {
 
 function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
   const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
+  const posthog = usePostHog();
   const confirmRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (state === "confirm") confirmRef.current?.focus();
@@ -35,7 +37,10 @@ function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
     <div role="group" aria-label={`Publish ${p.title}`} className="explore-confirm">
       <span>Make this path public?</span>
       <button ref={confirmRef} type="button" disabled={state === "busy"} className="btn explore-action"
-        onClick={() => { setState("busy"); trpc.paths.publish.mutate({ slug: p.slug }).then(onDone, () => setState("error")); }}>
+        onClick={() => { setState("busy"); trpc.paths.publish.mutate({ slug: p.slug }).then(() => {
+          posthog?.capture("learning_path_published", { path_origin: p.origin });
+          onDone();
+        }, () => setState("error")); }}>
         Yes, publish
       </button>
       <button type="button" disabled={state === "busy"} className="pill explore-action" onClick={() => setState("idle")}>Cancel</button>
@@ -46,6 +51,7 @@ function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
 function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: string }) {
   const [busy, setBusy] = useState(false);
   const [joinFailed, setJoinFailed] = useState(false);
+  const posthog = usePostHog();
   const navigate = useNavigate();
   const first = p.courses[0];
   const body = (
@@ -81,6 +87,7 @@ function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: 
           <div>
             <button type="button" disabled={busy} className="pill explore-action"
               onClick={() => { setBusy(true); setJoinFailed(false); trpc.paths.enroll.mutate({ slug: p.slug }).then(() => {
+                posthog?.capture("learning_path_joined", { source: "explore" });
                 onDone();
                 if (first) void navigate({ to: "/courses/$slug", params: { slug: first.slug } });
               }, () => setJoinFailed(true)).finally(() => setBusy(false)); }}>
