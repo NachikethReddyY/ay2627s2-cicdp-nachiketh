@@ -30,6 +30,8 @@ These steps are outside the repo. The workflow fails clearly until they are done
 
 Run a single API instance. Sandbox runs, shell tickets and rate limits use in-process state. Move that state to shared storage before scaling the API horizontally.
 
+Course lesson writes are queued in memory, three engine calls at a time across the whole API. A restart lets the running writes finish and drops the queued ones. Those lessons show as "pending" on the course page, and the learner writes them again with one click.
+
 ### Vercel
 
 1. Use the production Vercel project (`learnslop`) with root directory `apps/web`. The committed `vercel.json` disables automatic Git deployments from `main` so the production workflow publishes the alias with the configured API origin. Other branches still get Git previews.
