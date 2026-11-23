@@ -46,6 +46,7 @@ test("401 without login", async () => {
 test("new learner sees the official path and nothing to continue", async () => {
   const body = out(await get(await signUp(app)));
   assert.equal(body.continue, null);
+  assert.equal(body.resume, null);
   assert.deepEqual(body.paths, []);
   assert.deepEqual(body.official.map((p: { slug: string }) => p.slug).sort(), ["js-foundations", "sample-courses"]);
   assert.equal(body.stats.xp, 0);
@@ -73,6 +74,9 @@ test("enrolled learner gets continue, progress and XP", async () => {
   ]);
 
   assert.equal((await answer(cookie, "s1", { kind: "mcq", choice: 1 })).statusCode, 200);
+  const inProgress = out(await get(cookie));
+  assert.equal(inProgress.resume.lessonSlug, "lesson-1");
+  assert.equal(inProgress.resume.courseSlug, "codequest");
   assert.equal((await answer(cookie, "s2", { kind: "cloze", text: "discount = 0" })).statusCode, 200);
   assert.equal((await answer(cookie, "s3", { kind: "mcq", choice: 1 })).statusCode, 200);
 
@@ -81,6 +85,7 @@ test("enrolled learner gets continue, progress and XP", async () => {
   assert.equal(body.stats.todayXp, 45);
   assert.equal(body.stats.streak, 1);
   assert.equal(body.continue.lesson.slug, "conditionals-1");
+  assert.equal(body.resume, null);
   assert.deepEqual(body.paths[0].courses[0], { slug: "codequest", title: "Shopping Cart Basics", lessonsDone: 1, lessonsTotal: 2 });
 });
 
