@@ -129,7 +129,7 @@ test("score: required and stretch counts, points, completion, and what each kind
   assert.equal(s.points, 2);
   assert.equal(s.maxPoints, 4);
   assert.equal(s.complete, false);
-  assert.deepEqual(s.results[0], { id: "a", name: "A", stretch: false, visibility: "sample", status: "pass", stdin: "1", expectedStdout: "1", actualStdout: "1" });
+  assert.deepEqual(s.results[0], { id: "a", name: "A", stretch: false, visibility: "sample", status: "pass", stdin: "1" });
   assert.deepEqual(s.results[1], { id: "b", name: "B", stretch: false, visibility: "hidden", status: "fail" }, "hidden: no stdin, expected or actual output");
   assert.deepEqual(s.results[2], { id: "c", name: "C", stretch: true, visibility: "hidden", status: "pass" });
   assert.equal(s.results[3]!.error, "boom");

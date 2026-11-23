@@ -32,9 +32,12 @@ const gateExplanations = { workedExample: "GATE_WORKED_EXAMPLE_PRIVATE", practic
 const hiddenContent = "LAB_HIDDEN_CONTENT_PRIVATE";
 const hiddenActual = "LAB_HIDDEN_ACTUAL_PRIVATE";
 const hiddenError = "LAB_HIDDEN_ERROR_PRIVATE";
-const publicTests = [
+const sampleTests = [
   { id: "s1", name: "Sample one", visibility: "sample", stretch: false, stdin: "SAMPLE_ONE_IN", expectedStdout: "SAMPLE_ONE_OUT" },
   { id: "s2", name: "Sample two", visibility: "sample", stretch: false, stdin: "SAMPLE_TWO_IN", expectedStdout: "SAMPLE_TWO_OUT" },
+] as const;
+const publicTests = [
+  ...sampleTests.map(({ expectedStdout: _expected, ...test }) => test),
   { id: "h1", name: "Hidden one", visibility: "hidden", stretch: false },
   { id: "h2", name: "Hidden two", visibility: "hidden", stretch: true },
 ] as const;
@@ -56,7 +59,7 @@ const scrim = {
     instructions: "Write a program that maps each input to its output.",
     language: "javascript",
     starterCode: "const input = '';",
-    tests: [publicTests[0], publicTests[1],
+    tests: [...sampleTests,
       { ...publicTests[2], ...hiddenIO[0], content: hiddenContent },
       { ...publicTests[3], ...hiddenIO[1], content: hiddenContent },
     ],
@@ -163,6 +166,7 @@ test("lessons.get returns only through the first pending gate with no secrets", 
   assertOmitted(res.json(), [
     gateAnswer.option, gatePrompt, gateAccepted, gateHint, ...Object.values(gateExplanations), hiddenContent, ...hiddenValues,
     '"answer"', '"accepted"', '"hints"', '"explanations"', '"secret"', '"expectedOutput"',
+    ...sampleTests.map((test) => test.expectedStdout),
   ]);
   assert.deepEqual(out(res), {
     id: slug,
@@ -178,6 +182,7 @@ test("lessons.get returns only through the first pending gate with no secrets", 
         kind: "practice", instructions: scrim.lab.instructions, language: "javascript", starterCode: scrim.lab.starterCode,
         versionId, revision: out(res).part.lab.revision, solution: null, tests: publicTests,
       },
+      labLocked: true,
       started: false,
     },
     steps: [{ id: gateId, idx: gateIdx, title: gateTitle, hintCount: 1, state: "predicting" }],
@@ -370,16 +375,26 @@ test("sandbox check grades the scrim lab and records completion without returnin
     payload: { code: "console.log('LEARNER_SUBMISSION')", language: "javascript", lessonId: slug },
   });
   const expectedResults = [
-    { ...publicTests[0], status: "pass", actualStdout: publicTests[0].expectedStdout },
-    { ...publicTests[1], status: "pass", actualStdout: publicTests[1].expectedStdout },
+    { ...publicTests[0], status: "pass" },
+    { ...publicTests[1], status: "pass" },
     { ...publicTests[2], status: "fail" },
     { ...publicTests[3], status: "pass" },
   ];
-  const sampleOutputs = [publicTests[0].expectedStdout, publicTests[1].expectedStdout];
+  const sampleOutputs = sampleTests.map((test) => test.expectedStdout);
   const submissions = fakeSandbox([...sampleOutputs, hiddenActual, hiddenIO[1].expectedStdout]);
+  const client = trpc(app, cookie);
+  assert.equal((await check()).statusCode, 403);
+  assert.equal(submissions.length, 0);
+  const beforeGate = out(await client.q("courses.get", { slug: "scrim-test-world" }));
+  assert.equal(beforeGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
+  const skipped = await client.m("steps.skip", { id: gateId });
+  assert.equal(skipped.statusCode, 409, skipped.body);
+  assert.equal((await check()).statusCode, 403);
+  const revealed = await client.m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } });
+  assert.equal(revealed.statusCode, 200, revealed.body);
   const failed = await check();
   assert.equal(failed.statusCode, 200, failed.body);
-  assertOmitted(failed.json(), [...hiddenValues, hiddenActual, hiddenError]);
+  assertOmitted(failed.json(), [...sampleOutputs, ...hiddenValues, hiddenActual, hiddenError]);
   assert.deepEqual(failed.json(), {
     results: expectedResults, required: { passed: 2, total: 3 }, stretch: { passed: 1, total: 1 },
     points: 3, maxPoints: 4, complete: false, best: { points: 3, maxPoints: 4 }, attemptCount: 1,
@@ -401,20 +416,11 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.deepEqual(completed, [{ learnerId: learner.id }]);
   const third = await check();
   assert.equal(third.json().attemptCount, 3, third.body);
-  const client = trpc(app, cookie);
-  const lab = out(await client.q("lessons.get", { id: slug })).part.lab;
-  assert.deepEqual(lab.solution, { attemptCount: 3, unlockAt: 3, gated: true });
+  const part = out(await client.q("lessons.get", { id: slug })).part;
+  assert.equal(part.labLocked, false);
+  const lab = part.lab;
+  assert.deepEqual(lab.solution, { attemptCount: 3, unlockAt: 3, gated: false });
   const revealReference = () => client.m("lessons.revealPracticeSolution", { id: slug, versionId, revision: lab.revision });
-  assert.equal((await revealReference()).statusCode, 403);
-  const beforeGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
-  assert.equal(beforeGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
-  const skipped = await trpc(app, cookie).m("steps.skip", { id: gateId });
-  assert.equal(skipped.statusCode, 409, skipped.body);
-  const afterSkip = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
-  assert.equal(afterSkip.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 0);
-  const revealed = await trpc(app, cookie).m("steps.attempt", { id: gateId, answer: { kind: "mcq", choice: gateAnswer.index } });
-  assert.equal(revealed.statusCode, 200, revealed.body);
-  assert.equal(out(await client.q("lessons.get", { id: slug })).part.lab.solution.gated, false);
   assert.deepEqual(out(await revealReference()), { code: referenceSolution });
   const afterGate = out(await trpc(app, cookie).q("courses.get", { slug: "scrim-test-world" }));
   assert.equal(afterGate.lessons.find((lesson: { slug: string }) => lesson.slug === slug).done, 1);

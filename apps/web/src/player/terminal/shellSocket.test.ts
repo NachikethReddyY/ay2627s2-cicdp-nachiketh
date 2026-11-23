@@ -137,6 +137,20 @@ test("nothing connects until connect() is called", () => {
   assert.equal(s.state().kind, "idle");
 });
 
+test("a terminal attaching after the shell starts receives the startup output once", () => {
+  reset();
+  const shell = make();
+  shell.connect();
+  FakeWS.last.open();
+  FakeWS.last.msg(bytes("learner@"));
+  FakeWS.last.msg(bytes("sandbox $ "));
+  const output: string[] = [];
+  shell.onOutput((data) => output.push(new TextDecoder().decode(data)));
+  assert.deepEqual(output, ["learner@sandbox $ "]);
+  shell.onOutput(() => assert.fail("startup output was already delivered"));
+  shell.dispose();
+});
+
 test("send is dropped unless the socket is open", () => {
   reset();
   const s = make();

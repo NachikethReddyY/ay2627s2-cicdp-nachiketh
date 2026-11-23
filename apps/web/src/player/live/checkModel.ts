@@ -3,11 +3,11 @@ export type PracticeLanguage = "python" | "javascript" | "typescript";
 export type TestStatus = "pass" | "fail" | "timeout" | "error";
 export type Visibility = "sample" | "hidden";
 
-export type PracticeTest = { id: string; name: string; visibility: Visibility; stretch: boolean; stdin?: string; expectedStdout?: string };
+export type PracticeTest = { id: string; name: string; visibility: Visibility; stretch: boolean; stdin?: string };
 
 export type CheckResult = {
   id: string; name: string; stretch: boolean; visibility: Visibility; status: TestStatus;
-  stdin?: string; expectedStdout?: string; actualStdout?: string; error?: string;
+  stdin?: string; actualStdout?: string; error?: string;
 };
 export type CheckResponse = {
   results: CheckResult[];
@@ -24,14 +24,14 @@ export const statusLabel = (s: TestStatus) => STATUS_LABEL[s] ?? "Error";
 export type CheckRow = {
   id: string; name: string; stretch: boolean; status: TestStatus | "locked" | "idle"; label: string;
   locked: boolean;
-  detail?: { stdin?: string; expectedStdout?: string; actualStdout?: string; error?: string };
+  detail?: { stdin?: string; actualStdout?: string; error?: string };
 };
 
 export function toRows(results: CheckResult[]): CheckRow[] {
   return results.map((r) => {
     const row: CheckRow = { id: r.id, name: r.name, stretch: r.stretch, status: r.status, label: statusLabel(r.status), locked: r.visibility !== "sample" };
     if (r.visibility === "sample") {
-      row.detail = { stdin: r.stdin, expectedStdout: r.expectedStdout, actualStdout: r.status === "pass" ? undefined : r.actualStdout, error: r.error };
+      row.detail = { stdin: r.stdin, actualStdout: r.status === "pass" ? undefined : r.actualStdout, error: r.error };
     }
     return row;
   });
@@ -41,7 +41,7 @@ export function previewRows(tests: PracticeTest[]): CheckRow[] {
   return tests.map((t) => {
     const sample = t.visibility === "sample";
     const row: CheckRow = { id: t.id, name: t.name, stretch: t.stretch, status: sample ? "idle" : "locked", label: sample ? "Not run" : "Locked", locked: !sample };
-    if (sample) row.detail = { stdin: t.stdin, expectedStdout: t.expectedStdout };
+    if (sample) row.detail = { stdin: t.stdin };
     return row;
   });
 }

@@ -11,6 +11,8 @@ import { atCapacity, reserveCheckSlot } from "./run.ts";
 import { TEST_TIMEOUT_MS } from "./checkHarness.ts";
 import { getBackend } from "./backend.ts";
 import { CheckUnavailableError, type RawResult } from "./checkRunner.ts";
+import { loadScrimGates } from "../lessons/scrim-gates.ts";
+import { scrimLabLocked } from "../lessons/scrim.ts";
 
 import { catchUpMastery } from "../progress/mastery.ts";
 import { recordLessonObservation } from "../progress/observation.ts";
@@ -33,7 +35,7 @@ export function classify(raw: RawResult, expectedStdout: string): Status {
 
 export type CheckResult = {
   id: string; name: string; stretch: boolean; visibility: "sample" | "hidden"; status: Status;
-  stdin?: string; expectedStdout?: string; actualStdout?: string; error?: string;
+  stdin?: string; actualStdout?: string; error?: string;
 };
 
 export function score(tests: PracticeTest[], raws: RawResult[]) {
@@ -52,7 +54,7 @@ export function score(tests: PracticeTest[], raws: RawResult[]) {
       : status === "error" ? raw.stderr.trim() || "The code stopped with an error."
       : raw.overflow ? "The output was too long."
       : undefined;
-    return { ...base, stdin: t.stdin, expectedStdout: t.expectedStdout, actualStdout: raw.stdout, ...(error && { error }) };
+    return { ...base, stdin: t.stdin, ...(status !== "pass" && { actualStdout: raw.stdout }), ...(error && { error }) };
   });
   return {
     results,
@@ -128,6 +130,11 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
     if (!release) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
     active.add(learner);
     try {
+      if (found.kind === "scrim") {
+        const { scrim, gates } = await loadScrimGates(found.versionId, learner);
+        if (scrimLabLocked(scrim, gates))
+          return reply.status(403).send(fail("lab_locked", "Finish the scrim predictions to unlock the lab"));
+      }
       const { tests } = found.practice;
       const raws = await runChecks(body.data.code, found.practice.language, tests);
       const scored = score(tests, raws);

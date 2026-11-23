@@ -21,13 +21,13 @@ test("scoreLine reads X of Y required, bonus points and best", () => {
   );
 });
 
-test("hidden tests never reach the UI model with stdin, expected or actual output, even when the object has them", () => {
-  const results: CheckResult[] = [
+test("the UI model omits expected output and hidden test details even when the response has them", () => {
+  const results: (CheckResult & { expectedStdout: string })[] = [
     { id: "a", name: "Sample", stretch: false, visibility: "sample", status: "fail", stdin: "2\n", expectedStdout: "4\n", actualStdout: "5\n" },
     { id: "b", name: "Hidden", stretch: false, visibility: "hidden", status: "fail", stdin: "SECRET_IN", expectedStdout: "SECRET_OUT", actualStdout: "SECRET_ACT", error: "SECRET_ERR" },
   ];
   const rows = toRows(results);
-  assert.deepEqual(rows[0].detail, { stdin: "2\n", expectedStdout: "4\n", actualStdout: "5\n", error: undefined });
+  assert.deepEqual(rows[0].detail, { stdin: "2\n", actualStdout: "5\n", error: undefined });
   assert.equal(rows[1].detail, undefined);
   assert.ok(!JSON.stringify(rows[1]).includes("SECRET"));
   assert.equal(rows[1].label, "✗ Failed");
@@ -35,7 +35,7 @@ test("hidden tests never reach the UI model with stdin, expected or actual outpu
 
 test("a passing sample test hides the actual output; bonus tests are grouped apart", () => {
   const rows = toRows([
-    { id: "a", name: "Sample", stretch: false, visibility: "sample", status: "pass", stdin: "1", expectedStdout: "1", actualStdout: "1" },
+    { id: "a", name: "Sample", stretch: false, visibility: "sample", status: "pass", stdin: "1", actualStdout: "1" },
     { id: "b", name: "Bonus", stretch: true, visibility: "hidden", status: "pass" },
   ]);
   assert.equal(rows[0].detail?.actualStdout, undefined);
@@ -80,13 +80,13 @@ test("hidden rows are locked with a status label after a check, and Locked befor
   assert.deepEqual(rows.slice(1).map((r) => r.label), ["✓ Passed", "✗ Failed", "Timed out", "Error"]);
   assert.deepEqual(bonusRows(rows).map((r) => r.id), ["d"]);
   const before = previewRows([
-    { id: "a", name: "Sample", visibility: "sample", stretch: false, stdin: "1", expectedStdout: "2" },
+    { id: "a", name: "Sample", visibility: "sample", stretch: false, stdin: "1" },
     { id: "b", name: "Hidden", visibility: "hidden", stretch: false },
     { id: "c", name: "Bonus", visibility: "hidden", stretch: true },
   ]);
   assert.deepEqual(before.map((r) => r.label), ["Not run", "Locked", "Locked"]);
   assert.deepEqual(before.map((r) => r.locked), [false, true, true]);
-  assert.deepEqual(before[0].detail, { stdin: "1", expectedStdout: "2" });
+  assert.deepEqual(before[0].detail, { stdin: "1" });
   assert.equal(before[1].detail, undefined);
   assert.deepEqual(bonusRows(before).map((r) => r.id), ["c"]);
 });

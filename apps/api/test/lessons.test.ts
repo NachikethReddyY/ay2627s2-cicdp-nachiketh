@@ -80,7 +80,7 @@ test("practice lessons never return expectedOutput, but the server-side check st
   assert.equal(check?.expected, "42");
 });
 
-test("lessons.get returns stdin and expectedStdout only for sample tests (2 visible, rest locked)", async () => {
+test("lessons.get returns sample inputs and keeps all expected output server-side", async () => {
   const { lessonVersions, worlds } = await import("../src/db/schema.ts");
   const cookie = await signUp(app, "sample-reader@example.com");
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
@@ -105,8 +105,8 @@ test("lessons.get returns stdin and expectedStdout only for sample tests (2 visi
   assert.equal(shown.length, 12);
   assert.equal(shown.filter((t) => t.visibility === "sample").length, 2);
   for (const t of shown) {
-    if (t.visibility === "sample") assert.deepEqual([t.stdin, t.expectedStdout], [`IN_${String(t.id).toUpperCase()}`, `OUT_${String(t.id).toUpperCase()}`]);
-    else assert.ok(!("stdin" in t) && !("expectedStdout" in t), `hidden test ${t.id} leaked data`);
+    if (t.visibility === "sample") assert.equal(t.stdin, `IN_${String(t.id).toUpperCase()}`);
+    else assert.ok(!("stdin" in t), `hidden test ${t.id} leaked data`);
   }
-  assert.ok(!JSON.stringify(res.json()).includes("_H"));
+  assert.doesNotMatch(res.body, /_H|OUT_S|expectedStdout/);
 });

@@ -24,6 +24,8 @@ function pendingSegment(scrim: Scrim, gates: ReadonlyMap<number, ScrimGateState>
   return scrim.segments.findIndex((segment) => segment.gate !== undefined && gates.get(segment.gate)?.state !== "revealed");
 }
 
+export const scrimLabLocked = (scrim: Scrim, gates: ReadonlyMap<number, ScrimGateState>) => pendingSegment(scrim, gates) !== -1;
+
 export function scrimGateOpen(scrim: Scrim, gates: ReadonlyMap<number, ScrimGateState>, stepIdx: number) {
   const segment = scrim.segments.findIndex((candidate) => candidate.gate === stepIdx);
   const pending = pendingSegment(scrim, gates);

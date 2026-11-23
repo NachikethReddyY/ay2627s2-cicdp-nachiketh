@@ -98,8 +98,9 @@ const r = [
 console.log(r.join(","));
 `;
   const tests = [mk("t", "EACCES,EACCES,EACCES")];
-  const s = score(tests, await runInContainer(code, "javascript", tests));
-  assert.equal(s.results[0]!.actualStdout?.trim(), "EACCES,EACCES,EACCES");
+  const raw = await runInContainer(code, "javascript", tests);
+  const s = score(tests, raw);
+  assert.equal(raw[0]!.stdout.trim(), "EACCES,EACCES,EACCES");
   assert.equal(isPass(s), true);
 });
 
@@ -111,7 +112,8 @@ const n = Number(fs.readFileSync(0, "utf8").trim());
 console.log(process.getuid(), process.getgid(), caps, n * 2);
 `;
   const tests = [mk("t", "1001 1001 0000000000000000 8", { stdin: "4" })];
-  const s = score(tests, await runInContainer(code, "javascript", tests));
-  assert.equal(s.results[0]!.actualStdout?.trim(), "1001 1001 0000000000000000 8");
+  const raw = await runInContainer(code, "javascript", tests);
+  const s = score(tests, raw);
+  assert.equal(raw[0]!.stdout.trim(), "1001 1001 0000000000000000 8");
   assert.equal(s.complete, true);
 });

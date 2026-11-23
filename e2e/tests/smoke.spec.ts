@@ -156,6 +156,9 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     await route.fulfill({ json: { id: "run-1" } });
   });
   await page.route("**/api/sandbox/run/run-1?*", (route) => route.fulfill({ json: { output: "Practice output", next: 15, done: true } }));
+  await page.route("**/api/practice/lint", (route) => route.fulfill({ json: {
+    findings: [{ ruleId: "style-example", line: 1, column: 1, message: "Example style finding" }],
+  } }));
   await page.route("**/api/sandbox/check", async (route) => {
     const input = route.request().postDataJSON();
     expect(input).toMatchObject({ lessonId: "scrim-return-values", language: "javascript" });
@@ -170,11 +173,20 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     } });
   });
   await signUp(page, newEmail(), "/");
+  await page.goto("/editor?lesson=scrim-return-values");
+  await expect(page.getByRole("status")).toContainText("Finish the scrim predictions to unlock the lab.");
+  await expect(page.getByRole("button", { name: "Submit" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Open the lesson" }).click();
+  await page.getByRole("button", { name: "Next part" }).click();
+  await page.getByLabel("undefined, because nothing is returned").check();
+  await page.getByRole("button", { name: "Check", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
   const lesson = page.waitForResponse((res) => res.url().includes("lessons.get") && res.ok());
   await page.goto("/editor?lesson=scrim-return-values");
   const body = await (await lesson).text();
   expect(body).toContain("hidden case 1");
   expect(body).not.toContain("-14");
+  expect(body).not.toContain("expectedStdout");
   await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
   await expect(page.locator(".view-lines").first()).toContainText("function double(n)");
@@ -187,6 +199,8 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
 
   await page.getByRole("button", { name: "Lint", exact: true }).click();
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Example style finding", { exact: true })).toBeVisible();
+  await expect(page.locator(".squiggly-warning").first()).toBeVisible();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
   expect(submitted).toBe(true);
@@ -194,6 +208,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.locator(".view-lines").first().click();
   await page.keyboard.type(" ");
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".squiggly-warning")).toHaveCount(0);
 });
 
 test("a scrim keeps later code hidden until its prediction and shows the updated replay", async ({ page }) => {

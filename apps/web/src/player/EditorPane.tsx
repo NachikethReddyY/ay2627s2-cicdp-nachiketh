@@ -7,8 +7,9 @@ import Loader from "../components/Loader";
 import { defineWorkbenchThemes } from "./workbench/monacoThemes";
 import { explainMarker } from "./workbench/editorHelp";
 import { CODE_FONT, type WorkbenchProblem } from "./workbench/context";
+import type { LintFinding } from "./runPython";
 
-export type EditorHandle = { show(r: SeekResult): void; focus(): void };
+export type EditorHandle = { show(r: SeekResult): void; focus(): void; showLint(findings: LintFinding[]): void };
 
 const DARK = "(prefers-color-scheme: dark)";
 
@@ -109,6 +110,15 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
       apply(r);
     },
     focus: () => editorRef.current?.focus(),
+    showLint(findings) {
+      const model = editorRef.current?.getModel();
+      const monaco = monacoRef.current;
+      if (!model || !monaco) return;
+      monaco.editor.setModelMarkers(model, "learnslop-lint", findings.map(({ line, column, message, ruleId }) => ({
+        startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column + 1,
+        severity: monaco.MarkerSeverity.Warning, message, code: ruleId, source: "Lint",
+      })));
+    },
   }));
 
   const onMount: OnMount = (ed, monaco) => {
@@ -127,8 +137,9 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
             const missingName = /^Cannot find name '([^']+)'/.exec(marker.message)?.[1];
             const missingProperty = /^Property '([^']+)' does not exist/.exec(marker.message)?.[1];
             const friendly = explainMarker(marker.message);
-            const title = missingName ? `“${missingName}” has not been defined` : missingProperty ? `“${missingProperty}” is not available here` : friendly ? "Check this line" : "This code needs a change";
-            const explanation = missingName
+            const lint = marker.owner === "learnslop-lint";
+            const title = lint ? "Style finding" : missingName ? `“${missingName}” has not been defined` : missingProperty ? `“${missingProperty}” is not available here` : friendly ? "Check this line" : "This code needs a change";
+            const explanation = lint ? marker.message : missingName
               ? `I can’t find “${missingName}” in this file. Check its spelling or define it before this line.`
               : missingProperty
                 ? `This value doesn’t have a “${missingProperty}” property. Check that you are using the right value or property name.`

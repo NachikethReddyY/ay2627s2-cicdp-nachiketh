@@ -27,7 +27,10 @@ function Lab({ slug, course }: { slug: string; course?: string }) {
   if ("error" in target)
     return (
       <Notice>
-        {target.error} <Link to="/" className="underline">Home</Link>
+        {target.error}{" "}
+        {target.locked
+          ? <Link to="/play" search={{ lesson: slug, course }} className="underline">Open the lesson</Link>
+          : <Link to="/" className="underline">Home</Link>}
       </Notice>
     );
   const back = course ? <NextLink href={`/courses/${course}`}>Back to course</NextLink> : <NextLink href="/">Back home</NextLink>;

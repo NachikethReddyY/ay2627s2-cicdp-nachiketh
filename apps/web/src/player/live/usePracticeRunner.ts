@@ -18,10 +18,10 @@ const msg = (e: unknown) => {
   return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
 };
 
-type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; refreshTree?: () => void };
+type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; refreshTree?: () => void; onLint?: (findings: LintFinding[]) => void; startShell?: boolean };
 type RunJob = { source: string; authored: boolean };
 
-export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, refreshTree }: Options) {
+export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, refreshTree, onLint, startShell = false }: Options) {
   const [term, setTerm] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
   const [result, setResult] = useState<CheckResponse | null>(null);
@@ -57,12 +57,16 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
   const [shell, setShell] = useState<ShellSocket | null>(null);
   useEffect(() => {
     const s = createShellSocket();
+    if (startShell) {
+      s.setActive(false);
+      s.connect();
+    }
     setShell(s);
     return () => {
       s.dispose();
       setShell(null);
     };
-  }, []);
+  }, [startShell]);
   useEffect(() => {
     if (!shell) return;
     const track = () => {
@@ -150,6 +154,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     setResult(null);
     setCheckError("");
     setFindings(null);
+    onLint?.([]);
     setLintError("");
     setLintBusy(false);
   };
@@ -159,9 +164,12 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     setLintError("");
     try {
       const res = await lintPractice(code, language);
-      if (live.current && seq === lintSeq.current) setFindings(res.findings);
+      if (live.current && seq === lintSeq.current) {
+        setFindings(res.findings);
+        onLint?.(res.findings);
+      }
     } catch (e) {
-      if (live.current && seq === lintSeq.current) { setFindings(null); setLintError(lintErrorMessage(e)); }
+      if (live.current && seq === lintSeq.current) { setFindings(null); onLint?.([]); setLintError(lintErrorMessage(e)); }
     }
     if (live.current && seq === lintSeq.current) setLintBusy(false);
   };
