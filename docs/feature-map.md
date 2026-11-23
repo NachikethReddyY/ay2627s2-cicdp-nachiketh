@@ -23,6 +23,8 @@ Routes marked dev or test only exist in non-production builds.
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
 | Editor / player fixtures (test) | `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |
 
+The Course Path track labels one lesson **Up next** and distinguishes it from other available, complete and locked lessons. The syllabus shows the same states.
+
 ## Inside the lesson player
 
 | Name | Code | Notes |
