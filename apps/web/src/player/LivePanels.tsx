@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import AnswerText from "../components/AnswerText";
 import type { Hint, Reveal, StepPublic } from "./stepMachine";
 import { FOCUS } from "./ui";
 import { outcomeCopy } from "./live/readFlow";
@@ -65,7 +66,8 @@ export function PredictPanel(p: PredictProps) {
             {step.options?.map((o, i) => (
               <label key={i} className={`flex cursor-pointer items-start gap-2 opt px-3 py-2 text-sm font-medium has-[:checked]:border-[var(--ac)] has-[:checked]:bg-[var(--sel)] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--focus)] ${struck.has(i) ? "line-through opacity-50" : ""}`}>
                 <input type="radio" name="opt" className="mt-1" disabled={struck.has(i)} checked={choice === i} onChange={() => setChoice(i)} />
-                <span>{o}{struck.has(i) && <span className="sr-only"> (ruled out by a hint)</span>}</span>
+                <AnswerText text={o} />
+                {struck.has(i) && <span className="sr-only"> (ruled out by a hint)</span>}
               </label>
             ))}
           </div>
@@ -121,7 +123,7 @@ export function RevealPanel({ idx, total, state, correct, step, reveal, last, ne
         <p role="status" className="mt-2">Loading answer…</p>
       ) : (
         <>
-          <p className="mt-2 text-sm">Answer: <code className="font-mono font-medium">{answer}</code></p>
+          <p className="mt-2 text-sm">Answer: <code className="font-mono font-medium">{answer != null && <AnswerText text={answer} />}</code></p>
           <p className="mt-2">{reveal.explanations.workedExample}</p>
           {reveal.narration && reveal.narration !== reveal.explanations.workedExample && (
             <div className="mt-2">

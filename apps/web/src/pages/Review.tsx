@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { usePostHog } from "@posthog/react";
+import AnswerText from "../components/AnswerText";
 import { Spinner } from "../components/Bits";
 import { useApi } from "../lib/api";
 import { trpc, type RouterOutputs } from "../lib/trpc";
@@ -47,13 +48,14 @@ function Prediction({ slug, question }: { slug: string; question: Question }) {
         ))}
         {question.kind === "mcq" ? question.options?.map((option, index) => (
           <label className="flex gap-2" key={index}>
-            <input name="review" type="radio" checked={choice === index} onChange={() => setChoice(index)} /> {option}
+            <input name="review" type="radio" checked={choice === index} onChange={() => setChoice(index)} />
+            <AnswerText text={option} />
           </label>
         )) : <label className="flex flex-col">Your prediction<input required maxLength={200} value={text} onChange={(e) => setText(e.target.value)} /></label>}
       </fieldset>
       {failed && <p role="alert">Couldn't submit your prediction. Reload the review and try again.</p>}
       {result ? (
-        <div role="status"><p>{result.correct ? "Correct!" : "Not quite."}</p><p>Answer {result.solution}</p></div>
+        <div role="status"><p>{result.correct ? "Correct!" : "Not quite."}</p><p>Answer <AnswerText text={result.solution} /></p></div>
       ) : <button type="submit" className="lq-btn lq-btn-ink" disabled={saving || (question.kind === "mcq" ? choice === null : !text.trim())}>Check</button>}
     </form>
   );
