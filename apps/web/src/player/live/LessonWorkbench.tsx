@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { createPortal } from "react-dom";
 import { Check, ListChecks, Play } from "lucide-react";
 import { usePostHog } from "@posthog/react";
+import { useLessonAnalytics } from "./lessonAnalytics";
 import { usePanel } from "../terminal/usePanel";
 import DocsPanel from "../workbench/DocsPanel";
 import { DOCS } from "../workbench/docs";
@@ -46,11 +47,12 @@ const ROOT = "Lesson";
 
 const BUSY = "Running…";
 
-export default function LessonWorkbench({ lessonId, title, part, next, media }: { lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode; media?: VideoSource }) {
+export default function LessonWorkbench({ kind, lessonId, title, part, next, media }: { kind: "practice" | "scrim"; lessonId: string; title: string; part: Extract<Part, { kind: "practice" }>; next: ReactNode; media?: VideoSource }) {
   const practice = part as PracticePart;
   const language = monacoLanguage(practice.language);
   const { fileName, languageLabel } = lessonFile(language);
   const posthog = usePostHog();
+  const analytics = useLessonAnalytics();
   const [code, setCode] = useState(part.starterCode);
   const [selection, setSelection] = useState<{ startLine: number; endLine: number; text: string } | null>(null);
   const [tab, setTab] = useState<Tab>("instructions");
@@ -98,7 +100,7 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
     if (!can.check) return;
     posthog?.capture("practice_submission_started", { practice_language: language });
     show("results");
-    void r.check();
+    void r.check().then((completed) => { if (completed) analytics.completed(kind); });
   };
   const lint = () => {
     if (!can.lint) return;

@@ -98,22 +98,28 @@ const hint = protectedProcedure
   }));
 
 async function recordWin(tx: Db, learnerId: string, { lessonDbId, versionId, partIndex, blockId }: LoadedGame) {
-  await tx.execute(sql`
+  const { rows: wins } = await tx.execute(sql`
     INSERT INTO game_completions (learner_id, lesson_id, part_idx, block_id)
     SELECT ${learnerId}, ${lessonDbId}, ${partIndex}, ${blockId}
     WHERE NOT ${currentGameBlockWon(learnerId, lessonDbId, versionId, blockId)}
-    ON CONFLICT DO NOTHING`);
-  await tx.execute(sql`
-    INSERT INTO part_completions (learner_id, lesson_id)
-    SELECT ${learnerId}, l.id FROM lessons l WHERE l.id = ${lessonDbId} AND ${everyGameWon(learnerId)}
-    ON CONFLICT DO NOTHING`);
+    ON CONFLICT DO NOTHING RETURNING block_id`);
+  const { rows: completed } = await tx.execute(sql`
+    WITH completed AS (
+      SELECT l.id FROM lessons l WHERE l.id = ${lessonDbId} AND ${everyGameWon(learnerId)}
+    ), recorded AS (
+      INSERT INTO part_completions (learner_id, lesson_id)
+      SELECT ${learnerId}, id FROM completed
+      ON CONFLICT DO NOTHING
+    )
+    SELECT id FROM completed`);
+  return wins.length > 0 && completed.length > 0;
 }
 
 const isWatchGrid = (game: GameProps) => game.kind.kind === "grid" && game.kind.mode === "watch";
 
 const check = protectedProcedure
   .input(gameInput.extend({ submission: submissionSchema }))
-  .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionCorrect: z.boolean().optional(), remainingAttempts: z.number().int().nonnegative() }))
+  .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionCorrect: z.boolean().optional(), remainingAttempts: z.number().int().nonnegative(), lessonJustCompleted: z.boolean() }))
   .mutation(async ({ ctx, input }) => {
     const committed = await withTx(async (tx) => {
       const learnerId = ctx.learnerId;
@@ -125,7 +131,7 @@ const check = protectedProcedure
       const state = await loadAttempts(tx, key, day);
       const limit = attemptLimit(game);
       const remaining = Math.max(0, limit - state.misses);
-      if (remaining === 0) return { observed: false, result: { correct: false, complete: false, remainingAttempts: 0 } };
+      if (remaining === 0) return { observed: false, result: { correct: false, complete: false, remainingAttempts: 0, lessonJustCompleted: false } };
       let verdict;
       try {
         verdict = grade(game, input.submission);
@@ -146,10 +152,10 @@ const check = protectedProcedure
         correct,
         hintsUsed: state.hintsRevealed,
       });
-      if (verdict.complete) await recordWin(tx, learnerId, loaded);
+      const lessonJustCompleted = verdict.complete && await recordWin(tx, learnerId, loaded);
       const miss = !verdict.correct && !verdict.questionCorrect;
       if (miss) await saveAttempts(tx, key, day, { ...state, misses: state.misses + 1 });
-      return { observed, result: { ...verdict, remainingAttempts: remaining - Number(miss) } };
+      return { observed, result: { ...verdict, remainingAttempts: remaining - Number(miss), lessonJustCompleted } };
     });
     if (committed.observed) await catchUpMastery(ctx.learnerId);
     return committed.result;
@@ -157,7 +163,7 @@ const check = protectedProcedure
 
 const completeWatch = protectedProcedure
   .input(gameInput)
-  .output(z.object({ correct: z.literal(true), complete: z.literal(true), remainingAttempts: z.number().int().nonnegative() }))
+  .output(z.object({ correct: z.literal(true), complete: z.literal(true), remainingAttempts: z.number().int().nonnegative(), lessonJustCompleted: z.boolean() }))
   .mutation(({ ctx, input }) => withTx(async (tx) => {
     const learnerId = ctx.learnerId;
     const loaded = await loadGame(tx, learnerId, input, true);
@@ -169,9 +175,9 @@ const completeWatch = protectedProcedure
     if (!grade(game, { kind: "grid", program: kind.solution }).complete) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The authored solution does not solve this game" });
     }
-    await recordWin(tx, learnerId, loaded);
+    const lessonJustCompleted = await recordWin(tx, learnerId, loaded);
     const { misses } = await loadAttempts(tx, attemptKey(learnerId, loaded), attemptDay());
-    return { correct: true as const, complete: true as const, remainingAttempts: Math.max(0, attemptLimit(game) - misses) };
+    return { correct: true as const, complete: true as const, remainingAttempts: Math.max(0, attemptLimit(game) - misses), lessonJustCompleted };
   }));
 
 export const gamesRouter = router({ status, hint, check, completeWatch });

@@ -68,6 +68,7 @@ function Root() {
         defaults: "2025-05-24",
         autocapture: false,
         disable_session_recording: true,
+        capture_performance: { web_vitals: true, web_vitals_attribution: false },
         capture_exceptions: true,
         debug: import.meta.env.DEV,
         logs: { serviceName: "learnquest-web", environment: import.meta.env.MODE },

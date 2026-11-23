@@ -13,7 +13,7 @@ export default function ScrimLesson({ lessonId, title, part, steps, media, next 
   const [phase, setPhase] = useState<"watch" | "lab">("watch");
   if (phase === "lab") {
     const lab = { ...part.lab, solution: part.lab.solution && { ...part.lab.solution, gated: false } };
-    return <LessonWorkbench key={lab.revision} lessonId={lessonId} title={title} part={lab} next={next} />;
+    return <LessonWorkbench key={lab.revision} kind="scrim" lessonId={lessonId} title={title} part={lab} next={next} />;
   }
   return <ScrimWatching lessonId={lessonId} title={title} part={part} steps={steps} media={media} onLab={() => setPhase("lab")} />;
 }

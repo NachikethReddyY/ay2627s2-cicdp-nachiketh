@@ -1,14 +1,20 @@
 import { Link } from "@tanstack/react-router";
+import type { MouseEvent } from "react";
 import type { HomeData } from "../../lib/api";
+import { isInAppLinkClick, useContinueAnalytics, type ContinueAction } from "../../player/live/lessonAnalytics";
 import { Arrow } from "./art";
 import { pct } from "./pct";
 
 export function ResumeLink({ resume }: { resume: NonNullable<HomeData["resume"]> }) {
-  return <Link to="/play" search={{ lesson: resume.lessonSlug, course: resume.courseSlug }} className="lq-pill lq-resume-link">Resume {resume.title}<Arrow /></Link>;
+  return <Link to="/play" search={{ lesson: resume.lessonSlug, course: resume.courseSlug }} state={{ lessonEntrySource: "home_resume" }} className="lq-pill lq-resume-link">Resume {resume.title}<Arrow /></Link>;
 }
 
 export default function Continue({ c, resume }: { c: NonNullable<HomeData["continue"]>; resume: HomeData["resume"] }) {
   const { lesson, recommendation, snippet } = c;
+  const captureContinue = useContinueAnalytics("home_continue");
+  const track = (action: ContinueAction) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (isInAppLinkClick(event)) captureContinue(action);
+  };
   const action = recommendation?.reasonCode === "PREREQUISITES" ? "course" : recommendation?.action ?? "lesson";
   const actionLabel = recommendation?.reasonCode === "REVIEW" ? "Review" : "Continue";
   const showResume = resume && (action === "course" || action === "review" || resume.lessonSlug !== lesson.slug);
@@ -31,10 +37,10 @@ export default function Continue({ c, resume }: { c: NonNullable<HomeData["conti
         </div>
         <div className="lq-hero-cta">
           {action === "course"
-            ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink">Course<Arrow /></Link>
+            ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink" onClick={track("course")}>Course<Arrow /></Link>
             : action === "review"
-            ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink">Review<Arrow /></Link>
-            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink">{actionLabel}<Arrow /></Link>}
+            ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink" onClick={track("review")}>Review<Arrow /></Link>
+            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} state={{ lessonEntrySource: "home_continue" }} className="lq-btn lq-btn-ink" onClick={track(action === "assess" ? "assess" : "lesson")}>{actionLabel}<Arrow /></Link>}
           {showResume && <ResumeLink resume={resume} />}
         </div>
       </div>

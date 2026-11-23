@@ -213,6 +213,7 @@ for (const [kind, part] of [["learn", learnPart], ["watch", watchPart]] as const
 
     const wrong = out(await trpc(app, cookie).m("steps.attempt", { id: opening!.id, answer: { kind: "mcq", choice: 1 } }));
     assert.equal(wrong.correct, false);
+    assert.equal(wrong.lessonJustCompleted, false);
     assert.equal((await done()).length, 0, "the opening prediction is not the closing check");
 
     const skipClosing = await m(cookie, "steps.skip", { id: closing!.id });
@@ -251,6 +252,7 @@ for (const [kind, part] of [["learn", learnPart], ["watch", watchPart]] as const
     out(await trpc(app, cookie).m("steps.attempt", { id: opening!.id, answer: { kind: "mcq", choice: 0 } }));
     const wrong = out(await trpc(app, cookie).m("steps.attempt", { id: closing!.id, answer: { kind: "mcq", choice: 1 } }));
     assert.equal(wrong.state, "hinting");
+    assert.equal(wrong.lessonJustCompleted, true);
     assert.equal((await db.select().from(partCompletions)).length, 1);
     const reopened = out(await trpc(app, cookie).q("lessons.get", { id: `${kind}-checked` }));
     assert.equal(reopened.completed, true, "a wrong closing answer still reads as complete on reopen");
@@ -258,5 +260,9 @@ for (const [kind, part] of [["learn", learnPart], ["watch", watchPart]] as const
 
     const lesson = out(await trpc(app, cookie).q("courses.get", { slug: "codequest" })).lessons.find((l: { slug: string }) => l.slug === `${kind}-checked`);
     assert.deepEqual([lesson.done, lesson.total], [1, 1]);
+
+    out(await trpc(app, cookie).m("steps.hint", { id: closing!.id }));
+    const retry = out(await trpc(app, cookie).m("steps.attempt", { id: closing!.id, answer: { kind: "mcq", choice: 0 } }));
+    assert.equal(retry.lessonJustCompleted, false);
   });
 }

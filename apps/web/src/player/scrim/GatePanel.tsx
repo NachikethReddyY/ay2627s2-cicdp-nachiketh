@@ -5,12 +5,13 @@ import { useApi } from "../../lib/api";
 import { trpc } from "../../lib/trpc";
 import { OutcomePanel, PredictPanel, RevealPanel } from "../LivePanels";
 import { canHint, canSubmit, stepMachine, type Reveal, type StepPublic } from "../stepMachine";
+import { useLessonAnalytics } from "../live/lessonAnalytics";
 
 const noSkip = () => undefined;
 
 const rpcMsg = (e: unknown) => (e instanceof TRPCClientError ? e.message : "Something went wrong. Try again.");
 
-type GateProps = { stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; showCode?: boolean; showAnswer?: boolean; finishOnAttempt?: boolean };
+type GateProps = { lessonKind: "learn" | "watch" | "scrim"; stepId: string; ordinal: number; total: number; onDone: () => void; onAttempt?: () => void; showCode?: boolean; showAnswer?: boolean; finishOnAttempt?: boolean };
 
 
 function Failure({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -22,7 +23,7 @@ function Failure({ message, onRetry }: { message: string; onRetry: () => void })
   );
 }
 
-function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: GateProps & { state: "revealed" | "skipped"; correct: boolean | null; step: StepPublic }) {
+function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: Pick<GateProps, "stepId" | "ordinal" | "total" | "onDone"> & { state: "revealed" | "skipped"; correct: boolean | null; step: StepPublic }) {
   const { data, error, reload } = useApi(`reveal:${stepId}`, () => trpc.steps.reveal.query({ id: stepId }));
   if (error) return <Failure message={rpcMsg(error)} onRetry={reload} />;
   return (
@@ -41,7 +42,8 @@ function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: Ga
   );
 }
 
-function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = false, showAnswer = true, finishOnAttempt = false }: GateProps & { step: StepPublic }) {
+function GateRun({ lessonKind, stepId, ordinal, total, step, onDone, onAttempt, showCode = false, showAnswer = true, finishOnAttempt = false }: GateProps & { step: StepPublic }) {
+  const analytics = useLessonAnalytics();
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: total, idx: ordinal, step } });
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
@@ -93,7 +95,13 @@ function GateRun({ stepId, ordinal, total, step, onDone, onAttempt, showCode = f
         canSkip={false}
         showSkip={false}
         showCode={showCode}
-        onSubmit={(prediction) => run(async () => { const r = await trpc.steps.attempt.mutate({ id: stepId, answer: prediction }); send({ type: "RESULT", r }); if (finishOnAttempt) setAnswer(r.correct); onAttempt?.(); })}
+        onSubmit={(prediction) => run(async () => {
+          const r = await trpc.steps.attempt.mutate({ id: stepId, answer: prediction });
+          send({ type: "RESULT", r });
+          if (finishOnAttempt) setAnswer(r.correct);
+          onAttempt?.();
+          analytics.answered(lessonKind, step.kind, ordinal + 1, r);
+        })}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id: stepId }) }))}
         onSkip={noSkip}
       />

@@ -185,10 +185,13 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
         setAttemptCount(res.attemptCount);
         if (revisionAtSubmit === codeRevision.current) setResult(res);
       }
+      return res.lessonJustCompleted === true;
     } catch (e) {
       if (live.current && revisionAtSubmit === codeRevision.current) { setResult(null); setCheckError(msg(e)); }
+      return false;
+    } finally {
+      if (live.current) setCheckBusy(false);
     }
-    if (live.current) setCheckBusy(false);
   };
   runNow.current = async ({ source, authored }) => {
     const a = actionsFor(sandboxEnabled && !standalone, source, authored).run;

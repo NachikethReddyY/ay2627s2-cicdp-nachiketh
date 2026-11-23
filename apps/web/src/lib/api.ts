@@ -8,17 +8,21 @@ export type ExplorePath = RouterOutputs["paths"]["list"][number];
 
 export type ApiState<T> = { data?: T; error?: unknown; loading: boolean; reload: () => void };
 
-export function useApi<T>(key: string, run: () => Promise<T>): ApiState<T> {
+export function useApi<T>(key: string, run: () => Promise<T>, onSuccess?: (data: T) => void): ApiState<T> {
   const [state, setState] = useState<{ key: string; tick: number; data?: T; error?: unknown }>({ key: "", tick: -1 });
   const [tick, setTick] = useState(0);
-  const runRef = useRef(run);
+  const callbacks = useRef({ run, onSuccess });
   useEffect(() => {
-    runRef.current = run;
+    callbacks.current = { run, onSuccess };
   });
   useEffect(() => {
     let live = true;
-    runRef.current().then(
-      (data) => live && setState({ key, tick, data }),
+    callbacks.current.run().then(
+      (data) => {
+        if (!live) return;
+        setState({ key, tick, data });
+        callbacks.current.onSuccess?.(data);
+      },
       (error) => live && setState({ key, tick, error }),
     );
     return () => {

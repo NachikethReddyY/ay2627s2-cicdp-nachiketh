@@ -30,12 +30,12 @@ export function gameApi(ctx: GameCompletionContext, gameIndex: number): GameApi 
     status: () => trpc.games.status.query(input).catch(handleError),
     check: (submission) =>
       trpc.games.check.mutate({ ...input, submission }).then((verdict) => {
-        if (verdict.complete) ctx.onComplete?.();
+        if (verdict.complete) ctx.onComplete?.(verdict.lessonJustCompleted);
         return verdict;
       }).catch(handleError),
     completeWatch: () =>
       trpc.games.completeWatch.mutate(input).then((verdict) => {
-        ctx.onComplete?.();
+        ctx.onComplete?.(verdict.lessonJustCompleted);
         return verdict;
       }).catch(handleError),
     hint: async (hintIndex) => (await trpc.games.hint.mutate({ ...input, hintIndex }).catch(handleError)).text,

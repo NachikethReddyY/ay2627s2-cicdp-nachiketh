@@ -16,6 +16,7 @@ export type CheckResponse = {
   points: number; maxPoints: number; complete: boolean;
   best: { points: number; maxPoints: number };
   attemptCount: number;
+  lessonJustCompleted?: boolean;
   feedbackReceipt?: string;
 };
 

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { Check, ChevronDown, Lock, Star } from "lucide-react";
-import { usePostHog } from "@posthog/react";
 import { useApi, type CourseData } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { isNotFound, trpc } from "../lib/trpc";
@@ -32,7 +31,6 @@ export default function Course() {
   const { slug } = useParams({ from: "/courses/$slug" });
   const { data, error, reload } = useApi(`course:${slug}`, () => trpc.courses.get.query({ slug }));
   const { data: session } = authClient.useSession();
-  const posthog = usePostHog();
   const wide = useWide();
   const [open, setOpen] = useState<string | null>(null);
   const [syl, setSyl] = useState(false);
@@ -152,7 +150,7 @@ export default function Course() {
               <p className="course-cta-meta">Level {current.level} · Lesson {data.lessons.filter((l) => l.level === current.level).indexOf(current) + 1}</p>
               <p className="course-cta-title">{current.title}</p>
             </div>
-            <Link to="/play" search={{ lesson: current.slug, course: slug }} className="btn course-cta-btn" onClick={() => posthog?.capture("lesson_started", { lesson_kind: current.kind, source: "course_cta" })}>
+            <Link to="/play" search={{ lesson: current.slug, course: slug }} state={{ lessonEntrySource: "course_cta" }} className="btn course-cta-btn">
               {current.done > 0 ? "Continue" : "Start"}
             </Link>
           </div>
