@@ -4,10 +4,18 @@ import os
 
 import litellm
 from posthog import Posthog
-
-from learnquest_engine.config import get_settings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 log = logging.getLogger(__name__)
+
+
+class PostHogSettings(BaseSettings):
+    """PostHog keys, kept apart so importing this module never needs the LLM settings."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    POSTHOG_API_KEY: str | None = None
+    POSTHOG_HOST: str | None = None
 
 
 def create_posthog_client() -> Posthog | None:
@@ -15,7 +23,7 @@ def create_posthog_client() -> Posthog | None:
 
     LLM call events go to PostHog with prompts and completions redacted.
     """
-    settings = get_settings()
+    settings = PostHogSettings()
     missing_variable = "POSTHOG_API_KEY" if not settings.POSTHOG_API_KEY else "POSTHOG_HOST"
     if not settings.POSTHOG_API_KEY or not settings.POSTHOG_HOST:
         if os.environ.get("ENVIRONMENT") != "production":
