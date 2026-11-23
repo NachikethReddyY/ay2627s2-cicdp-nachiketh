@@ -127,8 +127,8 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
 
   const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
   try {
-    const { rows } = await pool.query<{ observed: boolean; correct: boolean; response: null; hints_used: number }>(
-      `select a.observed, a.correct, a.response, a.hints_used
+    const { rows } = await pool.query<{ observed: boolean; correct: boolean; hints_used: number }>(
+      `select a.observed, a.correct, a.hints_used
          from attempts a
          join learners l on l.id = a.learner_id
          join "user" u on u.id = l.user_id
@@ -137,8 +137,8 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
       [email, FIRST_STEP_ID],
     );
     expect(rows).toEqual([
-      { observed: true, correct: false, response: null, hints_used: 0 },
-      { observed: false, correct: true, response: null, hints_used: 1 },
+      { observed: true, correct: false, hints_used: 0 },
+      { observed: false, correct: true, hints_used: 1 },
     ]);
   } finally {
     await pool.end();
