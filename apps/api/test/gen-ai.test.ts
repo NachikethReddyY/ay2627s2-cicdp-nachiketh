@@ -9,8 +9,10 @@ import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
+import type { GeneratedMcqStep } from "../src/ai/step-schema.ts";
 import { setModerationClient } from "../src/safety/moderation.ts";
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 
@@ -201,9 +203,28 @@ test("a lesson generated while its path is published must pass public moderation
   }
 });
 
-test("a predict lesson comes from the engine over HTTP and the learner never sees an answer key", async () => {
+test("predict generation rejects an ambiguous union cloze and serves the repaired MCQ without an answer key", async () => {
   const { t, slug, lesson, learnerId } = await firstLesson();
   await db.update(lessons).set({ kind: "predict" }).where(eq(lessons.id, lesson.id));
+  const clozeStep: Omit<GeneratedMcqStep, "kind" | "options" | "answer"> & {
+    kind: "cloze";
+    answer: string;
+  } = JSON.parse(readFileSync(
+    new URL("../../../services/engine/tests/fixtures/ambiguous_union_cloze.json", import.meta.url), "utf8",
+  ));
+  const question = "Which assignment leaves item holding a number?";
+  const mcqStep: GeneratedMcqStep = {
+    title: clozeStep.title,
+    beforeFiles: clozeStep.beforeFiles,
+    hints: clozeStep.hints,
+    explanations: clozeStep.explanations,
+    concepts: clozeStep.concepts,
+    kind: "mcq",
+    prompt: question,
+    options: ['item = "42";', "item = 42;", "item = false;", "item === 42;"],
+    answer: 1,
+    hunks: [{ id: "assign", file: "main.ts", oldStart: 1, lines: [' let item: string | number = "tea";', "+item = 42;"] }],
+  };
   const input = lesson1.steps[0]!.input;
   const step = (n: number) => ({
     title: `Step ${n}`,
@@ -218,13 +239,14 @@ test("a predict lesson comes from the engine over HTTP and the learner never see
     concepts: ["ownership"],
   });
   const seen: { path?: string; token?: unknown; kind?: string } = {};
+  let calls = 0;
   const srv = createServer((req, res) => {
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
       Object.assign(seen, { path: req.url, token: req.headers["x-engine-token"], kind: JSON.parse(raw).lesson.kind });
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ lesson: { steps: [step(1), step(2), step(3)] } }));
+      res.end(JSON.stringify({ lesson: { steps: [calls++ === 0 ? clozeStep : mcqStep, step(2), step(3)] } }));
     });
   }).listen(0);
   const savedUrl = env.ENGINE_URL;
@@ -236,13 +258,24 @@ test("a predict lesson comes from the engine over HTTP and the learner never see
     env.ENGINE_URL = savedUrl;
     srv.close();
   }
+  assert.equal(calls, 2, "a cloze from the engine must be rejected before persistence");
   assert.deepEqual(seen, { path: "/v1/pipeline/lesson", token: env.ENGINE_TOKEN, kind: "predict" });
   const res = await t.q("lessons.get", { id: lesson.slug });
   assert.equal(res.statusCode, 200, res.body);
   assert.equal(out(res).steps.length, 3);
   assert.doesNotMatch(res.body, /"(answer|accepted|expectedOutput)"/);
 
-  setModerationClient(async (text) => ({ flagged: text.includes("What changes?"), scores: {} }));
+  const id = out(res).steps[0].id;
+  const questionResponse = await t.q("steps.get", { id });
+  assert.equal(questionResponse.statusCode, 200, questionResponse.body);
+  assert.deepEqual(out(questionResponse).options, mcqStep.options);
+  assert.doesNotMatch(questionResponse.body, /"(answer|accepted|hunks)"/);
+  assert.equal((await t.q("steps.reveal", { id })).statusCode, 409);
+  const attempt = await t.m("steps.attempt", { id, answer: { kind: "mcq", choice: 1 } });
+  assert.equal(out(attempt).correct, true);
+  assert.deepEqual(out(await t.q("steps.reveal", { id })).answer, { type: "mcq", index: 1 });
+
+  setModerationClient(async (text) => ({ flagged: text.includes(question), scores: {} }));
   try {
     assert.equal(code(await t.m("paths.publish", { slug })), "PRECONDITION_FAILED");
     const [world] = await db.select().from(worlds).where(eq(worlds.id, lesson.worldId));

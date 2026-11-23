@@ -6,14 +6,11 @@ from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
-    BeforeValidator,
     Field,
     StringConstraints,
     ValidationInfo,
     model_validator,
 )
-
-from .answer_leak import contains_answer
 
 
 def _c(n: int) -> StringConstraints:
@@ -30,21 +27,12 @@ T300 = Annotated[str, _c(300)]
 T400 = Annotated[str, _c(400)]
 T500 = Annotated[str, _c(500)]
 T1000 = Annotated[str, _c(1000)]
-_ZOD_TRIM = (
-    "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
-    "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
-)
 _OPTION_WHITESPACE = (
     "\t-\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 )
 _OPTION_WHITESPACE_RUN = re.compile(f"[{_OPTION_WHITESPACE}]+")
 _OPTION_WHITESPACE_EDGE = re.compile(f"^[{_OPTION_WHITESPACE}]+|[{_OPTION_WHITESPACE}]+\\Z")
 _OPTION_IDENTIFIER = re.compile("[a-z0-9_]+")
-ClozeText = Annotated[
-    str,
-    BeforeValidator(lambda value: value.strip(_ZOD_TRIM)),
-    StringConstraints(min_length=1, max_length=100),
-]
 
 
 def _contains_mcq_option(text: str, answer: str) -> bool:
@@ -116,7 +104,8 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
-class _Step(BaseModel):
+class McqStep(BaseModel):
+    kind: Literal["mcq"]
     title: T100
     prompt: T500
     beforeFiles: dict[T200, Annotated[str, StringConstraints(max_length=6000)]]
@@ -124,12 +113,14 @@ class _Step(BaseModel):
     hints: list[Hint] = Field(min_length=1, max_length=2)
     explanations: Explanations
     concepts: list[T60] = Field(min_length=1, max_length=6)
+    options: list[T200] = Field(min_length=4, max_length=4)
+    answer: int = Field(ge=0, le=3)
 
-    def _answers(self) -> list[str]:
-        raise NotImplementedError
-
-    def _leak_surfaces(self) -> list[str]:
-        return [
+    @model_validator(mode="after")
+    def _check(self) -> "McqStep":
+        if not 1 <= len(self.beforeFiles) <= 4:
+            raise ValueError("beforeFiles needs 1 to 4 files")
+        surfaces = [
             self.title,
             self.prompt,
             self.explanations.workedExample,
@@ -137,65 +128,18 @@ class _Step(BaseModel):
             *(h.text for h in self.hints),
             *self.concepts,
         ]
-
-    @model_validator(mode="after")
-    def _check(self) -> "_Step":
-        if not 1 <= len(self.beforeFiles) <= 4:
-            raise ValueError("beforeFiles needs 1 to 4 files")
-        surfaces = self._leak_surfaces()
-        for answer in self._answers():
-            leaks = (
-                any(_contains_mcq_option(surface, answer) for surface in surfaces)
-                if isinstance(self, McqStep)
-                else any(contains_answer(surface, answer) for surface in surfaces)
-                or (
-                    isinstance(self, ClozeStep)
-                    and any(
-                        contains_answer(surface, answer, False)
-                        for surface in self.beforeFiles.values()
-                    )
-                )
+        if any(_contains_mcq_option(surface, self.options[self.answer]) for surface in surfaces):
+            raise ValueError(
+                f"step {self.title!r}: hints, title, prompt, explanations or concept tags "
+                "leak the answer"
             )
-            if leaks:
-                raise ValueError(
-                    f"step {self.title!r}: hints, title, prompt, explanations or starter code "
-                    "leak the answer"
-                )
-        return self
-
-
-class McqStep(_Step):
-    kind: Literal["mcq"]
-    options: list[T200] = Field(min_length=4, max_length=4)
-    answer: int = Field(ge=0, le=3)
-
-    def _answers(self) -> list[str]:
-        return [self.options[self.answer]]
-
-    @model_validator(mode="after")
-    def _eliminate(self) -> "McqStep":
         if any(h.eliminate == self.answer for h in self.hints):
             raise ValueError(f"step {self.title!r}: bad eliminate")
         return self
 
 
-class ClozeStep(_Step):
-    kind: Literal["cloze"]
-    answer: ClozeText
-    accepted: list[ClozeText] = Field(default=[], max_length=6)
-
-    def _answers(self) -> list[str]:
-        return [self.answer, *self.accepted]
-
-    def _leak_surfaces(self) -> list[str]:
-        return super()._leak_surfaces()
-
-
-Step = Annotated[McqStep | ClozeStep, Field(discriminator="kind")]
-
-
 class Lesson(BaseModel):
-    steps: list[Step] = Field(min_length=3, max_length=5)
+    steps: list[McqStep] = Field(min_length=3, max_length=5)
 
 
 _Loose200 = Annotated[str, StringConstraints(max_length=200)]

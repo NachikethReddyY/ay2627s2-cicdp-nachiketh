@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { buildTimeline, seek } from "@learnquest/player-core";
-import { containsAnswer } from "./answer-leak.ts";
 
 export const text = (max: number) => z.string().trim().min(1).max(max);
 
@@ -14,19 +13,6 @@ const Common = {
   hints: z.array(Hint).min(1).max(2),
   explanations: z.object({ workedExample: text(1000), practice: text(500) }),
   concepts: z.array(text(60)).min(1).max(6),
-};
-
-type LeakCheckStep = {
-  kind: "mcq" | "cloze";
-  title: string;
-  prompt: string;
-  beforeFiles: Readonly<Record<string, string>>;
-  hints: ReadonlyArray<{ text: string }>;
-  explanations: { workedExample: string; practice: string };
-  answer: number | string;
-  options?: ReadonlyArray<string>;
-  accepted?: ReadonlyArray<string>;
-  concepts: ReadonlyArray<string>;
 };
 
 const OPTION_WHITESPACE = "\\t-\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff";
@@ -44,7 +30,7 @@ function containsMcqOption(text: string, answer: string): boolean {
   return Array.from(squashed).length >= 3 && haystack.replace(OPTION_WHITESPACE_RUN, "").includes(squashed);
 }
 
-function answerLeaks(step: LeakCheckStep): boolean {
+function answerLeaks(step: GeneratedMcqStep): boolean {
   const surfaces = [
     step.title,
     step.prompt,
@@ -53,40 +39,26 @@ function answerLeaks(step: LeakCheckStep): boolean {
     ...step.hints.map((h) => h.text),
     ...step.concepts,
   ];
-  if (step.kind === "mcq") {
-    const answer = step.options?.[typeof step.answer === "number" ? step.answer : Number(step.answer)] ?? "";
-    return surfaces.some((surface) => containsMcqOption(surface, answer));
-  }
-  const answers = [String(step.answer), ...(step.accepted ?? []).map(String)];
-  return answers.some((answer) =>
-    surfaces.some((surface) => containsAnswer(surface, answer)) ||
-    (step.kind === "cloze" && Object.values(step.beforeFiles).some((surface) => containsAnswer(surface, answer, false))),
-  );
+  return surfaces.some((surface) => containsMcqOption(surface, step.options[step.answer]!));
 }
 
-const leakMessage = (step: LeakCheckStep) =>
-  `step "${step.title}": hints, title, prompt, explanations, concept tags or starter code leak the answer`;
-
-function noLeak(step: LeakCheckStep, ctx: z.RefinementCtx) {
-  if (answerLeaks(step)) ctx.addIssue({ code: "custom", message: leakMessage(step) });
-}
+const leakMessage = (step: GeneratedMcqStep) =>
+  `step "${step.title}": hints, title, prompt, explanations or concept tags leak the answer`;
 
 export const McqStep = z.object({
   ...Common,
   kind: z.literal("mcq"),
   options: z.array(text(200)).length(4),
   answer: z.number().int().min(0).max(3),
-}).superRefine(noLeak);
-export const ClozeStep = z.object({ ...Common, kind: z.literal("cloze"), answer: text(100), accepted: z.array(text(100)).max(6).default([]) }).superRefine(noLeak);
-export const Step = z.discriminatedUnion("kind", [McqStep, ClozeStep]);
-export type GeneratedStep = z.infer<typeof Step>;
+}).superRefine((step, ctx) => {
+  if (answerLeaks(step)) ctx.addIssue({ code: "custom", message: leakMessage(step) });
+});
 export type GeneratedMcqStep = z.infer<typeof McqStep>;
 
-export function checkStep(step: GeneratedStep) {
-  if (answerLeaks(step)) throw new Error(leakMessage(step));
+export function checkStep(step: GeneratedMcqStep) {
   const tl = buildTimeline([{ beforeFiles: step.beforeFiles, hunks: step.hunks }]);
   const after = seek(tl, tl.duration).files;
   if (JSON.stringify(after) === JSON.stringify(step.beforeFiles)) throw new Error(`step "${step.title}" changes nothing`);
-  if (step.kind === "mcq" && step.hints.some((h) => h.eliminate === step.answer))
+  if (step.hints.some((h) => h.eliminate === step.answer))
     throw new Error(`step "${step.title}": bad eliminate`);
 }

@@ -8,7 +8,7 @@ import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 import { aiGenerations, enrollments, generationCache, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type GeneratedPart } from "../db/schema.ts";
 import { generator, type LessonContext } from "./generator.ts";
-import { checkStep, Step, text, type GeneratedStep } from "./step-schema.ts";
+import { checkStep, McqStep, text, type GeneratedMcqStep } from "./step-schema.ts";
 import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
@@ -43,7 +43,7 @@ const Outline = z.union([
   }),
 ]);
 
-const Lesson = z.object({ steps: z.array(Step).min(3).max(5) });
+const Lesson = z.object({ steps: z.array(McqStep).min(3).max(5) });
 
 const slugify = (s: string, max: number) =>
   `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(6).toString("hex")}`;
@@ -135,7 +135,7 @@ async function persistPath(ownerId: string, learnerId: string, outline: Exclude<
   });
 }
 
-function validate(raw: unknown): GeneratedStep[] {
+function validate(raw: unknown): GeneratedMcqStep[] {
   const { steps } = Lesson.parse(raw);
   for (const s of steps) checkStep(s);
   return steps;
@@ -197,7 +197,7 @@ async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonCon
   };
 }
 
-type Generated = { part: GeneratedPart | null; generated: GeneratedStep[] };
+type Generated = { part: GeneratedPart | null; generated: GeneratedMcqStep[] };
 
 async function generate(ctx: LessonContext, key: string | null, cached: PartCache, isPublic: boolean): Promise<Generated> {
   let part = cached.part && isPublic ? await moderated(cached.part, true) : (cached.part ?? null);
@@ -235,16 +235,15 @@ function splitPart(part: GeneratedPart | null) {
   return { content: part, gateSteps: null };
 }
 
-function stepRows(lessonVersionId: string, list: readonly GeneratedStep[]) {
+function stepRows(lessonVersionId: string, list: readonly GeneratedMcqStep[]) {
   return list.map((s, idx) => ({
     lessonVersionId,
     idx,
-    public: { title: s.title, prompt: s.prompt, kind: s.kind, ...(s.kind === "mcq" && { options: s.options }) },
+    public: { title: s.title, prompt: s.prompt, kind: s.kind, options: s.options },
     secret: {
       beforeFiles: s.beforeFiles,
       hunks: s.hunks,
       answer: s.answer,
-      ...(s.kind === "cloze" && { accepted: [...new Set([s.answer, ...s.accepted])] }),
       hints: s.hints,
       explanations: s.explanations,
       concepts: s.concepts,
