@@ -64,6 +64,7 @@ A lesson's `kind` decides which parts the player shows. The kind is stored on `l
 
 
 In newly generated Predict lessons, the question states the proposed change, input, or requirement beside the starter code. The patch and answer key become available after the learner answers.
+If the scenario and question repeat the correct option, the engine rejects the draft and directs its existing repair attempt to rephrase the scenario or ask about a different consequence of the same edit.
 
 Game wins follow a renamed block when its game content is unchanged and the rename is unambiguous. If two former IDs for the same game return together, the ID present in the previous revision keeps the win. If both were absent, the first ID in sort order keeps it.
 

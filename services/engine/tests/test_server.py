@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -74,6 +75,62 @@ def test_invalid_twice_is_422(
     assert json.loads(r.headers["x-engine-usage"]) == [
         {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test", "estimated_usd": None}
     ] * 2
+
+
+@pytest.mark.parametrize("repairs_stem", [True, False])
+def test_predict_stem_leak_gets_one_targeted_repair(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, repairs_stem: bool
+) -> None:
+    fixtures = Path(__file__).parent / "fixtures"
+    lesson = json.loads((fixtures / "lesson1.json").read_text())
+    step = lesson["steps"][1]
+    leaking_step = {**step, "scenario": "Give cartTotal an optional parameter discount = 0."}
+    leaking_lesson = {"steps": [lesson["steps"][0], leaking_step, lesson["steps"][2]]}
+    calls = 0
+
+    def completion(**kwargs: Any) -> litellm.ModelResponse:
+        nonlocal calls
+        calls += 1
+        assert calls <= 2
+        reply = leaking_lesson
+        if calls == 2:
+            feedback = kwargs["messages"][-1]["content"]
+            issues = json.loads(feedback.split("\n", 1)[1])
+            assert len(issues) == 1
+            issue = issues[0]
+            assert issue["loc"] == ["steps", 1]
+            assert issue["type"] == "predict_stem_answer_leak"
+            assert "scenario and question" in issue["msg"]
+            assert "another consequence" in issue["msg"]
+            assert step["options"][step["answer"]] not in feedback
+            if repairs_stem:
+                reply = lesson
+        return litellm.ModelResponse(
+            choices=[{"index": 0, "message": {"role": "assistant", "content": json.dumps(reply)}}],
+            usage={"prompt_tokens": 10, "completion_tokens": 5},
+        )
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    ctx = {
+        "path": {"title": "JavaScript", "tagline": "Learn functions"},
+        "course": {"title": "Cart totals", "description": "Add up prices"},
+        "lesson": {"title": "Optional parameters", "level": 1, "concepts": ["functions"]},
+        "missedConcepts": [],
+    }
+    r = client.post("/v1/pipeline/lesson", json=ctx, headers=TOKEN)
+    assert calls == 2
+    assert len(json.loads(r.headers["x-engine-usage"])) == 2
+    if repairs_stem:
+        assert r.status_code == 200
+        assert r.json()["attempts"] == 2
+        repaired = r.json()["lesson"]["steps"][1]
+        for key in ("scenario", "beforeFiles", "hunks", "options", "answer"):
+            assert repaired[key] == step[key]
+    else:
+        assert r.status_code == 422
+        assert r.json()["error"] == "invalid_output"
+        assert json.loads(r.json()["errors"])[0]["type"] == "predict_stem_answer_leak"
+        assert step["options"][step["answer"]] not in r.text
 
 
 def test_upstream_timeout_is_504(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
