@@ -47,7 +47,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   await expect(page.getByRole("alert")).toContainText("without an email");
   await input.fill(handle);
   await submit.click();
-  await expect(page.getByRole("heading", { name: "LearnSlop home" })).toBeAttached();
+  await expect(page.getByRole("heading", { name: "Home", exact: true })).toBeAttached();
   await page.getByRole("link", { name: "Account settings" }).click();
   await expect(input).toHaveValue(handle);
   await expect(input).not.toBeEditable();
@@ -85,7 +85,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
     await page.goto("/");
     const empty = page.getByRole("region", { name: "Find your first path" });
     await expect(empty.getByRole("link", { name: "Explore paths" })).toHaveAttribute("href", "/explore");
-    const progress = page.getByRole("region", { name: "Progress at a glance" });
+    const progress = page.getByRole("region", { name: "Your progress" });
     await expect(progress).toBeInViewport({ ratio: 1 });
     await expect(progress).toContainText("No path yet");
     await expectNoSeriousA11yViolations(page, "/", empty);
@@ -100,7 +100,9 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
     await page.reload();
     const resume = page.getByRole("link", { name: /^(Continue|Resume )/ }).and(page.locator('a[href*="lesson=lesson-1&"]'));
     await expect(resume).toHaveAttribute("href", /lesson=lesson-1/);
-    await expect(progress).toBeInViewport({ ratio: 1 });
+    await expect(resume).toBeInViewport({ ratio: 1 });
+    await expect(progress.getByText("Total XP")).toBeInViewport();
+    expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
     await expectNoSeriousA11yViolations(page, "/", resume);
     await resume.click();
     await expect(page).toHaveURL(/lesson=lesson-1/);
@@ -112,7 +114,7 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
   const email = newEmail();
   await signUp(page, email, "/");
   await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
-  const card = page.locator(".lq-continue-photo");
+  const card = page.getByRole("region").filter({ hasText: "Up next" });
   await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
   await expect(card).toContainText("Pre-test");
   const writes: string[] = [];

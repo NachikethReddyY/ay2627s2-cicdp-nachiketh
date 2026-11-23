@@ -9,7 +9,7 @@ Routes marked dev or test only exist in non-production builds.
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
 | Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Reads the pitch and sees Pro and the advanced track marked coming soon. |
-| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. On phones, total XP, streak and path progress appear at the top. New learners can open Explore from Home. Home also shows **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
+| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. The next learning action appears first on both desktop and phones, followed by total XP, streak, daily goal and path progress. New learners can open Explore from Home. Home also shows **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
 | Spaced review | `/review/$slug` | `apps/web/src/pages/Review.tsx`, `apps/api/src/progress/review.ts` | Gets a due prediction from a previously answered lesson. Checks it server-side before showing the answer and scheduling the next review. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
 | Handle onboarding | `/onboarding` | `apps/web/src/pages/Onboarding.tsx` | New learners and existing learners who haven't confirmed a handle see how the leaderboard uses it, then accept or edit their generated handle before entering the app. |
@@ -72,7 +72,7 @@ The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**) a
 | Practice grading and sandbox | `apps/api/src/grading/`, `apps/api/src/sandbox/`, `services/sandbox` |
 | Lesson generation | `apps/api/src/ai/`, `services/engine` |
 | Path sharing | `apps/api/src/progress/paths.ts` (`paths.publish`) |
-| Leaderboard | `apps/api/src/progress/home.ts` (`home.get`), `pages/home/Sidebar.tsx` |
+| Leaderboard | `apps/api/src/progress/home.ts` (`home.get`), `pages/home/Leaderboard.tsx` |
 | Handle onboarding and editing | `apps/api/src/progress/handle.ts` (`me.handle`) |
 | Sloppy chat endpoint | `apps/api/src/dev/route.ts` (`POST /api/guide/chat`), lesson context in `apps/api/src/ai/guide-context.ts` |
 | Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS` lists the sample courses; `worlds/scrim-demo` seeds one scrim, and its narration is silent placeholder audio) |

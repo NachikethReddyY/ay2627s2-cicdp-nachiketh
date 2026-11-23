@@ -13,15 +13,16 @@ export default function Continue({ c, resume }: { c: NonNullable<HomeData["conti
   const actionLabel = recommendation?.reasonCode === "REVIEW" ? "Review" : "Continue";
   const showResume = resume && (action === "course" || action === "review" || resume.lessonSlug !== lesson.slug);
   return (
-    <section className={`lq-card lq-hero lq-continue-photo lq-rise d2${snippet ? "" : " lq-hero-solo"}`} aria-labelledby="hero-h">
+    <section className={`lq-card lq-hero${snippet ? "" : " lq-hero-solo"}`} aria-labelledby="hero-h">
       <div className="lq-hero-main">
+        <p className="lq-dashboard-kicker">Up next</p>
         <p className="lq-hero-eyebrow">{c.path.title} · Course {c.course.index + 1} of {c.course.count}</p>
-        <h2 id="hero-h" className="lq-hero-title">{c.course.title}</h2>
-        <p className="lq-hero-lesson">{recommendation?.action !== "assess" && `Level ${lesson.level} · `}{lesson.title}</p>
+        <h2 id="hero-h" className="lq-hero-title">{lesson.title}</h2>
+        <p className="lq-hero-lesson">{c.course.title}{recommendation?.action !== "assess" && ` · Level ${lesson.level}`}</p>
         {recommendation && <p className="lq-hero-reason">{recommendation.reason}</p>}
         <div className="lq-hero-meter">
           <div
-            className="lq-meter lg f-blue" role="progressbar" aria-label="Lesson progress" aria-valuemin={0} aria-valuemax={c.lesson.total}
+            className="lq-meter sm" role="progressbar" aria-label="Lesson progress" aria-valuemin={0} aria-valuemax={c.lesson.total}
             aria-valuenow={c.lesson.done}
           >
             <span style={{ width: `${pct(c.lesson.done, c.lesson.total)}%` }} />
@@ -30,17 +31,17 @@ export default function Continue({ c, resume }: { c: NonNullable<HomeData["conti
         </div>
         <div className="lq-hero-cta">
           {action === "course"
-            ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Course<Arrow /></Link>
+            ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink">Course<Arrow /></Link>
             : action === "review"
-            ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Review<Arrow /></Link>
-            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">{actionLabel}<Arrow /></Link>}
+            ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink">Review<Arrow /></Link>
+            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink">{actionLabel}<Arrow /></Link>}
           {showResume && <ResumeLink resume={resume} />}
         </div>
       </div>
       {snippet && (
         <div className="lq-code" aria-hidden="true">
           <span className="lq-code-label">Predict</span>
-          {snippet.map((line, i) => <div key={i} style={{ whiteSpace: "pre" }}>{line || " "}</div>)}
+          {snippet.map((line, i) => <div key={i} className="lq-dashboard-code-line">{line || " "}</div>)}
           <div className="q">&gt; ? ? ?</div>
         </div>
       )}
