@@ -20,14 +20,14 @@ Fix the foundations before building on top. A strong inner loop (types, lint, bo
 ## The loop for one change
 
 1. Work on a branch. Use `docs/feature-map.md` names for screens and features.
-2. `pnpm agent:verify`. Fix every failure at its cause.
+2. Run `pnpm agent:verify` against a Postgres database whose name ends in `_test`. Set `TEST_DATABASE_URL` to use a database other than the default `learnquest_test`. Fix every failure at its cause.
 3. When useful, review with another model using `node scripts/agent-review.ts --author codex`. Set the value to the family that authored the changes.
 4. Open the PR. A PR for a technical change carries a Mermaid diagram (see the `file-pr` skill).
 5. Use the trusted bootstrap command in [AGENTS.md](../../AGENTS.md#merging) for every PR. See [the merge gate guide](merge-gate.md) and [stacking PRs](stacking-prs.md).
 
 ## GitHub Actions
 
-The [CI workflow](../../.github/workflows/ci.yml) starts all five checks in parallel. The unit job runs up to four API test files at a time, with a separate Postgres database per file and one coverage report for the whole API suite. Those databases live in the job's disposable Postgres service. Local API tests use one database and run serially. The E2E job builds the API and engine service images together through [Docker Bake](../../infra/docker/e2e.hcl), then runs the browser suite against Compose.
+The [CI workflow](../../.github/workflows/ci.yml) runs five checks in parallel (`lint`, `unit`, `engine`, `deploy-scripts`, and `e2e`). The unit job runs up to four API test files at a time, with a separate Postgres database per file and one coverage report for the whole API suite. Those databases live in the job's disposable Postgres service. Local API tests use one database and run serially. The E2E job builds the API and engine service images together through [Docker Bake](../../infra/docker/e2e.hcl), then runs the browser suite against Compose.
 
 On pushes to `main`, successful checks lead to `Prod / Images`, `Prod / Migrate`, `Prod / Rollout`, and `Prod / Verify`. The verification job writes the checked commit and smoke result to the run summary.
 
