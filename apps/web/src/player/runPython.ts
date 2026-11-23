@@ -24,6 +24,10 @@ export const startPython = (code: string, language: PracticeLanguage, lessonId?:
 export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string; versionId?: string; revision?: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
 
+export type DesignFeedback = { line: number; note: string };
+export const requestDesignFeedback = (input: { lessonId: string; code: string; receipt: string }) =>
+  call<{ feedback: DesignFeedback | null }>("/api/practice/design-feedback", { method: "POST", body: JSON.stringify(input) });
+
 export type LintFinding = { ruleId: string; line: number; column: number; message: string };
 export const lintPractice = (code: string, language: PracticeLanguage) =>
   call<{ findings: LintFinding[] }>("/api/practice/lint", { method: "POST", body: JSON.stringify({ code, language }) });

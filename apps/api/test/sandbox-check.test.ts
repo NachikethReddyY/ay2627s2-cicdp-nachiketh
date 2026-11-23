@@ -220,6 +220,12 @@ test("POST /sandbox/check: scores, hides hidden tests, and records completion on
     const res = await check(cookie, body("multi"));
     assert.equal(res.statusCode, 200, res.body);
     const r = res.json();
+    assert.match(r.feedbackReceipt, /^[a-f0-9]{64}$/);
+    const changed = await app.inject({
+      method: "POST", url: "/api/practice/design-feedback", headers: { cookie, origin: env.PUBLIC_ORIGIN },
+      payload: { lessonId, code: "print(2)", receipt: r.feedbackReceipt },
+    });
+    assert.equal(changed.statusCode, 403);
     assert.deepEqual(r.required, { passed: 1, total: 2 });
     assert.deepEqual(r.stretch, { passed: 1, total: 1 });
     assert.deepEqual([r.points, r.maxPoints, r.complete], [2, 3, false]);

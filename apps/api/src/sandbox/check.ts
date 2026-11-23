@@ -6,6 +6,7 @@ import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { practiceContentKey, practiceRevision, practiceTests, recordCompletion, recordPracticeAttempt } from "../parts/practice.ts";
+import { practiceReceipt } from "../parts/submission-receipt.ts";
 import { PRACTICE_LANGUAGES, type Practice, type PracticeLanguage, type PracticeTest } from "../parts/practice-schema.ts";
 import { atCapacity, reserveCheckSlot } from "./run.ts";
 import { TEST_TIMEOUT_MS } from "./checkHarness.ts";
@@ -18,6 +19,7 @@ import { catchUpMastery } from "../progress/mastery.ts";
 import { recordLessonObservation } from "../progress/observation.ts";
 
 export const MAX_CHECK_CODE = 20_000;
+export const CheckCode = z.string().max(MAX_CHECK_CODE).refine((code) => code.trim().length > 0);
 async function runChecks(code: string, language: PracticeLanguage, tests: PracticeTest[]) {
   const backend = await getBackend();
   if (!backend.runChecks) throw new CheckUnavailableError("backend does not support checks");
@@ -103,7 +105,7 @@ export async function verifyReferenceSolution(practice: Practice | null, learner
 
 export async function sandboxCheckRoute(app: FastifyInstance) {
   const Body = z.object({
-    code: z.string().max(MAX_CHECK_CODE).refine((code) => code.trim().length > 0),
+    code: CheckCode,
     language: z.enum(PRACTICE_LANGUAGES).optional(),
     lessonId: z.string().regex(/^[\w-]{1,64}$/),
     versionId: z.string().uuid().optional(),
@@ -156,7 +158,10 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
       });
       if (!persisted) return reply.status(409).send(fail("lesson_updated", "Reload the lesson before submitting again"));
       if (persisted.observed) await catchUpMastery(learner);
-      return persisted.result;
+      return {
+        ...persisted.result,
+        feedbackReceipt: practiceReceipt(learner, practiceRevision(found.versionId, found.practice), body.data.code),
+      };
     } catch (e) {
       if (!(e instanceof CheckUnavailableError)) req.log.error(e);
       return reply.status(503).send(fail("check_failed", "Could not check the code"));

@@ -16,6 +16,7 @@ export type CheckResponse = {
   points: number; maxPoints: number; complete: boolean;
   best: { points: number; maxPoints: number };
   attemptCount: number;
+  feedbackReceipt?: string;
 };
 
 export const STATUS_LABEL: Record<TestStatus, string> = { pass: "✓ Passed", fail: "✗ Failed", timeout: "Timed out", error: "Error" };

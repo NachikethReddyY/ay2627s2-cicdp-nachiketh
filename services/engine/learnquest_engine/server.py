@@ -22,7 +22,7 @@ from litellm.exceptions import (
 )
 from pydantic import BaseModel, Field
 
-from learnquest_engine import guide, learner, llm, pipeline, visual
+from learnquest_engine import design_feedback, guide, learner, llm, pipeline, visual
 from learnquest_engine.config import get_settings
 from learnquest_engine.guide import LintFinding
 from learnquest_engine.llm import GenerationError, Result
@@ -73,9 +73,9 @@ def require_token(x_engine_token: Annotated[str | None, Header()] = None) -> Non
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-def _body(key: str, result: Result[Any]) -> dict[str, Any]:
+def _body(key: str, result: Result[Any], *, exclude_none: bool = True) -> dict[str, Any]:
     return {
-        key: result.value.model_dump(exclude_none=True),
+        key: result.value.model_dump(exclude_none=exclude_none),
         "usage": result.usage,
         "attempts": result.attempts,
     }
@@ -198,6 +198,12 @@ def visual_route(body: VisualRequest) -> JSONResponse:
 def guide_chat_route(body: GuideRequest) -> dict[str, Any]:
     result = guide.reply(body.model_dump(exclude_none=True), body.messages)
     return _body("guide", result)
+
+
+@app.post("/v1/guide/design-feedback", dependencies=[Depends(require_token)])
+def design_feedback_route(body: design_feedback.DesignFeedbackRequest) -> dict[str, Any]:
+    result = design_feedback.review(body)
+    return _body("feedback", result, exclude_none=False)
 
 
 @app.post("/v1/moderation", dependencies=[Depends(require_token)])
