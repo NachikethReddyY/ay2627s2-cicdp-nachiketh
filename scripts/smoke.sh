@@ -52,6 +52,11 @@ check protected-trpc "$api_origin/api/trpc/home.get" 401
 check web "$web_origin/" 200
 check web-api-rewrite "$web_origin/api/trpc/home.get" 401
 
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST \
+  -H "Origin: $web_origin" "$web_origin/api/sandbox/shell-ticket" || true)
+echo "check=web-sandbox-origin status=$code want=401-or-503"
+[[ $code == 401 || $code == 503 ]] || failed=1
+
 if ((failed)); then
   echo "FAIL: smoke checks failed"
   exit 1

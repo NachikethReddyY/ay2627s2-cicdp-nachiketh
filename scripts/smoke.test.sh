@@ -53,6 +53,8 @@ run_case "engine-stale: engine reports an old sha" engine-stale fail "FAIL: engi
 run_case "open: protected route answers 200" open fail "check=protected-trpc status=200"
 run_case "down: healthz never recovers" down fail "FAIL: api healthz did not report"
 run_case "web-stale: web alias forwards to an old release" ok fail "FAIL: web healthz did not report" stale
+run_case "bad-origin: API rejects the web origin" ok fail "check=web-sandbox-origin status=403" bad-origin
+run_case "sandbox-off: API accepts the web origin" ok pass "check=web-sandbox-origin status=503" sandbox-off
 
 if ((failures)); then
   echo "$failures smoke test(s) failed"

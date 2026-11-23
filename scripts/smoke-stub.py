@@ -3,12 +3,14 @@
 Usage: smoke-stub.py <port> <mode> <sha>
 Modes: ok (everything correct), cold (API healthz 503 for the first three calls),
 stale (API healthz reports an old sha), engine-stale (engine healthz reports an old sha),
-open (protected route answers 200), down (API healthz always 503).
+open (protected route answers 200), down (API healthz always 503),
+bad-origin (sandbox ticket requests answer 403), sandbox-off (sandbox answers 503).
 """
 
 import http.server
 import json
 import sys
+from urllib.parse import urlsplit
 
 port, mode, sha = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 healthz_calls = 0
@@ -41,6 +43,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/":
             return self._send(200, b"<html></html>")
         return self._send(404, {})
+
+    def do_POST(self):
+        if self.path != "/api/sandbox/shell-ticket":
+            return self._send(404, {})
+        origin = urlsplit(self.headers.get("Origin", ""))
+        if origin.netloc != self.headers.get("Host") or mode == "bad-origin":
+            return self._send(403, {})
+        return self._send(503 if mode == "sandbox-off" else 401, {})
 
     def log_message(self, *args):
         pass
