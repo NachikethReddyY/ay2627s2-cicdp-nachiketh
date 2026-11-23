@@ -37,6 +37,7 @@ test("each reported model call stores only day, tokens and cost, and only admins
       status: 422,
       headers: { "x-engine-usage": JSON.stringify([
         { model: "openai/gpt-5.1", prompt_tokens: 1_000, completion_tokens: 100, prompt: request.topic },
+        { model: "openai/nvidia/nemotron-3.5-super-vl-120b-a12b", prompt_tokens: 1_000_000, completion_tokens: 100_000 },
         { model: "unknown-model", prompt_tokens: 200, completion_tokens: 40, email },
       ]) },
     },
@@ -52,11 +53,12 @@ test("each reported model call stores only day, tokens and cost, and only admins
   deepEqual(rows, [
     { day: clock.day, promptTokens: 200, completionTokens: 40, estimatedUsd: null },
     { day: clock.day, promptTokens: 1_000, completionTokens: 100, estimatedUsd: "0.002250000000" },
+    { day: clock.day, promptTokens: 1_000_000, completionTokens: 100_000, estimatedUsd: "0.200000000000" },
   ]);
 
   const dashboard = await account.q("admin.dashboard");
   equal(dashboard.statusCode, 200);
-  const totals = { calls: 2, promptTokens: 1_200, completionTokens: 140, estimatedUsd: 0.00225, unpricedCalls: 1 };
+  const totals = { calls: 3, promptTokens: 1_001_200, completionTokens: 100_140, estimatedUsd: 0.20225, unpricedCalls: 1 };
   deepEqual(JSON.parse(dashboard.body), { result: { data: { monthToDate: totals, days: [{ day: clock.day, ...totals }] } } });
 
   await db.execute(sql`UPDATE learners SET is_admin = false WHERE is_admin`);

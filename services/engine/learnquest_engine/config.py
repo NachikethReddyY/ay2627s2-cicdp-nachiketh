@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,10 +12,17 @@ class Settings(BaseSettings):
     LLM_API_BASE: str | None = None
     LLM_API_KEY: SecretStr | None = None
     LLM_JSON_MODE: Literal["schema", "object", "off"] | None = None
+    LLM_INPUT_USD_PER_MTOK: float | None = None
+    LLM_OUTPUT_USD_PER_MTOK: float | None = None
     LLM_TIMEOUT_S: int = 120
     LLM_DEADLINE_S: int = 300
     LLM_MAX_TOKENS: int = 8000
     ENGINE_TOKEN: SecretStr = Field(min_length=32)
+
+    @field_validator("LLM_INPUT_USD_PER_MTOK", "LLM_OUTPUT_USD_PER_MTOK", mode="before")
+    @classmethod
+    def blank_price_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
 
 
 @lru_cache
