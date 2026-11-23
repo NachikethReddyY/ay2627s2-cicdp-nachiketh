@@ -94,7 +94,8 @@ export const learners = pgTable(
     isAdmin: boolean("is_admin").notNull().default(false),
     handle: text("handle")
       .notNull()
-      .default(sql`'learner-' || left(replace(gen_random_uuid()::text, '-', ''), 10)`),
+      .default(sql`'learner_' || left(replace(gen_random_uuid()::text, '-', ''), 10)`),
+    handleUpdatedAt: timestamp("handle_updated_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("learners_handle_idx").on(t.handle)],
 );

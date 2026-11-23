@@ -496,7 +496,7 @@ Already dropped: MinIO (filesystem locally, R2 in cloud). MP4 export is Won't.
 
 Threat model: STRIDE in `docs/sdlc/threat-model.md`. Draft by WP0 in Wk 2; final by WP15 in Wk 6.
 
-**15.6 Privacy.** Stored learner data is limited to account email, attempts, mastery (BKT per concept), public handle, XP, streak, timezone and daily goal. No child-specific data is stored. XP and streak are calculated from activity. The weekly leaderboard includes every learner and shows their generated handle, XP and streak. Learners are included automatically without opt-in or opt-out. See `docs/sdlc/privacy.md` for the privacy notice.
+**15.6 Privacy.** Stored learner data is limited to account email, attempts, mastery (BKT per concept), public handle and when it was last confirmed or changed, timezone and daily goal. No child-specific data is stored. XP and streak are calculated from activity. The weekly leaderboard includes every learner and shows their public handle and XP. Learners confirm or edit a generated handle during onboarding and can change it once every 30 days from Account. See `docs/sdlc/privacy.md` for the privacy notice.
 
 **15.7 AI practice.** Core: recorded fixtures only in CI; no live calls in PR checks; `prompt_version` on steps and `llm_calls`; repair inside the engine. Stretch (cut 12): prompt registry, provider failover, live evals with spend cap.
 

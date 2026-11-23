@@ -9,13 +9,14 @@ Routes marked dev or test only exist in non-production builds.
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
 | Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Reads the pitch and sees Pro and the advanced track marked coming soon. |
-| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a generated handle and XP. |
+| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
+| Handle onboarding | `/onboarding` | `apps/web/src/pages/Onboarding.tsx` | New learners and existing learners who haven't confirmed a handle see how the leaderboard uses it, then accept or edit their generated handle before entering the app. |
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses paths. The creator can publish a private path through `paths.publish` after automatic moderation. |
 | Course | `/courses/$slug` | `apps/web/src/pages/course/` | Sees the **Path track** of lesson nodes and opens one. A generated course writes all its lessons in the background, three at a time. While some are still writing the page shows how many are ready, with **Check again**. A lesson tagged **Writing…** is still being written; **Couldn't write** or **Not written yet** lessons offer **Write now** (`lessons.write`). Write states come from `courses.get` (`writeState`) and live in process memory (`apps/api/src/ai/service.ts`). |
 | Lesson player | `/play` | `apps/web/src/player/` | Works through one lesson. See below. |
 | Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the practice lab of a practice lesson, or the lab a scrim ends with, in the **Workbench**. Same Run, Submit, Lint and Sloppy as `/play`. A lesson with no lab shows a notice. **Results** offers the reference solution after three graded submissions for the current lesson version, when the exercise has a saved solution. Scrim predictions must also be completed. Run and Lint do not count. Hidden test inputs and outputs stay server-side. |
-| Account | `/account` | `apps/web/src/pages/Account.tsx` | Manages the account. |
+| Account | `/account` | `apps/web/src/pages/Account.tsx` | Changes their public handle under **Profile** once every 30 days after confirming it and sees when they can change it again. |
 | Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads the committed release notes. Refresh them with `pnpm --filter @learnquest/web changelog:sync`. |
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
@@ -68,6 +69,7 @@ The lab of a scrim opens at `/editor?lesson=<scrim slug>` (the **Editor lab**), 
 | Lesson generation | `apps/api/src/ai/`, `services/engine` |
 | Path sharing | `apps/api/src/progress/paths.ts` (`paths.publish`) |
 | Leaderboard | `apps/api/src/progress/home.ts` (`home.get`), `pages/home/Sidebar.tsx` |
+| Handle onboarding and editing | `apps/api/src/progress/handle.ts` (`me.handle`) |
 | Sloppy chat endpoint | `apps/api/src/dev/route.ts` (`POST /api/guide/chat`) |
 | Seeded sample worlds | `worlds/`, `apps/api/src/db/seed.ts` (`SAMPLE_WORLDS` lists the sample courses; `worlds/scrim-demo` seeds one scrim, and its narration is silent placeholder audio) |
 

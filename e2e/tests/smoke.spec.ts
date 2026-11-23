@@ -16,21 +16,62 @@ if (!process.env.E2E_DATABASE_URL) {
   throw new Error("E2E_DATABASE_URL is required. Run the suite with `pnpm --filter @learnquest/e2e run ci`.");
 }
 
-async function signUp(page: Page, email: string, next: string) {
+async function createAccount(page: Page, email: string) {
   await page.goto("/login");
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.locator('form button[type="submit"]').click();
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("textbox", { name: "Public handle" })).toHaveValue(/^learner_[0-9a-f]{10}$/);
+}
+
+async function signUp(page: Page, email: string, next: string) {
+  await createAccount(page, email);
+  await page.getByRole("button", { name: "Continue to LearnSlop" }).click();
   await page.waitForURL((url) => url.pathname === "/");
   await page.goto(next);
 }
 
-test("signs up, lands on home, and stays signed in on /play after reload", async ({ page }) => {
+test("signs up, confirms and edits a public handle, and stays signed in on /play", async ({ page }) => {
   const email = newEmail();
-  await signUp(page, email, "/play");
-  await expect(page.getByText("Pick a lesson to start.")).toBeVisible();
+  await createAccount(page, email);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByText("Everyone can see your handle and XP on the weekly leaderboard.", { exact: false })).toBeVisible();
+  const handle = `coder_${randomUUID().slice(0, 8)}`;
+  const input = page.getByRole("textbox", { name: "Public handle" });
+  const submit = page.getByRole("button", { name: "Continue to LearnSlop" });
+  await input.fill("me@example.test");
+  await submit.click();
+  await expect(page.getByRole("alert")).toContainText("without an email");
+  await input.fill(handle);
+  await submit.click();
+  await expect(page.getByRole("heading", { name: "LearnSlop home" })).toBeAttached();
+  await page.getByRole("link", { name: "Account settings" }).click();
+  await expect(input).toHaveValue(handle);
+  await expect(input).not.toBeEditable();
+  await expect(page.getByText("You can change your handle again on", { exact: false })).toBeVisible();
 
+  const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
+  try {
+    await pool.query(`UPDATE learners SET handle_updated_at = now() - interval '31 days'
+      WHERE user_id = (SELECT id FROM "user" WHERE email = $1)`, [email]);
+  } finally {
+    await pool.end();
+  }
+  await page.reload();
+  const newHandle = `${handle}_js`;
+  await input.fill(newHandle);
+  await page.getByRole("button", { name: "Save handle" }).click();
+  await expect(page.getByRole("status")).toHaveText("Public handle saved.");
+  await page.reload();
+  await expect(input).toHaveValue(newHandle);
+  await page.goto("/onboarding");
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.goto("/play");
+  await expect(page.getByText("Pick a lesson to start.")).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/play$/);
   await expect(page.getByText("Pick a lesson to start.")).toBeVisible();
