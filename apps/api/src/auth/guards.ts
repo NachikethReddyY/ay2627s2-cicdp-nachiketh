@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { IncomingHttpHeaders } from "node:http";
 import { db } from "../db/client.ts";
 import { learners } from "../db/schema.ts";
@@ -15,4 +15,10 @@ export async function resolveLearnerId(headers: IncomingHttpHeaders): Promise<st
     [learner] = await find();
   }
   return learner.id;
+}
+
+export async function isAdmin(learnerId: string) {
+  const [learner] = await db.select({ id: learners.id }).from(learners)
+    .where(and(eq(learners.id, learnerId), eq(learners.isAdmin, true)));
+  return Boolean(learner);
 }

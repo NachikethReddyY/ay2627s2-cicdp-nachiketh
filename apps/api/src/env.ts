@@ -33,6 +33,8 @@ const schema = z
     S3_ACCESS_KEY_ID: z.string().min(1).optional(),
     S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     S3_REGION: z.string().default("auto"),
+    POSTHOG_PROJECT_TOKEN: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    POSTHOG_HOST: z.preprocess(blankIsUnset, z.url({ protocol: /^https?$/ }).optional()),
     ENGINE_URL: z.url().default("http://localhost:8000"),
     ENGINE_TOKEN: z.string().min(32).optional(),
     ENGINE_TIMEOUT_MS: z.coerce.number().int().positive().default(400_000),

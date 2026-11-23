@@ -16,12 +16,14 @@ const PlayerPage = lazy(() => import("./player/PlayerPage"));
 const DiffPage = import.meta.env.DEV ? lazy(() => import("./player/DiffPage")) : null;
 const Changelog = lazy(() => import("./pages/Changelog"));
 const Docs = lazy(() => import("./pages/Docs"));
+const Feedback = lazy(() => import("./pages/Feedback"));
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Account = lazy(() => import("./pages/Account"));
 const Admin = lazy(() => import("./pages/Admin"));
+const AdminFeedback = lazy(() => import("./pages/AdminFeedback"));
 const Review = lazy(() => import("./pages/Review"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
@@ -120,24 +122,47 @@ const indexRoute = createRoute({
   component: Index,
 });
 const accountRoute = createRoute({ ...r, path: "/account", component: AccountRoute, beforeLoad: guard });
-const adminRoute = createRoute({
-  ...r,
-  path: "/admin",
-  gcTime: 0,
-  loader: async ({ location }) => {
-    try {
-      return await trpc.admin.dashboard.query();
-    } catch (error) {
-      if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") {
-        throw redirect({ to: "/login", search: { redirect: location.href } });
-      }
-      throw error;
+async function loadAdmin<T>(href: string, load: () => Promise<T>) {
+  try {
+    return await load();
+  } catch (error) {
+    if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") {
+      throw redirect({ to: "/login", search: { redirect: href } });
     }
-  },
-  component: AdminRoute,
-  errorComponent: (props) => props.error instanceof TRPCClientError && props.error.data?.code === "FORBIDDEN"
+    throw error;
+  }
+}
+
+const adminAccess = {
+  gcTime: 0,
+  errorComponent: (props: Parameters<typeof RouteError>[0]) => props.error instanceof TRPCClientError && props.error.data?.code === "FORBIDDEN"
     ? <div className="grid min-h-screen place-content-center gap-3 p-6"><h1>Admin access required</h1><Link to="/" className="underline">Back home</Link></div>
     : <RouteError {...props} />,
+};
+
+const adminRoute = createRoute({
+  ...r,
+  ...adminAccess,
+  path: "/admin",
+  loader: ({ location }) => loadAdmin(location.href, () => trpc.admin.dashboard.query()),
+  component: AdminRoute,
+});
+const adminFeedbackRoute = createRoute({
+  ...r,
+  ...adminAccess,
+  path: "/admin/feedback",
+  validateSearch: (search: Record<string, unknown>): { before?: string } =>
+    typeof search.before === "string" ? { before: search.before } : {},
+  loaderDeps: ({ search }) => search,
+  loader: ({ location, deps }) => loadAdmin(location.href, () => trpc.admin.feedback.list.query(deps)),
+  component: () => <AdminFeedback page={adminFeedbackRoute.useLoaderData()} />,
+});
+const adminReportRoute = createRoute({
+  ...r,
+  ...adminAccess,
+  path: "/admin/feedback/$reportId",
+  loader: ({ location, params }) => loadAdmin(location.href, () => trpc.admin.feedback.get.query(params.reportId)),
+  component: () => <AdminFeedback report={adminReportRoute.useLoaderData()} />,
 });
 const onboardingRoute = createRoute({
   ...r,
@@ -175,6 +200,7 @@ const routeTree = root.addChildren([
   indexRoute,
   createRoute({ ...r, path: "/changelog", component: () => <Changelog /> }),
   createRoute({ ...r, path: "/docs", component: () => <Docs /> }),
+  createRoute({ ...r, path: "/feedback", component: () => <Feedback /> }),
   createRoute({
     ...r,
     path: "/login",
@@ -196,6 +222,8 @@ const routeTree = root.addChildren([
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
   accountRoute,
   adminRoute,
+  adminFeedbackRoute,
+  adminReportRoute,
   onboardingRoute,
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),

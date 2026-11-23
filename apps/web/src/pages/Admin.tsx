@@ -47,6 +47,7 @@ export default function Admin({ dashboard }: { dashboard: Dashboard }) {
           <nav className="lq-topnav" aria-label="Main">
             <Link to="/" className="lq-topnav-link">Home</Link>
             <Link to="/explore" className="lq-topnav-link">Explore</Link>
+            <Link to="/admin/feedback" className="lq-topnav-link">Feedback inbox</Link>
             <Link to="/account" className="lq-avatar" aria-label="Account settings">{initial}</Link>
           </nav>
         </div>

@@ -22,6 +22,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1170.0",
     "@daytonaio/sdk": "^0.232.0",
     "@fastify/helmet": "^13.2.0",
+    "@fastify/rate-limit": "^11.3.0",
     "@fastify/websocket": "^11.3.7",
     "@learnquest/player-core": "workspace:*",
     "@learnquest/product-limits": "workspace:*",
@@ -40,6 +41,7 @@
     "node-pty": "^1.1.0",
     "pg": "^8.23.1",
     "prettier": "3.10.1",
+    "sharp": "^0.35.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

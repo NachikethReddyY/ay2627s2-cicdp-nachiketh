@@ -2,6 +2,8 @@ export const mvpLimits = { aiPathsPerDay: 5, imagesPerDay: 1 } as const;
 
 export const proLimits = { aiPathsPerDay: 25, imagesPerDay: 10 } as const;
 
+export const feedbackLimits = { name: 120, email: 254, location: 500, details: 4_000, screenshotBytes: 2 * 1024 * 1024 } as const;
+
 export type PlanStatus = "available" | "coming-soon";
 
 export type Plan = {

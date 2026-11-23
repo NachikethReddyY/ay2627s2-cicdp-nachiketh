@@ -34,6 +34,14 @@ Run a single API instance. Sandbox runs, shell tickets and rate limits use in-pr
 
 Course lesson writes are queued in memory, three engine calls at a time across the whole API. A restart lets the running writes finish and drops the queued ones. Those lessons show as "pending" on the course page, and the learner writes them again with one click.
 
+### Feedback
+
+The production workflow applies the feedback migration and deploys the API and web app. For screenshot uploads, the API uses the existing `S3_*` variables. Keep public access off on that bucket. Screenshots are re-encoded and stored under `feedback/`; the API serves them only after an admin session check. Set `TRUSTED_PROXY` to the trusted proxy IPs or CIDRs so the public form's request limit applies per visitor.
+
+Set `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` on the Render API to count submitted reports in PostHog. The `feedback_submitted` event carries the category and an opaque report ID. Report text, names and reply emails stay in Postgres. An upload that fails can be retried from the form with the same submission ID. Incomplete reports stay out of the inbox.
+
+After deployment, send a test bug report with a screenshot at `/feedback` and open it while signed in as an admin at `/admin/feedback`. The reply email opens the admin's mail client. Switch shared feedback links after the deployed flow passes.
+
 ### Vercel
 
 1. Use the production Vercel project (`learnslop`) with root directory `apps/web`. The committed `vercel.json` disables automatic Git deployments from `main` so the production workflow publishes the alias with the configured API origin. Other branches still get Git previews.

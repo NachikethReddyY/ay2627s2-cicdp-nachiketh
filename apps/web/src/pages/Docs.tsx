@@ -3,7 +3,7 @@ import "./landing.css";
 import "./landing/sections.css";
 import "./docs.css";
 import { Logo } from "./landing/Logo";
-import { FEEDBACK_URL, REPO_URL } from "./feedback";
+import { FEEDBACK_URL, REPO_URL } from "./feedback-config";
 
 const sections = [
   {
@@ -96,8 +96,8 @@ export default function Docs() {
         <section id="feedback" className="dc-section" aria-labelledby="feedback-h">
           <h2 id="feedback-h" className="dc-h2">Feedback</h2>
           <p>
-            Report a bug, flag a lesson problem or suggest an improvement on <a href={FEEDBACK_URL}>GitHub Issues</a>.
-            Reports and screenshots are public. Leave out LearnSlop handles, email addresses, passwords, tokens and other personal details.
+            <a href={FEEDBACK_URL}>Send private feedback</a> to report a bug, flag a lesson problem or suggest an improvement.
+            The LearnSlop team can reply by email.
           </p>
         </section>
       </main>

@@ -259,6 +259,7 @@ Neither scope uses a hard offset shadow.
 - **Phone (under 860px)**: one column. The order is headline, lede, mockup, then checklist (`.lp-text` is `display: contents`).
 - **Close**: a centred h2 ("What does the next line do?") and the primary pill. No card, no glow.
 - **Footer**: the logo, the audience line and Changelog, above a 1px top ring.
+- **Feedback form**: shares the landing nav and black canvas. A single ringed card holds the form, with a blue primary button and a blue ring on the selected feedback category.
 
 ### App
 

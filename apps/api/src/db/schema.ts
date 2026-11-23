@@ -609,3 +609,20 @@ export const importJobEvents = pgTable(
   },
   (t) => [uniqueIndex("import_job_events_job_seq").on(t.jobId, t.seq)],
 );
+
+export const feedbackReports = pgTable(
+  "feedback_reports",
+  {
+    id: text("id").primaryKey(),
+    category: text("category", { enum: ["bug", "feature", "general"] }).notNull(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    location: text("location"),
+    details: text("details").notNull(),
+    screenshotKey: text("screenshot_key"),
+    submissionHash: text("submission_hash").notNull(),
+    received: boolean("received").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("feedback_reports_received_created").on(t.createdAt, t.id).where(sql`${t.received}`)],
+);
