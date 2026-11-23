@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../src/db/client.ts";
-import { lessonVersions, lessons, learners, pathCourses, paths, stepProgress, user, worlds } from "../src/db/schema.ts";
+import { lessonObservations, lessonVersions, lessons, learners, pathCourses, paths, stepProgress, steps, user, worlds } from "../src/db/schema.ts";
 import { streak, week } from "../src/progress/streak.ts";
 import { firstCodeBlock } from "../src/progress/home.ts";
 
@@ -66,7 +66,7 @@ test("enrolled learner gets continue, progress and XP", async () => {
   const cookie = await signUp(app);
   await enroll(cookie, "js-foundations");
   let body = out(await get(cookie));
-  assert.deepEqual(body.continue.lesson, { slug: "lesson-1", title: body.continue.lesson.title, level: 1, done: 0, total: 3 });
+  assert.deepEqual(body.continue.lesson, { slug: "codequest-pretest", title: body.continue.lesson.title, level: 0, done: 0, total: 3 });
   assert.equal(body.continue.course.slug, "codequest");
   assert.deepEqual(body.official, [
     { slug: "sample-courses", title: "Sample courses", tagline: "Short courses to try LearnSlop", origin: "official", courseCount: 2, learners: 0 },
@@ -80,8 +80,8 @@ test("enrolled learner gets continue, progress and XP", async () => {
   assert.equal(body.stats.xp, 45);
   assert.equal(body.stats.todayXp, 45);
   assert.equal(body.stats.streak, 1);
-  assert.equal(body.continue, null, "only lesson is finished");
-  assert.deepEqual(body.paths[0].courses[0], { slug: "codequest", title: "Shopping Cart Basics", lessonsDone: 1, lessonsTotal: 1 });
+  assert.equal(body.continue.lesson.slug, "conditionals-1");
+  assert.deepEqual(body.paths[0].courses[0], { slug: "codequest", title: "Shopping Cart Basics", lessonsDone: 1, lessonsTotal: 2 });
 });
 
 test("game completion grants XP once and leaves lesson mastery unchanged", async () => {
@@ -118,6 +118,7 @@ test("courses.get: published lessons only, private courses only for the owner", 
   );
   assert.deepEqual(body.lessons.map(({ slug, level, done, total }: Record<string, number | string>) => ({ slug, level, done, total })), [
     { slug: "lesson-1", level: 1, done: 0, total: 3 },
+    { slug: "conditionals-1", level: 1, done: 0, total: 3 },
   ]);
 
   await answer(cookie, "s1", { kind: "mcq", choice: 1 });
@@ -251,4 +252,97 @@ test("paths.publish fails closed when moderation is unavailable or flags the pat
   } finally {
     setModerationClient(async () => clean);
   }
+});
+
+
+test("a pre-test records a once-only result without XP or mastery", async () => {
+  const cookie = await signUp(app);
+  await enroll(cookie, "js-foundations");
+  const next = out(await q(cookie, "me.next", { world: "codequest" }));
+  assert.equal(next.lessonSlug, "codequest-pretest");
+  const response = out(await answer(cookie, "codequest-pretest-0", { kind: "mcq", choice: 0 }));
+  assert.equal(response.correct, false);
+  assert.equal(response.state, "revealed");
+  assert.deepEqual(out(await q(cookie, "me.learning", { slug: "codequest" })), [
+    { slug: "js.functions", pre: false, post: null },
+  ]);
+  const home = out(await get(cookie));
+  assert.equal(home.stats.xp, 0);
+  assert.deepEqual(home.mastery, []);
+});
+
+test("home and leaderboard count first tries and passes once, and streak counts misses", async () => {
+  const cookie = await signUp(app);
+  await m(cookie, "steps.hint", { id: "s1" });
+  await answer(cookie, "s1", { kind: "mcq", choice: 1 });
+  await answer(cookie, "s2", { kind: "cloze", text: "wrong" });
+  await answer(cookie, "s3", { kind: "mcq", choice: 1 });
+  const home = out(await get(cookie));
+  assert.equal(home.stats.streak, 1);
+  assert.equal(home.stats.xp, 15);
+  assert.equal(home.leaderboard.xp, 15);
+});
+
+test("a due review grades once without revealing before the prediction", async () => {
+  const cookie = await signUp(app);
+  await answer(cookie, "s1", { kind: "mcq", choice: 1 });
+  await db.execute(sql`
+    INSERT INTO review_schedule (learner_id, concept_id, due_at)
+    SELECT me.id, c.id, now() - interval '1 day' FROM learners me CROSS JOIN concepts c
+    WHERE c.slug = 'js.array-reduce'
+    ON CONFLICT (learner_id, concept_id) DO UPDATE SET due_at = EXCLUDED.due_at`);
+  const input = { slug: "codequest" };
+  const served = await q(cookie, "me.review.get", input);
+  assert.equal(served.statusCode, 200, served.body);
+  const question = out(served);
+  assert.equal(question.kind, "mcq");
+  assert.ok(!("answer" in question));
+  const submitted = await m(cookie, "me.review.submit", { ...input, token: question.token, answer: { kind: "mcq", choice: 1 } });
+  assert.equal(submitted.statusCode, 200, submitted.body);
+  const result = out(submitted);
+  assert.equal(result.correct, true);
+  assert.equal((await m(cookie, "me.review.submit", { ...input, token: question.token, answer: { kind: "mcq", choice: 1 } })).statusCode, 409);
+  assert.equal(out(await q(cookie, "me.review.get", input)), null);
+  assert.equal((await db.select().from(lessonObservations)).length, 1);
+});
+
+
+test("the course unlocks a lesson when prerequisite mastery reaches 80%", async () => {
+  const cookie = await signUp(app);
+  const requirements = async () => {
+    const result = out(await q(cookie, "courses.get", { slug: "variables" }));
+    return result.lessons.find((l: { slug: string }) => l.slug === "variables-1").missingPrerequisites;
+  };
+  assert.deepEqual(await requirements(), ["values and types"]);
+  assert.equal(code(await q(cookie, "lessons.get", { id: "variables-1" })), "PRECONDITION_FAILED");
+  await db.execute(sql`
+    INSERT INTO mastery (learner_id, concept_id, p_known, n_obs)
+    SELECT learner.id, c.id, 0.79, 2 FROM learners learner CROSS JOIN concepts c
+    WHERE c.slug = 'js.values-types'`);
+  assert.deepEqual(await requirements(), ["values and types"]);
+  await db.execute(sql`UPDATE mastery SET p_known = 0.8`);
+  assert.deepEqual(await requirements(), []);
+  assert.equal((await q(cookie, "lessons.get", { id: "variables-1" })).statusCode, 200);
+});
+
+test("the post-test compares a different prediction against the baseline", async () => {
+  const cookie = await signUp(app);
+  const world = "codequest";
+  await answer(cookie, "codequest-pretest-0", { kind: "mcq", choice: 0 });
+  const { rows } = await db.execute<{ id: string }>(sql`
+    SELECT l.current_version_id AS id FROM lessons l JOIN worlds w ON w.id = l.world_id
+    WHERE w.slug = ${world} AND l.assessment IS NULL AND l.status = 'published'`);
+  for (const row of rows) {
+    for (const step of await db.select().from(steps).where(eq(steps.lessonVersionId, row.id))) {
+      const prediction = step.public.kind === "mcq"
+        ? { kind: "mcq", choice: step.secret.answer }
+        : { kind: "cloze", text: step.secret.answer };
+      assert.equal((await answer(cookie, step.id, prediction)).statusCode, 200);
+    }
+  }
+  assert.equal(out(await q(cookie, "me.next", { world })).lessonSlug, "codequest-posttest");
+  assert.equal((await answer(cookie, "codequest-posttest-0", { kind: "mcq", choice: 2 })).statusCode, 200);
+  assert.deepEqual(out(await q(cookie, "me.learning", { slug: world })), [
+    { slug: "js.functions", pre: false, post: true },
+  ]);
 });

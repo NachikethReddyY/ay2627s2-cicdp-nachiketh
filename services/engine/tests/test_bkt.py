@@ -72,7 +72,7 @@ def test_p3_three_correct_answers_converge() -> None:
 
 
 @pytest.mark.parametrize(
-    ("s", "g"), [(0, 0.2), (0.5, 0.2), (0.1, 0), (0.1, 0.5), (-1, 0.2), (0.1, 1.2)]
+    ("s", "g"), [(0, 0.2), (0.5, 0.2), (0.1, 0), (0.1, 0.75), (-1, 0.2), (0.1, 1.2)]
 )
 def test_bad_params_raise(s: float, g: float) -> None:
     with pytest.raises(ValueError):

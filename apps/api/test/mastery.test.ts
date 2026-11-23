@@ -79,10 +79,10 @@ test("observationOf maps the first action only", () => {
 test("a clean correct answer raises p_known and stores a recommendation", async () => {
   const c = await signUp(app);
   assert.equal((await attempt(c, 1)).statusCode, 200);
-  const m = await pOf("functions");
+  const m = await pOf("js.functions");
   assert.equal(m?.n, 1);
   assert.ok(m!.p > 0.2);
-  assert.ok(await pOf("array reduce"));
+  assert.ok(await pOf("js.array-reduce"));
   const recs = await db.select().from(recommendations);
   assert.equal(recs.length, 1);
   assert.ok(recs[0]!.reason.length > 0);
@@ -92,7 +92,7 @@ test("a hint-assisted correct answer lowers p_known", async () => {
   const c = await signUp(app);
   assert.equal((await trpc(app, c).m("steps.hint", { id: "s1" })).statusCode, 200);
   assert.equal((await attempt(c, 1)).statusCode, 200);
-  const m = await pOf("functions");
+  const m = await pOf("js.functions");
   assert.equal(m?.n, 1);
   assert.ok(m!.p < 0.2);
 });
@@ -100,9 +100,9 @@ test("a hint-assisted correct answer lowers p_known", async () => {
 test("a refused predict skip does not affect mastery or the first answer", async () => {
   const c = await signUp(app);
   assert.equal((await trpc(app, c).m("steps.skip", { id: "s1" })).statusCode, 400);
-  assert.equal(await pOf("functions"), undefined);
+  assert.equal(await pOf("js.functions"), undefined);
   assert.equal((await attempt(c, 1)).statusCode, 200);
-  const m = await pOf("functions");
+  const m = await pOf("js.functions");
   assert.equal(m?.n, 1);
   assert.ok(m!.p > 0.2);
 });
@@ -114,7 +114,7 @@ test("the second attempt on a step is not observed", async () => {
   assert.equal(out(await attempt(c, 1)).correct, true);
   const rows = await db.select().from(attempts);
   assert.deepEqual(rows.map((r) => r.observed).sort(), [false, true]);
-  assert.equal((await pOf("functions"))?.n, 1);
+  assert.equal((await pOf("js.functions"))?.n, 1);
   assert.equal(updateCalls, 1);
 });
 
@@ -124,7 +124,7 @@ test("applying twice does not double n_obs", async () => {
   const id = await learnerId();
   await applyObservations(id);
   await applyObservations(id);
-  assert.equal((await pOf("functions"))?.n, 1);
+  assert.equal((await pOf("js.functions"))?.n, 1);
   assert.equal(updateCalls, 1);
 });
 
@@ -154,7 +154,7 @@ test("a partial bkt config is merged over the defaults, and pGuess is ignored", 
   };
   assert.equal((await attempt(c, 1)).statusCode, 200);
   assert.deepEqual(seen, [{ pSlip: 0.3, pLearn: 0.2, pInit: 0.2 }]);
-  assert.equal((await pOf("functions"))?.n, 1);
+  assert.equal((await pOf("js.functions"))?.n, 1);
 });
 
 test("an invalid bkt field falls back to its default while valid ones apply", async () => {
@@ -169,13 +169,14 @@ test("an invalid bkt field falls back to its default while valid ones apply", as
   assert.deepEqual(seen, [{ pSlip: 0.1, pLearn: 0.3, pInit: 0.2 }]);
 });
 
-test("a row with an invalid engine response is marked and a later valid row still applies", async () => {
+test("an invalid engine response stays pending and is retried on the next read", async () => {
   const c = await signUp(app);
   engineLearner.update = async () => z.array(z.string()).parse([1]) as never;
   assert.equal((await attempt(c, 1)).statusCode, 200);
   let rows = await db.select().from(attempts);
   assert.equal(rows.length, 1);
-  assert.ok(rows[0]!.masteryAppliedAt, "permanent failure is marked applied");
+  assert.equal(rows[0]!.masteryAppliedAt, null);
+  assert.ok(rows[0]!.masteryError);
   assert.equal((await db.select().from(mastery)).length, 0);
 
   engineLearner.update = stubUpdate;
@@ -186,7 +187,7 @@ test("a row with an invalid engine response is marked and a later valid row stil
   assert.equal((await db.select().from(mastery)).length > 0, true);
 });
 
-test("a database error on one row is permanent, a 429 is transient", async () => {
+test("both rate limits and unexpected errors leave evidence pending", async () => {
   const c = await signUp(app);
   engineLearner.update = async () => {
     throw new EngineError("slow down", 429, null);
@@ -197,11 +198,14 @@ test("a database error on one row is permanent, a 429 is transient", async () =>
     throw new Error("relation does not exist");
   };
   await applyObservations(await learnerId());
-  assert.ok((await db.select().from(attempts))[0]!.masteryAppliedAt);
+  const [pending] = await db.select().from(attempts);
+  assert.equal(pending!.masteryAppliedAt, null);
+  assert.equal(pending!.masteryFailures, 2);
 });
 
 test("two reads with no change make one engine next call; new information makes one more", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
   assert.equal((await read()).statusCode, 200);
   assert.equal((await read()).statusCode, 200);
@@ -224,6 +228,7 @@ test("two reads with no change make one engine next call; new information makes 
 
 test("a response from another policy version is not stored under the current hash", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   engineLearner.next = async (req) => {
     nextCalls++;
     lastNext = req;
@@ -247,6 +252,7 @@ test("a response from another policy version is not stored under the current has
 
 test("a changed world title changes the hash and the engine receives display titles", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
   await read();
   const [w] = await db.select().from(worlds);
@@ -260,6 +266,7 @@ test("a changed world title changes the hash and the engine receives display tit
 
 test("a changed lesson title changes the hash and asks the engine again", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const read = () => trpc(app, c).q("me.next", { world: "codequest" });
   await read();
   await read();
@@ -285,10 +292,11 @@ test("a transient database error (40001) leaves the row pending and a later read
   await applyObservations(await learnerId());
   assert.equal((await db.select().from(attempts))[0]!.masteryAppliedAt, null);
 
+  await db.update(attempts).set({ masteryRetryAt: new Date(0) });
   engineLearner.update = stubUpdate;
   assert.equal((await trpc(app, c).q("me.mastery", { world: "codequest" })).statusCode, 200);
   assert.ok((await db.select().from(attempts))[0]!.masteryAppliedAt);
-  assert.equal((await pOf("functions"))?.n, 1);
+  assert.equal((await pOf("js.functions"))?.n, 1);
 });
 
 const engineFile = (name: string) =>
@@ -312,7 +320,7 @@ test("a wrong attempt reports the lesson's concepts, and only names", async () =
   const c = await signUp(app);
   const r = out(await attempt(c, 0));
   assert.equal(r.correct, false);
-  assert.deepEqual([...r.missedConcepts].sort(), ["array reduce", "functions"].sort());
+  assert.deepEqual([...r.missedConcepts].sort(), ["js.array-reduce", "js.functions"].sort());
   const body = JSON.stringify(r);
   for (const key of ["answer", "hint", "explanations"]) assert.ok(!body.includes(`"${key}"`));
 })
@@ -327,8 +335,10 @@ test("a row the engine rejects, or with a bad concept entry, does not block a la
   engineLearner.update = async () => {
     throw new EngineError("Engine answered 422", 422, null);
   };
-  await attempt(c, 0, "s2");
-  assert.ok((await db.select().from(attempts)).every((a) => a.masteryAppliedAt));
+  assert.equal((await trpc(app, c).m("steps.attempt", { id: "s2", answer: { kind: "cloze", text: "discount = 0" } })).statusCode, 200);
+  const pending = (await db.select().from(attempts)).find((a) => a.stepId === "s2");
+  assert.equal(pending?.masteryAppliedAt, null);
+  assert.match(pending?.masteryError ?? "", /422/);
   assert.equal((await pOf("loops"))?.n, 1);
 });
 
@@ -337,7 +347,7 @@ test("20 parallel attempts give n_obs = 1", async () => {
   const results = await Promise.all(Array.from({ length: 20 }, () => attempt(c, 1)));
   assert.ok(results.some((r) => r.statusCode === 200));
   assert.equal((await db.select().from(attempts)).filter((a) => a.observed).length, 1);
-  assert.equal((await pOf("functions"))?.n, 1);
+  assert.equal((await pOf("js.functions"))?.n, 1);
   assert.equal(updateCalls, 1);
 });
 
@@ -360,8 +370,8 @@ test("concurrent workers apply an observation only once", async () => {
   const other: typeof import("../src/progress/mastery.ts") = await import("../src/progress/mastery.ts?other-worker");
   await Promise.all([applyObservations(id), other.applyObservations(id)]);
   assert.equal(arrivals, 2);
-  assert.equal((await pOf("functions"))?.n, 1);
-  assert.equal((await pOf("array reduce"))?.n, 1);
+  assert.equal((await pOf("js.functions"))?.n, 1);
+  assert.equal((await pOf("js.array-reduce"))?.n, 1);
 });
 
 test("an older recommendation cannot replace one for newer inputs", async () => {
@@ -402,7 +412,7 @@ test("steps with their own concepts use them, and a step with none makes no obse
   await db.update(steps).set({ secret: sql`jsonb_set(secret, '{concepts}', '["  Loops "]')` }).where(eq(steps.id, "s1"));
   await attempt(c, 1);
   assert.ok(await pOf("loops"));
-  assert.equal(await pOf("functions"), undefined);
+  assert.equal(await pOf("js.functions"), undefined);
 
   await db.execute(sql`UPDATE lessons SET concepts = '{}'`);
   await db.update(steps).set({ secret: sql`secret - 'concepts'` }).where(eq(steps.id, "s2"));
@@ -432,6 +442,7 @@ test("a private course is not found", async () => {
 
 test("me.next carries a reason, even before any attempt", async () => {
   const c = await signUp(app);
+  await db.update(lessons).set({ status: "archived" }).where(eq(lessons.assessment, "pre"));
   const first = out(await trpc(app, c).q("me.next", { world: "codequest" }));
   assert.ok(first.reason.length > 0);
   assert.equal(first.reasonCode, "stub");

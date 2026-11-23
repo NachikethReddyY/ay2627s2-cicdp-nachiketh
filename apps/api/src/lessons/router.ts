@@ -13,6 +13,7 @@ import { PRACTICE_LANGUAGES, parsePractice } from "../parts/practice-schema.ts";
 import { countPracticeAttempts, PRACTICE_REVEAL_ATTEMPTS, practiceRevision, practiceTests } from "../parts/practice.ts";
 import { parseScrim } from "../parts/scrim-schema.ts";
 import { malformedScrim, publicScrimMedia, publicScrimSegments, scrimGateStates, scrimStepState, servedGateIds } from "./scrim.ts";
+import { catalogueName, prerequisitesForLesson } from "../progress/catalogue.ts";
 import { verifyReferenceSolution } from "../sandbox/check.ts";
 import { loadScrimGates } from "./scrim-gates.ts";
 import { publicDoc } from "@learnquest/ui-catalog";
@@ -181,7 +182,7 @@ export const lessonsRouter = router({
     .query(async ({ ctx, input }) => {
       const { id } = input;
       const [found] = await db
-        .select({ lesson: lessons, isOwner: sql<boolean>`coalesce(${worlds.ownerId} = ${learners.userId}, false)` })
+        .select({ lesson: lessons, config: worlds.config, isOwner: sql<boolean>`coalesce(${worlds.ownerId} = ${learners.userId}, false)` })
         .from(lessons)
         .innerJoin(worlds, eq(worlds.id, lessons.worldId))
         .innerJoin(learners, eq(learners.id, ctx.learnerId))
@@ -210,6 +211,13 @@ export const lessonsRouter = router({
         .select({ lessonId: partCompletions.lessonId })
         .from(partCompletions)
         .where(and(eq(partCompletions.learnerId, ctx.learnerId), eq(partCompletions.lessonId, lesson.id)));
+      if (!lesson.assessment && !completion && !rows.some((row) => row.state !== null)) {
+        const missing = await prerequisitesForLesson(ctx.learnerId, lesson.worldId, lesson.concepts, found?.config);
+        if (missing.length > 0) {
+          const names = missing.map((slug) => catalogueName(slug) ?? slug).join(", ");
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Reach 80% mastery in ${names} to unlock this lesson.` });
+        }
+      }
       const readLesson = lesson.kind === "learn" || lesson.kind === "watch";
       const opening = rows.find((row) => row.idx === 0);
       const [prediction] = readLesson && rows.length >= 2 && opening

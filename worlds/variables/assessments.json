@@ -1,0 +1,81 @@
+{
+  "pre": [
+    {
+      "concept": "js.variables",
+      "title": "Reassign a value",
+      "prompt": "What does this code print?\n\n```js\nlet score = 1;\nscore = 5;\nconsole.log(score);\n```",
+      "kind": "mcq",
+      "options": [
+        "1",
+        "5",
+        "6",
+        "It throws an error"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "constants",
+      "title": "Reassign a constant",
+      "prompt": "What happens when this code runs?\n\n```js\nconst LIMIT = 3;\nLIMIT = 4;\n```",
+      "kind": "mcq",
+      "options": [
+        "LIMIT becomes 4",
+        "LIMIT stays 3 and nothing happens",
+        "It throws a TypeError",
+        "LIMIT becomes 7"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "js.values-types",
+      "title": "Identify a type",
+      "prompt": "What is the type of `42` in JavaScript?",
+      "kind": "mcq",
+      "options": [
+        "number",
+        "string",
+        "boolean",
+        "object"
+      ],
+      "answer": 0
+    }
+  ],
+  "post": [
+    {
+      "concept": "js.variables",
+      "title": "Update a counter",
+      "prompt": "What does this code print?\n\n```js\nlet count = 2;\ncount = count + 3;\nconsole.log(count);\n```",
+      "kind": "mcq",
+      "options": [
+        "2",
+        "3",
+        "5",
+        "It throws an error"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "constants",
+      "title": "Pick the keyword",
+      "prompt": "Type the keyword that declares a name which can never be reassigned.",
+      "kind": "cloze",
+      "answer": "const",
+      "accepted": [
+        "const"
+      ]
+    },
+    {
+      "concept": "js.values-types",
+      "title": "Identify quoted values",
+      "prompt": "What is the type of `'42'` in JavaScript?",
+      "kind": "mcq",
+      "options": [
+        "number",
+        "string",
+        "boolean",
+        "object"
+      ],
+      "answer": 1
+    }
+  ]
+}

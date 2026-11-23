@@ -213,13 +213,14 @@ export const concepts = pgTable(
   "concepts",
   {
     id: id(),
-    worldId: text("world_id")
-      .notNull()
-      .references(() => worlds.id),
+    worldId: text("world_id").references(() => worlds.id),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
   },
-  (t) => [uniqueIndex("concepts_world_slug").on(t.worldId, t.slug)],
+  (t) => [
+    uniqueIndex("concepts_world_slug").on(t.worldId, t.slug),
+    uniqueIndex("concepts_global_slug").on(t.slug).where(sql`${t.worldId} IS NULL`),
+  ],
 );
 
 export const mastery = pgTable(
@@ -301,6 +302,7 @@ export const lessons = pgTable(
     .notNull()
     .default("predict"),
   source: jsonb("source").$type<LessonSource>(),
+  assessment: text("assessment", { enum: ["pre", "post"] }),
   concepts: text("concepts").array().notNull().default(sql`'{}'::text[]`),
   status: text("status", { enum: ["draft", "published", "archived"] })
     .notNull()
@@ -372,6 +374,13 @@ export const stepProgress = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.stepId] })],
 );
 
+const masteryApplication = () => ({
+  masteryAppliedAt: timestamp("mastery_applied_at"),
+  masteryRetryAt: timestamp("mastery_retry_at"),
+  masteryFailures: integer("mastery_failures").notNull().default(0),
+  masteryError: text("mastery_error"),
+});
+
 export const attempts = pgTable(
   "attempts",
   {
@@ -392,7 +401,7 @@ export const attempts = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    masteryAppliedAt: timestamp("mastery_applied_at"),
+    ...masteryApplication(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -436,6 +445,35 @@ export const gameCompletions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId, t.partIdx, t.blockId] })],
+);
+
+export const lessonObservations = pgTable(
+  "lesson_observations",
+  {
+    id: id(),
+    learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
+    lessonVersionId: text("lesson_version_id").notNull().references(() => lessonVersions.id, { onDelete: "cascade" }),
+    activityKey: text("activity_key").notNull(),
+    kind: text("kind", { enum: ["mcq", "cloze", "practice"] }).notNull(),
+    conceptSlugs: text("concept_slugs").array(),
+    optionCount: integer("option_count"),
+    correct: boolean("correct").notNull(),
+    hintsUsed: integer("hints_used").notNull().default(0),
+    ...masteryApplication(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("lesson_observations_first_try").on(t.learnerId, t.lessonVersionId, t.activityKey)],
+);
+
+export const reviewSchedule = pgTable(
+  "review_schedule",
+  {
+    learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
+    conceptId: text("concept_id").notNull().references(() => concepts.id, { onDelete: "cascade" }),
+    stage: integer("stage").notNull().default(0),
+    dueAt: timestamp("due_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.learnerId, t.conceptId] })],
 );
 
 export const gameAttempts = pgTable(

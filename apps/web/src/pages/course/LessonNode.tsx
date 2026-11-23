@@ -131,7 +131,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
           <p className="lesson-pop-title">{l.title}</p>
           <div className="lesson-pop-kind"><Pill kind={l.kind} /></div>
           {state === "locked" ? (
-            <p className="lesson-pop-note">Finish the lessons before this one to unlock it.</p>
+            <p className="lesson-pop-note">Reach 80% mastery in {l.missingPrerequisites.join(", ")} to unlock this lesson.</p>
           ) : needsWrite ? (
             <>
               <p className="lesson-pop-note">{l.writeState === "failed" ? "Writing this lesson failed." : "This lesson isn't written yet."}</p>

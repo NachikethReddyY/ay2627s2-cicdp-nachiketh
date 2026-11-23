@@ -93,7 +93,7 @@ test("a completed learn lesson counts as done in course and home progress", asyn
   const after = await lessonOf();
   assert.deepEqual([after.done, after.total], [1, 1]);
   const home = out(await get(cookie));
-  assert.deepEqual([home.paths[0].courses[0].lessonsDone, home.paths[0].courses[0].lessonsTotal], [1, 2]);
+  assert.deepEqual([home.paths[0].courses[0].lessonsDone, home.paths[0].courses[0].lessonsTotal], [1, 3]);
 });
 
 test("games.check: only a real game of a game-practice lesson records a win", async () => {

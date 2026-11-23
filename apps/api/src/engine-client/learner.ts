@@ -6,7 +6,8 @@ export type BktParams = { pSlip: number; pLearn: number; pInit: number };
 export type UpdateRequest = {
   priors: { conceptId: string; pKnown: number | null }[];
   params?: BktParams;
-  questionType: "mcq" | "cloze";
+  questionType: "mcq" | "cloze" | "practice";
+  options?: number;
   correct: boolean;
 };
 const UpdateResponse = z.object({
@@ -16,7 +17,7 @@ const UpdateResponse = z.object({
 export type NextRequest = {
   mastery: { conceptId: string; pKnown: number }[];
   edges: [string, string][];
-  lessons: { lessonId: string; title?: string; conceptIds: string[]; kind: string; done: boolean; order: number }[];
+  lessons: { lessonId: string; title?: string; conceptIds: string[]; kind: string; available?: boolean; done: boolean; order: number }[];
   worldTitle?: string;
   unlockAt?: number;
   masteredAt?: number;

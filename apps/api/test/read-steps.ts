@@ -9,7 +9,7 @@ const checkStep = (title: string) => ({
   answer: 0,
   hints: [{ text: "Look at the value bound to the variable.", eliminate: 2 }],
   explanations: { workedExample: "The binding changes before the log call runs.", practice: "Change the value again." },
-  concepts: [],
+  concepts: ["variables"],
 });
 export const readSteps = [checkStep("Opening check"), checkStep("Closing check")];
 export const withChecks = <T extends object>(part: T) => ({ ...part, steps: readSteps });

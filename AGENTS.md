@@ -55,7 +55,7 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - **Before a PR push**, run the full CI (`turbo run lint test build`) against a test Postgres. No pushing on partial checks.
 - **Small change sets.** One concern per PR. Update the relevant doc in the same PR when behaviour or scope changes.
 - **Commits** use Conventional Commits, `type(scope): description`, with body lines wrapped at 72 characters.
-- **Data.** Learner data includes account and session records, a public handle, role and leaderboard settings, timezone and daily goal, enrollments, attempts and hint use, lesson and game progress, mastery (BKT per concept), recommendations, workspace check results and import jobs. Learner-owned content records include generated and imported courses. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
+- **Data.** Learner data includes account and session records, a public handle, role and leaderboard settings, timezone and daily goal, enrollments, attempts and hint use, lesson and game progress, mastery (BKT per concept), recommendations, first game and lab checks, pre/post assessment results and review schedules, workspace check results and import jobs. Learner-owned content records include generated and imported courses. XP and streak are derived from activity. Weekly leaderboard rows show the handle and XP.
 - **Ask first** before changing product scope, audience or the learner model. Changes to auth, billing and deployment follow the merge gate (see Merging).
 
 ## Foundations first
@@ -113,14 +113,13 @@ The gate requires `lint`, `unit`, `engine`, `deploy-scripts`, and `e2e` to succe
 
 ## Concept catalogue and demo order
 
-- The JavaScript and TypeScript [concept catalogue](docs/concepts/catalogue.json) is AI-generated and public. The LearnSwap how-to catalogue is human-written. Seeded worlds still read their concepts from `worlds/<slug>/manifest.json`. Wiring catalogue prerequisites into the learner model is LQ-117.
+- The JavaScript and TypeScript [concept catalogue](docs/concepts/catalogue.json) is AI-generated and public. The LearnSwap how-to catalogue is human-written. Seeded worlds declare the first eight shared concepts and their prerequisite graph in `worlds/<slug>/manifest.json`.
 - The seeded demo lessons are in `worlds/` and load through `SAMPLE_WORLDS` in `apps/api/src/db/seed.ts`. Section 6 of the revised idea gives the presentation order.
 
 ## Open work after the pivot
 
 Done on 2026-11-06: `docs/plan.md` re-scoped (tracks, 13+ audience, game parts, second track as stretch), `docs/idea.md` rewritten, `docs/plan.html` regenerated, README, AGENTS and CLAUDE updated.
 
-1. Connect the JavaScript and TypeScript catalogue and its prerequisite edges to the app (LQ-117).
-2. Add attempt limits and a hint ladder to game practice, and make games in learn docs read-only (LQ-128).
-3. Decide the second track. The plan's default is Python basics; JavaScript and TypeScript stay first.
-4. Use the seeded lessons in the presentation order above.
+1. Add attempt limits and a hint ladder to game practice, and make games in learn docs read-only (LQ-128).
+2. Decide the second track. The plan's default is Python basics; JavaScript and TypeScript stay first.
+3. Use the seeded lessons in the presentation order above.

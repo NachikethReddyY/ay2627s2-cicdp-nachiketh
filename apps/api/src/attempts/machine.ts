@@ -3,7 +3,7 @@ export type Progress = { state: State; rungsTaken: number; attemptAllowed: boole
 export type Action = { type: "attempt"; correct: boolean } | { type: "hint" } | { type: "skip" };
 export type Outcome = { type: "attempt"; correct: boolean } | { type: "hint"; rung: number } | { type: "skip" };
 
-export type Rules = { hintCount: number; triesBeforeAnswer?: number; triesMade?: number; correctFinishesEarly?: boolean };
+export type Rules = { hintCount: number; triesBeforeAnswer?: number; triesMade?: number; correctFinishesEarly?: boolean; oneTry?: boolean };
 
 export const fresh = (): Progress => ({ state: "predicting", rungsTaken: 0, attemptAllowed: true, retryAllowed: false });
 
@@ -33,6 +33,7 @@ export function next(
 
   if (p.state === "hinting" && !p.attemptAllowed) return { conflict: "Take the next hint first" };
   const outcome: Outcome = { type: "attempt", correct: a.correct };
+  if (step.oneTry) return { progress: { ...p, state: "revealed" }, outcome };
   if (a.correct) {
     if (!step.correctFinishesEarly && made + 1 < needed) {
       return { progress: { ...p, state: "hinting", attemptAllowed: true, retryAllowed: true }, outcome };

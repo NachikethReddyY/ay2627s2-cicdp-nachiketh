@@ -110,10 +110,11 @@ Subtasks: LQ-84 (T1) to LQ-90 (T7).
 | `p_init` | 0.2 |
 | `p_learn` (transit) | 0.2 |
 | `p_slip` | 0.1 |
-| `p_guess`, MCQ | 0.25 (1 / 4 options) |
+| `p_guess`, MCQ | 1 / number of options |
 | `p_guess`, cloze | 0.10 |
+| `p_guess`, lab or non-quiz game check | 0.05 |
 
-Validation: `0 < p_slip < 0.5`, `0 < p_guess < 0.5`, `p_guess < 1 − p_slip` (this last one guarantees P2). Every probability is clamped to [0.001, 0.999]. Bad parameters give a 422.
+Validation: `0 < p_slip < 0.5`, `0 < p_guess ≤ 0.5`, `p_guess < 1 − p_slip` (this last one guarantees P2). Every probability is clamped to [0.001, 0.999]. Bad parameters give a 422.
 
 **Update equations**
 
@@ -252,3 +253,12 @@ cd services/engine && uv run ruff check learnquest_engine tests scripts \
 - Concept slugs drift without a catalogue, so mastery can split across near-duplicates (decision 3).
 - Without prerequisite edges, the policy may recommend concepts a learner has not reached. Acceptable for the first cut only.
 - The inline engine call can still delay the attempt response, although it no longer holds a transaction open. Each call is capped at 8 s and catch-up at 12 s.
+
+
+Game practice records one observation per version and block on the first scored submission. A quiz uses the first question's option count. A scored sandbox check records its first pass or fail independently of later retries and completion. Scrim prediction gates use the same step evidence as other predictions. Failed mastery updates stay pending with a recorded error and retry on later reads.
+
+Seeded courses offer an optional pre-test before the first lesson prediction and a post-test when the course is complete. Both use distinct questions on the same concepts and record the first prediction as an attempt. Home reports the two scores per concept. The assessment predictions count towards a streak and do not change mastery or XP.
+
+Three observed attempts in the learner's timezone make a streak day. Incorrect and hinted predictions count towards that total. Skips, rejected submissions and repeat checks do not. A correct unhinted first prediction awards 15 XP and passing a game or lab awards 10 XP once.
+
+A missed prediction becomes eligible for review when its original step is revealed. Other first observations schedule a review after one day. A correct review moves the next check to the next interval (1, 3, 7, 14 and 30 days). An incorrect review resets it to one day. Reviews update mastery and the streak. Course path locks use the 80% mastery threshold for prerequisites taught elsewhere in the same course.

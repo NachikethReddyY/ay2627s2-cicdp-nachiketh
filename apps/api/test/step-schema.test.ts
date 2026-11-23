@@ -26,7 +26,7 @@ const step = {
   explanations: { workedExample: "The body can send a value back.", practice: "Write a multiply function next." },
   answer: "return a + b",
   accepted: [],
-  concepts: [],
+  concepts: ["variables"],
 };
 
 test("a clean cloze step passes the schema and checks", () => {

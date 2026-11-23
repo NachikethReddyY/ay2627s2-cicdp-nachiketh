@@ -1,0 +1,134 @@
+{
+  "slug": "arrays-basics-1",
+  "title": "Read an array",
+  "concepts": [
+    "js.arrays"
+  ],
+  "position": 1,
+  "status": "published",
+  "steps": [
+    {
+      "public": {
+        "title": "Read an array",
+        "prompt": "What value will this expression print?",
+        "kind": "mcq",
+        "options": [
+          "4",
+          "8",
+          "15",
+          "undefined"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.arrays"
+        ],
+        "beforeFiles": {
+          "src/example.js": "const items = [4, 8, 15];\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+console.log(items[1]);"
+            ]
+          }
+        ],
+        "answer": 1,
+        "hints": [
+          {
+            "text": "The first item is at index 0."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Array indexes start at zero, so index 1 selects the second item.",
+          "practice": "Read the item at index 2."
+        }
+      }
+    },
+    {
+      "public": {
+        "title": "Read an array 2",
+        "prompt": "What value does the first array index select?",
+        "kind": "mcq",
+        "options": [
+          "4",
+          "8",
+          "15",
+          "undefined"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.arrays"
+        ],
+        "beforeFiles": {
+          "src/example.js": "const items = [4, 8, 15];\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+console.log(items[0]);"
+            ]
+          }
+        ],
+        "answer": 0,
+        "hints": [
+          {
+            "text": "Index zero refers to the start of the array."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Index zero selects the first element.",
+          "practice": "Read the item at index 2."
+        }
+      }
+    },
+    {
+      "public": {
+        "title": "Read an array 3",
+        "prompt": "What value does index 2 select?",
+        "kind": "mcq",
+        "options": [
+          "4",
+          "8",
+          "15",
+          "undefined"
+        ]
+      },
+      "secret": {
+        "concepts": [
+          "js.arrays"
+        ],
+        "beforeFiles": {
+          "src/example.js": "const items = [4, 8, 15];\n"
+        },
+        "hunks": [
+          {
+            "id": "h1",
+            "file": "src/example.js",
+            "oldStart": 2,
+            "lines": [
+              "+console.log(items[2]);"
+            ]
+          }
+        ],
+        "answer": 2,
+        "hints": [
+          {
+            "text": "Count indexes from zero, not one."
+          }
+        ],
+        "explanations": {
+          "workedExample": "Index two selects the third element.",
+          "practice": "Read the item at index 2."
+        }
+      }
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 import type { MouseEvent, ReactNode } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Bar } from "../../components/Bits";
-import type { ApiState, CourseData } from "../../lib/api";
+import { useApi, type ApiState, type CourseData } from "../../lib/api";
+import { trpc } from "../../lib/trpc";
 import { courseProgress } from "./courseProgress";
 
 export type CourseState = ApiState<CourseData | null>;
@@ -31,11 +32,21 @@ export function LessonProgress({ id, course }: { id: string; course: CourseState
 }
 
 export function CourseNext({ id, slug, course }: { id: string; slug: string; course: CourseState }) {
+  const rec = useApi(`me.next:${slug}`, () => trpc.me.next.query({ world: slug }));
   const { data, error } = course;
   if (error) return <NextLink href={`/courses/${slug}`}>Back to course</NextLink>;
-  if (!data) return <button type="button" disabled className="btn mt-4 opacity-50">Next</button>;
+  if (!data || rec.loading) return <button type="button" disabled className="btn mt-4 opacity-50">Next</button>;
   const i = data.lessons.findIndex((l) => l.slug === id);
-  if (i < 0) return <NextLink href="/">Back home</NextLink>;
-  const next = data.lessons[i + 1];
-  return next ? <NextLink href={`/play?lesson=${next.slug}&course=${slug}`}>Next</NextLink> : <NextLink href={`/courses/${slug}`}>Back to course</NextLink>;
+  const recommended = rec.data?.lessonSlug && rec.data.lessonSlug !== id ? rec.data.lessonSlug : null;
+  const fallback = data.lessons.slice(i + 1).find((l) => l.missingPrerequisites.length === 0 && l.done < l.total);
+  const next = recommended ?? (rec.error || (rec.data === null && !rec.loading) ? fallback?.slug : undefined);
+  return (
+    <div className="flex flex-col items-center text-center">
+      {rec.data && <p className="mt-4 mb-0 text-sm text-[var(--mu)]">{rec.data.reason}</p>}
+      {rec.data?.action === "review"
+        ? <NextLink href={`/review/${slug}`}>Review</NextLink>
+        : next ? <NextLink href={`/play?lesson=${next}&course=${slug}`}>Next</NextLink>
+          : <NextLink href={`/courses/${slug}`}>Back to course</NextLink>}
+    </div>
+  );
 }

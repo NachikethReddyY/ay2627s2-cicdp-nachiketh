@@ -9,7 +9,8 @@ Routes marked dev or test only exist in non-production builds.
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
 | Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Reads the pitch and sees Pro and the advanced track marked coming soon. |
-| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue**, **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
+| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason, **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
+| Spaced review | `/review/$slug` | `apps/web/src/pages/Review.tsx`, `apps/api/src/progress/review.ts` | Gets a due prediction from a previously answered lesson. Checks it server-side before showing the answer and scheduling the next review. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
 | Handle onboarding | `/onboarding` | `apps/web/src/pages/Onboarding.tsx` | New learners and existing learners who haven't confirmed a handle see how the leaderboard uses it, then accept or edit their generated handle before entering the app. |
 | Explore | `/explore` | `apps/web/src/pages/Explore.tsx` | Browses paths. The creator can publish a private path through `paths.publish` after automatic moderation. |

@@ -14,6 +14,7 @@ P_LEARN = 0.2
 P_SLIP = 0.1
 P_GUESS_MCQ = 0.25
 P_GUESS_CLOZE = 0.10
+P_GUESS_PRACTICE = 0.05
 
 
 def clamp(p: float) -> float:
@@ -24,8 +25,8 @@ def validate_params(p_slip: float, p_guess: float) -> None:
     """Raise ValueError unless 0 < s < 0.5, 0 < g < 0.5 and g < 1 - s (guarantees P2)."""
     if not 0 < p_slip < 0.5:
         raise ValueError("p_slip must be in (0, 0.5)")
-    if not 0 < p_guess < 0.5:
-        raise ValueError("p_guess must be in (0, 0.5)")
+    if not 0 < p_guess <= 0.5:
+        raise ValueError("p_guess must be in (0, 0.5]")
     if not p_guess < 1 - p_slip:
         raise ValueError("p_guess must be below 1 - p_slip")
 

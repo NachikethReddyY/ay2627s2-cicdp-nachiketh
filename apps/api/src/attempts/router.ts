@@ -6,11 +6,12 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db, type Db } from "../db/client.ts";
 import { attempts, hintEvents, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
+import { containsAnswer } from "../ai/answer-leak.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
 import { scrimGateOpen } from "../lessons/scrim.ts";
 import { loadScrimGates } from "../lessons/scrim-gates.ts";
-import { applyObservations, resolveConcepts } from "../progress/mastery.ts";
+import { catchUpMastery, resolveConcepts } from "../progress/mastery.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
 const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
@@ -41,7 +42,7 @@ async function scrimGateReachable(step: { versionId: string; idx: number }, lear
 
 async function loadStep(id: string, learnerId: string) {
   const [row] = await db
-    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source, lessonConcepts: lessons.concepts })
+    .select({ id: steps.id, idx: steps.idx, lessonId: lessons.id, lessonKind: lessons.kind, assessment: lessons.assessment, versionId: steps.lessonVersionId, pub: steps.public, secret: steps.secret, source: lessons.source })
     .from(steps)
     .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
     .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
@@ -60,7 +61,12 @@ async function loadStep(id: string, learnerId: string) {
 }
 type Step = NonNullable<Awaited<ReturnType<typeof loadStep>>>;
 
-const missedOf = (step: Step) => resolveConcepts(step.secret.concepts, step.lessonConcepts, `step ${step.id}`);
+const missedOf = (step: Step) => {
+  const answer = step.pub.kind === "mcq" ? step.pub.options?.[Number(step.secret.answer)] : String(step.secret.answer);
+  const hidden = [answer, ...(step.secret.accepted ?? [])].filter((value): value is string => Boolean(value));
+  return resolveConcepts(step.secret.concepts, `step ${step.id}`)
+    .filter((concept) => !hidden.some((value) => containsAnswer(concept, value)));
+};
 
 const hintAt = (step: Step, rung: number) => {
   const h = step.secret.hints[rung - 1];
@@ -130,6 +136,7 @@ function mutate(
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
     const { made } = await triesOf(tx, learnerId, stepId);
     const r = next(recoverSkipped(step, p), action, {
+      oneTry: step.assessment !== null,
       hintCount: step.secret.hints.length,
       triesBeforeAnswer: triesBeforeAnswer(step),
       triesMade: made,
@@ -179,14 +186,7 @@ function mutate(
   });
 }
 
-async function applyMastery(learnerId: string, out: { observed: boolean }) {
-  if (!out.observed) return;
-  try {
-    await applyObservations(learnerId);
-  } catch (e) {
-    console.error("mastery update failed; will catch up on read", e);
-  }
-}
+
 
 export async function guideStep(learnerId: string, stepIds: string[]) {
   for (const id of stepIds) {
@@ -278,7 +278,7 @@ export const stepsRouter = router({
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);
       const out = await mutate(ctx.learnerId, step, { type: "attempt", correct });
       if ("conflict" in out) throw conflict(out.conflict);
-      await applyMastery(ctx.learnerId, out);
+      if (out.observed && !step.assessment) await catchUpMastery(ctx.learnerId);
       return {
         attemptId: out.attemptId!,
         correct,
@@ -309,7 +309,7 @@ export const stepsRouter = router({
       if (isReadLesson(step) || step.lessonKind === "scrim") throw conflict("This check cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" });
       if ("conflict" in out) throw conflict(out.conflict);
-      await applyMastery(ctx.learnerId, out);
+      if (out.observed) await catchUpMastery(ctx.learnerId);
       return { state: "skipped" as const };
     }),
 

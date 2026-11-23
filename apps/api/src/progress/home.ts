@@ -6,8 +6,11 @@ import { publicScrimSegments, servedGateIds } from "../lessons/scrim.ts";
 import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
+import { activityEvents } from "./activity.ts";
+import { learning } from "./assessment.ts";
+import { NextStep, nextForWorld } from "./me.ts";
 import { streak, week } from "./streak.ts";
-import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, visibleCourse } from "./shared.ts";
+import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, unshadowedMastery, visibleCourse } from "./shared.ts";
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
 
@@ -38,8 +41,10 @@ const Home = z.object({
       course: z.object({ slug: z.string(), title: z.string(), index: z.number(), count: z.number() }),
       lesson: z.object({ slug: z.string(), title: z.string(), level: z.number(), done: z.number(), total: z.number() }),
       snippet: z.array(z.string()).nullable(),
+      recommendation: NextStep.nullable(),
     })
     .nullable(),
+  learning: z.array(z.object({ slug: z.string(), pre: z.boolean().nullable(), post: z.boolean().nullable() })),
   mastery: z.array(z.object({ name: z.string(), pKnown: z.number() })),
   leaderboard: z.object({
     xp: z.number(),
@@ -53,14 +58,13 @@ const Home = z.object({
   community: z.array(PathCard),
 });
 
-const XP = sql`CASE WHEN correct THEN 10 + CASE WHEN hints_used = 0 THEN 5 ELSE 0 END ELSE 0 END`;
-
 type LessonRow = {
   path_slug: string;
   path_title: string;
   tagline: string;
   origin: z.infer<typeof Origin>;
   enrolled_at: Date;
+  course_id: string;
   course_slug: string;
   course_title: string;
   lesson_slug: string | null;
@@ -111,17 +115,10 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const me = ctx.learnerId;
 
     const { rows: days } = await db.execute<{ day: string; solved: number; xp: number }>(sql`
-      SELECT day, sum(solved)::int AS solved, sum(xp)::int AS xp FROM (
-        SELECT to_char((a.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
-          count(*) FILTER (WHERE a.correct)::int AS solved, sum(${XP})::int AS xp
-        FROM attempts a JOIN learners l ON l.id = a.learner_id
-        WHERE a.learner_id = ${me} AND a.observed GROUP BY 1
-        UNION ALL
-        SELECT to_char((gc.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
-          0::int AS solved, (count(*) * 10)::int AS xp
-        FROM game_completions gc JOIN learners l ON l.id = gc.learner_id
-        WHERE gc.learner_id = ${me} GROUP BY 1
-      ) activity GROUP BY day`);
+      SELECT to_char((a.created_at AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE l.timezone, 'YYYY-MM-DD') AS day,
+        sum(a.attempts)::int AS solved, sum(a.xp)::int AS xp
+      FROM (${activityEvents(me)}) a JOIN learners l ON l.id = a.learner_id
+      GROUP BY 1`);
     const { rows: [clock] } = await db.execute<{ today: string; goal: number; timezone: string }>(sql`
       SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS today, daily_goal_xp AS goal, timezone
       FROM learners WHERE id = ${me}`);
@@ -130,7 +127,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
 
     const { rows } = await db.execute<LessonRow>(sql`
       SELECT p.slug AS path_slug, p.title AS path_title, p.tagline, p.origin, e.created_at AS enrolled_at,
-        w.slug AS course_slug, w.title AS course_title,
+        w.id AS course_id, w.slug AS course_slug, w.title AS course_title,
         l.slug AS lesson_slug, l.title AS lesson_title, l.level,
         ${lessonTotal} AS total,
         ${lessonDone(me)} AS done,
@@ -143,7 +140,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       WHERE e.learner_id = ${me} AND ${visibleCourse(me)}
       ORDER BY e.created_at DESC, p.id, pc.position, l.level, l.position, l.id`);
 
-    type Path = { slug: string; title: string; tagline: string; origin: LessonRow["origin"]; active: number; courses: Map<string, { slug: string; title: string; lessons: LessonRow[] }> };
+    type Path = { slug: string; title: string; tagline: string; origin: LessonRow["origin"]; active: number; courses: Map<string, { id: string; slug: string; title: string; lessons: LessonRow[] }> };
     const byPath = new Map<string, Path>();
     for (const row of rows) {
       let p = byPath.get(row.path_slug);
@@ -153,33 +150,41 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       }
       if (row.last_active) p.active = Math.max(p.active, new Date(row.last_active).getTime());
       let c = p.courses.get(row.course_slug);
-      if (!c) p.courses.set(row.course_slug, (c = { slug: row.course_slug, title: row.course_title, lessons: [] }));
+      if (!c) p.courses.set(row.course_slug, (c = { id: row.course_id, slug: row.course_slug, title: row.course_title, lessons: [] }));
       if (row.lesson_slug) c.lessons.push(row);
     }
 
     let next: Omit<NonNullable<z.infer<typeof Home>["continue"]>, "snippet"> | null = null;
-    for (const p of [...byPath.values()].sort((a, b) => b.active - a.active)) {
+    const activePaths = [...byPath.values()].sort((a, b) => b.active - a.active);
+    let activeCourseId: string | undefined;
+    findNext: for (const p of activePaths) {
       const courses = [...p.courses.values()];
-      const index = courses.findIndex((c) => c.lessons.some((l) => !complete(l)));
-      if (index < 0) continue;
-      const c = courses[index];
-      const l = c.lessons.find((l) => !complete(l))!;
-      next = {
-        path: { slug: p.slug, title: p.title },
-        course: { slug: c.slug, title: c.title, index, count: courses.length },
-        lesson: { slug: l.lesson_slug!, title: l.lesson_title!, level: l.level!, done: l.done, total: l.total },
-      };
-      break;
+      for (const [index, c] of courses.entries()) {
+        if (c.lessons.length === 0) continue;
+        activeCourseId ??= c.id;
+        const recommendation = await nextForWorld(me, c.id);
+        const l = c.lessons.find((l) => l.lesson_slug === recommendation?.lessonSlug) ??
+          c.lessons.find((l) => !complete(l));
+        if (!l && !recommendation?.lessonSlug) continue;
+        const assessment = recommendation?.action === "assess" ? (await db.execute<{ slug: string; title: string; level: number; done: number; total: number }>(sql`
+          SELECT l.slug, l.title, l.level, ${lessonDone(me)} AS done, ${lessonTotal} AS total
+          FROM lessons l WHERE l.world_id = ${c.id} AND l.slug = ${recommendation.lessonSlug} AND l.assessment IS NOT NULL`)).rows[0] : undefined;
+        if (!assessment && !l) continue;
+        next = {
+          path: { slug: p.slug, title: p.title },
+          course: { slug: c.slug, title: c.title, index, count: courses.length },
+          lesson: assessment ?? { slug: l!.lesson_slug!, title: l!.lesson_title!, level: l!.level!, done: l!.done, total: l!.total },
+          recommendation,
+        };
+        activeCourseId = c.id;
+        break findNext;
+      }
     }
 
-    const snippet = next && (await continueSnippet(next.lesson.slug, me));
+    const snippet = next && next.recommendation?.action !== "review" ? await continueSnippet(next.lesson.slug, me) : null;
 
     const { rows: ranked } = await db.execute<{ handle: string; xp: number; position: number; own: boolean }>(sql`
-      WITH x AS (
-        SELECT a.learner_id, ${XP} AS xp, a.created_at FROM attempts a WHERE a.observed
-        UNION ALL
-        SELECT gc.learner_id, 10 AS xp, gc.created_at FROM game_completions gc
-      ),
+      WITH x AS (${activityEvents()}),
       totals AS (
         SELECT l.id, l.handle, coalesce(sum(x.xp), 0)::int AS xp
         FROM learners l
@@ -199,7 +204,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const { rows: mastery } = await db.execute<{ name: string; pKnown: number }>(sql`
       SELECT c.name, m.p_known::float8 AS "pKnown"
       FROM mastery m JOIN concepts c ON c.id = m.concept_id
-      WHERE m.learner_id = ${me} AND m.n_obs > 0
+      WHERE m.learner_id = ${me} AND m.n_obs > 0 AND ${unshadowedMastery}
       ORDER BY m.n_obs DESC, m.p_known DESC LIMIT 4`);
 
     return {
@@ -213,6 +218,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
       },
       continue: next && { ...next, snippet },
       mastery,
+      learning: activeCourseId ? await learning(me, activeCourseId) : [],
       leaderboard: {
         xp: self?.xp ?? 0,
         rank: self && (self.xp > 0 || self.position <= board.length) ? self.position : null,

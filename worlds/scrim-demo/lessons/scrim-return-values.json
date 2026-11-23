@@ -2,8 +2,8 @@
   "slug": "scrim-return-values",
   "title": "What a function gives back",
   "concepts": [
-    "functions",
-    "return values"
+    "js.functions",
+    "js.return-values"
   ],
   "position": 0,
   "status": "published",
@@ -49,7 +49,10 @@
         "explanations": {
           "workedExample": "console.log prints 5 but returns undefined. A function with no return statement hands undefined back to its caller.",
           "practice": "Write double(n) so it returns n * 2. The caller can then store the result."
-        }
+        },
+        "concepts": [
+          "js.return-values"
+        ]
       }
     }
   ],
@@ -94,10 +97,34 @@
       "referenceSolution": "function double(n) {\n  return n * 2;\n}\n\nconst n = Number(require(\"fs\").readFileSync(0, \"utf8\"));\nconsole.log(double(n));",
       "starterCode": "function double(n) {\n  \n}\n\nconst n = Number(require(\"fs\").readFileSync(0, \"utf8\"));\nconsole.log(double(n));\n",
       "tests": [
-        { "id": "two", "name": "double 2", "stdin": "2", "expectedStdout": "4", "visibility": "sample" },
-        { "id": "five", "name": "double 5", "stdin": "5", "expectedStdout": "10", "visibility": "sample" },
-        { "id": "hidden-1", "name": "hidden case 1", "stdin": "0", "expectedStdout": "0", "visibility": "hidden" },
-        { "id": "hidden-2", "name": "hidden case 2", "stdin": "-7", "expectedStdout": "-14", "visibility": "hidden" }
+        {
+          "id": "two",
+          "name": "double 2",
+          "stdin": "2",
+          "expectedStdout": "4",
+          "visibility": "sample"
+        },
+        {
+          "id": "five",
+          "name": "double 5",
+          "stdin": "5",
+          "expectedStdout": "10",
+          "visibility": "sample"
+        },
+        {
+          "id": "hidden-1",
+          "name": "hidden case 1",
+          "stdin": "0",
+          "expectedStdout": "0",
+          "visibility": "hidden"
+        },
+        {
+          "id": "hidden-2",
+          "name": "hidden case 2",
+          "stdin": "-7",
+          "expectedStdout": "-14",
+          "visibility": "hidden"
+        }
       ]
     }
   }

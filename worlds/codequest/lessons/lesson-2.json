@@ -2,7 +2,7 @@
   "slug": "lesson-2",
   "title": "Choose a shipping rate with conditionals",
   "concepts": [
-    "conditionals"
+    "js.conditionals"
   ],
   "position": 1,
   "status": "draft",
@@ -53,7 +53,10 @@
           "workedExample": "An if runs its block only when the condition is true. Using >= includes an order of exactly 50, and the return inside the block ends the function early.",
           "practice": "Add a rule that orders under 10 pay a handling fee of 3 on top, using another if."
         },
-        "narration": "The new rule uses an if. The condition has to be true for fifty and for anything above it, so the comparison is greater than or equal to. When it is true the function returns zero straight away, and the flat rate of five is only reached by smaller orders."
+        "narration": "The new rule uses an if. The condition has to be true for fifty and for anything above it, so the comparison is greater than or equal to. When it is true the function returns zero straight away, and the flat rate of five is only reached by smaller orders.",
+        "concepts": [
+          "js.conditionals"
+        ]
       }
     },
     {
@@ -96,7 +99,10 @@
           "workedExample": "Checks in a chain run top to bottom and stop at the first true one. Putting the 50 check first means an order of 60 never reaches the 20 check.",
           "practice": "Add a third tier for orders from 10 up to 19 that costs 4."
         },
-        "narration": "The second rule only matters when the first one did not match, so it is chained onto the same if. The checks run from the top and stop at the first true one. That is why the fifty check comes first: an order of sixty never reaches the check for twenty."
+        "narration": "The second rule only matters when the first one did not match, so it is chained onto the same if. The checks run from the top and stop at the first true one. That is why the fifty check comes first: an order of sixty never reaches the check for twenty.",
+        "concepts": [
+          "js.conditionals"
+        ]
       }
     },
     {
@@ -142,7 +148,10 @@
           "workedExample": "Boundary values are where off-by-one mistakes hide. Testing exactly 20 and exactly 50 proves that >= puts each edge in the higher tier.",
           "practice": "Add assertions for 19 and 49, the last values of each lower tier."
         },
-        "narration": "Bugs hide at the edges, so the test checks exactly twenty and exactly fifty. Both comparisons use greater than or equal to, so each edge falls into the higher tier. Twenty costs two and fifty costs zero."
+        "narration": "Bugs hide at the edges, so the test checks exactly twenty and exactly fifty. Both comparisons use greater than or equal to, so each edge falls into the higher tier. Twenty costs two and fifty costs zero.",
+        "concepts": [
+          "js.conditionals"
+        ]
       }
     }
   ]

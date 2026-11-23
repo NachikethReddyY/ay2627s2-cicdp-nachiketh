@@ -6,6 +6,7 @@ const Hunk = z.object({ id: z.string(), file: z.string(), oldStart: z.number().i
 const Hint = z.object({ text: z.string().min(1), eliminate: z.number().int().min(0).optional() });
 
 const StepSecretFile = z.object({
+  concepts: z.array(z.string().trim().min(1)).min(1),
   beforeFiles: z.record(z.string(), z.string()),
   hunks: z.array(Hunk).min(1),
   answer: z.union([z.number().int(), z.string()]),
@@ -22,20 +23,42 @@ const StepPublicFile = z.object({
   options: z.array(z.string()).optional(),
 });
 
+function checkAnswerShape(
+  s: { kind: "mcq" | "cloze"; options?: string[]; answer: number | string; accepted?: string[] },
+  ctx: z.RefinementCtx,
+) {
+  const { kind, options, answer, accepted } = s;
+  if (kind === "mcq") {
+    if (!options || options.length < 2) ctx.addIssue({ code: "custom", message: "mcq needs options" });
+    else if (options.length > 4) ctx.addIssue({ code: "custom", message: "mcq allows at most 4 options" });
+    else if (typeof answer !== "number" || answer < 0 || answer >= options.length)
+      ctx.addIssue({ code: "custom", message: "mcq answer must be an option index" });
+  } else if (typeof answer !== "string" || !accepted?.length) {
+    ctx.addIssue({ code: "custom", message: "cloze needs a string answer and accepted variants" });
+  }
+}
+
 const LessonStepFile = z
   .object({ id: z.string().min(1).optional(), public: StepPublicFile, secret: StepSecretFile })
-  .superRefine((s, ctx) => {
-    const { kind, options } = s.public;
-    const { answer, accepted } = s.secret;
-    if (kind === "mcq") {
-      if (!options || options.length < 2) ctx.addIssue({ code: "custom", message: "mcq needs options" });
-      else if (options.length > 4) ctx.addIssue({ code: "custom", message: "mcq allows at most 4 options" });
-      else if (typeof answer !== "number" || answer < 0 || answer >= options.length)
-        ctx.addIssue({ code: "custom", message: "mcq answer must be an option index" });
-    } else if (typeof answer !== "string" || !accepted?.length) {
-      ctx.addIssue({ code: "custom", message: "cloze needs a string answer and accepted variants" });
+  .superRefine((s, ctx) => checkAnswerShape({ ...s.public, answer: s.secret.answer, accepted: s.secret.accepted }, ctx));
+
+const AssessmentItem = StepPublicFile.extend({
+  concept: z.string().min(1),
+  answer: z.union([z.number().int(), z.string()]),
+  accepted: z.array(z.string()).optional(),
+}).superRefine((item, ctx) => checkAnswerShape(item, ctx));
+
+export const AssessmentFile = z
+  .object({ pre: z.array(AssessmentItem).min(1), post: z.array(AssessmentItem).min(1) })
+  .superRefine((file, ctx) => {
+    const pre = new Set(file.pre.map((item) => item.concept));
+    const post = new Set(file.post.map((item) => item.concept));
+    if (pre.size !== file.pre.length || post.size !== file.post.length || pre.size !== post.size ||
+        [...pre].some((concept) => !post.has(concept))) {
+      ctx.addIssue({ code: "custom", message: "pre and post must each test the same concepts once" });
     }
   });
+export type AssessmentFile = z.infer<typeof AssessmentFile>;
 
 export const LessonFile = z
   .object({
@@ -69,6 +92,7 @@ export const Manifest = z.object({
   description: z.string().default(""),
   path: z.string().min(1),
   concepts: z.array(z.object({ slug: z.string().min(1), name: z.string().min(1) })),
+  edges: z.array(z.tuple([z.string().min(1), z.string().min(1)])),
 });
 export type Manifest = z.infer<typeof Manifest>;
 

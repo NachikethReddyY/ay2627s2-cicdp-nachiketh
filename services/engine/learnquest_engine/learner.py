@@ -25,7 +25,8 @@ class BktParamsIn(BaseModel):
 class MasteryUpdateRequest(BaseModel):
     priors: list[Prior] = Field(max_length=50)
     params: BktParamsIn = Field(default_factory=BktParamsIn)
-    questionType: Literal["mcq", "cloze"]
+    questionType: Literal["mcq", "cloze", "practice"]
+    options: int | None = Field(default=None, ge=2, le=10)
     correct: bool
 
 
@@ -39,16 +40,18 @@ class MasteryUpdateResponse(BaseModel):
     updates: list[MasteryUpdate]
 
 
+def guess_rate(question_type: Literal["mcq", "cloze", "practice"], options: int | None) -> float:
+    if question_type == "mcq":
+        return 1 / options if options is not None else bkt.P_GUESS_MCQ
+    if question_type == "cloze":
+        return bkt.P_GUESS_CLOZE
+    return bkt.P_GUESS_PRACTICE
+
+
 def update_mastery(req: MasteryUpdateRequest) -> MasteryUpdateResponse:
     """Raises ValueError on invalid BKT parameters (the route maps it to 422)."""
     p = req.params
-    p_guess = (
-        p.pGuess
-        if p.pGuess is not None
-        else bkt.P_GUESS_MCQ
-        if req.questionType == "mcq"
-        else bkt.P_GUESS_CLOZE
-    )
+    p_guess = p.pGuess if p.pGuess is not None else guess_rate(req.questionType, req.options)
     p_slip = p.pSlip if p.pSlip is not None else bkt.P_SLIP
     p_learn = p.pLearn if p.pLearn is not None else bkt.P_LEARN
     p_init = p.pInit if p.pInit is not None else bkt.P_INIT
@@ -71,6 +74,7 @@ class LessonIn(BaseModel):
     conceptIds: list[str] = Field(max_length=50)
     kind: str = Field(min_length=1, max_length=40)
     done: bool
+    available: bool = True
     order: int
     title: str | None = Field(default=None, max_length=200)
 
@@ -98,7 +102,7 @@ def next_step(req: NextRequest) -> NextResponse:
         [policy.Mastery(m.conceptId, m.pKnown) for m in req.mastery],
         req.edges,
         [
-            policy.Lesson(x.lessonId, x.conceptIds, x.kind, x.done, x.order, x.title)
+            policy.Lesson(x.lessonId, x.conceptIds, x.kind, x.done, x.order, x.title, x.available)
             for x in req.lessons
         ],
         unlock_at=req.unlockAt,

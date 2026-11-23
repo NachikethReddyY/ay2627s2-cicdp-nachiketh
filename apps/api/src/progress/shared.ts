@@ -19,7 +19,7 @@ export const Slug = z.object({ slug: z.string().regex(/^[\w-]{1,64}$/) });
 
 export const lessonTotal = sql`(CASE WHEN l.kind = 'predict'
   THEN (SELECT count(*) FROM steps s WHERE s.lesson_version_id = l.current_version_id AND s.idx >= 0)::int ELSE 1 END)`;
-const gameBlocks = (content: SQL) => sql`(SELECT b.value->>'id' AS id, b.value->'props' AS props
+export const gameBlocks = (content: SQL) => sql`(SELECT b.value->>'id' AS id, b.value->'props' AS props
   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${content}->'doc'->'blocks') = 'array'
     THEN ${content}->'doc'->'blocks' ELSE '[]'::jsonb END) b(value)
   WHERE b.value->>'type' = 'game')`;
@@ -97,7 +97,7 @@ export const lastActive = (me: string) => sql`GREATEST(
   (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}),
   (SELECT max(gc.created_at) FROM game_completions gc WHERE gc.lesson_id = l.id AND gc.learner_id = ${me}))`;
 export const complete = (l: { done: number; total: number }) => l.total > 0 && l.done >= l.total;
-export const listed = playableLesson();
+export const listed = sql`${playableLesson()} AND l.assessment IS NULL`;
 export const visibleCourse = (me: string) => visibleWorld(userOfLearner(me));
 export const myUser = userOfLearner;
 
@@ -122,3 +122,11 @@ export async function pathCards(me: string, where: SQL, order: SQL, limit: numbe
     LIMIT ${limit}`);
   return rows;
 }
+
+
+export const unshadowedMastery = sql`NOT EXISTS (
+  SELECT 1 FROM worlds old
+  JOIN concepts canonical ON canonical.world_id IS NULL AND lower(canonical.name) = lower(c.slug)
+  JOIN mastery newer ON newer.concept_id = canonical.id AND newer.learner_id = m.learner_id
+  WHERE old.id = c.world_id AND old.origin = 'official'
+    AND old.slug IN ('codequest', 'variables', 'loops', 'scrim-demo'))`;

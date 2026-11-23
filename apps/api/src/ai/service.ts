@@ -146,12 +146,12 @@ async function moderated<T>(v: T, isPublic: boolean): Promise<T> {
   return v;
 }
 
-const PART_CACHE_VERSION = 1;
+const PART_CACHE_VERSION = 2;
 
 type LessonRow = typeof lessons.$inferSelect;
 
 function partCacheKey(ctx: LessonContext) {
-  return createHash("sha256").update(`v${PART_CACHE_VERSION}:${JSON.stringify({ ...ctx, missedConcepts: [] })}`).digest("hex");
+  return createHash("sha256").update(`v${PART_CACHE_VERSION}:${JSON.stringify(ctx)}`).digest("hex");
 }
 
 type PartCache = { part?: GeneratedPart; obsolete?: GeneratedPart };
@@ -167,7 +167,7 @@ async function cachedPart(key: string, kind: LessonRow["kind"]): Promise<PartCac
   }
 }
 
-async function lessonContext(l: LessonRow): Promise<LessonContext> {
+async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonContext> {
   const [world] = await db.select().from(worlds).where(eq(worlds.id, l.worldId));
   const [path] = await db
     .select({ title: paths.title, tagline: paths.tagline })
@@ -175,11 +175,23 @@ async function lessonContext(l: LessonRow): Promise<LessonContext> {
     .innerJoin(paths, eq(paths.id, pathCourses.pathId))
     .where(eq(pathCourses.worldId, l.worldId))
     .limit(1);
+  const { rows: misses } = world.visibility === "private" && world.ownerId ? await db.execute<{ concept: string }>(sql`
+    SELECT DISTINCT miss AS concept
+    FROM learners me
+    JOIN attempts a ON a.learner_id = me.id
+    JOIN steps s ON s.id = a.step_id
+    JOIN lesson_versions v ON v.id = s.lesson_version_id
+    JOIN lessons prior ON prior.id = v.lesson_id
+    CROSS JOIN LATERAL unnest(a.missed_concepts) miss
+    WHERE me.id = ${learnerId} AND me.user_id = ${world.ownerId}
+      AND prior.world_id = ${l.worldId} AND a.observed AND a.correct IS FALSE
+      AND miss = ANY(ARRAY[${sql.join(l.concepts.map((concept) => sql`${concept}`), sql`,`)}]::text[])
+    ORDER BY concept LIMIT 6`) : { rows: [] };
   return {
     path: path ?? { title: world.title, tagline: "" },
     course: { title: world.title, description: world.description },
     lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
-    missedConcepts: [],
+    missedConcepts: misses.map((r) => r.concept),
     ...((l.kind === "practice" || l.kind === "scrim") && { stretchTests: env.PRACTICE_STRETCH_TESTS }),
   };
 }
@@ -189,7 +201,7 @@ type Generated = { part: GeneratedPart | null; generated: GeneratedStep[] };
 async function generate(ctx: LessonContext, key: string | null, cached: PartCache, isPublic: boolean): Promise<Generated> {
   let part = cached.part && isPublic ? await moderated(cached.part, true) : (cached.part ?? null);
   if (key && !part) {
-    const partCtx: PartContext = { ...ctx, missedConcepts: [] };
+    const partCtx: PartContext = ctx;
     const next = validatePart(await measureGeneration("part", () => engineParts.lesson(partCtx)));
     if (next.kind !== ctx.lesson.kind) throw new Error("The generated part has the wrong lesson kind");
     part = await moderated(next, isPublic);
@@ -313,7 +325,7 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   const [pre] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
-  const ctx = await lessonContext(pre);
+  const ctx = await lessonContext(pre, learnerId);
   const key = pre.kind === "predict" ? null : partCacheKey(ctx);
   const cached = key ? await cachedPart(key, pre.kind) : {};
 
@@ -383,7 +395,7 @@ export async function upgradeReadChecks(ref: string, versionId: string, learnerI
 }
 
 async function replaceReadVersion(lesson: LessonRow, visibility: typeof worlds.$inferSelect.visibility, previousId: string, learnerId: string) {
-  const ctx = await lessonContext(lesson);
+  const ctx = await lessonContext(lesson, learnerId);
   const key = partCacheKey(ctx);
   const cached = await cachedPart(key, lesson.kind);
   if (!cached.part) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_PART);

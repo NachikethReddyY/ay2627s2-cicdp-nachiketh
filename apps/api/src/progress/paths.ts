@@ -5,6 +5,7 @@ import { db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { generatePath, lessonWriteState } from "../ai/service.ts";
 import { isSafe } from "../safety/moderation.ts";
+import { catalogueName, edgesFor, knownCatalogue, unmetPrerequisites } from "./catalogue.ts";
 import { TRPCError } from "@trpc/server";
 import { lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
 
@@ -15,6 +16,7 @@ const Lesson = z.object({
   done: z.number(),
   total: z.number(),
   kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]),
+  missingPrerequisites: z.array(z.string()).default([]),
   writeState: z.enum(["ready", "writing", "failed", "pending"]),
 });
 const CourseDetail = z.object({
@@ -46,18 +48,26 @@ const courseGet = protectedProcedure.input(Slug).output(CourseDetail).query(asyn
       const me = ctx.learnerId;
       const {
         rows: [course],
-      } = await db.execute<{ id: string; slug: string; title: string; description: string; origin: z.infer<typeof Origin> }>(sql`
-        SELECT w.id, w.slug, w.title, w.description, w.origin FROM worlds w
+      } = await db.execute<{ id: string; slug: string; title: string; description: string; origin: z.infer<typeof Origin>; config: unknown }>(sql`
+        SELECT w.id, w.slug, w.title, w.description, w.origin, w.config FROM worlds w
         WHERE w.slug = ${input.slug} AND ${visibleCourse(me)}`);
       if (!course) throw notFound("Course not found");
 
-      const { rows: lessonRows } = await db.execute<Omit<z.infer<typeof Lesson>, "writeState"> & { id: string; written: boolean }>(sql`
-        SELECT l.id, l.slug, l.title, l.level, l.kind, ${lessonDone(me)} AS done, ${lessonTotal} AS total,
+      const { rows: lessonRows } = await db.execute<Omit<z.infer<typeof Lesson>, "writeState" | "missingPrerequisites"> & { id: string; written: boolean; concepts: string[] }>(sql`
+        SELECT l.id, l.slug, l.title, l.level, l.kind, l.concepts, ${lessonDone(me)} AS done, ${lessonTotal} AS total,
           (l.current_version_id IS NOT NULL) AS written
         FROM lessons l
         WHERE l.world_id = ${course.id} AND ${listed}
         ORDER BY l.level, l.position, l.id`);
-      const lessons = lessonRows.map(({ id, written, ...lesson }) => ({ ...lesson, writeState: lessonWriteState(id, written) }));
+      const courseConcepts = new Set(lessonRows.flatMap((l) => l.concepts.map((c) => c.trim().toLowerCase())));
+      const edges = edgesFor(course.config, courseConcepts);
+      const pKnown = edges.length ? await knownCatalogue(me) : new Map<string, number>();
+      const lessons = lessonRows.map(({ id, written, concepts, ...lesson }) => ({
+        ...lesson,
+        writeState: lessonWriteState(id, written),
+        missingPrerequisites: unmetPrerequisites(concepts.map((c) => c.trim().toLowerCase()), courseConcepts, edges, pKnown)
+          .map((slug) => catalogueName(slug) ?? slug),
+      }));
       return { slug: course.slug, title: course.title, description: course.description, origin: course.origin, lessons };
   });
 

@@ -396,3 +396,11 @@
 
 /* Phones: the generator input fills the card width. */
 @media (max-width: 480px) { .lq.lq-moon .lq-gen input { width: 100%; min-width: 0; } }
+
+/* Continue reason: the one line that says why this lesson is next. */
+.lq .lq-hero-reason { margin-top: 10px; font: 500 16px var(--sans); color: var(--mu); }
+
+/* What you know: one meter per concept, in the order the server sends. */
+.lq .lq-mastery { padding: 22px; }
+.lq .lq-mastery-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.lq .lq-mastery-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font: 500 15px var(--sans); }

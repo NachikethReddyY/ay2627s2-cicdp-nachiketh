@@ -58,7 +58,7 @@ def test_update_cloze_guess_default(client: TestClient) -> None:
     assert cloze["updates"][0]["pPosterior"] > mcq["updates"][0]["pPosterior"]
 
 
-@pytest.mark.parametrize("params", [{"pSlip": 0.7}, {"pSlip": 0}, {"pGuess": 0.5}])
+@pytest.mark.parametrize("params", [{"pSlip": 0.7}, {"pSlip": 0}, {"pGuess": 0.75}])
 def test_update_bad_params_422(client: TestClient, params: dict[str, float]) -> None:
     r = client.post("/v1/mastery/update", json={**UPDATE, "params": params}, headers=TOKEN)
     assert r.status_code == 422
@@ -74,7 +74,7 @@ def test_next_shape(client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"policyVersion", "action", "lessonId", "conceptId", "reasonCode", "reason"}
-    assert body["policyVersion"] == "5"
+    assert body["policyVersion"] == "7"
     assert body["action"] == "learn"
     assert body["lessonId"] == "l1"
     assert body["reasonCode"] == "LEARN"
@@ -117,3 +117,25 @@ def test_next_reason_uses_titles(client: TestClient) -> None:
     reason = client.post("/v1/next", json=body, headers=TOKEN).json()["reason"]
     assert "JavaScript Basics" in reason
     assert "Variables" in reason
+
+
+@pytest.mark.parametrize(
+    ("question_type", "options", "guess"),
+    [
+        ("mcq", 2, 0.5),
+        ("mcq", 3, 1 / 3),
+        ("mcq", 4, 0.25),
+        ("cloze", None, 0.10),
+        ("practice", None, 0.05),
+    ],
+)
+def test_mastery_uses_activity_guess_rate(
+    client: TestClient, question_type: str, options: int | None, guess: float
+) -> None:
+    body = {**UPDATE, "questionType": question_type, "options": options}
+    response = client.post("/v1/mastery/update", json=body, headers=TOKEN)
+    explicit = client.post(
+        "/v1/mastery/update", json={**body, "params": {"pGuess": guess}}, headers=TOKEN
+    )
+    assert response.status_code == explicit.status_code == 200
+    assert response.json() == explicit.json()

@@ -19,6 +19,7 @@ const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Account = lazy(() => import("./pages/Account"));
+const Review = lazy(() => import("./pages/Review"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const EditorLab = lazy(() => import("./pages/EditorLab"));
@@ -119,6 +120,7 @@ const routeTree = root.addChildren([
       course: typeof s.course === "string" ? s.course : undefined,
     }),
   }),
+  createRoute({ ...r, path: "/review/$slug", component: () => <Review />, beforeLoad: guard }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
   accountRoute,

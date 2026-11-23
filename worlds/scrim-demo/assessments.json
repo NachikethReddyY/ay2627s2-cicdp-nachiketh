@@ -1,0 +1,58 @@
+{
+  "pre": [
+    {
+      "concept": "js.functions",
+      "title": "Use an argument",
+      "prompt": "What does `double(3)` give back if `double` returns its argument times two?",
+      "kind": "mcq",
+      "options": [
+        "3",
+        "6",
+        "2",
+        "undefined"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "js.return-values",
+      "title": "Find the caller's result",
+      "prompt": "What does the caller get when a JavaScript function reaches the end without a `return`?",
+      "kind": "mcq",
+      "options": [
+        "0",
+        "undefined",
+        "false",
+        "An error"
+      ],
+      "answer": 1
+    }
+  ],
+  "post": [
+    {
+      "concept": "js.functions",
+      "title": "Call a function twice",
+      "prompt": "If `plusOne(x)` returns `x + 1`, what is `plusOne(plusOne(3))`?",
+      "kind": "mcq",
+      "options": [
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "js.return-values",
+      "title": "Return or print",
+      "prompt": "What value is assigned to `given`?\n\n```js\nfunction get() { console.log(10); return 20; }\nconst given = get();\n```",
+      "kind": "mcq",
+      "options": [
+        "10",
+        "20",
+        "30",
+        "undefined"
+      ],
+      "answer": 1
+    }
+  ]
+}

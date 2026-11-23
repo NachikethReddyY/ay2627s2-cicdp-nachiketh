@@ -63,7 +63,7 @@ const scrimDraft = {
       answer: 1,
       hints: [{ text: "GEN_HINT_TWO_PRIVATE", eliminate: 2 }],
       explanations: { workedExample: "GEN_WORKED_TWO_PRIVATE", practice: "GEN_PRACTICE_TWO_PRIVATE" },
-      concepts: [],
+      concepts: ["variables"],
     },
   ],
   lab: {

@@ -1,0 +1,84 @@
+{
+  "pre": [
+    {
+      "concept": "js.functions",
+      "title": "Call a function",
+      "prompt": "What does `half(8)` give back?\n\n```js\nfunction half(n) {\n  return n / 2;\n}\n```",
+      "kind": "mcq",
+      "options": [
+        "8",
+        "4",
+        "16",
+        "undefined"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "js.array-reduce",
+      "title": "Add them up",
+      "prompt": "What is `sum`?\n\n```js\nconst sum = [1, 2, 3].reduce((acc, n) => acc + n, 0);\n```",
+      "kind": "mcq",
+      "options": [
+        "0",
+        "3",
+        "6",
+        "[1, 2, 3]"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "js.conditionals",
+      "title": "Pick a branch",
+      "prompt": "What does `label(5)` return?\n\n```js\nfunction label(n) {\n  if (n > 10) return \"big\";\n  return \"small\";\n}\n```",
+      "kind": "mcq",
+      "options": [
+        "\"big\"",
+        "\"small\"",
+        "5",
+        "undefined"
+      ],
+      "answer": 1
+    }
+  ],
+  "post": [
+    {
+      "concept": "js.functions",
+      "title": "Forgotten return",
+      "prompt": "What does `show(2)` give back?\n\n```js\nfunction show(n) {\n  n * 2;\n}\n```",
+      "kind": "mcq",
+      "options": [
+        "4",
+        "2",
+        "undefined",
+        "It throws an error"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "js.array-reduce",
+      "title": "Count with reduce",
+      "prompt": "What is `total`?\n\n```js\nconst total = [4, 6].reduce((acc, n) => acc + n, 1);\n```",
+      "kind": "mcq",
+      "options": [
+        "10",
+        "11",
+        "5",
+        "6"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "js.conditionals",
+      "title": "Boundary",
+      "prompt": "What does `kind(10)` return?\n\n```js\nfunction kind(n) {\n  if (n > 10) return \"high\";\n  return \"low\";\n}\n```",
+      "kind": "mcq",
+      "options": [
+        "\"high\"",
+        "\"low\"",
+        "10",
+        "undefined"
+      ],
+      "answer": 1
+    }
+  ]
+}

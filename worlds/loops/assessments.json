@@ -1,0 +1,110 @@
+{
+  "pre": [
+    {
+      "concept": "js.loops",
+      "title": "Count the passes",
+      "prompt": "How many times does the body run?\n\n```js\nfor (let i = 0; i < 3; i++) {\n  console.log(i);\n}\n```",
+      "kind": "mcq",
+      "options": [
+        "2",
+        "3",
+        "4",
+        "It never stops"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "array map",
+      "title": "Transform a list",
+      "prompt": "What is `doubled`?\n\n```js\nconst doubled = [1, 2, 3].map((n) => n * 2);\n```",
+      "kind": "mcq",
+      "options": [
+        "[1, 2, 3]",
+        "[2, 4, 6]",
+        "6",
+        "[2, 3, 4]"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "js.arrays",
+      "title": "Read an array entry",
+      "prompt": "What does `[8, 9][0]` evaluate to?",
+      "kind": "mcq",
+      "options": [
+        "8",
+        "9",
+        "0",
+        "undefined"
+      ],
+      "answer": 0
+    },
+    {
+      "concept": "array-filter",
+      "title": "Keep matching values",
+      "prompt": "What does `[0, 2, 4].filter(n => n > 1)` return?",
+      "kind": "mcq",
+      "options": [
+        "[0]",
+        "[2, 4]",
+        "[0, 2, 4]",
+        "2"
+      ],
+      "answer": 1
+    }
+  ],
+  "post": [
+    {
+      "concept": "js.loops",
+      "title": "Last value",
+      "prompt": "What is the last number printed?\n\n```js\nfor (let i = 1; i <= 4; i++) {\n  console.log(i);\n}\n```",
+      "kind": "mcq",
+      "options": [
+        "3",
+        "4",
+        "5",
+        "Nothing is printed"
+      ],
+      "answer": 1
+    },
+    {
+      "concept": "array map",
+      "title": "Map keeps the length",
+      "prompt": "How long is `lengths`?\n\n```js\nconst lengths = [\"a\", \"bb\", \"ccc\"].map((s) => s.length);\n```",
+      "kind": "mcq",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "It depends on the values"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "js.arrays",
+      "title": "Change the index",
+      "prompt": "What does `[10, 20, 30][2]` evaluate to?",
+      "kind": "mcq",
+      "options": [
+        "10",
+        "20",
+        "30",
+        "undefined"
+      ],
+      "answer": 2
+    },
+    {
+      "concept": "array-filter",
+      "title": "Keep even numbers",
+      "prompt": "What does `[1, 4, 5].filter(n => n % 2 === 0)` return?",
+      "kind": "mcq",
+      "options": [
+        "[1, 5]",
+        "[4]",
+        "[1, 4, 5]",
+        "4"
+      ],
+      "answer": 1
+    }
+  ]
+}

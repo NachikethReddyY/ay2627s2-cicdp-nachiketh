@@ -13,6 +13,8 @@ export const LEARNER_DATA_TABLES = [
   "hint_events",
   "mastery",
   "recommendations",
+  "review_schedule",
+  "lesson_observations",
   "game_attempts",
   "game_completions",
   "part_completions",

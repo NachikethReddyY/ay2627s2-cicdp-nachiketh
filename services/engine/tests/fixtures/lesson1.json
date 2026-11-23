@@ -42,7 +42,7 @@
           ]
         }
       ],
-      "concepts": []
+      "concepts": ["functions"]
     },
     {
       "title": "Support a discount",
@@ -84,7 +84,7 @@
           ]
         }
       ],
-      "concepts": []
+      "concepts": ["functions"]
     },
     {
       "title": "Test the total and the discount",
@@ -128,7 +128,7 @@
           ]
         }
       ],
-      "concepts": []
+      "concepts": ["functions"]
     }
   ]
 }

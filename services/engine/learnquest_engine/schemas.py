@@ -123,7 +123,7 @@ class _Step(BaseModel):
     hunks: list[Hunk] = Field(min_length=1, max_length=6)
     hints: list[Hint] = Field(min_length=1, max_length=2)
     explanations: Explanations
-    concepts: list[T60] = Field(default=[], max_length=6)
+    concepts: list[T60] = Field(min_length=1, max_length=6)
 
     def _answers(self) -> list[str]:
         raise NotImplementedError
@@ -135,6 +135,7 @@ class _Step(BaseModel):
             self.explanations.workedExample,
             self.explanations.practice,
             *(h.text for h in self.hints),
+            *self.concepts,
         ]
 
     @model_validator(mode="after")
