@@ -32,7 +32,7 @@ Run a single API instance. Sandbox runs, shell tickets and rate limits use in-pr
 
 ### Vercel
 
-1. Use the production Vercel project (`pip-learnquest`) with root directory `apps/web`.
+1. Use the production Vercel project (`learnslop`) with root directory `apps/web`. The committed `vercel.json` disables automatic Git deployments from `main` so the production workflow publishes the alias with the configured API origin. Other branches still get Git previews.
 2. Ensure the production alias in `WEB_ORIGIN` is publicly reachable by the smoke checks.
 3. The production workflow derives `VITE_SHELL_WS_ORIGIN` from `API_ORIGIN` during the web build. The terminal connects directly to Render via `wss://` because Vercel rewrites do not forward WebSocket upgrades. For a manual build, set the same variable to the API's `wss://` origin.
 4. Copy the token, org ID and project ID into the GitHub secrets above.
