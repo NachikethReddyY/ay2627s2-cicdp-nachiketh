@@ -188,9 +188,6 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     await route.fulfill({ json: { id: "run-1" } });
   });
   await page.route("**/api/sandbox/run/run-1?*", (route) => route.fulfill({ json: { output: "Practice output", next: 15, done: true } }));
-  await page.route("**/api/practice/lint", (route) => route.fulfill({ json: {
-    findings: [{ ruleId: "style-example", line: 1, column: 1, message: "Example style finding" }],
-  } }));
   await page.route("**/api/sandbox/check", async (route) => {
     const input = route.request().postDataJSON();
     expect(input).toMatchObject({ lessonId: "scrim-return-values", language: "javascript" });
@@ -231,7 +228,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
 
   await page.getByRole("button", { name: "Lint", exact: true }).click();
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Example style finding", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Style findings" }).getByText(/Prettier formatting suggestion/).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".squiggly-warning").first()).toBeVisible();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
@@ -240,6 +237,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.locator(".view-lines").first().click();
   await page.keyboard.type(" ");
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Prettier formatting suggestion/)).toHaveCount(0);
   await expect(page.locator(".squiggly-warning")).toHaveCount(0);
 });
 

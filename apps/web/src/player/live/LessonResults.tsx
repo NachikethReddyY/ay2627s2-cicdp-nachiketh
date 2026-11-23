@@ -82,7 +82,7 @@ export default function LessonResults({ children, result, tests, checkError, fin
               {findings.map((f, i) => (
                 <li key={`${f.line}-${f.column}-${f.ruleId}-${i}`} className="flex items-center gap-2 rounded-lg border border-[var(--line)] p-1.5">
                   <span className="wb-mono flex-none text-xs font-semibold">Line {f.line}</span>
-                  <span className="min-w-0 flex-1 text-xs">{f.message}</span>
+                  <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-xs">{f.message}</span>
                   <button type="button" aria-label={askLabel(f)} onClick={() => onAsk(f)} className="wb-tb wb-outline flex-none px-2.5 text-xs">Ask Sloppy</button>
                 </li>
               ))}
@@ -90,7 +90,7 @@ export default function LessonResults({ children, result, tests, checkError, fin
           )}
         </section>
       )}
-      {rows.length === 0 && findings === null && !checkError && !lintError && <p className="m-0 text-xs text-[var(--mu)]">Choose Submit to run the tests, or Lint to check code style.</p>}
+      {rows.length === 0 && findings === null && !checkError && !lintError && <p className="m-0 text-xs text-[var(--mu)]">Choose Submit to run the tests, or Lint to check style and formatting.</p>}
     </div>
   );
 }
