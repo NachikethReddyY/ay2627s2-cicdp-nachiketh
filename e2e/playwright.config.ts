@@ -1,12 +1,14 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type ReporterDescription } from "@playwright/test";
 
 const port = Number(process.env.E2E_WEB_PORT ?? 5173);
+const reporter: ReporterDescription[] = [["list"], ["html", { open: "never" }]];
+if (process.env.PLAYWRIGHT_JSON_OUTPUT_FILE) reporter.push(["json"]);
 
 export default defineConfig({
   testDir: "./tests",
   workers: 1,
   forbidOnly: !!process.env.CI,
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter,
   use: {
     baseURL: `http://localhost:${port}`,
     trace: "retain-on-failure",

@@ -1,4 +1,8 @@
 name: CI
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+  && format('PR #{0} · {1}', github.event.pull_request.number, github.event.pull_request.title)
+  || format('Production · {0}', github.event.head_commit.message) }}
 
 on:
   pull_request:
@@ -56,6 +60,8 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      coverage: ${{ steps.coverage.outputs.result }}
     env:
       TEST_DATABASE_URL: postgres://learnquest:learnquest@localhost:5432/learnquest_test
       BETTER_AUTH_SECRET: ci-test-secret-not-for-production-0123456789
@@ -83,9 +89,32 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm exec turbo run test build
+      - name: Run tests and build
+        run: pnpm exec turbo run test build
+        env:
+          ISOLATE_API_TEST_DATABASES: "true"
+          API_COVERAGE_FILE: ${{ runner.temp }}/api-coverage.lcov
 
       - run: pnpm run test:scripts
+
+      - name: Report API coverage
+        id: coverage
+        if: ${{ !cancelled() }}
+        env:
+          API_COVERAGE_FILE: ${{ runner.temp }}/api-coverage.lcov
+        run: |
+          if [[ -s "$API_COVERAGE_FILE" ]]; then
+            awk -F: '
+              $1 == "LF" { lines += $2 }
+              $1 == "LH" { coveredLines += $2 }
+              $1 == "BRF" { branches += $2 }
+              $1 == "BRH" { coveredBranches += $2 }
+              END {
+                if (lines && branches)
+                  printf "result=API coverage: %.1f%% lines, %.1f%% branches\n", 100 * coveredLines / lines, 100 * coveredBranches / branches
+              }
+            ' "$API_COVERAGE_FILE" >> "$GITHUB_OUTPUT"
+          fi
 
   engine:
     runs-on: ubuntu-latest
@@ -144,6 +173,9 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      test_result: ${{ steps.results.outputs.result }}
+      report_url: ${{ steps.report.outputs.artifact-url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -156,27 +188,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Each service image is built here, once, with its own GitHub cache scope, so an unchanged dependency layer
-      # is reused. scripts/ci.sh starts these images without building again (E2E_PREBUILT).
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Build API and engine images in parallel
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
-          context: .
-          file: infra/docker/api.Dockerfile
-          tags: learnquest-ci-api:e2e
+          source: .
+          files: infra/docker/e2e.hcl
           load: true
-          cache-from: type=gha,scope=e2e-api
-          cache-to: type=gha,mode=max,scope=e2e-api
-
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: services/engine/Dockerfile
-          tags: learnquest-ci-engine:e2e
-          load: true
-          cache-from: type=gha,scope=e2e-engine
-          cache-to: type=gha,mode=max,scope=e2e-engine
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -196,15 +215,27 @@ jobs:
           done
           exit 1
 
-      - run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
+      - name: Run browser tests against Compose
+        run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
         env:
           E2E_PREBUILT: "1"
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/playwright-results.json
 
-      # Keeps the Playwright report and traces from a red run, so a failure can be read without rerunning.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
+      - name: Report browser test results
+        id: results
+        if: ${{ !cancelled() }}
+        run: |
+          results="$RUNNER_TEMP/playwright-results.json"
+          if [[ -s "$results" ]]; then
+            jq -r '.stats | "result=\(.expected) passed, \(.unexpected) failed, \(.flaky) flaky, \(.skipped) skipped"' "$results" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Playwright report
+        id: report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
         with:
-          name: e2e-report
+          name: e2e-report-attempt-${{ github.run_attempt }}
           path: |
             e2e/playwright-report
             e2e/test-results
@@ -212,6 +243,7 @@ jobs:
           retention-days: 7
 
   deploy-production:
+    name: Prod
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [lint, unit, engine, deploy-scripts, e2e]
     permissions:
@@ -219,3 +251,31 @@ jobs:
       packages: write
     uses: ./.github/workflows/deploy-production.yml
     secrets: inherit
+
+  summary:
+    name: Summary
+    if: ${{ !cancelled() }}
+    needs: [lint, unit, engine, deploy-scripts, e2e, deploy-production]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Summarize checks and deployment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API_COVERAGE: ${{ needs.unit.outputs.coverage }}
+          E2E_RESULT: ${{ needs.e2e.outputs.test_result }}
+          E2E_REPORT_URL: ${{ needs.e2e.outputs.report_url }}
+          PRODUCTION_RESULT: ${{ needs.deploy-production.result }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100" --jq '.jobs[]' |
+            jq -s '.' |
+            node scripts/ci-summary.ts >> "$GITHUB_STEP_SUMMARY"
