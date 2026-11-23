@@ -29,7 +29,7 @@ Fix the foundations before building on top. A strong inner loop (types, lint, bo
 
 The [CI workflow](../../.github/workflows/ci.yml) runs five checks in parallel (`lint`, `unit`, `engine`, `deploy-scripts`, and `e2e`). The unit job runs up to four API test files at a time, with a separate Postgres database per file and one coverage report for the whole API suite. Those databases live in the job's disposable Postgres service. Local API tests use one database and run serially. The E2E job builds the API and engine service images together through [Docker Bake](../../infra/docker/e2e.hcl), then runs the browser suite against Compose.
 
-On pushes to `main`, successful checks lead to `Prod / Images`, `Prod / Migrate`, `Prod / Rollout`, and `Prod / Verify`. The verification job writes the checked commit and smoke result to the run summary.
+On pushes to `main`, successful checks lead to `Prod / Images`, `Prod / Migrate`, `Prod / Rollout`, and `Prod / Verify`. The smoke check gives the API, engine, and web endpoint up to 300 seconds each to report the deployed commit. The verification job writes the checked commit and smoke result to the run summary.
 
 The **Summary** job runs after the checks and any production jobs finish. Its table links to job logs and includes durations, API coverage, and Playwright results when available. The Playwright artifact includes the HTML report and any traces captured on failure.
 
