@@ -33,8 +33,31 @@ async function signUp(page: Page, email: string, next: string) {
   await page.goto(next);
 }
 
+async function checkAdminSpend(page: Page, email: string) {
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Admin access required" })).toBeVisible();
+
+  const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
+  try {
+    await pool.query('UPDATE learners SET is_admin = true WHERE user_id = (SELECT id FROM "user" WHERE email = $1)', [email]);
+    await pool.query("INSERT INTO ai_call_spend (prompt_tokens, completion_tokens, estimated_usd) VALUES (42, 4, 0.0123)");
+    await page.goto("/account");
+    await page.getByRole("link", { name: "Admin", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "AI spend", exact: true })).toBeVisible();
+    const month = page.getByRole("row", { name: /Month to date/ });
+    await expect(month.getByRole("cell")).toHaveText(["1", "42", "4", "46", "$0.0123"]);
+    await expect(page.getByRole("row", { name: /^\d{4}-\d{2}-\d{2}/ }).getByRole("cell")).toHaveText(["1", "42", "4", "46", "$0.0123"]);
+  } finally {
+    await pool.query('UPDATE learners SET is_admin = false WHERE user_id = (SELECT id FROM "user" WHERE email = $1)', [email]);
+    await pool.query("DELETE FROM ai_call_spend WHERE prompt_tokens = 42 AND completion_tokens = 4 AND estimated_usd = 0.0123");
+    await pool.end();
+  }
+}
+
 test("signs up, confirms and edits a public handle, and stays signed in on /play", async ({ page }) => {
   const email = newEmail();
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/login\?/);
   await createAccount(page, email);
   await page.goto("/");
   await expect(page).toHaveURL(/\/onboarding$/);
@@ -79,6 +102,8 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   const session = await page.request.get("/api/auth/get-session");
   expect(session.ok()).toBe(true);
   expect((await session.json()).user.email).toBe(email);
+
+  await test.step("AI spend is visible only to admins and shows aggregate totals", () => checkAdminSpend(page, email));
 
   await test.step("phone Home shows progress and offers Explore or one-click resume", async () => {
     await page.setViewportSize({ width: 375, height: 667 });

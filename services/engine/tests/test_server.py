@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -51,6 +52,9 @@ def test_outline_shape(client: TestClient, fake_llm: Callable[[str], list[dict[s
     assert body["outline"]["title"] == "Learn Rust"
     assert body["usage"]["prompt_tokens"] == 10
     assert body["attempts"] == 1
+    assert json.loads(r.headers["x-engine-usage"]) == [
+        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test"}
+    ]
 
 
 def test_lesson_shape(client: TestClient, fake_llm: Callable[[str], list[dict[str, Any]]]) -> None:
@@ -67,6 +71,10 @@ def test_invalid_twice_is_422(
     r = client.post("/v1/pipeline/lesson", json=CTX, headers=TOKEN)
     assert r.status_code == 422
     assert r.json()["error"] == "invalid_output"
+    assert json.loads(r.headers["x-engine-usage"]) == [
+        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test"},
+        {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test"},
+    ]
 
 
 def test_upstream_timeout_is_504(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

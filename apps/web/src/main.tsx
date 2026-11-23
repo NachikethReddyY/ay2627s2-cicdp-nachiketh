@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { Outlet, RouterProvider, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { Link, Outlet, RouterProvider, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { TRPCClientError } from "@trpc/client";
 import "./index.css";
 import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
@@ -19,6 +20,7 @@ const Home = lazy(() => import("./pages/Home"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Account = lazy(() => import("./pages/Account"));
+const Admin = lazy(() => import("./pages/Admin"));
 const Review = lazy(() => import("./pages/Review"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
@@ -72,6 +74,25 @@ const indexRoute = createRoute({
   component: Index,
 });
 const accountRoute = createRoute({ ...r, path: "/account", component: AccountRoute, beforeLoad: guard });
+const adminRoute = createRoute({
+  ...r,
+  path: "/admin",
+  gcTime: 0,
+  loader: async ({ location }) => {
+    try {
+      return await trpc.admin.dashboard.query();
+    } catch (error) {
+      if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") {
+        throw redirect({ to: "/login", search: { redirect: location.href } });
+      }
+      throw error;
+    }
+  },
+  component: AdminRoute,
+  errorComponent: (props) => props.error instanceof TRPCClientError && props.error.data?.code === "FORBIDDEN"
+    ? <div className="grid min-h-screen place-content-center gap-3 p-6"><h1>Admin access required</h1><Link to="/" className="underline">Back home</Link></div>
+    : <RouteError {...props} />,
+});
 const onboardingRoute = createRoute({
   ...r,
   path: "/onboarding",
@@ -93,6 +114,10 @@ function Index() {
 function AccountRoute() {
   const { profile } = accountRoute.useRouteContext();
   return <Account profile={profile} />;
+}
+
+function AdminRoute() {
+  return <Admin dashboard={adminRoute.useLoaderData()} />;
 }
 
 function OnboardingRoute() {
@@ -124,6 +149,7 @@ const routeTree = root.addChildren([
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
   accountRoute,
+  adminRoute,
   onboardingRoute,
   ...(DevBlocks ? [createRoute({ ...r, path: "/dev/blocks", component: () => <DevBlocks /> })] : []),
   ...(DiffPage ? [createRoute({ ...r, path: "/diff", component: () => <DiffPage /> })] : []),

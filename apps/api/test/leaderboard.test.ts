@@ -44,7 +44,7 @@ test("learners confirm or change their public handles without exposing account d
   assert.equal(initial.statusCode, 200, initial.body);
   const { handle } = out(initial);
   assert.match(handle, /^learner_[0-9a-f]{10}$/);
-  assert.deepEqual(out(initial), { handle, onboardingRequired: true, nextChangeAt: null });
+  assert.deepEqual(out(initial), { handle, isAdmin: false, onboardingRequired: true, nextChangeAt: null });
 
   for (const [invalid, message] of [["me@example.com", /without an email/], ["too-short!", /3 to 20/], ["Site_Admin", /reserved or blocked/]] as const) {
     const rejected = await self.m("me.handle.save", { handle: invalid });

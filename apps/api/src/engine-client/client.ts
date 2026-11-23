@@ -1,4 +1,5 @@
 import { env } from "../env.ts";
+import { recordEngineCallSpend } from "../admin/ai-spend.ts";
 
 export class EngineError extends Error {
   readonly status: number;
@@ -25,6 +26,7 @@ export async function callEngine<T = unknown>(path: `/v1/${string}`, body: unkno
     throw new EngineError(timedOut ? "Engine timed out" : `Engine unreachable at ${env.ENGINE_URL}`, timedOut ? 504 : 502, cause);
   }
   const json = (await res.json().catch(() => null)) as unknown;
+  await recordEngineCallSpend(res.headers.get("x-engine-usage"));
   if (!res.ok) throw new EngineError(`Engine answered ${res.status}`, res.status, json);
   return json as T;
 }

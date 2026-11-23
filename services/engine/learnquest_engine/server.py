@@ -1,4 +1,5 @@
 import hmac
+import json
 import logging
 import os
 import time
@@ -129,7 +130,17 @@ class CapBody:
                 return {"type": "http.request", "body": body, "more_body": False}
             return await receive()
 
-        await self.app(scope, replay, send)
+        calls, usage_token = llm.start_usage_collection()
+
+        async def send_usage(message: Any) -> None:
+            if calls and message["type"] == "http.response.start":
+                message["headers"].append((b"x-engine-usage", json.dumps(calls).encode("ascii")))
+            await send(message)
+
+        try:
+            await self.app(scope, replay, send_usage)
+        finally:
+            llm.stop_usage_collection(usage_token)
 
 
 app.add_middleware(CapBody)

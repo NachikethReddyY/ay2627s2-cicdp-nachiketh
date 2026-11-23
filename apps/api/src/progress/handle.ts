@@ -9,11 +9,12 @@ const blockedWords = new Set(["admin", "administrator", "fuck", "learnslop", "mo
 const cooldown = sql`interval '720 hours'`;
 const profileFields = sql`
   handle,
+  is_admin AS "isAdmin",
   handle_updated_at IS NULL AS "onboardingRequired",
   CASE WHEN handle_updated_at + ${cooldown} > now()
     THEN (extract(epoch FROM handle_updated_at + ${cooldown}) * 1000)::float8
   END AS "nextChangeAt"`;
-const Profile = z.object({ handle: z.string(), onboardingRequired: z.boolean(), nextChangeAt: z.number().nullable() });
+const Profile = z.object({ handle: z.string(), isAdmin: z.boolean(), onboardingRequired: z.boolean(), nextChangeAt: z.number().nullable() });
 type Profile = z.infer<typeof Profile>;
 
 async function readProfile(learnerId: string) {
