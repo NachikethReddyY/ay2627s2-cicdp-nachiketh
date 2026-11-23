@@ -12,7 +12,7 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 | `DAYTONA_API_KEY` | – | Required when `SANDBOX_ENABLED=true` and `SANDBOX_BACKEND=daytona`; the API refuses to start without it. |
 | `DAYTONA_API_URL` | SDK default | Self-hosted Daytona only. |
 | `DAYTONA_TARGET` | SDK default | Region to create sandboxes in. |
-| `DAYTONA_SNAPSHOT` | Daytona default image | Snapshot with Python 3, Node.js 22.18 or later, GNU timeout and setpriv. Checks request root for the harness and drop to UID 1001 for learner code. |
+| `DAYTONA_SNAPSHOT` | Daytona default snapshot | Snapshot with Python 3, Node.js 22.18 or later, GNU timeout and setpriv. Daytona applies the snapshot's CPU, memory and disk limits. The grading harness runs via root or passwordless `sudo` in the disposable check sandbox and uses UID 10001 for learner code. |
 | `DAYTONA_AUTO_STOP_MINUTES` | `3` | Idle minutes before Daytona stops a learner's shell sandbox. The Docker backend uses the same 3-minute idle stop. |
 | `SANDBOX_MAX_TABS` / `SANDBOX_MAX_SHELLS` / `SANDBOX_MAX_RUNS` | 4 / 50 / 20 | Per-learner tabs, live terminals, live runs. |
 
@@ -25,7 +25,7 @@ Environment variables the API reads (`apps/api/src/env.ts`). Only the sandbox, g
 
 ### How the Daytona backend works
 
-- **Shell:** one sandbox per learner, found by labels `app=learnquest`, `role=shell`, `learner=<sha256 of learner id>`; created if missing, started if stopped, then a PTY is attached. Idle stop is Daytona's own auto-stop, so it holds across restarts and several API instances. Files persist on disk between sessions (unlike Docker, where home is RAM).
+- **Shell:** one sandbox per learner. The API looks up new shells by name and checks their `app=learnquest`, `role=shell` and hashed learner labels. Existing unnamed shells are looked up by label. The API creates a shell if missing, starts it if stopped, then attaches a PTY. Daytona stops idle shells after three minutes by default. Files persist on disk between sessions.
 - **Practice runs:** each run gets its own throwaway sandbox (`role=runner`) with the network blocked, so a learner cannot alter what a graded run sees through their shell (LQ-75). The program gets the same 60 s limit, counted from when it starts (sandbox creation is extra); stdout and stderr stay separate; stdin lines go through a session command. The sandbox is deleted when the run ends.
 - Output from either is untrusted data (ADR-0002).
 

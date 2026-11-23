@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { env } from "../env.ts";
-import { HARNESS_SOURCE } from "./checkHarness.ts";
+import { checkHarnessSource } from "./checkHarness.ts";
 import { BUDGET_S, CheckUnavailableError, encodeCheckInput, readCheckResults } from "./checkRunner.ts";
 import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxFileTooLargeError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
 
@@ -15,6 +15,7 @@ export interface DaytonaPty {
 }
 export interface DaytonaSandbox {
   id: string;
+  labels?: Record<string, string>;
   state?: string;
   networkBlockAll?: boolean;
   updateNetworkSettings(settings: { networkBlockAll: boolean }): Promise<void>;
@@ -43,6 +44,7 @@ export interface DaytonaSandbox {
 }
 export interface DaytonaClient {
   create(params: Record<string, unknown>, options?: { timeout?: number }): Promise<DaytonaSandbox>;
+  get(idOrName: string): Promise<DaytonaSandbox>;
   list(query: { labels?: Record<string, string> }): AsyncIterableIterator<DaytonaSandbox>;
   delete(sandbox: DaytonaSandbox, timeout?: number): Promise<void>;
 }
@@ -52,7 +54,7 @@ const SHELL_ROLE = "shell";
 const RUNNER_ROLE = "runner";
 const SANDBOX_START_S = 25;
 const SANDBOX_FILE_S = 10;
-const SANDBOX_RESOURCES = { cpu: 1, memory: 1, disk: 3 };
+const CHECK_LEARNER_UID = 10_001;
 const DAYTONA_ZSH_RC = readFileSync(new URL("./learner-zshrc", import.meta.url));
 const BROKEN = new Set(["error", "build_failed", "destroyed", "destroying"]);
 
@@ -77,28 +79,50 @@ export function daytonaBackend(opts: {
   const autoStop = opts.autoStopMinutes ?? 3;
   const maxShells = opts.maxShells ?? (() => env.SANDBOX_MAX_SHELLS);
   const base = opts.snapshot ? { snapshot: opts.snapshot } : {};
-  const isolated = { ...base, networkBlockAll: true, resources: SANDBOX_RESOURCES };
+  const isolated = { ...base, networkBlockAll: true };
   const finding = new Map<string, Promise<DaytonaSandbox>>();
   let openTerminals = 0;
 
   const shellLabels = (learnerId: string) => ({ ...APP_LABEL, role: SHELL_ROLE, learner: learnerHash(learnerId) });
+  const shellName = (learner: string) => `learnquest-shell-${learner.slice(0, 40)}`;
+  type ShellLabels = ReturnType<typeof shellLabels>;
+
+  async function namedShell(labels: ShellLabels): Promise<DaytonaSandbox | undefined> {
+    const sbx = await client.get(shellName(labels.learner)).catch((error: unknown) => {
+      if ((error as { statusCode?: number } | null)?.statusCode === 404) return undefined;
+      throw error;
+    });
+    if (sbx && !Object.entries(labels).every(([key, value]) => sbx.labels?.[key] === value)) {
+      throw new Error("Daytona shell has unexpected ownership labels");
+    }
+    return sbx;
+  }
+
+  async function existingShell(labels: ShellLabels): Promise<DaytonaSandbox | undefined> {
+    const named = await namedShell(labels);
+    if (named) return named;
+    for await (const sbx of client.list({ labels })) return sbx;
+  }
 
   async function findOrCreate(learnerId: string): Promise<DaytonaSandbox> {
     const labels = shellLabels(learnerId);
-    let sbx: DaytonaSandbox | undefined;
-    for await (const s of client.list({ labels })) {
-      sbx = s;
-      break;
-    }
+    let sbx = await existingShell(labels);
     if (sbx && BROKEN.has(sbx.state ?? "")) {
       await client.delete(sbx).catch(() => {});
       sbx = undefined;
     }
     sbx ??= await client.create({
       ...isolated,
+      name: shellName(labels.learner),
       labels,
       autoStopInterval: autoStop,
-    }, { timeout: SANDBOX_START_S });
+    }, { timeout: SANDBOX_START_S }).catch(async (error: unknown) => {
+      if ((error as { statusCode?: number } | null)?.statusCode === 409) {
+        const concurrent = await namedShell(labels);
+        if (concurrent) return concurrent;
+      }
+      throw error;
+    });
     const st = sbx.state ?? "";
     if (st === "starting" || st === "creating" || st === "restoring") await sbx.waitUntilStarted(SANDBOX_START_S);
     else if (st !== "started") {
@@ -110,14 +134,9 @@ export function daytonaBackend(opts: {
   }
 
   async function findShell(learnerId: string): Promise<DaytonaSandbox> {
-    const it = client.list({ labels: shellLabels(learnerId) });
-    try {
-      const first = await it.next();
-      if (first.done || first.value.state !== "started") throw new SandboxNotRunningError();
-      return first.value;
-    } finally {
-      await it.return?.();
-    }
+    const sbx = await existingShell(shellLabels(learnerId));
+    if (sbx?.state !== "started") throw new SandboxNotRunningError();
+    return sbx;
   }
 
   const SHELL_CACHE_MS = 10_000;
@@ -370,15 +389,18 @@ export function daytonaBackend(opts: {
           autoStopInterval: 2,
           ttlMinutes: 3,
         }, { timeout: SANDBOX_START_S });
-        const dir = "/root/learnquest-check";
+        const dir = "/tmp/learnquest-check";
         const setup = await sbx.process.executeCommand(
-          `test "$(id -u)" = 0 && command -v setpriv >/dev/null && mkdir -m 700 -- ${dir}`,
+          `mkdir -m 700 -- ${dir}`,
           undefined, undefined, SANDBOX_FILE_S,
         );
         if (setup.exitCode !== 0) throw new CheckUnavailableError("check setup failed");
         const input = `${dir}/input.json`;
         await sbx.fs.uploadFile(Buffer.from(encodeCheckInput(token, language, code, tests)), input, SANDBOX_FILE_S);
-        const command = `timeout -s KILL ${BUDGET_S} node -e ${shQuote(HARNESS_SOURCE)} < ${input}`;
+        const harness = `timeout -s KILL ${BUDGET_S} node -e ${shQuote(checkHarnessSource(CHECK_LEARNER_UID))}`;
+        const command = `exec 3< ${input} && rm -- ${input} || exit 1
+if [ "$(id -u)" = 0 ]; then exec ${harness} <&3 3<&-; fi
+exec sudo -n env "PATH=$PATH" ${harness} <&3 3<&-`;
         const { exitCode, result } = await sbx.process.executeCommand(command, undefined, undefined, BUDGET_S);
         return readCheckResults(result ?? "", exitCode, token, tests.length);
       } catch (error) {
