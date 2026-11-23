@@ -4,11 +4,11 @@ import assert from "node:assert/strict";
 import { eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { lessons } from "../src/db/schema.ts";
+import { learners, lessons } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
-import { idle, LESSON_WRITE_CONCURRENCY, lessonWriteState, stopLessonWrites } from "../src/ai/service.ts";
+import { ensureLesson, idle, LESSON_WRITE_CONCURRENCY, lessonWriteState, stopLessonWrites } from "../src/ai/service.ts";
 
 const realLesson = engineParts.lesson;
 const app = buildApp();
@@ -139,23 +139,31 @@ test("the write limit is global: two paths together never exceed it", async () =
 });
 
 test("opening a lesson that is waiting for a slot writes it before the rest of the queue", async () => {
-  const release = gate();
+  const firstSlot = gate();
+  const otherSlots = gate();
   const order: string[] = [];
   engineParts.lesson = async (ctx) => {
     order.push(ctx.lesson.title);
-    await release.opened;
+    await (order.length === 1 ? firstSlot.opened : otherSlots.opened);
     return learnPart;
   };
-  const { t } = await generate();
-  await until(() => order.length === LESSON_WRITE_CONCURRENCY);
-  const lastTitle = "Lesson 1.3";
-  const [last] = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.title, lastTitle));
-  const opening = t.m("lessons.write", { id: last.id });
-  await new Promise((r) => setTimeout(r, 20));
-  release.open();
-  await opening;
-  await idle();
-  assert.equal(order[LESSON_WRITE_CONCURRENCY], lastTitle);
+  try {
+    await generate();
+    await until(() => order.length === LESSON_WRITE_CONCURRENCY);
+    const lastTitle = "Lesson 1.3";
+    const [last] = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.title, lastTitle));
+    const [learner] = await db.select({ id: learners.id }).from(learners);
+    const opening = ensureLesson(last.id, learner.id);
+    firstSlot.open();
+    await until(() => order.length > LESSON_WRITE_CONCURRENCY);
+    assert.equal(order[LESSON_WRITE_CONCURRENCY], lastTitle);
+    otherSlots.open();
+    await opening;
+  } finally {
+    firstSlot.open();
+    otherSlots.open();
+    await idle();
+  }
 });
 
 test("stopping lesson writes lets running writes finish and leaves queued lessons pending", async () => {
