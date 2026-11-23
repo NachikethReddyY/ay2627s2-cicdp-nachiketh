@@ -161,10 +161,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: |
           "$VERCEL_BIN" pull --yes --environment=production --token "$VERCEL_TOKEN"
           "$VERCEL_BIN" build --prod --token "$VERCEL_TOKEN"
           grep -Frq -- "$VITE_SHELL_WS_ORIGIN" .vercel/output/static/assets
+          if [[ -n $POSTHOG_PROJECT_TOKEN ]]; then
+            grep -Frq -- "$POSTHOG_PROJECT_TOKEN" .vercel/output/static/assets
+          fi
 
       - name: Render api
         env:
