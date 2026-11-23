@@ -19,6 +19,7 @@ These steps are outside the repo. The workflow fails clearly until they are done
 4. **Variables** (environment level):
    - `API_ORIGIN`: `https://learnquest-api.onrender.com` (no path, no trailing slash).
    - `ENGINE_ORIGIN`: the production Engine Render URL (no path or trailing slash).
+   - `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` (public values, not secrets): the PostHog project token and `https://us.i.posthog.com`. CI passes them to the web build, which bakes them into the bundle; Vercel project variables marked sensitive are not available to `vercel build` in CI. The build fails if the token is set but missing from the bundle.
    - `WEB_ORIGIN`: the production Vercel alias, for example `https://pip-learnquest.vercel.app`.
 5. **Packages:** the GHCR packages `learnquest-api` and `learnquest-engine` must be readable by Render. Make them public, or give Render registry credentials.
 
