@@ -14,15 +14,16 @@
 
 **LearnSlop teaches programming concepts in short lessons. Learners predict what code will do before seeing the answer.**
 
-The engine generates paths with predictions, hints and explanations. A path starts private to its creator. It becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. The planned learner model recommends a next lesson and review items with reasons. Sloppy is the practice help chat. It gives hints and uses a deterministic check on chat output. Answer keys stay server-side.
+The engine generates paths with predictions, hints and explanations. A path starts private to its creator. It becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. Home shows a lesson or review recommendation and its reason. Sloppy offers hint, observation and prediction cards in the practice workbench. The API moderates requests, reserves AI spend and checks replies for known lesson answers. The engine rejects code-like replies. Answer keys stay server-side.
 
 Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
 
 - From the earlier **Primer** idea: the learner model and adaptive next step. Dropped: the children's-tutor framing and the YC Primer link (that request is for ages 4–10).
 - From **Scrim-Forge**: editable replay from commit history, narration. Dropped: any-repo import, recorded keystrokes, O(1) scrub, "AI knows why the author wrote it" (§12).
 - **Tracks** (code and schema name: `world`): CodeQuest, the JavaScript and TypeScript track, is core. A second language track is stretch (Appendix A). A track is a plugin (§8.4).
-- **Modalities:** diagrams (`ui-catalog` diagram block), code replay from a commit, quizzes (MCQ, cloze), practice (the lesson's own file in the workbench: editor, Run, Check, Lint, Sloppy and a sandbox terminal), and game parts (order, match, sort, physics, quiz, grid). The player supports games as the `game-practice` lesson kind.
-- **Practice workbench:** `/play` and the standalone editor lab share the lesson workbench. Scrim labs unlock after the predictions are confirmed. Submissions grade the current lesson file, and all expected output stays on the server. Lint marks findings in the editor and lists them in Results.
+- **Lesson rendering.** Learn renders Markdown and validates visual documents against `ui-catalog`. Individual renderers load on demand, with fallback text for rejected or unsupported blocks. Watch replays code and lets learners run a temporary copy of the visible files.
+- **Game practice.** The `game-practice` lesson kind supports grid, order, match, sort, physics and quiz blocks. The server records hints and wrong guesses by learner and block. The default limit is three wrong guesses per UTC day, with an authored lives limit where specified. Every block needs a win to complete the lesson. Games embedded in Learn are read-only.
+- **Practice workbench.** `/play` and the standalone editor lab share the editor, Run, Submit, Lint, Sloppy and the sandbox terminal. Scrim labs unlock after the predictions are confirmed. Submissions grade the current lesson file and keep hidden test inputs and expected output server-side. Lint marks findings in the editor and lists them in Results.
 - **"Video injection"** (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won't.
 
 ---
@@ -137,7 +138,7 @@ attempts in revealed or skipped: 409
 
 **6.1 Tooling:** pnpm workspaces; Node 22, strict, ESM; Python 3.12, `uv`, ruff, mypy --strict, pytest; ESLint + Prettier; pre-commit + commitlint; Dependabot only.
 
-**6.2 Frontend:** React + Vite + TS · Monaco via `loader.config({ monaco })` with bundled `monaco-editor` (no CDN) · XState · TanStack Query · React Router · Tailwind + Radix · `diff-match-patch` (char diff in `player-core`) · DOMPurify · Jest + Testing Library (jsdom) + fast-check. **Worlds registry** is a generated file, `apps/web/src/worlds/registry.gen.ts`, written by `scripts/gen-registry.ts` before test and build. Jest works with no `import.meta.glob`.
+**6.2 Frontend.** React, Vite, TypeScript and TanStack Router. The player uses bundled Monaco workers and shared replay logic from `player-core`. Vite discovers visual block renderers with `import.meta.glob` in `apps/web/src/blocks/registry.ts`.
 
 **6.3 API:** Fastify 5 · Zod via `fastify-type-provider-zod` · `@fastify/swagger` · Drizzle + drizzle-kit · `pg` · argon2id (`@node-rs/argon2`) + cookie sessions · GitHub OAuth · **pg-boss** (queue on Postgres) · SSE via Postgres LISTEN/NOTIFY · pino · `@fastify/rate-limit` (in-memory) · helmet, cors, CSRF · `typescript` scanner for T2. The API holds no GitHub token.
 
@@ -162,16 +163,16 @@ Details of the stretch items: Appendix A.
 
 | Layer | Tooling |
 |---|---|
-| TS unit and component (web, player-core, lesson-schema, grading) | Jest + Testing Library + fast-check |
-| API integration | Jest + SuperTest + Testcontainers (Postgres) |
-| E2E | Playwright + axe. Wk-3 smoke in `e2e/smoke/` (WP4); PR e2e from Wk 5 (WP14) |
+| TypeScript unit and property tests | Node test runner and fast-check |
+| API integration | Fastify request injection and a test Postgres database |
+| E2E | Playwright and axe in `e2e/tests/` |
 | Python | pytest; Hypothesis for BKT P1–P3; recorded LLM fixtures (no live calls in CI) |
 | Contracts | shared JSON fixtures validated by Zod (TS) and Pydantic (engine) |
 | Security | `pnpm audit`, `pip-audit`, gitleaks, Trivy |
 
 **6.9 CI/CD and infrastructure**
-- `pr.yml`: install → lint → unit (Jest, pytest) → API integration → build → Playwright e2e on `docker compose` → scans. `main.yml`: all of the above → GHCR images (SHA tag) → Vercel web deploy → Render api and engine → smoke (warm-up), staging then prod. WP1 owns root workflows; other WPs add reusable workflows (`workflow_call`) in `.github/workflows/jobs/`, called with `uses:` from `pr.yml` and `main.yml`.
-- **Compose core services:** `postgres`, `api`, `engine`, `web` (Vite dev server). Stretch profiles: `redis`, `mailpit`. No web Docker image; Vercel hosts the web app.
+- `.github/workflows/ci.yml` runs lint, unit and Postgres integration tests, engine checks, deploy-script tests and Playwright e2e in parallel. A green push to `main` calls `deploy-production.yml` to publish images, migrate the database, roll out to Vercel and Render, and run the production smoke checks.
+- **Compose core services.** The default stack defines `postgres`, `api` and `engine`. Vite serves the web app locally. The CI Compose override adds `fake-llm` for Playwright.
 - **Same-site routing:** Vercel rewrites `/api/*`, including SSE, to Render, so cookies are same-site. Risk: Vercel proxy timeouts on SSE, tested in Wk 1. Fallback: `app.` and `api.` subdomains (Q5).
 - **Connection string:** pg-boss and LISTEN/NOTIFY need a direct or session-mode connection, not a transaction pooler. Neon and Supabase pooler URLs are transaction-mode by default.
 - **Hosting (verify pricing in Wk 1):** Render free web services sleep (warm-up in smoke). The worker is not free, so pg-boss runs in the API process (`WORKER_IN_PROCESS=true`). Render's free Postgres has historically expired after ~30 days, so use Neon or Supabase.
@@ -350,7 +351,7 @@ Stretch engine endpoints: `/v1/pipeline/segment`, `/v1/narrate`, `/v1/grade`.
 ## 10. Repository layout
 
 ```
-apps/web/        src/{shell,player,author,quest,worlds}/ (core); src/{sandbox}/ (stretch); scripts/gen-registry.ts
+apps/web/        src/{blocks,pages,player}/
 apps/api/        src/{auth,lessons,attempts,progress,grading,worker,sse,engine-client,db}/; drizzle/; test/security/
 services/engine/ app.py (WP2); ingest/, pipeline/, llm/, bkt/, policy/, worlds/ (§8.4); snapshot/ (WP12); prompts/, evals/ (WP18)
 packages/        lesson-schema/, player-core/ (core); ui-catalog/, sdk-ts/, sdk-py/, embed/ (stretch)
@@ -536,7 +537,7 @@ Study design: §2 (S2a, S2b). Protocol, consent form and results in `docs/study/
 | **WP1** | Monorepo, CI, compose | root config, lockfiles, `pr.yml`, `main.yml`, `release.yml`, `docker-compose.yml`, `infra/docker`, Dependabot | – | `pnpm test`, `uv run pytest`, `docker compose up` (postgres, api, engine, web; placeholder api, engine and web apps with health endpoints only, so compose runs in Wk 1); CI green; CodeQL on; non-root multi-stage images in `infra/docker`; repo public (MIT, synthetic only) |
 | **WP2** | `lesson-schema`, World seam, engine bootstrap | `packages/lesson-schema`; `services/engine/app.py`, `services/engine/worlds/{base.py,_fixture.py}`; `worlds/_fixture/` | WP1 | Zod schemas (code step; public/secret; source union); JSON Schema export; shared fixtures; FastAPI app factory and Pydantic models; World protocol; fixture world loaded in CI |
 | **WP3** | `player-core` | `packages/player-core` | WP2 | Events from hunks; reducer; snapshots every K=200 and at step boundaries; `seek`; CI bound test; fast-check property: `seek(t)` after play equals state at t; timing benchmark run locally and on tags |
-| **WP4** | Web shell and player | `apps/web/src/{shell,player}`, `apps/web/src/worlds/codequest`, `scripts/gen-registry.ts`, `apps/web/src/worlds/registry.gen.ts`, `e2e/smoke/` | WP2, WP3; M2 needs WP5 | M1 (Wk 2): bundled Monaco (`loader.config`, no CDN) replays synthetic lesson 1; read-only diff page (S2b control arm). M2 (Wk 3): state machine, gate, ladder, reveal, keyboard, captions from narration text; smoke in `e2e/smoke/`; axe |
+| **WP4** | Web shell and player | `apps/web/src/{blocks,pages,player}`, `e2e/tests/` | WP2, WP3; M2 needs WP5 | M1 (Wk 2): bundled Monaco (`loader.config`, no CDN) replays synthetic lesson 1; read-only diff page (S2b control arm). M2 (Wk 3): state machine, gate, ladder, reveal, keyboard, captions from narration text; Playwright smoke tests and axe checks |
 | **WP5** | API, auth, attempts | `apps/api/src/{auth,lessons,attempts,progress,db}`, `apps/api/drizzle/`, `apps/api/test/` (except `security/`, WP15) | WP1, WP2, WP16 | Fastify bootstrap; GitHub OAuth; login lockout/backoff; §7 core tables; `GET /steps` with `beforeFiles`, `explanationStyle`, `skipOffered` (tested); attempt, hint, skip and reveal rules; answer-leak tests (`GET /steps`, reveal gating, `source` only on reveal); SuperTest |
 | **WP6** | Engine: ingest and pedagogy | `services/engine/{ingest,pipeline,llm}`, `services/engine/worlds/codequest.py` | WP2 | Ingest with allow-list, licence, vendored and secret checks, and `stepStates` via `unidiff` (tested); pedagogy with LiteLLM, Pydantic validation, one repair, `usage`; fallback; fixtures; leak test: all MCQ options are absent from the visible `beforeFiles` |
 | **WP7** | Engine: learner model | `services/engine/{bkt,policy}` | WP2 | BKT with constraints and clamping; P1–P3 (P3 is the convergence check); `/v1/mastery/update`, `/v1/next` (stateless) |

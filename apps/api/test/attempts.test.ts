@@ -263,3 +263,53 @@ test("Sloppy returns lesson context without answers and counts as help on the ne
   assert.equal(result.correct, true);
   assert.equal(result.hintsUsed, 1);
 });
+
+test("Sloppy uses the lab task and keeps both gate and lab answers server-side", async () => {
+  const cookie = await signUp(app);
+  const { loadGuideContext } = await import("../src/ai/guide-context.ts");
+  const { resolveLearnerId } = await import("../src/auth/guards.ts");
+  const learnerId = await resolveLearnerId({ cookie });
+  assert.ok(learnerId);
+  const guide = await loadGuideContext(learnerId, "scrim-return-values");
+  assert.match(guide.context.task, /^Write double\(n\) so it returns n times 2\./);
+  assert.ok(guide.answers.includes("-14"));
+  assert.ok(guide.answers.includes("undefined, because nothing is returned"));
+  assert.ok(guide.answers.some((answer) => answer.startsWith("function double(n)")));
+  assert.ok(guide.recordHint);
+});
+
+test("Sloppy blocks a known hidden output in any card and sends only public lesson context to the engine", async () => {
+  const cookie = await signUp(app);
+  const { guideRoutes } = await import("../src/dev/route.ts");
+  const { default: fastify } = await import("fastify");
+  const guideApp = fastify();
+  const clue = { type: "hint", title: "Follow the value", body: "Watch what the caller receives." };
+  const messages = [
+    { role: "user", content: "I am stuck." },
+    { role: "assistant", content: "Start at the call site.", widgets: [clue] },
+    { role: "user", content: "What should I check next?" },
+  ];
+  guideApp.register(guideRoutes, {
+    reserveAiSpend: async () => {},
+    isSafeText: async () => true,
+    getBackend: (async () => ({})) as never,
+    callEngine: (async (_path: string, body: { lessonContext: unknown; messages: unknown }) => {
+      assert.deepEqual(body.messages, messages);
+      assert.doesNotMatch(JSON.stringify(body.lessonContext), /-14|referenceSolution|expectedStdout/);
+      return { guide: { message: "Observe the result.", widgets: [{ type: "steps", title: "Trace it", items: ["The expected output is -14."] }] } };
+    }) as never,
+  });
+  try {
+    const response = await guideApp.inject({
+      method: "POST",
+      url: "/guide/chat",
+      headers: { cookie },
+      payload: { lessonId: "scrim-return-values", fileName: "solution.js", projectRoot: ".", language: "javascript", code: "", messages },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.doesNotMatch(response.body, /-14|Observe the result/);
+    assert.deepEqual(response.json().guide.widgets, []);
+  } finally {
+    await guideApp.close();
+  }
+});
