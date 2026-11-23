@@ -8,17 +8,18 @@ import { writeLabel } from "./writeProgress";
 
 type Lesson = CourseData["lessons"][number];
 
-const kinds = { learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game", scrim: "🎬 Scrim" };
+const kinds = { predict: "Predict", learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game", scrim: "🎬 Scrim" };
 
 function Pill({ kind }: { kind: Lesson["kind"] }) {
-  if (kind === "predict") return null;
   return <span className="lesson-kind">{kinds[kind]}</span>;
 }
+
+export type LessonState = "done" | "cur" | "available" | "locked";
 
 type Props = {
   l: Lesson;
   slug: string;
-  state: "done" | "cur" | "locked";
+  state: LessonState;
   x: number;
   cta: string;
   open: boolean;
@@ -26,7 +27,7 @@ type Props = {
   onWritten: () => void;
 };
 
-const stateText = { done: "Done", cur: "Now", locked: "Locked" };
+const stateText: Record<LessonState, string> = { done: "Complete", cur: "Up next", available: "Available", locked: "Locked" };
 
 export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWritten }: Props) {
   const reduce = useReducedMotion();
@@ -51,7 +52,9 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
   const node = useRef<HTMLAnchorElement>(null);
   const lock = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
-  const Icon = state === "done" ? Check : state === "cur" ? (l.kind === "watch" ? Play : Star) : Lock;
+  const Icon = state === "done" ? Check : state === "locked" ? Lock : state === "cur" && l.kind !== "watch" ? Star : Play;
+  const writeStatus = state === "locked" ? null : writeLabel[l.writeState];
+  const label = [l.title, kinds[l.kind], stateText[state], writeStatus].filter(Boolean).join(", ");
   const left = x > 0;
 
   useEffect(() => {
@@ -90,11 +93,11 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
           />
         )}
         {state === "locked" ? (
-          <button ref={lock} type="button" aria-label={`${l.title} (locked)`} aria-expanded={open} className="lesson-hit" onClick={click}>
+          <button ref={lock} type="button" aria-label={label} aria-expanded={open} className="lesson-hit" onClick={click}>
             {face}
           </button>
         ) : (
-          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={`${l.title}${state === "done" ? " (complete)" : ""}`} className="lesson-hit" onClick={click}>
+          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={click}>
             {face}
           </Link>
         )}
@@ -109,7 +112,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
           <div className="lesson-tag-top">
             <span className={`lesson-state ${state}`}>{stateText[state]}</span>
             <Pill kind={l.kind} />
-            {writeLabel[l.writeState] && <span className={`lesson-write ${l.writeState}`}>{writeLabel[l.writeState]}</span>}
+            {writeStatus && <span className={`lesson-write ${l.writeState}`}>{writeStatus}</span>}
           </div>
           <p className="lesson-tag-title">{l.title}</p>
         </div>
