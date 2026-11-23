@@ -5,6 +5,7 @@ import { ENGINE_CALLS_PER_REPLY, assertAiEnabled, reserveAiSpend } from "../conf
 import { isSafeText } from "../safety/moderation.ts";
 import { env } from "../env.ts";
 import { loadGuideContext } from "../ai/guide-context.ts";
+import { takeGuideCall } from "../ai/guide-rate.ts";
 import { containsAnswer } from "../ai/answer-leak.ts";
 import { callEngine, EngineError } from "../engine-client/client.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
@@ -30,7 +31,6 @@ const GuideWidget = z.discriminatedUnion("type", [
   z.object({ type: z.literal("question"), text: z.string().max(250) }),
 ]);
 const GuideResponse = z.object({ guide: z.object({ message: z.string().min(1).max(1200), widgets: z.array(GuideWidget).max(3) }) });
-const guideCalls = new Map<string, { started: number; count: number }>();
 const GUIDE_MAX_FILES = 24;
 const GUIDE_MAX_DEPTH = 4;
 const GUIDE_FILE_CHARS = 6_000;
@@ -135,14 +135,9 @@ export async function guideRoutes(app: FastifyInstance, deps: GuideDeps = {}) {
     const body = GuideBody.safeParse(req.body);
     if (!body.success) return reply.status(400).send({ error: { code: "bad_request", message: "The chat message or code context is too large" } });
 
-    const now = Date.now();
-    for (const [id, window] of guideCalls) if (now - window.started >= 60_000) guideCalls.delete(id);
-    const window = guideCalls.get(learnerId);
-    if (window && now - window.started < 60_000 && window.count >= 10) {
+    if (!takeGuideCall(learnerId)) {
       return reply.status(429).send({ error: { code: "rate_limited", message: "Please wait a moment before sending another message" } });
     }
-    if (window && now - window.started < 60_000) window.count++;
-    else guideCalls.set(learnerId, { started: now, count: 1 });
 
     try {
       assertAiEnabled();

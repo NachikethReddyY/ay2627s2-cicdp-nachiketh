@@ -395,7 +395,9 @@ test("sandbox check grades the scrim lab and records completion without returnin
   const failed = await check();
   assert.equal(failed.statusCode, 200, failed.body);
   assertOmitted(failed.json(), [...sampleOutputs, ...hiddenValues, hiddenActual, hiddenError]);
-  assert.deepEqual(failed.json(), {
+  const { feedbackReceipt, ...failedResult } = failed.json();
+  assert.match(feedbackReceipt, /^[a-f0-9]{64}$/);
+  assert.deepEqual(failedResult, {
     results: expectedResults, required: { passed: 2, total: 3 }, stretch: { passed: 1, total: 1 },
     points: 3, maxPoints: 4, complete: false, best: { points: 3, maxPoints: 4 }, attemptCount: 1,
   });
@@ -409,7 +411,7 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.deepEqual(passed.json(), {
     results: [expectedResults[0], expectedResults[1], { ...publicTests[2], status: "pass" }, expectedResults[3]],
     required: { passed: 3, total: 3 }, stretch: { passed: 1, total: 1 },
-    points: 4, maxPoints: 4, complete: true, best: { points: 4, maxPoints: 4 }, attemptCount: 2,
+    points: 4, maxPoints: 4, complete: true, best: { points: 4, maxPoints: 4 }, attemptCount: 2, feedbackReceipt,
   });
   const [learner] = await db.select({ id: learners.id }).from(learners);
   const completed = await db.select({ learnerId: partCompletions.learnerId }).from(partCompletions).where(eq(partCompletions.lessonId, lessonId));

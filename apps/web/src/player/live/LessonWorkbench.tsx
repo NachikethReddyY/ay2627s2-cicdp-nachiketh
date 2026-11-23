@@ -19,6 +19,7 @@ import type { WorkbenchStatus } from "../workbench/StatusBar";
 import type { LintFinding } from "../runPython";
 import type { EditorHandle } from "../EditorPane";
 import PracticeSolution from "./PracticeSolution";
+import PracticeDesignFeedback from "./PracticeDesignFeedback";
 import LessonResults from "./LessonResults";
 import LessonVideo, { type VideoSource } from "./LessonVideo";
 import { monacoLanguage, type PracticeLanguage, type PracticeTest } from "./checkModel";
@@ -165,6 +166,9 @@ export default function LessonWorkbench({ lessonId, title, part, next, media }: 
       )}
       <div hidden={tab !== "results"} className="flex min-h-0 flex-1 flex-col">
         <LessonResults result={r.result} tests={practice.tests} checkError={r.checkError} findings={r.findings} lintError={r.lintError} onAsk={askAbout}>
+          {!r.checkBusy && r.result?.feedbackReceipt && (
+            <PracticeDesignFeedback key={r.result.feedbackReceipt} lessonId={lessonId} code={code} receipt={r.result.feedbackReceipt} />
+          )}
           <PracticeSolution lessonId={lessonId} versionId={part.versionId} revision={part.revision} solution={part.solution} attemptCount={r.attemptCount} />
         </LessonResults>
       </div>

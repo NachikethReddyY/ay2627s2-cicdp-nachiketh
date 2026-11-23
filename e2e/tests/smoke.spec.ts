@@ -182,6 +182,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => ws.close({ code: 4503, reason: "Sandbox busy" }));
   let ran = false;
   let submitted = false;
+  let requestedFeedback = false;
   await page.route("**/api/sandbox/run", async (route) => {
     expect(route.request().postDataJSON().code).toContain("function double");
     ran = true;
@@ -199,10 +200,18 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     await route.fulfill({ json: {
       complete: true, points: 4, maxPoints: 4, required: { passed: 4, total: 4 },
       stretch: { passed: 0, total: 0 }, best: { points: 4, maxPoints: 4 }, attemptCount: 1,
+      feedbackReceipt: "a".repeat(64),
       results: ["two", "five", "hidden-1", "hidden-2"].map((id, index) => ({
         id, name: id, stretch: false, visibility: index < 2 ? "sample" : "hidden", status: "pass",
       })),
     } });
+  });
+  await page.route("**/api/practice/design-feedback", async (route) => {
+    const input = route.request().postDataJSON();
+    expect(input).toMatchObject({ lessonId: "scrim-return-values", receipt: "a".repeat(64) });
+    expect(input.code).toContain("function double");
+    requestedFeedback = true;
+    await route.fulfill({ json: { feedback: { line: 2, note: "This function handles two jobs. Where could you split it?" } } });
   });
   await signUp(page, newEmail(), "/");
   await page.goto("/editor?lesson=scrim-return-values");
@@ -233,13 +242,22 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Example style finding", { exact: true })).toBeVisible();
   await expect(page.locator(".squiggly-warning").first()).toBeVisible();
+  const feedback = page.getByRole("region", { name: "AI design feedback" });
+  await expect(feedback).toHaveCount(0);
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
   expect(submitted).toBe(true);
+  await expect(feedback.getByRole("button", { name: "Get design feedback" })).toBeEnabled();
+  expect(requestedFeedback).toBe(false);
+  await feedback.getByRole("button", { name: "Get design feedback" }).click();
+  await expect(feedback.getByRole("status")).toContainText("Line 2");
+  await expect(feedback.getByRole("status")).toContainText("This function handles two jobs.");
+  expect(requestedFeedback).toBe(true);
 
   await page.locator(".view-lines").first().click();
   await page.keyboard.type(" ");
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toHaveCount(0);
+  await expect(feedback).toHaveCount(0);
   await expect(page.locator(".squiggly-warning")).toHaveCount(0);
 });
 

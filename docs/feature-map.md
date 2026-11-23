@@ -35,6 +35,7 @@ The Course Path track labels one lesson **Up next** and distinguishes it from ot
 | Explorer / file tree | `player/workbench/SandboxFiles.tsx`, `player/workbench/FileTreeView.tsx` | Browse the sandbox home when the shell connects. The listing refreshes after Run and can be refreshed manually after terminal commands. |
 | Terminal | `player/terminal/` | Output of a practice run. |
 | Check results | `player/live/LessonResults.tsx`, `player/live/checkModel.ts` | Sample tests show expected output. Hidden tests never do. |
+| AI design feedback | `player/live/PracticeDesignFeedback.tsx`, `apps/api/src/ai/design-feedback.ts` | After Submit is graded, **Get design feedback** requests one line-specific design suggestion in Results. Only the submitted code and language go to the model. The request shares Sloppy's AI budget and rate limit, and editing the code clears the card. |
 | Hint | server `stepsRouter.hint` (`apps/api/src/attempts/router.ts`) | Requested by the learner. Returns the next fixed hint rung stored on the step. |
 | Reveal | server `stepsRouter.reveal` | Only after the learner finishes or skips. |
 | Generation limits | `apps/api/src/config/limits.ts` | Every learner can generate five AI paths and one image per day. |

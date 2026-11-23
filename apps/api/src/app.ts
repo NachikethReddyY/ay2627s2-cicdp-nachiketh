@@ -7,6 +7,7 @@ import { env } from "./env.ts";
 import { pool } from "./db/client.ts";
 import { idleImages } from "./media/imagegen.ts";
 import { idle, stopLessonWrites } from "./ai/service.ts";
+import { designFeedbackRoutes } from "./ai/design-feedback.ts";
 import { authRoutes } from "./auth/routes.ts";
 import { fastifyTRPCPlugin, type FastifyTRPCPluginOptions } from "@trpc/server/adapters/fastify";
 import { appRouter, type AppRouter } from "./trpc/router.ts";
@@ -126,6 +127,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(importRoutes);
       api.register(devRoutes);
       api.register(guideRoutes);
+      api.register(designFeedbackRoutes);
       api.get(
         "/healthz",
         { schema: { response: { 200: z.object({ ok: z.literal(true), sha: z.string() }) } } },
