@@ -45,6 +45,20 @@ class Usage(TypedDict):
     model: str
 
 
+_request_usage: contextvars.ContextVar[list[Usage] | None] = contextvars.ContextVar(
+    "request_usage", default=None
+)
+
+
+def start_usage_collection() -> tuple[list[Usage], contextvars.Token[list[Usage] | None]]:
+    calls: list[Usage] = []
+    return calls, _request_usage.set(calls)
+
+
+def stop_usage_collection(token: contextvars.Token[list[Usage] | None]) -> None:
+    _request_usage.reset(token)
+
+
 @dataclass
 class Result[T]:
     value: T
@@ -145,8 +159,23 @@ def generate[T: BaseModel](
                     raise
                 transient_retried = True
         u = res.usage
-        usage["prompt_tokens"] += getattr(u, "prompt_tokens", 0) or 0
-        usage["completion_tokens"] += getattr(u, "completion_tokens", 0) or 0
+        prompt_tokens = getattr(u, "prompt_tokens", None)
+        completion_tokens = getattr(u, "completion_tokens", None)
+        usage["prompt_tokens"] += prompt_tokens or 0
+        usage["completion_tokens"] += completion_tokens or 0
+        calls = _request_usage.get()
+        if (
+            calls is not None
+            and isinstance(prompt_tokens, int)
+            and isinstance(completion_tokens, int)
+        ):
+            calls.append(
+                {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "model": cfg.LLM_MODEL,
+                }
+            )
         choice = res.choices[0]
         if getattr(choice, "finish_reason", None) == "length":
             raise _Truncated

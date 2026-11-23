@@ -3,8 +3,10 @@ import { lessonsRouter } from "../lessons/router.ts";
 import { stepsRouter } from "../attempts/router.ts";
 import { coursesRouter, gamesRouter, homeRouter, meRouter, pathsRouter } from "../progress/router.ts";
 import { partsRouter } from "../parts/router.ts";
+import { adminRouter } from "../admin/router.ts";
 
 export const appRouter = router({
+  admin: adminRouter,
   home: homeRouter,
   paths: pathsRouter,
   courses: coursesRouter,

@@ -139,6 +139,16 @@ export const spendLedger = pgTable("spend_ledger", {
   createdAt: createdAt(),
 });
 
+export const aiCallSpend = pgTable("ai_call_spend", {
+  day: date("day").notNull().default(sql`(now() AT TIME ZONE 'UTC')::date`),
+  promptTokens: integer("prompt_tokens").notNull(),
+  completionTokens: integer("completion_tokens").notNull(),
+  estimatedUsd: numeric("estimated_usd", { precision: 24, scale: 12 }),
+}, (t) => [
+  index("ai_call_spend_day_idx").on(t.day),
+  check("ai_call_spend_nonnegative", sql`${t.promptTokens} >= 0 AND ${t.completionTokens} >= 0 AND ${t.estimatedUsd} >= 0`),
+]);
+
 export const paths = pgTable(
   "paths",
   {
