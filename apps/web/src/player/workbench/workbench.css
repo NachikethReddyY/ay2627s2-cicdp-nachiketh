@@ -335,7 +335,7 @@
   .wb-ai-widget { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--pane2); font-size: 11.5px; }
   .wb-ai-widget strong { color: var(--acT); font-weight: 600; }
   .wb-ai-widget p { margin: 3px 0 0; }
-  .wb-ai-widget ol { margin: 4px 0 0; padding-left: 18px; }
+  .wb-ai-widget ol { margin: 4px 0 0; padding-left: 18px; list-style: decimal; }
   .wb-ai-spinner { width: 12px; height: 12px; flex: none; border: 2px solid var(--line); border-top-color: var(--acT); border-radius: 50%; animation: wb-ai-spin .8s linear infinite; }
   @keyframes wb-ai-spin { to { transform: rotate(360deg); } }
   .wb-ai-error { max-width: 92%; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); border-radius: 10px; color: var(--bad); font-size: 11.5px; }
