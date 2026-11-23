@@ -427,8 +427,20 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
 });
 
 async function verifyNarratedPractice(page: Page) {
+  const vercel = JSON.parse(readFileSync(new URL("../../apps/web/vercel.json", import.meta.url), "utf8")) as {
+    headers: { source: string; headers: { key: string; value: string }[] }[];
+  };
+  const policy = vercel.headers.find(({ source }) => source === "/(.*)")?.headers
+    .find(({ key }) => key.toLowerCase() === "content-security-policy")?.value;
+  if (!policy) throw new Error("The Vercel content security policy is missing.");
+  await page.route(/\/(play|editor)\?lesson=practice-greeting$/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": policy } });
+  });
+
   const title = "Print a greeting";
   const starter = 'console.log("hello practice");';
+  const edited = "console.log(42);";
   const narration = "/practice-narration.wav";
   let written = false;
   await page.route("**/api/trpc/lessons.get?*", (route) => route.fulfill({
@@ -449,7 +461,7 @@ async function verifyNarratedPractice(page: Page) {
   await page.route("**/api/sandbox/files", (route) => route.fulfill({ json: {
     entries: [
       { name: "notes", type: "dir", size: 0 },
-      ...(written ? [{ name: "solution.js", type: "file", size: starter.length }] : []),
+      ...(written ? [{ name: "solution.js", type: "file", size: edited.length }] : []),
     ],
     truncated: false,
   } }));
@@ -458,7 +470,7 @@ async function verifyNarratedPractice(page: Page) {
   }));
   await page.route("**/api/sandbox/files/solution.js", async (route) => {
     expect(route.request().method()).toBe("PUT");
-    expect(route.request().postDataJSON()).toEqual({ content: starter });
+    expect(route.request().postDataJSON()).toEqual({ content: edited });
     written = true;
     await route.fulfill({ json: { ok: true } });
   });
@@ -472,18 +484,20 @@ async function verifyNarratedPractice(page: Page) {
       if (run) {
         expect(command).toContain("cd ~ && node solution.js");
         expect(written).toBe(true);
-        ws.send(Buffer.from(`hello practice\r\n\u001eLQ_RUN_${run[1]}:0\u001f\r\n`));
+        ws.send(Buffer.from(`42\r\n\u001eLQ_RUN_${run[1]}:0\u001f\r\n`));
       }
     });
     ws.send(Buffer.from("sandbox ready\r\n"));
   });
-  await page.goto("/play?lesson=practice-greeting");
+  const lessonPage = await page.goto("/play?lesson=practice-greeting");
+  expect(lessonPage?.headers()["content-security-policy"]).toBe(policy);
   const watch = page.getByRole("button", { name: "Watch", exact: true });
   await watch.click();
   await expect(page.getByRole("group", { name: `Lesson video: ${title}` })).toBeVisible();
 
   await page.evaluate(() => localStorage.setItem("lq.terminal", JSON.stringify({ open: true, height: 240 })));
-  await page.goto("/editor?lesson=practice-greeting");
+  const practicePage = await page.goto("/editor?lesson=practice-greeting");
+  expect(practicePage?.headers()["content-security-policy"]).toBe(policy);
   await watch.click();
   const video = page.getByRole("group", { name: `Lesson video: ${title}` });
   await video.getByRole("button", { name: "Play video" }).click();
@@ -498,11 +512,16 @@ async function verifyNarratedPractice(page: Page) {
   await lessonFiles.getByRole("treeitem", { name: "Lesson", exact: true }).click();
   await lessonFiles.getByRole("treeitem", { name: "solution.js" }).click();
   await expect(page.getByRole("textbox", { name: "Your code. Press Escape to leave the editor." })).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Shift+Home");
+  await page.keyboard.insertText(edited);
 
   const terminal = page.getByRole("region", { name: "Terminal panel" }).locator(".wb-terminal");
   await expect(terminal).toContainText("sandbox ready");
-  await page.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(terminal).toContainText("hello practice");
+  const run = page.getByRole("button", { name: "Run", exact: true });
+  await run.click();
+  await expect(terminal).toContainText(/\b42\b/);
+  await expect(page.locator("footer").getByText("Ready", { exact: true })).toBeVisible();
   await expect(sandboxFiles.getByRole("treeitem", { name: "solution.js" })).toBeVisible();
   await expect(lessonFiles.getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
 }

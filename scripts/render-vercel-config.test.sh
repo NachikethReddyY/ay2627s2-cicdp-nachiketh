@@ -25,6 +25,12 @@ if "$here/render-vercel-config.sh" "$origin" "$out" >/dev/null; then
     echo "FAIL configured origin missing from rewrite or CSP"
     failures=$((failures + 1))
   fi
+  if grep -Fq "script-src 'self' 'wasm-unsafe-eval' https://*.posthog.com;" "$out"; then
+    echo "PASS production script-src permits Ghostty WebAssembly compilation"
+  else
+    echo "FAIL rendered script-src must allow WebAssembly compilation with 'wasm-unsafe-eval' and keep JavaScript evaluation blocked"
+    failures=$((failures + 1))
+  fi
   if python3 -c 'import json, sys; assert json.load(open(sys.argv[1]))["git"]["deploymentEnabled"] == {"main": False}' "$out"; then
     echo "PASS only the production workflow deploys main"
   else
