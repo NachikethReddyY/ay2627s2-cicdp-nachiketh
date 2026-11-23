@@ -186,7 +186,7 @@ export default function ScrimWatch({ title, part, steps, media, resumeAt, onGate
       />
       {gate && gateStep && (
         <section role="region" aria-label="Predict" className="scrim-gate">
-          <GatePanel stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => { void onGateDone(gateStep, state.t); }} />
+          <GatePanel lessonKind="scrim" stepId={gateStep} ordinal={gateOrdinal} total={scrim.gates.length} onDone={() => { void onGateDone(gateStep, state.t); }} />
         </section>
       )}
       {done && (

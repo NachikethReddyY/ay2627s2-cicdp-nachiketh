@@ -1,4 +1,4 @@
-import { and, count, eq, max, ne, gte } from "drizzle-orm";
+import { and, count, eq, max, ne, gte, sql } from "drizzle-orm";
 import { playableLesson, visibleWorld } from "../access.ts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import { gradeMcq } from "../grading/mcq.ts";
 import { scrimGateOpen } from "../lessons/scrim.ts";
 import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { catchUpMastery, resolveConcepts } from "../progress/mastery.ts";
+import { lessonDone, lessonTotal } from "../progress/shared.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
 const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
@@ -131,6 +132,9 @@ function mutate(
 ) {
   const stepId = step.id;
   return withTx(async (tx) => {
+    if (action.type === "attempt" && step.lessonKind === "predict") {
+      await tx.select({ id: learners.id }).from(learners).where(eq(learners.id, learnerId)).for("no key update");
+    }
     await tx.insert(stepProgress).values({ learnerId, stepId }).onConflictDoNothing();
     const where = and(eq(stepProgress.learnerId, learnerId), eq(stepProgress.stepId, stepId));
     const [p] = await tx.select().from(stepProgress).where(where).for("update");
@@ -152,6 +156,7 @@ function mutate(
     let attemptId: string | undefined;
     let missedConcepts: string[] = [];
     let observedFirst = false;
+    let lessonJustCompleted = false;
     let hintsUsed = r.progress.rungsTaken;
     if (o.type === "hint") {
       await tx.insert(hintEvents).values({ learnerId, stepId, rung: o.rung });
@@ -179,10 +184,18 @@ function mutate(
       missedConcepts = row.missedConcepts;
       observedFirst = n === 0;
       if (o.type === "attempt" && (await closesReadLesson(tx, step))) {
-        await tx.insert(partCompletions).values({ learnerId, lessonId: step.lessonId }).onConflictDoNothing();
+        const inserted = await tx.insert(partCompletions).values({ learnerId, lessonId: step.lessonId })
+          .onConflictDoNothing().returning({ id: partCompletions.lessonId });
+        lessonJustCompleted = inserted.length > 0;
+      }
+      if (o.type === "attempt" && step.lessonKind === "predict" && r.progress.state === "revealed") {
+        const { rows: [row] } = await tx.execute<{ completed: boolean }>(sql`
+          SELECT ${lessonDone(learnerId)} = ${lessonTotal} AS completed
+          FROM lessons l WHERE l.id = ${step.lessonId} AND l.current_version_id = ${step.versionId}`);
+        lessonJustCompleted = row?.completed === true;
       }
     }
-    return { ...r, attemptId, missedConcepts, hintsUsed, observed: attemptId !== undefined && observedFirst };
+    return { ...r, attemptId, missedConcepts, hintsUsed, lessonJustCompleted, observed: attemptId !== undefined && observedFirst };
   });
 }
 
@@ -223,6 +236,7 @@ const Attempt = z.object({
   hintsUsed: z.number(),
   state: State,
   attemptAllowed: z.boolean(),
+  lessonJustCompleted: z.boolean(),
 });
 
 export const stepsRouter = router({
@@ -287,6 +301,7 @@ export const stepsRouter = router({
         hintsUsed: out.hintsUsed,
         state: out.progress.state,
         attemptAllowed: out.progress.attemptAllowed,
+        lessonJustCompleted: out.lessonJustCompleted,
       };
     }),
 

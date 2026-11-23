@@ -145,7 +145,7 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
         const current = await practiceTests(learner, found.lessonId, tx);
         if (!current || current.versionId !== found.versionId || practiceContentKey(current.practice) !== contentKey) return null;
         const attemptCount = await recordPracticeAttempt(tx, learner, found.versionId, contentKey);
-        if (scored.complete) await recordCompletion(learner, found.lessonId, tx);
+        const lessonJustCompleted = scored.complete && await recordCompletion(learner, found.lessonId, tx);
         const best = await saveBest(tx, learner, found.lessonId, scored.points, scored.maxPoints, scored.complete);
         const observed = attemptCount === 1 && await recordLessonObservation(tx, {
           learnerId: learner,
@@ -154,7 +154,7 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
           kind: "practice",
           correct: scored.complete,
         });
-        return { observed, result: { ...scored, best, attemptCount } };
+        return { observed, result: { ...scored, best, attemptCount, lessonJustCompleted } };
       });
       if (!persisted) return reply.status(409).send(fail("lesson_updated", "Reload the lesson before submitting again"));
       if (persisted.observed) await catchUpMastery(learner);

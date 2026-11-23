@@ -229,6 +229,7 @@ test("POST /sandbox/check: scores, hides hidden tests, and records completion on
     assert.deepEqual(r.required, { passed: 1, total: 2 });
     assert.deepEqual(r.stretch, { passed: 1, total: 1 });
     assert.deepEqual([r.points, r.maxPoints, r.complete], [2, 3, false]);
+    assert.equal(r.lessonJustCompleted, false);
     assert.deepEqual(r.best, { points: 2, maxPoints: 3 });
     assert.deepEqual(r.results[0], { id: "s1", name: "Sample sum", stretch: false, visibility: "sample", status: "pass", stdin: "2 3" });
     assert.deepEqual(r.results[1], { id: "h1", name: "Hidden sum", stretch: false, visibility: "hidden", status: "fail" });
@@ -244,11 +245,13 @@ test("POST /sandbox/check: scores, hides hidden tests, and records completion on
     fakeDocker([true, true, false]);
     const done = (await check(cookie, body("multi"))).json();
     assert.deepEqual([done.complete, done.points, done.best.points], [true, 2, 2]);
+    assert.equal(done.lessonJustCompleted, true);
     assert.equal((await db.select().from(partCompletions)).length, 1);
 
     fakeDocker([true, true, true]);
     const full = (await check(cookie, body("multi"))).json();
     assert.deepEqual([full.points, full.best], [3, { points: 3, maxPoints: 3 }]);
+    assert.equal(full.lessonJustCompleted, false);
     assert.equal((await db.select().from(partCompletions)).length, 1);
 
     fakeDocker([false, false, false]);

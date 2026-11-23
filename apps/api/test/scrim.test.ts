@@ -399,7 +399,7 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.match(feedbackReceipt, /^[a-f0-9]{64}$/);
   assert.deepEqual(failedResult, {
     results: expectedResults, required: { passed: 2, total: 3 }, stretch: { passed: 1, total: 1 },
-    points: 3, maxPoints: 4, complete: false, best: { points: 3, maxPoints: 4 }, attemptCount: 1,
+    points: 3, maxPoints: 4, complete: false, lessonJustCompleted: false, best: { points: 3, maxPoints: 4 }, attemptCount: 1,
   });
   assert.deepEqual(submissions[0].tests, scrim.lab.tests.map(({ stdin }) => ({ stdin })));
   assert.equal((await db.select().from(partCompletions).where(eq(partCompletions.lessonId, lessonId))).length, 0);
@@ -411,13 +411,14 @@ test("sandbox check grades the scrim lab and records completion without returnin
   assert.deepEqual(passed.json(), {
     results: [expectedResults[0], expectedResults[1], { ...publicTests[2], status: "pass" }, expectedResults[3]],
     required: { passed: 3, total: 3 }, stretch: { passed: 1, total: 1 },
-    points: 4, maxPoints: 4, complete: true, best: { points: 4, maxPoints: 4 }, attemptCount: 2, feedbackReceipt,
+    points: 4, maxPoints: 4, complete: true, lessonJustCompleted: true, best: { points: 4, maxPoints: 4 }, attemptCount: 2, feedbackReceipt,
   });
   const [learner] = await db.select({ id: learners.id }).from(learners);
   const completed = await db.select({ learnerId: partCompletions.learnerId }).from(partCompletions).where(eq(partCompletions.lessonId, lessonId));
   assert.deepEqual(completed, [{ learnerId: learner.id }]);
   const third = await check();
   assert.equal(third.json().attemptCount, 3, third.body);
+  assert.equal(third.json().lessonJustCompleted, false);
   const part = out(await client.q("lessons.get", { id: slug })).part;
   assert.equal(part.labLocked, false);
   const lab = part.lab;

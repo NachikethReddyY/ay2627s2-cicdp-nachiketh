@@ -86,8 +86,11 @@ test("a predict lesson completes only when every step is revealed from an observ
   for (let run = 0; run < RUNS; run++) {
     const email = emailOf(`predict${run}`);
     const cookie = await signedUp(email);
+    let wasComplete = false;
     for (let i = 0; i < ACTIONS; i++) {
-      const res = await predictAct(cookie, pick(rand, PREDICT_STEPS), pick(rand, PREDICT_ACTIONS));
+      const step = pick(rand, PREDICT_STEPS);
+      const action = pick(rand, PREDICT_ACTIONS);
+      const res = await predictAct(cookie, step, action);
       assert.ok(res.statusCode < 500, `run ${run} action ${i}: ${res.body}`);
       const learnerId = await learnerOf(email);
 
@@ -102,7 +105,12 @@ test("a predict lesson completes only when every step is revealed from an observ
       const counted = [...revealed].filter((id) => answered.has(id)).length;
       assert.equal(lesson.done, counted, `run ${run} action ${i}: done counts only revealed steps with an observed answer`);
 
-      if (lesson.done >= lesson.total) {
+      const isComplete = lesson.done >= lesson.total;
+      if (res.statusCode === 200 && (action === "right" || action === "wrong")) {
+        assert.equal(out(res).lessonJustCompleted, isComplete && !wasComplete);
+      }
+      wasComplete = isComplete;
+      if (isComplete) {
         completedRuns++;
         for (const step of PREDICT_STEPS) {
           assert.ok(answered.has(step.id) && revealed.has(step.id), `run ${run} action ${i}: ${step.id} completes the lesson without an observed answer`);
@@ -111,6 +119,15 @@ test("a predict lesson completes only when every step is revealed from an observ
     }
   }
   assert.ok(completedRuns > 0, "the generated runs must reach completion at least once");
+});
+
+test("concurrent predictions on the last two unfinished steps report exactly one lesson completion", async () => {
+  const cookie = await signedUp(emailOf("concurrent-finish"));
+  const [first, ...remaining] = PREDICT_STEPS;
+  assert.equal(out(await predictAct(cookie, first, "right")).lessonJustCompleted, false);
+  const responses = await Promise.all(remaining.map((step) => predictAct(cookie, step, "right")));
+  assert.deepEqual(responses.map((response) => response.statusCode), [200, 200]);
+  assert.deepEqual(responses.map((response) => out(response).lessonJustCompleted).sort(), [false, true]);
 });
 
 test("skipping a predict step is refused and never completes the lesson", async () => {
@@ -548,6 +565,7 @@ test("a game lesson completes only when every game block has been won", async ()
   for (let run = 0; run < RUNS; run++) {
     const email = emailOf(`games${run}`);
     const cookie = await signedUp(email);
+    let wasComplete = false;
     for (let i = 0; i < ACTIONS; i++) {
       const res = await play(cookie, lesson, Math.floor(rand() * 2), rand() < 0.5);
       assert.ok(res.statusCode < 500, `run ${run} action ${i}: ${res.body}`);
@@ -556,6 +574,8 @@ test("a game lesson completes only when every game block has been won", async ()
       const won = (await db.select().from(gameCompletions).where(and(eq(gameCompletions.learnerId, learnerId), eq(gameCompletions.lessonId, lesson.lessonId)))).length;
       const progress = await codequestLesson(cookie, lesson.slug);
       assert.equal(progress.done >= progress.total, won === 2, `run ${run} action ${i}: won ${won} of 2`);
+      if (res.statusCode === 200) assert.equal(out(res).lessonJustCompleted, won === 2 && !wasComplete);
+      wasComplete = won === 2;
     }
   }
 });

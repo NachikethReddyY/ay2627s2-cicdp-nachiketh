@@ -1,6 +1,6 @@
 import { TRPCClientError } from "@trpc/client";
-import { Link } from "@tanstack/react-router";
-import { Suspense, lazy, useState, type ReactNode } from "react";
+import { Link, type HistoryState } from "@tanstack/react-router";
+import { Suspense, lazy, useRef, useState, type ReactNode } from "react";
 import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import { CourseNext, LessonProgress, NextLink } from "./live/CourseNav";
@@ -8,6 +8,8 @@ import { practiceMedia } from "./live/lessonWorkbenchModel";
 import { Notice } from "./live/Notice";
 import { hasChecks } from "./live/readFlow";
 import { lessonTitle } from "./live/courseProgress";
+import { useLessonAnalytics } from "./live/lessonAnalytics";
+import type { Lesson } from "./live/types";
 
 const LearnView = lazy(() => import("./LearnView").then(({ LearnView }) => ({ default: LearnView })));
 const GamePracticeView = lazy(() => import("./GamePracticeView").then(({ GamePracticeView }) => ({ default: GamePracticeView })));
@@ -17,8 +19,16 @@ const WatchView = lazy(() => import("./live/WatchView"));
 const LessonWorkbench = lazy(() => import("./live/LessonWorkbench"));
 const ScrimLesson = lazy(() => import("./scrim/ScrimLesson"));
 
-export default function LiveLesson({ slug, course }: { slug: string; course?: string }) {
+function isPlayable({ kind, steps, part, completed }: Lesson) {
+  if (kind === "learn" || kind === "watch") return hasChecks(kind, steps) || (completed && part?.kind === kind);
+  if (kind === "predict") return steps.length > 0;
+  return part?.kind === kind;
+}
+
+export default function LiveLesson({ slug, course, entrySource }: { slug: string; course?: string; entrySource?: HistoryState["lessonEntrySource"] }) {
   const [writing, setWriting] = useState(false);
+  const started = useRef(false);
+  const analytics = useLessonAnalytics();
   const { data, error, loading: refreshing, reload } = useApi(`lesson:${slug}`, async () => {
     const input = { id: slug };
     try {
@@ -33,6 +43,10 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     } finally {
       setWriting(false);
     }
+  }, (lesson) => {
+    if (started.current || !isPlayable(lesson)) return;
+    started.current = true;
+    analytics.started(lesson.kind, entrySource);
   });
   const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
   const [upgrading, setUpgrading] = useState(false);
@@ -105,11 +119,11 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
       if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView lessonId={data.id} title={data.title} part={part} next={footer} completed={data.completed} /></Suspense>;
       return fallback;
     };
-    if (checked) return <Suspense fallback={fallback}><CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson></Suspense>;
+    if (checked) return <Suspense fallback={fallback}><CheckedLesson key={data.id} kind={data.kind} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson></Suspense>;
     return read(update ? <div className="flex flex-wrap items-center justify-center gap-3">{next}{update}</div> : next);
   }
   if (data.kind === "practice" && part?.kind === "practice")
-    return <Suspense fallback={fallback}><LessonWorkbench key={part.revision} lessonId={data.id} title={data.title} part={part} next={next} media={practiceMedia(data.media)} /></Suspense>;
+    return <Suspense fallback={fallback}><LessonWorkbench key={part.revision} kind="practice" lessonId={data.id} title={data.title} part={part} next={next} media={practiceMedia(data.media)} /></Suspense>;
   if (data.kind === "scrim" && part?.kind === "scrim")
     return <Suspense fallback={fallback}><ScrimLesson lessonId={data.id} title={data.title} part={part} steps={data.steps} media={data.media} next={next} /></Suspense>;
   if (data.kind === "game-practice" && part?.kind === "game-practice")

@@ -4,15 +4,18 @@ import { Bar } from "../../components/Bits";
 import { useApi, type ApiState, type CourseData } from "../../lib/api";
 import { trpc } from "../../lib/trpc";
 import { courseProgress } from "./courseProgress";
+import { isInAppLinkClick, useContinueAnalytics } from "./lessonAnalytics";
 
 export type CourseState = ApiState<CourseData | null>;
 
-export const NextLink = ({ href, children }: { href: string; children: ReactNode }) => {
+export const NextLink = ({ href, action, children }: { href: string; action?: "lesson" | "assess" | "review"; children: ReactNode }) => {
   const router = useRouter();
+  const captureContinue = useContinueAnalytics("lesson_end");
   const go = (e: MouseEvent<HTMLAnchorElement>) => {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!isInAppLinkClick(e)) return;
     e.preventDefault();
-    router.history.push(href);
+    router.history.push(href, action === "lesson" || action === "assess" ? { lessonEntrySource: "lesson_end" } : undefined);
+    if (action) captureContinue(action);
   };
   return <a href={href} onClick={go} className="btn mt-4">{children}</a>;
 };
@@ -44,8 +47,8 @@ export function CourseNext({ id, slug, course }: { id: string; slug: string; cou
     <div className="flex flex-col items-center text-center">
       {rec.data && <p className="mt-4 mb-0 text-sm text-[var(--mu)]">{rec.data.reason}</p>}
       {rec.data?.action === "review"
-        ? <NextLink href={`/review/${slug}`}>Review</NextLink>
-        : next ? <NextLink href={`/play?lesson=${next}&course=${slug}`}>Next</NextLink>
+        ? <NextLink href={`/review/${slug}`} action="review">Review</NextLink>
+        : next ? <NextLink href={`/play?lesson=${next}&course=${slug}`} action={rec.data?.action === "assess" ? "assess" : "lesson"}>Next</NextLink>
           : <NextLink href={`/courses/${slug}`}>Back to course</NextLink>}
     </div>
   );

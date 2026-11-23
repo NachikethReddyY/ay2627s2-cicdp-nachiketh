@@ -40,7 +40,7 @@ export async function practiceCheck(learnerId: string, lessonId: string): Promis
   }
   return {
     expected: lesson.expected,
-    record: () => recordCompletion(learnerId, lesson.id),
+    record: async () => { await recordCompletion(learnerId, lesson.id); },
   };
 }
 
@@ -89,8 +89,9 @@ export async function recordPracticeAttempt(tx: Db, learnerId: string, versionId
   return row.count;
 }
 
-export async function recordCompletion(learnerId: string, lessonId: string, connection = db): Promise<void> {
-  await connection.execute(sql`
+export async function recordCompletion(learnerId: string, lessonId: string, connection = db): Promise<boolean> {
+  const { rows } = await connection.execute(sql`
     INSERT INTO part_completions (learner_id, lesson_id) VALUES (${learnerId}, ${lessonId})
-    ON CONFLICT DO NOTHING`);
+    ON CONFLICT DO NOTHING RETURNING lesson_id`);
+  return rows.length > 0;
 }
