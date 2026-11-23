@@ -79,6 +79,33 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   const session = await page.request.get("/api/auth/get-session");
   expect(session.ok()).toBe(true);
   expect((await session.json()).user.email).toBe(email);
+
+  await test.step("phone Home shows progress and offers Explore or one-click resume", async () => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/");
+    const empty = page.getByRole("region", { name: "Find your first path" });
+    await expect(empty.getByRole("link", { name: "Explore paths" })).toHaveAttribute("href", "/explore");
+    const progress = page.getByRole("region", { name: "Progress at a glance" });
+    await expect(progress).toBeInViewport({ ratio: 1 });
+    await expect(progress).toContainText("No path yet");
+    await expectNoSeriousA11yViolations(page, "/", empty);
+
+    await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
+    await expect(progress).toContainText(/0 \/ \d+ lessons/);
+    const attempt = await page.request.post("/api/trpc/steps.attempt", { data: {
+      id: FIRST_STEP_ID,
+      answer: { kind: "mcq", choice: 1 },
+    } });
+    expect(attempt.ok()).toBe(true);
+    await page.reload();
+    const resume = page.getByRole("link", { name: /^(Continue|Resume )/ }).and(page.locator('a[href*="lesson=lesson-1&"]'));
+    await expect(resume).toHaveAttribute("href", /lesson=lesson-1/);
+    await expect(progress).toBeInViewport({ ratio: 1 });
+    await expectNoSeriousA11yViolations(page, "/", resume);
+    await resume.click();
+    await expect(page).toHaveURL(/lesson=lesson-1/);
+    await expect(page.getByText("Step 2 of 3", { exact: true })).toBeVisible();
+  });
 });
 
 test("a wrong prediction updates Continue to show a review and its reason", async ({ page }) => {

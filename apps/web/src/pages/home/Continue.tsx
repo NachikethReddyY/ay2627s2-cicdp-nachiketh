@@ -3,9 +3,15 @@ import type { HomeData } from "../../lib/api";
 import { Arrow } from "./art";
 import { pct } from "./pct";
 
-export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }) {
+export function ResumeLink({ resume }: { resume: NonNullable<HomeData["resume"]> }) {
+  return <Link to="/play" search={{ lesson: resume.lessonSlug, course: resume.courseSlug }} className="lq-pill lq-resume-link">Resume {resume.title}<Arrow /></Link>;
+}
+
+export default function Continue({ c, resume }: { c: NonNullable<HomeData["continue"]>; resume: HomeData["resume"] }) {
   const { lesson, recommendation, snippet } = c;
-  const label = recommendation?.reasonCode === "REVIEW" ? "Review" : "Continue";
+  const action = recommendation?.reasonCode === "PREREQUISITES" ? "course" : recommendation?.action ?? "lesson";
+  const actionLabel = recommendation?.reasonCode === "REVIEW" ? "Review" : "Continue";
+  const showResume = resume && (action === "course" || action === "review" || resume.lessonSlug !== lesson.slug);
   return (
     <section className={`lq-card lq-hero lq-continue-photo lq-rise d2${snippet ? "" : " lq-hero-solo"}`} aria-labelledby="hero-h">
       <div className="lq-hero-main">
@@ -23,11 +29,12 @@ export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }
           <span className="lq-hero-count">{c.lesson.done} / {c.lesson.total}</span>
         </div>
         <div className="lq-hero-cta">
-          {recommendation?.reasonCode === "PREREQUISITES"
+          {action === "course"
             ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Course<Arrow /></Link>
-            : recommendation?.action === "review"
+            : action === "review"
             ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Review<Arrow /></Link>
-            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">{label}<Arrow /></Link>}
+            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">{actionLabel}<Arrow /></Link>}
+          {showResume && <ResumeLink resume={resume} />}
         </div>
       </div>
       {snippet && (

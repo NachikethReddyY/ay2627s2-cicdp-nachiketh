@@ -6,7 +6,7 @@ import { authClient } from "../lib/auth";
 import { EmptyNote, Spinner } from "../components/Bits";
 import { Logo } from "./landing/Logo";
 import Learning from "./home/Learning";
-import Continue from "./home/Continue";
+import Continue, { ResumeLink } from "./home/Continue";
 import Generator from "./home/Generator";
 import Mastery from "./home/Mastery";
 import PathAction from "./home/PathAction";
@@ -26,6 +26,9 @@ export default function Home() {
   const { data: session } = authClient.useSession();
   const initial = session?.user.email?.charAt(0).toUpperCase() ?? "?";
   const stored = data?.stats.timezone;
+  const activePath = data?.paths.find((path) => path.slug === data.continue?.path.slug) ?? data?.paths[0];
+  const pathDone = activePath?.courses.reduce((sum, course) => sum + course.lessonsDone, 0) ?? 0;
+  const pathTotal = activePath?.courses.reduce((sum, course) => sum + course.lessonsTotal, 0) ?? 0;
   useEffect(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (!stored || stored === tz) return;
@@ -56,16 +59,34 @@ export default function Home() {
         <h1 className="sr">LearnSlop home</h1>
         <div className="lq-layout">
           <div className="lq-main">
-            {data?.continue && <Continue c={data.continue} />}
+            {error ? (
+              <EmptyNote><span role="alert">Couldn't load your home.</span> <button type="button" className="lq-pill" onClick={reload}>Retry</button></EmptyNote>
+            ) : !data ? <Spinner /> : (
+              <>
+                <section className="lq-card lq-mobile-progress" aria-label="Progress at a glance">
+                  <dl>
+                    <div><dt>Total XP</dt><dd>{data.stats.xp}</dd></div>
+                    <div><dt>Streak</dt><dd>{data.stats.streak} {data.stats.streak === 1 ? "day" : "days"}</dd></div>
+                    <div><dt>Path progress</dt><dd>{activePath ? `${pathDone} / ${pathTotal} lessons` : "No path yet"}</dd></div>
+                  </dl>
+                </section>
+                {data.continue ? <Continue c={data.continue} resume={data.resume} /> : data.resume ? <ResumeLink resume={data.resume} /> : null}
+                {data.paths.length === 0 && (
+                  <section className="lq-card lq-home-empty" aria-labelledby="home-empty">
+                    <div>
+                      <h2 id="home-empty">Find your first path</h2>
+                      <p className="lq-tagline">Browse paths and choose what you want to learn.</p>
+                    </div>
+                    <Link to="/explore" className="lq-btn lq-btn-ink">Explore paths</Link>
+                  </section>
+                )}
+              </>
+            )}
             {data && <Learning items={data.learning} />}
             {data && <Mastery items={data.mastery} />}
             <Generator />
 
-            {error || !data ? (
-              error ? (
-                <EmptyNote>Couldn't load your home. <button type="button" className="lq-pill" onClick={reload}>Retry</button></EmptyNote>
-              ) : <Spinner />
-            ) : (
+            {data && (
               <>
                 {!data.continue && data.paths.length === 0 && data.official.length > 0 && (
                   <section aria-labelledby="start" className="lq-rise d2 lq-start-section">

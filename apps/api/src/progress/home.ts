@@ -26,6 +26,8 @@ export function firstCodeBlock(prompt: string): string[] | null {
   const lines = prompt.slice(bodyStart + 1, bodyEnd).split("\n").slice(0, 6);
   return lines.length > 0 ? lines : null;
 }
+const Resume = z.object({ lessonSlug: z.string(), title: z.string(), courseSlug: z.string() });
+
 const Home = z.object({
   stats: z.object({
     xp: z.number(),
@@ -44,6 +46,7 @@ const Home = z.object({
       recommendation: NextStep.nullable(),
     })
     .nullable(),
+  resume: Resume.nullable(),
   learning: z.array(z.object({ slug: z.string(), pre: z.boolean().nullable(), post: z.boolean().nullable() })),
   mastery: z.array(z.object({ name: z.string(), pKnown: z.number() })),
   leaderboard: z.object({
@@ -142,13 +145,22 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
 
     type Path = { slug: string; title: string; tagline: string; origin: LessonRow["origin"]; active: number; courses: Map<string, { id: string; slug: string; title: string; lessons: LessonRow[] }> };
     const byPath = new Map<string, Path>();
+    let resume: z.infer<typeof Resume> | null = null;
+    let resumeAt = -Infinity;
     for (const row of rows) {
       let p = byPath.get(row.path_slug);
       if (!p) {
         p = { slug: row.path_slug, title: row.path_title, tagline: row.tagline, origin: row.origin, active: new Date(row.enrolled_at).getTime(), courses: new Map() };
         byPath.set(row.path_slug, p);
       }
-      if (row.last_active) p.active = Math.max(p.active, new Date(row.last_active).getTime());
+      if (row.last_active) {
+        const activeAt = new Date(row.last_active).getTime();
+        p.active = Math.max(p.active, activeAt);
+        if (activeAt > resumeAt && row.lesson_slug && row.lesson_title && row.total > 0 && !complete(row)) {
+          resumeAt = activeAt;
+          resume = { lessonSlug: row.lesson_slug, title: row.lesson_title, courseSlug: row.course_slug };
+        }
+      }
       let c = p.courses.get(row.course_slug);
       if (!c) p.courses.set(row.course_slug, (c = { id: row.course_id, slug: row.course_slug, title: row.course_title, lessons: [] }));
       if (row.lesson_slug) c.lessons.push(row);
@@ -217,6 +229,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         week: week(solved, today),
       },
       continue: next && { ...next, snippet },
+      resume,
       mastery,
       learning: activeCourseId ? await learning(me, activeCourseId) : [],
       leaderboard: {
