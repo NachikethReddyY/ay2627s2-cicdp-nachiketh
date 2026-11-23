@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import * as M from "@radix-ui/react-menubar";
+import { usePostHog } from "@posthog/react";
 import { authClient } from "../lib/auth";
 import { FOCUS, MENU_ITEM, MENU_PANEL } from "./ui";
 import { SPEEDS, type Speed } from "./useReplay";
@@ -69,6 +70,7 @@ const Sep = () => <M.Separator className="m-1 h-px bg-[var(--line)]" />;
 
 function Account() {
   const { data } = authClient.useSession();
+  const posthog = usePostHog();
   return (
     <Menu name="Account">
       <Item label={data?.user.email ?? "Signed in"} disabled />
@@ -79,6 +81,7 @@ function Account() {
           try {
             const { error } = await authClient.signOut();
             if (error) throw error;
+            posthog?.reset();
             location.assign("/");
           } catch {
             alert("Sign out failed. Check your connection and try again.");

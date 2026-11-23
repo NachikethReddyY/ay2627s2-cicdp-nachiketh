@@ -11,6 +11,7 @@
     "@learnquest/product-limits": "workspace:*",
     "@learnquest/ui-catalog": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
+    "@posthog/react": "^1.11.3",
     "@radix-ui/react-menubar": "^1.2.1",
     "@radix-ui/react-slider": "^1.6.1",
     "@react-three/fiber": "^9.8.2",

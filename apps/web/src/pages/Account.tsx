@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { authClient } from "../lib/auth";
 import { Logo } from "./landing/Logo";
 import HandleForm, { type HandleProfile } from "./HandleForm";
@@ -7,6 +8,7 @@ import "./home.css";
 
 export default function Account({ profile }: { profile: HandleProfile }) {
   const { data, error: sessionError, isPending, refetch } = authClient.useSession();
+  const posthog = usePostHog();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
@@ -18,6 +20,7 @@ export default function Account({ profile }: { profile: HandleProfile }) {
     try {
       const { error } = await authClient.signOut();
       if (error) throw error;
+      posthog?.reset();
       void navigate({ to: "/login" });
     } catch {
       setError("Sign out failed. Check your connection and try again.");

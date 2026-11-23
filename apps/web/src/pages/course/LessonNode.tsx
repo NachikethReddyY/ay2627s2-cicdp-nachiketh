@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "framer-motion";
+import { usePostHog } from "@posthog/react";
 import { Check, Lock, Play, Star } from "lucide-react";
 import type { CourseData } from "../../lib/api";
 import { trpc } from "../../lib/trpc";
@@ -33,6 +34,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
   const reduce = useReducedMotion();
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState(false);
+  const posthog = usePostHog();
   const needsWrite = state !== "locked" && (l.writeState === "failed" || l.writeState === "pending");
   const write = () => {
     setWriting(true);
@@ -71,6 +73,10 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
     setOpen(open ? null : l.slug);
   };
 
+  const startLesson = (source: "lesson_node" | "lesson_detail") => {
+    posthog?.capture("lesson_started", { lesson_kind: l.kind, source });
+  };
+
   const face = (
     <motion.span
       className={`lesson-face ${state}`}
@@ -97,7 +103,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
             {face}
           </button>
         ) : (
-          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={click}>
+          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={(e) => { if (e.detail === 0) startLesson("lesson_node"); click(e); }}>
             {face}
           </Link>
         )}
@@ -148,6 +154,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
               to="/play"
               search={{ lesson: l.slug, course: slug }}
               className={`${state === "done" ? "pill" : "btn"} lesson-pop-btn`}
+              onClick={() => startLesson("lesson_detail")}
             >
               {cta}
             </Link>

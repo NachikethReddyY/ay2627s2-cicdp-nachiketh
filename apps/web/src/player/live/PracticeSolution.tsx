@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { isNotFound, trpc } from "../../lib/trpc";
 import type { Part } from "./types";
 
@@ -14,6 +15,7 @@ export default function PracticeSolution({ lessonId, versionId, revision, soluti
   const [code, setCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const posthog = usePostHog();
   const remaining = solution ? Math.max(0, solution.unlockAt - Math.max(solution.attemptCount, attemptCount)) : 0;
 
   const reveal = async () => {
@@ -22,6 +24,7 @@ export default function PracticeSolution({ lessonId, versionId, revision, soluti
     try {
       const result = await trpc.lessons.revealPracticeSolution.mutate({ id: lessonId, versionId, revision });
       setCode(result.code);
+      posthog?.capture("practice_solution_revealed");
     } catch (cause) {
       setError(isNotFound(cause) ? "This exercise has no verified reference solution." : "Could not load the reference solution. Try again.");
     } finally {
