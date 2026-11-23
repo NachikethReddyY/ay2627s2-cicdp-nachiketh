@@ -1,0 +1,1 @@
+ALTER TABLE "learners" DROP COLUMN "leaderboard_opt_in";
