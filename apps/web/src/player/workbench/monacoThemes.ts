@@ -14,9 +14,9 @@ const LIGHT: Palette = {
   suggestBg: "#ffffff", suggestSelectedBg: "#e5edff", suggestFocusBorder: "#a9beeF", suggestAccent: "#2f5fd6",
 };
 const DARK: Palette = {
-  base: "vs-dark", hot: "#ffffff", tx: "#ececec", code: "#262626", cur: "#34322a", numdim: "#5f5f5f", sel: "#7896ff38", line: "#3a3a3a",
+  base: "vs-dark", hot: "#ffffff", tx: "#ededed", code: "#0a0a0a", cur: "#141414", numdim: "#8f8f8f", sel: "#3262e646", line: "#262626",
   keyword: "ff7ab2", string: "ff8170", type: "6bdfff", comment: "8a919e", number: "d9c97c",
-  suggestBg: "#282a30", suggestSelectedBg: "#3b4664", suggestFocusBorder: "#667fbf", suggestAccent: "#8fb0ff",
+  suggestBg: "#141414", suggestSelectedBg: "#1f1f1f", suggestFocusBorder: "#5583ff", suggestAccent: "#5583ff",
 };
 
 function build(p: Palette): editor.IStandaloneThemeData {

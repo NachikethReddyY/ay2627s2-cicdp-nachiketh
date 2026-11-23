@@ -10,9 +10,6 @@
   line-height: 1.5;
 }
 
-/* the page canvas is always black, so the accent text and focus ring use the dark-theme blue, which clears 3:1 there */
-.lq-explore.lq-moon { --acT: #8fb0ff; }
-
 /* heading and filters */
 .lq-explore .explore-page { padding-top: 12px; }
 .lq-explore .explore-crumb { font-size: 14px; color: var(--mu); }
@@ -60,7 +57,7 @@
 .lq-explore .explore-cover {
   height: 180px;
   margin: -19px -21px 4px;
-  border-radius: 13px 13px 0 0;
+  border-radius: 12px 12px 0 0;
   background: linear-gradient(180deg, rgba(10, 10, 12, 0) 60%, rgba(10, 10, 12, 0.35) 100%), var(--cover) center / cover no-repeat;
 }
 .lq-explore .explore-list[data-view="list"] .explore-cover { height: 120px; }
@@ -115,12 +112,10 @@
   flex-direction: column;
   gap: 12px;
   padding: 18px 20px;
-  border: 1px solid var(--glass-line);
-  border-radius: 14px;
-  background: var(--glass);
-  box-shadow: var(--lift);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--code);
+  box-shadow: var(--geist-ring), var(--lift);
 }
 .lq-explore .explore-card-title { min-width: 0; }
 .lq-explore .explore-card h2 {

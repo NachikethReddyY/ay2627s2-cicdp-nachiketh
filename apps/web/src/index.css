@@ -1,12 +1,21 @@
 @import "tailwindcss";
 
-/* One visual language for the whole app: Geist and Geist Mono, cool grey surfaces, 1px hairlines, one blue
-   accent, glass panels, pill controls, calm motion. Light by default, dark under prefers-color-scheme.
-   The landing page (.lp, pages/landing.css) and the practice workbench (.wb, player/workbench/workbench.css)
-   define the same token names at their own scope; their values win inside those scopes and match these.
-   DESIGN.md documents the table. The old sticker system (cream canvas, ink outlines, hard offset shadows) is gone. */
 :root {
   color-scheme: light dark;
+
+  --geist-black: #000;
+  --geist-gray-1: #0a0a0a;
+  --geist-gray-2: #141414;
+  --geist-gray-3: #1f1f1f;
+  --geist-text: #ededed;
+  --geist-muted: #a1a1a1;
+  --geist-faint: #8f8f8f;
+  --geist-blue: #3262e6;
+  --geist-blue-hover: #2552c4;
+  --geist-blue-bright: #5583ff;
+  --geist-ring: 0 0 0 1px rgb(255 255 255 / 10%);
+  --geist-ring-hover: 0 0 0 1px rgb(255 255 255 / 24%);
+  --geist-lift: 0 2px 2px rgb(0 0 0 / 30%), 0 8px 16px -4px rgb(0 0 0 / 40%);
 
   /* surfaces and text */
   --page: #f6f6f8; --tx: #1c1c1e; --mu: #555a66; --line: #d7d6d6; --side: #edecec; --code: #ffffff; --tbar: #ffffff;
@@ -50,6 +59,50 @@
     --lift-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px -8px rgba(0, 0, 0, 0.5);
   }
 }
+
+html:has(.lq-moon) {
+  color-scheme: dark;
+  --page: var(--geist-black);
+  --tx: var(--geist-text);
+  --mu: var(--geist-muted);
+  --faint: var(--geist-faint);
+  --code: var(--geist-gray-1);
+  --ed: var(--code);
+  --side: var(--geist-gray-2);
+  --tbar: var(--code);
+  --pane2: var(--side);
+  --chip: var(--side);
+  --track: var(--geist-gray-3);
+  --selrow: var(--track);
+  --hov: var(--track);
+  --line: rgb(255 255 255 / 10%);
+  --line-strong: #707070;
+  --ac: var(--geist-blue);
+  --acT: var(--geist-blue-bright);
+  --ac-g: var(--acT);
+  --sel: color-mix(in srgb, var(--ac) 18%, transparent);
+  --ok: #3fc07a;
+  --okT: var(--ok);
+  --bad: #ff6369;
+  --warn: #e0a84a;
+  --kw: #ff7ab2;
+  --fn: #78c2ff;
+  --nu: #d9c97c;
+  --str: #ff8170;
+  --cur: var(--track);
+  --numdim: var(--faint);
+  --glass: var(--code);
+  --glass-line: var(--line);
+  --glass-edge: var(--line);
+  --win: var(--code);
+  --edge: var(--line);
+  --vib: var(--side);
+  --lift: var(--geist-lift);
+  --lift-sm: var(--geist-lift);
+}
+
+html:has(.lq-moon, .wb[data-resolved="dark"]),
+body:has(.wb[data-resolved="dark"]) { background: var(--geist-black); }
 
 /* Tailwind theme: the old sticker names now point at tokens, so bg-paper, text-ink, bg-sun and the rest follow
    light and dark automatically. static: some of these are read as var(--color-ink) from TSX strings. */
@@ -103,6 +156,14 @@
     box-shadow: var(--lift);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+
+  .lq-moon .chunk {
+    border-color: transparent;
+    border-radius: 12px;
+    box-shadow: var(--geist-ring), var(--lift);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   /* primary pill: accent fill, glow on hover, press scales to 0.96 */
@@ -305,18 +366,6 @@
 .lq .code-toolbar button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 999px; background: transparent; color: var(--mu); cursor: pointer; }
 .lq .code-toolbar button:hover { color: var(--tx); background: var(--hov); }
 .lq .code-toolbar button[aria-pressed="true"] { color: var(--tx); background: var(--sel); }
-.lq .learn-md :not(pre) > code { padding: 2px 7px; border: 1px solid var(--line); border-radius: 8px; background: #2c1111; color: #db0000; font-size: 0.9em; }
-/* The lesson page has no home.css, so the moon canvas is set here: black, with the learn text on top. */
-.lq.lq-moon {
-  background: #000;
-  color-scheme: dark;
-  --tx: #ededed; --mu: #c4c4c4; --faint: #b0b0b0;
-  --code: rgba(10, 10, 10, 0.72); --chip: rgba(255, 255, 255, 0.06); --hov: rgba(255, 255, 255, 0.08);
-  --line: rgba(255, 255, 255, 0.12); --line-strong: rgba(255, 255, 255, 0.2); --pane2: rgba(255, 255, 255, 0.06); --track: rgba(255, 255, 255, 0.1);
-  --glass: rgba(14, 14, 16, 0.86); --glass-line: rgba(255, 255, 255, 0.12);
-  --ring: 0 0 0 1px rgba(255, 255, 255, 0.1);
-  --lift: 0 2px 2px rgba(0, 0, 0, 0.3), 0 8px 16px -4px rgba(0, 0, 0, 0.4);
-}
 .lq.lq-moon .player-content { background: transparent; }
 .learn-md code:not(pre code) { background: var(--side); border: 1px solid var(--line); border-radius: 0.375rem; padding: 0.1rem 0.35rem; font-size: 0.92em; }
 .learn-md pre code { font-family: var(--mono); font-weight: 400; }

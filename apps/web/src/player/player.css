@@ -52,6 +52,12 @@
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
 }
 .lq.player-page dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.lq.player-page.lq-moon :is(section[id^="win-"], [aria-label="Dock"], [class*="absolute bottom-4"], dialog) {
+  border-color: transparent;
+  box-shadow: var(--geist-ring), var(--lift);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 .lq.player-page button,
 .lq.player-page select { font-family: var(--font-body); }
 .lq.player-page button.btn,

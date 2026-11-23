@@ -2,6 +2,7 @@
 /* In the components layer so Tailwind utilities (gap-1, h-[22px]) can override these rules. */
 @layer components {
   .wb {
+    color-scheme: light;
     --wb-status-height: 25px;
     --tx: #1c1c1e; --mu: #555a66; --line: #D7D6D6; --side: #EDECEC; --code: #FFFFFF; --tbar: #FFFFFF;
     --selrow: #D7D6D6; --sel: rgba(47, 95, 214, 0.14); --hov: rgba(28, 36, 64, 0.07);
@@ -16,27 +17,17 @@
     font-family: "Geist", system-ui, sans-serif;
     font-size: 12.5px;
   }
-  .wb[data-theme="dark"] {
-    --tx: #ececec; --mu: #9a9a9a; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
-    --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
-    --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
-    --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
+  .wb[data-resolved="dark"] {
+    color-scheme: dark;
+    --tx: var(--geist-text); --mu: var(--geist-muted); --line: rgb(255 255 255 / 10%);
+    --selrow: var(--geist-gray-3); --sel: color-mix(in srgb, var(--ac) 18%, transparent); --hov: var(--selrow);
+    --ac: var(--geist-blue); --acT: var(--geist-blue-bright); --focus: var(--acT); --cur: var(--side); --numdim: var(--geist-faint);
+    --side: var(--geist-gray-2); --code: var(--geist-gray-1); --tbar: var(--code);
+    --pane2: var(--side); --ed: var(--code); --ok: #3fc07a; --okT: var(--ok); --bad: #ff6369;
     --tsbg: #89b4fa; --tstx: #1e1e2e; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
-    --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
-    --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
-    --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a; --folder: #89b4fa; --folder-open: #cba6f7;
-  }
-  @media (prefers-color-scheme: dark) {
-    .wb[data-theme="system"] {
-      --tx: #ececec; --mu: #9a9a9a; --line: #3a3a3a; --side: #282828; --code: #262626; --tbar: #262626;
-      --selrow: #3a3a3a; --sel: rgba(120, 150, 255, 0.22); --hov: rgba(255, 255, 255, 0.08);
-      --acT: #8fb0ff; --cur: #34322a; --numdim: #5f5f5f;
-      --pane2: #303030; --ed: #262626; --ok: #3fc07a; --bad: #ff6b61;
-      --tsbg: #89b4fa; --tstx: #1e1e2e; --jsbg: #f5d37a; --mdbg: #c9ccd6; --mdtx: #2a2d36; --pybg: #8fbbe0; --pytx: #0f2a57;
-      --win: rgba(30, 30, 30, 0.3); --edge: rgba(255, 255, 255, 0.12); --vib: rgba(40, 40, 40, 0.85);
-      --glass: rgba(38, 38, 38, 0.78); --glass-edge: rgba(255, 255, 255, 0.12); --glass-line: rgba(255, 255, 255, 0.1); --chip: #303030;
-      --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a; --folder: #89b4fa; --folder-open: #cba6f7;
-    }
+    --win: var(--code); --edge: var(--line); --vib: var(--side);
+    --glass: var(--code); --glass-edge: var(--line); --glass-line: var(--line); --chip: var(--side);
+    --nu: #d9c97c; --fn: #78c2ff; --warn: #e0a84a; --folder: var(--mu); --folder-open: var(--tx);
   }
   .wb .wb-mono { font-family: "Geist Mono", ui-monospace, monospace; }
 
@@ -58,16 +49,15 @@
     position: absolute; z-index: 20; pointer-events: none;
     inset: var(--wb-inset, 0px) var(--wb-inset, 0px) calc(var(--wb-inset, 0px) + var(--wb-status-height));
   }
-  .wb-desk::before, .wb-desk::after {
+  .wb-desk::before {
     position: absolute; z-index: -1; inset: 0; content: ""; pointer-events: none;
     background-position: center; background-size: cover; background-repeat: no-repeat;
   }
   .wb-desk::before { background-image: url("/img/desktop-light-wallpaper.jpg"); opacity: 1; }
-  .wb-desk::after { background-image: url("/img/desktop-dark-wallpaper.jpg"); opacity: 0; }
+  .wb-desk[data-resolved="dark"] { background: var(--geist-black); }
   .wb-desk[data-resolved="dark"]::before { opacity: 0; }
-  .wb-desk[data-resolved="dark"]::after { opacity: 1; }
   @media (prefers-reduced-motion: no-preference) {
-    .wb-desk::before, .wb-desk::after { transition: opacity 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .wb-desk::before { transition: opacity 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
   }
   .wb-win {
     position: relative; border-radius: 16px; overflow: hidden; background: var(--win); border: 1px solid var(--edge);
@@ -88,7 +78,13 @@
   .wb-preview-float[data-inactive] .wb-preview-float-title { color: var(--mu); }
   .wb-preview-float[data-inactive] .wb-preview-secure-dot { background: color-mix(in srgb, var(--mu) 45%, transparent) !important; }
   .wb-win-floating header { cursor: grab; touch-action: none; -webkit-app-region: no-drag; }
-  .wb-desk[data-resolved="dark"] .wb-win { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+  .wb-desk[data-resolved="dark"] .wb-win {
+    border-color: transparent;
+    border-radius: 12px;
+    box-shadow: var(--geist-ring), var(--geist-lift);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   /* Navigator: translucent over the window's frosted wallpaper (vibrancy); the editor stays solid. */
   .wb-side { background: var(--vib); }
   .wb-lights { display: inline-flex; flex: none; gap: 8px; }

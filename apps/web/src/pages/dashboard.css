@@ -9,6 +9,8 @@
   border-bottom: 1px solid var(--glass-line);
 }
 
+.lq-moon .lq-dashboard-header { background: var(--page); }
+
 .lq-dashboard .lq-topbar,
 .lq-dashboard .lq-wrap {
   max-width: 1152px;
@@ -68,13 +70,11 @@
   padding: 24px;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr);
-  background: linear-gradient(115deg, color-mix(in srgb, var(--ac) 16%, var(--code)), var(--glass) 90%);
-  border-color: color-mix(in srgb, var(--ac) 32%, var(--glass-line));
 }
 
 .lq-dashboard .lq-dashboard-kicker {
   margin-bottom: 6px;
-  color: var(--acT);
+  color: var(--mu);
   font: 500 12px/1.4 var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -148,6 +148,11 @@
   border: 1px solid var(--glass-line);
   border-radius: 12px;
   background: var(--dashboard-inset);
+}
+
+.lq-moon .lq-dashboard-stats > div {
+  border-color: transparent;
+  box-shadow: inset var(--geist-ring);
 }
 
 .lq-dashboard-stats dt,

@@ -242,7 +242,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   });
 
   return (
-    <div className={`lq player-page flex flex-col ${code ? "h-dvh overflow-hidden" : "min-h-dvh lg:h-dvh lg:overflow-hidden"}`} onKeyDown={onKeyDown}>
+    <div className={`lq player-page flex flex-col ${live ? "lq-moon" : ""} ${code ? "h-dvh overflow-hidden" : "min-h-dvh lg:h-dvh lg:overflow-hidden"}`} onKeyDown={onKeyDown}>
       <header className="flex min-h-8 flex-none flex-wrap items-center gap-x-3 border-b border-ink bg-[var(--tbar)] px-3 py-0.5 text-sm text-ink">
         <a href="/" aria-label="LearnSlop home" className={`grid min-h-6 min-w-6 place-items-center rounded-md ${FOCUS}`}>
           <Logo />
@@ -379,6 +379,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
             <EditorPane
               ref={editorRef}
               transportRef={playRef}
+              theme={live ? "learnslop-dark" : undefined}
               viewPath={picked && picked in frame.files ? picked : undefined}
               overlay={
                 <TransportBar

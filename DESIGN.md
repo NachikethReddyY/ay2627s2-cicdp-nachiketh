@@ -1,7 +1,7 @@
 ---
 version: beta
 name: LearnSlop-design
-description: Geist-style system in two scopes. The landing page (.lp) is dark only, with a pure black canvas, a gray ramp for hierarchy, 1px rings instead of borders, pill buttons and one blue accent. The app (:root) is the light and dark editor system, built on the same ideas. Geist for UI, Geist Mono for code.
+description: Geist-style system with a shared black palette for the landing page and learner screens. Solid gray surfaces use 1px rings, pill controls and one blue accent. The workbench defaults to dark and also offers Light and System. Geist for UI, Geist Mono for code.
 
 colors:
   landing:            # .lp in apps/web/src/pages/landing.css, dark only
@@ -79,14 +79,16 @@ shadows:
 
 LearnSlop follows Vercel's Geist approach: Geist type, a near-black canvas with a gray scale for hierarchy, borders drawn as 1px rings, pill buttons and a single restrained blue accent. The landing page and the app both use it, but they apply it differently. This is a Geist-inspired system written from the shipped CSS, not an import of Vercel's token package.
 
-There are two scopes, and this file documents both because the code ships both:
+The same palette is used across these scopes.
 
 | Scope | Where | Theme | Tokens |
 |---|---|---|---|
 | **Landing** | `.lp` in [landing.css](apps/web/src/pages/landing.css) and [landing/sections.css](apps/web/src/pages/landing/sections.css) | Dark only. `color-scheme: dark` and a `#000` page, whatever the system setting. | `--bg`, `--g1` to `--g3`, `--tx`, `--mu`, `--faint`, `--ring`, `--ac`, `--acD`, `--acH`, `--ok`, `--bad`, `--r-sm/md/lg` |
-| **App** | `:root` in [index.css](apps/web/src/index.css). The practice workbench (`.wb`, [workbench.css](apps/web/src/player/workbench/workbench.css)) re-declares the token names at its own scope. | Light by default, dark under `prefers-color-scheme: dark` | The editor set: `--page`, `--tx`, `--mu`, `--line`, `--code`, `--ac`, `--acT`, the syntax colours, glass |
+| **Learning platform** | `html:has(.lq-moon)` in [index.css](apps/web/src/index.css) covers Home, Explore, Course, Account, onboarding, Review and the lesson player. | Dark | `--page`, `--code`, `--side`, `--track`, `--tx`, `--mu`, `--ac`, `--acT` |
+| **Workbench** | `.wb` in [workbench.css](apps/web/src/player/workbench/workbench.css) | Dark by default. Light and System are selectable in the command palette. | The editor tokens and syntax colours |
+| **Base app** | `:root` in [index.css](apps/web/src/index.css) | Light with a system dark variant | The editor tokens and glass |
 
-The two scopes share some token names (`--tx`, `--mu`, `--ac`, `--ok`, `--bad`, `--lift`) but not all of their values. Inside `.lp` the landing values win. Where this file and the stylesheets disagree, the CSS is what ships.
+The shared `--geist-*` palette is defined in [index.css](apps/web/src/index.css). Each scope maps it to its own component tokens.
 
 The earlier sticker system (cream canvas, 3px ink outlines, hard offset shadows, Fraunces and Nunito) has been removed.
 
@@ -133,7 +135,19 @@ Fixed colours (not tokens) that appear in the landing CSS:
 - The action pill inverts to `#ededed` with `#0a0a0a` text.
 - Pure `#000` is the landing page and skip-link background. Pure `#fff` is the nav Sign in and primary button text, and the logo mark's fills are `#039FF4`, `#028DF1` and `#4FBCF7`.
 
-### App (`:root`, light and dark)
+### Learning platform and dark workbench
+
+| Use | Value | Tokens |
+|---|---|---|
+| Canvas | `#000` | `--page` |
+| Panel and editor | `#0a0a0a` | `--code`, `--tbar` |
+| Inset surfaces and tracks | `#141414`, `#1f1f1f` | `--side`, `--track` |
+| Text and metadata | `#ededed`, `#a1a1a1`, `#8f8f8f` | `--tx`, `--mu`, `--geist-faint` |
+| Primary action and focus | `#3262e6`, `#5583ff` | `--ac`, `--acT` |
+| Panel edges | 1px ring at 10% white | `--geist-ring` |
+| Input edges | `#707070` on learner screens | `--line-strong` |
+
+### Base app (`:root`, light and dark)
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -217,7 +231,11 @@ Geist and Geist Mono load from Google Fonts in `index.html`.
 
 There is no glass and no backdrop blur on the landing.
 
-### App
+### Learning platform and dark workbench
+
+Cards and floating editor windows use solid `--code` or `--side` surfaces, a 12px radius and `--geist-ring`. Selected controls use the blue accent. Inputs keep a stronger edge and a visible focus ring.
+
+### Base app
 
 | Surface | Spec | Used for |
 |---|---|---|
@@ -283,9 +301,9 @@ Short, direct and concrete, the way a knowledgeable peer speaks. Predict first, 
 - Do keep primary actions as pills: 48px on the landing, at least 44px in the app.
 - Do use 600 weight with negative tracking for display type (-0.05em for the hero).
 - Do keep the mockups honest: a real screenshot for the product, and labelled example data in the cards.
-- Do test app screens in light and dark. The landing is dark only by design.
+- Do test learner screens under both system appearances and verify the workbench's Light, Dark and System choices.
 - Don't add gradients. The only ones allowed are the hero tile fill and the mastery sparkline's area fade.
 - Don't add glass or backdrop blur to the landing.
 - Don't use hard offset shadows, 3px ink outlines or the cream canvas.
 - Don't hard-code a hex in a component when a token exists. Add a token and list it here.
-- Don't mix landing tokens into app pages, or app tokens into `.lp`.
+- Map the shared `--geist-*` palette to component tokens within each scope.

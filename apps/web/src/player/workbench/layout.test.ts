@@ -94,17 +94,18 @@ test("loadLayout keeps valid fields and defaults the rest", () => {
   });
 });
 
-test("theme is read from lq.theme; a bad lq.theme falls back to system and other fields still load", () => {
-  assert.equal(loadLayout(store({ "lq.theme": "neon" })).theme, "system");
-  assert.equal(loadLayout(store({ "lq.theme": "" })).theme, "system");
+test("theme is read from lq.theme and falls back to dark if invalid", () => {
+  assert.equal(loadLayout(store({ "lq.theme": "neon" })).theme, "dark");
+  assert.equal(loadLayout(store({ "lq.theme": "" })).theme, "dark");
   assert.equal(loadLayout(store({ "lq.theme": "light" })).theme, "light");
+  assert.equal(loadLayout(store({ "lq.theme": "system" })).theme, "system");
   const s = loadLayout(store({ "lq.theme": "neon", "lq.workbench": '{"leftW":300}' }));
-  assert.equal(s.theme, "system");
+  assert.equal(s.theme, "dark");
   assert.equal(s.leftW, 280);
 });
 
 test("a theme in the old lq.workbench blob is ignored", () => {
-  assert.equal(loadLayout(store({ "lq.workbench": '{"theme":"dark"}' })).theme, "system");
+  assert.equal(loadLayout(store({ "lq.workbench": '{"theme":"light"}' })).theme, "dark");
 });
 
 test("loadLayout tolerates a throwing storage", () => {
