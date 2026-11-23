@@ -10,6 +10,7 @@ bad-origin (sandbox ticket requests answer 403), sandbox-off (sandbox answers 50
 import http.server
 import json
 import sys
+from urllib.parse import urlsplit
 
 port, mode, sha = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 healthz_calls = 0
@@ -46,8 +47,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/api/sandbox/shell-ticket":
             return self._send(404, {})
-        origin = "http://" + self.headers.get("Host", "")
-        if self.headers.get("Origin") != origin or mode == "bad-origin":
+        origin = urlsplit(self.headers.get("Origin", ""))
+        if origin.netloc != self.headers.get("Host") or mode == "bad-origin":
             return self._send(403, {})
         return self._send(503 if mode == "sandbox-off" else 401, {})
 
