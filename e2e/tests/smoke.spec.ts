@@ -47,7 +47,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   await expect(page.getByRole("alert")).toContainText("without an email");
   await input.fill(handle);
   await submit.click();
-  await expect(page.getByRole("heading", { name: "LearnSlop home" })).toBeAttached();
+  await expect(page.getByRole("heading", { name: "Home", exact: true })).toBeAttached();
   await page.getByRole("link", { name: "Account settings" }).click();
   await expect(input).toHaveValue(handle);
   await expect(input).not.toBeEditable();
@@ -85,7 +85,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
     await page.goto("/");
     const empty = page.getByRole("region", { name: "Find your first path" });
     await expect(empty.getByRole("link", { name: "Explore paths" })).toHaveAttribute("href", "/explore");
-    const progress = page.getByRole("region", { name: "Progress at a glance" });
+    const progress = page.getByRole("region", { name: "Your progress" });
     await expect(progress).toBeInViewport({ ratio: 1 });
     await expect(progress).toContainText("No path yet");
     await expectNoSeriousA11yViolations(page, "/", empty);
@@ -100,7 +100,9 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
     await page.reload();
     const resume = page.getByRole("link", { name: /^(Continue|Resume )/ }).and(page.locator('a[href*="lesson=lesson-1&"]'));
     await expect(resume).toHaveAttribute("href", /lesson=lesson-1/);
-    await expect(progress).toBeInViewport({ ratio: 1 });
+    await expect(resume).toBeInViewport({ ratio: 1 });
+    await expect(progress.getByText("Total XP")).toBeInViewport();
+    expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
     await expectNoSeriousA11yViolations(page, "/", resume);
     await resume.click();
     await expect(page).toHaveURL(/lesson=lesson-1/);
@@ -112,7 +114,7 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
   const email = newEmail();
   await signUp(page, email, "/");
   await page.getByRole("button", { name: "Start JavaScript Foundations" }).click();
-  const card = page.locator(".lq-continue-photo");
+  const card = page.getByRole("region").filter({ hasText: "Up next" });
   await expect(card.getByRole("link", { name: "Continue" })).toBeVisible();
   await expect(card).toContainText("Pre-test");
   const writes: string[] = [];
@@ -188,6 +190,24 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
     await route.fulfill({ json: { id: "run-1" } });
   });
   await page.route("**/api/sandbox/run/run-1?*", (route) => route.fulfill({ json: { output: "Practice output", next: 15, done: true } }));
+  const cards = [
+    { type: "hint", title: "Follow the value", body: "Trace `double` from the call site." },
+    { type: "steps", title: "Trace a call", items: ["Choose a sample input.", "Follow the value back to the caller."] },
+    { type: "question", text: "What value do you expect the caller to receive?" },
+  ];
+  let guideTurn = 0;
+  await page.route("**/api/guide/chat", async (route) => {
+    const input = route.request().postDataJSON();
+    expect(input.lessonId).toEqual(expect.any(String));
+    if (guideTurn++ === 0) {
+      expect(input.finding).toEqual({ ruleId: "prettier-format", line: 1, column: 1 });
+      await route.fulfill({ json: { guide: { message: "Start at the call site.", widgets: cards } } });
+      return;
+    }
+    expect(input.messages).toContainEqual({ role: "assistant", content: "Start at the call site.", widgets: cards });
+    expect(input.messages.at(-1)).toEqual({ role: "user", content: "I think nothing gets back to the caller. Why?" });
+    await route.fulfill({ json: { guide: { message: "You traced the call. Now look at how the function ends.", widgets: [] } } });
+  });
   await page.route("**/api/sandbox/check", async (route) => {
     const input = route.request().postDataJSON();
     expect(input).toMatchObject({ lessonId: "scrim-return-values", language: "javascript" });
@@ -230,6 +250,18 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("region", { name: "Style findings" }).getByText(/Prettier formatting suggestion/).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".squiggly-warning").first()).toBeVisible();
+  await page.getByRole("button", { name: "Ask Sloppy about line 1: prettier-format" }).click();
+  const sloppy = page.getByRole("region", { name: "AI learning guide" });
+  await expect(sloppy.getByText("Follow the value", { exact: true })).toBeVisible();
+  await expect(sloppy.getByText("Trace double from the call site.")).toBeVisible();
+  await expect(sloppy.locator("code")).toHaveText("double");
+  const steps = sloppy.getByRole("list");
+  await expect(steps.getByRole("listitem")).toHaveText(["Choose a sample input.", "Follow the value back to the caller."]);
+  await expect(steps).toHaveCSS("list-style-type", "decimal");
+  await expect(sloppy.getByText("What value do you expect the caller to receive?")).toBeVisible();
+  await sloppy.getByRole("textbox", { name: "Ask about this code" }).fill("I think nothing gets back to the caller. Why?");
+  await sloppy.getByRole("button", { name: "Send" }).click();
+  await expect(sloppy.getByText("You traced the call. Now look at how the function ends.")).toBeInViewport();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
   expect(submitted).toBe(true);

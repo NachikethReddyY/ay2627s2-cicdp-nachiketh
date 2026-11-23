@@ -117,6 +117,8 @@ def test_other_lint_finding_limits_are_enforced(
         "const answer = 42;",
         "print(answer)",
         "<script>alert(1)</script>",
+        "Try `return n * 2` to give a value back.",
+        "The fix is `n *= 2`.",
     ],
 )
 def test_solution_code_is_rejected_in_messages_and_cards(text: str) -> None:
@@ -128,4 +130,71 @@ def test_solution_code_is_rejected_in_messages_and_cards(text: str) -> None:
         guide.GuideReply(
             message="Think through the value.",
             widgets=[guide.HintWidget(type="hint", title="A clue", body=text)],
+        )
+
+
+@pytest.mark.parametrize(
+    "widget",
+    [
+        {"type": "hint", "title": "A clue", "body": "  "},
+        {"type": "steps", "title": "Trace", "items": ["  "]},
+        {"type": "question", "text": "  "},
+    ],
+)
+def test_empty_cards_are_rejected(widget: dict[str, Any]) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        guide.GuideReply.model_validate({"message": "Think about the value.", "widgets": [widget]})
+
+
+def test_repeated_card_is_repaired_using_recent_coaching(monkeypatch: pytest.MonkeyPatch) -> None:
+    prior = {"type": "hint", "title": "Follow the value", "body": "What does `x` store?"}
+    fresh = {"type": "question", "text": "What would the caller receive?"}
+    replies = iter([
+        {
+            "message": "Look at the assignment.",
+            "widgets": [{"type": "question", "text": "What does X store?"}],
+        },
+        {"message": "Now follow that value to the caller.", "widgets": [fresh]},
+    ])
+    seen: list[dict[str, Any]] = []
+
+    def completion(**kw: Any) -> Any:
+        seen.append(model_input(kw) if not seen else kw["messages"][-1])
+        return litellm.ModelResponse(
+            choices=[{"message": {"role": "assistant", "content": json.dumps(next(replies))}}],
+            usage={"prompt_tokens": 1, "completion_tokens": 1},
+        )
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    history = [
+        {"role": "assistant", "content": "Trace the condition.", "widgets": [prior]},
+        {"role": "user", "content": "I still don't see why the branch runs."},
+    ]
+    r = post({**BASE, "messages": history})
+    assert r.status_code == 200
+    assert r.json()["attempts"] == 2
+    assert r.json()["guide"]["widgets"] == [fresh]
+    assert seen[0]["messages"] == history
+    assert "different clue" in seen[1]["content"]
+
+
+def test_repeated_coaching_after_repair_returns_invalid_output(calls: list[dict[str, Any]]) -> None:
+    r = post({**BASE, "messages": [
+        {"role": "assistant", "content": "Walk me through what this line does."},
+        BASE["messages"][0],
+    ]})
+    assert r.status_code == 422
+    assert r.json()["error"] == "invalid_output"
+    assert len(calls) == 2
+
+
+def test_message_and_card_cannot_repeat_the_same_clue() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="Avoid repeating"):
+        guide.GuideReply(
+            message="What does `x` store?",
+            widgets=[guide.QuestionWidget(type="question", text="What does X store?")],
         )

@@ -21,14 +21,25 @@ export function RunStopPill() {
   );
 }
 
-type GuideMessage = { role: "user" | "assistant"; text: string; widgets?: GuideWidget[] };
+type GuideMessage =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string; widgets: GuideWidget[] };
 export type GuideChat = { messages: GuideMessage[]; question: string; sending: boolean; chatError: string };
 type GuideSession = { chat: GuideChat; setChat: Dispatch<SetStateAction<GuideChat>>; requestId: RefObject<number> };
 const emptyChat: GuideChat = { messages: [], question: "", sending: false, chatError: "" };
+const guideCardFormatting = ["em", "strong", "code"];
+
+function scrollToGuideTurn(node: HTMLDivElement | null) {
+  node?.scrollIntoView({ block: "nearest" });
+}
+
+function GuideCardText({ text }: { text: string }) {
+  return <ReactMarkdown allowedElements={guideCardFormatting} unwrapDisallowed>{text}</ReactMarkdown>;
+}
 
 function GuideWidgetCard({ widget }: { widget: GuideWidget }) {
   return <aside className="wb-ai-widget">
-    {widget.type === "hint" ? <><strong>{widget.title}</strong><p>{widget.body}</p></> : widget.type === "steps" ? <><strong>{widget.title}</strong><ol>{widget.items.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ol></> : <><strong>Think about this</strong><p>{widget.text}</p></>}
+    {widget.type === "hint" ? <><strong>{widget.title}</strong><p><GuideCardText text={widget.body} /></p></> : widget.type === "steps" ? <><strong>{widget.title}</strong><ol>{widget.items.map((item, index) => <li key={`${index}-${item}`}><GuideCardText text={item} /></li>)}</ol></> : <><strong>Think about this</strong><p><GuideCardText text={widget.text} /></p></>}
   </aside>;
 }
 
@@ -76,7 +87,9 @@ export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, langu
         language,
         code: guideCode.code,
         selection: selection?.text.slice(0, 3000) ?? "",
-        messages: next.slice(-8).map(({ role, text }) => ({ role, content: text })),
+        messages: next.slice(-8).map((message) => message.role === "assistant"
+          ? { role: message.role, content: message.text, widgets: message.widgets }
+          : { role: message.role, content: message.text }),
         ...(finding ? { finding } : {}),
       });
       if (id === requestId.current) setChat((chat) => ({ ...chat, messages: [...chat.messages, { role: "assistant", text: guide.message, widgets: guide.widgets }] }));
@@ -111,7 +124,7 @@ export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, langu
     setChat((chat) => ({ ...chat, question: "" }));
     void ask(value);
   };
-  const quickActions = ["Explain this", "Give me a hint", "Debug this code", "Find a bug", "Write a test"];
+  const quickActions = ["Give me a hint", "Help me trace this", "What should I test?"];
   return (
     <section className="wb-ai-guide flex h-full min-h-0 min-w-0 flex-1 flex-col" aria-label="AI learning guide">
       <div className="wb-ai-head">
@@ -129,10 +142,19 @@ export function AIGuide({ lessonId, fileName, filePath, projectRoot, code, langu
       <div className="wb-scroll min-h-0 flex-1 px-3.5 pb-3 pt-2 leading-normal">
         <div className="wb-ai-thread" aria-live="polite">
           {messages.length === 0 ? <>
-          <div className="wb-ai-time">Code guide · {fileName}</div>
-          <div className="wb-ai-reply">Ask me about this file. I’ll help you work it out with clues and questions, without giving away the solution.</div>
-          </> : messages.map((message, index) => message.role === "user" ? <div key={`${index}-${message.text}`} className="wb-ai-user">{message.text}</div> : <div key={`${index}-${message.text}`} className="wb-ai-reply wb-ai-markdown"><ReactMarkdown disallowedElements={["img", "a"]} unwrapDisallowed>{message.text}</ReactMarkdown>{message.widgets?.map((widget, widgetIndex) => <GuideWidgetCard key={`${index}-${widgetIndex}`} widget={widget} />)}</div>)}
-          {sending && <div role="status" className="wb-ai-reply flex items-center gap-2"><span className="wb-ai-spinner" aria-hidden="true" />Thinking through a clue…</div>}
+            <div className="wb-ai-time">Code guide · {fileName}</div>
+            <div className="wb-ai-reply">Ask me about this file. I’ll help you work it out with clues and questions, without giving away the solution.</div>
+          </> : messages.map((message, index) => {
+            const key = `${index}-${message.text}`;
+            if (message.role === "user") return <div key={key} className="wb-ai-user">{message.text}</div>;
+            return (
+              <div key={key} ref={index === messages.length - 1 ? scrollToGuideTurn : undefined} className="wb-ai-reply wb-ai-markdown">
+                <ReactMarkdown disallowedElements={["img", "a"]} unwrapDisallowed>{message.text}</ReactMarkdown>
+                {message.widgets.map((widget, widgetIndex) => <GuideWidgetCard key={widgetIndex} widget={widget} />)}
+              </div>
+            );
+          })}
+          {sending && <div ref={scrollToGuideTurn} role="status" className="wb-ai-reply flex items-center gap-2"><span className="wb-ai-spinner" aria-hidden="true" />Thinking through a clue…</div>}
           {chatError && <div role="alert" className="wb-ai-error">{chatError}</div>}
         </div>
         <div className="wb-ai-quick-actions mt-3 flex flex-wrap gap-1.5">
