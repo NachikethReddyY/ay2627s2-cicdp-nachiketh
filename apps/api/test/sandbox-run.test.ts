@@ -6,9 +6,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
+import type { RunHandle, SandboxBackend } from "../src/sandbox/backend.ts";
 
 const { startRun, runStatus, sendRunInput, stopRun, setRmTimeoutForTests, atCapacity } = await import("../src/sandbox/run.ts");
 const { env } = await import("../src/env.ts");
+const { setBackend } = await import("../src/sandbox/backend.ts");
 const tick = () => new Promise((r) => setImmediate(r));
 
 function fakeDocker(onInput: (child: FakeChild, line: string) => void, initial = "", exitAtStart: number | null = null) {
@@ -32,6 +34,53 @@ function fakeDocker(onInput: (child: FakeChild, line: string) => void, initial =
   return { spawn, calls };
 }
 type FakeChild = EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; stdin: Writable; kill(sig?: string): void };
+
+function fakeDaytona(t: import("node:test").TestContext, create: NonNullable<SandboxBackend["runCode"]>) {
+  const previous = env.SANDBOX_BACKEND;
+  env.SANDBOX_BACKEND = "daytona";
+  setBackend({ runCode: create, openShell: async () => { throw new Error("PTY not requested"); } });
+  t.after(() => {
+    env.SANDBOX_BACKEND = previous;
+    setBackend(null);
+  });
+}
+
+test("the Daytona runner forwards queued and live input and reports stderr on failure", async (t) => {
+  const wrote: string[] = [];
+  const events = new EventEmitter();
+  const handle: RunHandle = {
+    writeLine: (line) => { wrote.push(line); },
+    kill: async () => {},
+    onStart: (cb) => { events.on("start", cb); },
+    onStdout: (cb) => { events.on("stdout", cb); },
+    onStderr: (cb) => { events.on("stderr", cb); },
+    onExit: (cb) => { events.on("exit", cb); },
+  };
+  fakeDaytona(t, (learner, language, code, limits) => {
+    assert.deepEqual([learner, language, code, limits.timeoutS], ["remote-learner", "typescript", "console.log(1)", 60]);
+    return handle;
+  });
+  const run = startRun("console.log(1)", "remote-learner", "typescript");
+  assert.ok(run);
+  assert.equal(sendRunInput(run, "remote-learner", "queued"), true);
+  await tick();
+  events.emit("start");
+  events.emit("stdout", "first");
+  assert.equal(sendRunInput(run, "remote-learner", "live"), true);
+  assert.deepEqual(wrote, ["queued", "live"]);
+  events.emit("stderr", "runtime error\n");
+  events.emit("exit", 1);
+  assert.deepEqual(runStatus(run, "remote-learner", 0), { output: "first", next: 5, done: true, error: "runtime error" });
+  assert.equal(sendRunInput(run, "remote-learner", "late"), false);
+});
+
+test("the Daytona runner finishes when the backend fails to start", async (t) => {
+  fakeDaytona(t, () => { throw new Error("provider unavailable"); });
+  const run = startRun("console.log(1)", "remote-error", "javascript");
+  assert.ok(run);
+  await tick();
+  assert.deepEqual(runStatus(run, "remote-error", 0), { output: "", next: 0, done: true, error: "Could not run the code" });
+});
 
 test("runs the code in an isolated container with no network", async () => {
   const { spawn, calls } = fakeDocker(() => {}, "", 0);
