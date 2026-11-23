@@ -23,8 +23,9 @@ The web app sends pageviews, performance metrics and named product events to Pos
 | `lesson_step_answered` | The server accepts a prediction in a Predict lesson, Learn or Watch check, or Scrim gate. | `lesson_kind`, `step_kind`, `step_position`, `is_correct` |
 | `lesson_completed` | A server response reports a newly earned completion from a final prediction, a closing check, a practice or Scrim lab check, or the last required game. | `lesson_kind` |
 | `continue_clicked` | A learner activates the primary action on Home's Continue card or chooses Next or Review at the end of a lesson. | `source`, `action` |
+| `learning_path_generation_requested` | Home accepts a Generate, Queue, or Retry action. Each action also records one request log. | None |
 
-The learning events omit submitted answers, learner code, and email. The SDK adds standard event metadata, including the current page URL.
+The learning events omit submitted answers, learner code, and email. The generation request event and log omit the prompt. The SDK adds standard event metadata, including the current page URL.
 
 When feedback analytics is configured, the API sends a `feedback_submitted` event with the report category and an opaque report ID. It disables person-profile processing and IP geolocation for that event.
 

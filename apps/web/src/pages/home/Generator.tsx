@@ -34,7 +34,10 @@ export default function Generator() {
 
   const run = (prompt: string) => {
     posthog?.capture("learning_path_generation_requested");
-    posthog?.logger.info("learning path generation requested", { generation_source: "home_generator" });
+    posthog?.logger.info("learning path generation requested", {
+      generation_source: "home_generator",
+      workflow: "learning_path_generation",
+    });
     failureReported.current = false;
     waiting.current = true;
     void startGeneration(prompt, (p) => trpc.paths.generate.mutate({ prompt: p }));
@@ -46,8 +49,6 @@ export default function Generator() {
       setEmpty(true);
       return;
     }
-    posthog?.capture("learning_path_generation_requested");
-    posthog?.logger.info("learning path generation requested", { workflow: "learning_path_generation" });
     run(q.trim());
     setQ("");
   };
