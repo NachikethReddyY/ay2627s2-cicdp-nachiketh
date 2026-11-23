@@ -35,7 +35,7 @@ export function CourseNext({ id, slug, course }: { id: string; slug: string; cou
   const rec = useApi(`me.next:${slug}`, () => trpc.me.next.query({ world: slug }));
   const { data, error } = course;
   if (error) return <NextLink href={`/courses/${slug}`}>Back to course</NextLink>;
-  if (!data) return <button type="button" disabled className="btn mt-4 opacity-50">Next</button>;
+  if (!data || rec.loading) return <button type="button" disabled className="btn mt-4 opacity-50">Next</button>;
   const i = data.lessons.findIndex((l) => l.slug === id);
   const recommended = rec.data?.lessonSlug && rec.data.lessonSlug !== id ? rec.data.lessonSlug : null;
   const fallback = data.lessons.slice(i + 1).find((l) => l.missingPrerequisites.length === 0 && l.done < l.total);

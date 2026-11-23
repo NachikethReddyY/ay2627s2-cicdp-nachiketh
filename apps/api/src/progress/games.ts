@@ -133,14 +133,17 @@ const check = protectedProcedure
         if (e instanceof BadSubmission) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
         throw e;
       }
-      const quiz = game.kind.kind === "quiz" ? game.kind : null;
+      const firstQuestion = game.kind.kind === "quiz" ? game.kind.questions[0] : undefined;
+      const correct = firstQuestion && input.submission.kind === "quiz"
+        ? input.submission.answers[0] === firstQuestion.answer
+        : verdict.correct;
       const observed = await recordLessonObservation(tx, {
         learnerId,
         lessonVersionId: loaded.versionId,
         activityKey: `game:${loaded.blockId}`,
-        kind: quiz ? "mcq" : "practice",
-        optionCount: quiz?.questions[0]?.options.length,
-        correct: verdict.questionCorrect ?? verdict.correct,
+        kind: firstQuestion ? "mcq" : "practice",
+        optionCount: firstQuestion?.options.length,
+        correct,
         hintsUsed: state.hintsRevealed,
       });
       if (verdict.complete) await recordWin(tx, learnerId, loaded);

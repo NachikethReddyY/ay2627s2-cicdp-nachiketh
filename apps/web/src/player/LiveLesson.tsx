@@ -1,3 +1,4 @@
+import { TRPCClientError } from "@trpc/client";
 import { Link } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { trpc, trpcUnbatched, isNotFound } from "../lib/trpc";
@@ -32,6 +33,15 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
     return () => clearTimeout(t);
   }, [loading]);
 
+  if (error instanceof TRPCClientError && error.data?.code === "PRECONDITION_FAILED") {
+    return (
+      <Notice>
+        <p>{error.message}</p>{" "}
+        {course ? <Link to="/courses/$slug" params={{ slug: course }} className="underline">Back to course</Link>
+          : <Link to="/" className="underline">Home</Link>}
+      </Notice>
+    );
+  }
   if (error)
     return (
       <Notice>

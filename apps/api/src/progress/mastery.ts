@@ -5,12 +5,11 @@ import type { Db } from "../db/client.ts";
 import { concepts, lessons, mastery, recommendations, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { engineLearner, type BktParams, type NextRequest, type NextResult, type UpdateRequest } from "../engine-client/learner.ts";
-import { catalogueName, edgesFor, isCatalogueConcept, unmetPrerequisites } from "./catalogue.ts";
+import { catalogueName, edgesFor, isCatalogueConcept, UNLOCK_AT, unmetPrerequisites } from "./catalogue.ts";
 import { recordReviewEvidence } from "./review-schedule.ts";
 import { lessonDone, lessonTotal, listed } from "./shared.ts";
 
 export const MASTERED_AT = 0.95;
-export const UNLOCK_AT = 0.8;
 const BATCH = 50;
 const ENGINE_CALL_TIMEOUT_MS = 8_000;
 const CATCH_UP_BUDGET_MS = 12_000;
@@ -124,6 +123,7 @@ async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
   const idOfSlug = new Map(ids);
   for (const k of relevantMastery) idOfSlug.set(k.slug, k.conceptId);
   const pKnown = new Map(relevantMastery.map((k) => [k.slug, k.pKnown]));
+  const courseConcepts = new Set(names.keys());
   const request: NextRequest = {
     mastery: relevantMastery.map((k) => ({ conceptId: k.slug, pKnown: k.pKnown })),
     edges,
@@ -132,7 +132,7 @@ async function recommendationInput(tx: Db, learnerId: string, worldId: string) {
       ...(l.title.trim() && { title: l.title.trim() }),
       conceptIds: [...new Set(l.concepts.map(slugOf).filter((slug) => ids.has(slug)))],
       kind: l.kind,
-      available: unmetPrerequisites(l.concepts.map(slugOf), new Set(names.keys()), edges, pKnown, UNLOCK_AT).length === 0,
+      available: unmetPrerequisites(l.concepts.map(slugOf), courseConcepts, edges, pKnown).length === 0,
       done: complete.has(l.id),
       order,
     })),
@@ -168,7 +168,7 @@ async function recommend(learnerId: string, worldId: string): Promise<void> {
   });
 }
 
-export const POLICY_VERSION = "6";
+export const POLICY_VERSION = "7";
 
 const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 

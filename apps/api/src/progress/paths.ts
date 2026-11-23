@@ -5,8 +5,7 @@ import { db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { generatePath, lessonWriteState } from "../ai/service.ts";
 import { isSafe } from "../safety/moderation.ts";
-import { catalogueName, edgesFor, unmetPrerequisites } from "./catalogue.ts";
-import { UNLOCK_AT } from "./mastery.ts";
+import { catalogueName, edgesFor, knownCatalogue, unmetPrerequisites } from "./catalogue.ts";
 import { TRPCError } from "@trpc/server";
 import { lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
 
@@ -62,14 +61,11 @@ const courseGet = protectedProcedure.input(Slug).output(CourseDetail).query(asyn
         ORDER BY l.level, l.position, l.id`);
       const courseConcepts = new Set(lessonRows.flatMap((l) => l.concepts.map((c) => c.trim().toLowerCase())));
       const edges = edgesFor(course.config, courseConcepts);
-      const { rows: known } = edges.length ? await db.execute<{ slug: string; p_known: number }>(sql`
-        SELECT c.slug, m.p_known FROM mastery m JOIN concepts c ON c.id = m.concept_id
-        WHERE m.learner_id = ${me} AND c.world_id IS NULL`) : { rows: [] };
-      const pKnown = new Map(known.map((r) => [r.slug, r.p_known]));
+      const pKnown = edges.length ? await knownCatalogue(me) : new Map<string, number>();
       const lessons = lessonRows.map(({ id, written, concepts, ...lesson }) => ({
         ...lesson,
         writeState: lessonWriteState(id, written),
-        missingPrerequisites: unmetPrerequisites(concepts.map((c) => c.trim().toLowerCase()), courseConcepts, edges, pKnown, UNLOCK_AT)
+        missingPrerequisites: unmetPrerequisites(concepts.map((c) => c.trim().toLowerCase()), courseConcepts, edges, pKnown)
           .map((slug) => catalogueName(slug) ?? slug),
       }));
       return { slug: course.slug, title: course.title, description: course.description, origin: course.origin, lessons };

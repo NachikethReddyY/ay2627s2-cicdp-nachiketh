@@ -23,7 +23,9 @@ export default function Continue({ c }: { c: NonNullable<HomeData["continue"]> }
           <span className="lq-hero-count">{c.lesson.done} / {c.lesson.total}</span>
         </div>
         <div className="lq-hero-cta">
-          {recommendation?.action === "review"
+          {recommendation?.reasonCode === "PREREQUISITES"
+            ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Course<Arrow /></Link>
+            : recommendation?.action === "review"
             ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">Review<Arrow /></Link>
             : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} className="lq-btn lq-btn-ink lq-btn-xl">{label}<Arrow /></Link>}
         </div>

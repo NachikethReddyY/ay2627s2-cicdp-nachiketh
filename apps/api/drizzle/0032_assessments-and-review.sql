@@ -11,6 +11,11 @@ ALTER TABLE "lessons" ADD COLUMN "assessment" text;--> statement-breakpoint
 ALTER TABLE "review_schedule" ADD CONSTRAINT "review_schedule_learner_id_learners_id_fk" FOREIGN KEY ("learner_id") REFERENCES "public"."learners"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "review_schedule" ADD CONSTRAINT "review_schedule_concept_id_concepts_id_fk" FOREIGN KEY ("concept_id") REFERENCES "public"."concepts"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
+UPDATE steps s SET secret = jsonb_set(s.secret, '{concepts}', to_jsonb(l.concepts))
+FROM lesson_versions v JOIN lessons l ON l.id = v.lesson_id
+WHERE s.lesson_version_id = v.id AND s.idx >= 0 AND cardinality(l.concepts) > 0
+  AND CASE WHEN jsonb_typeof(s.secret->'concepts') = 'array' THEN jsonb_array_length(s.secret->'concepts') = 0 ELSE true END;
+--> statement-breakpoint
 INSERT INTO review_schedule (learner_id, concept_id, due_at)
 SELECT learner_id, concept_id, CASE WHEN p_known < 0.8 THEN now() ELSE updated_at + interval '1 day' END
 FROM mastery WHERE n_obs > 0

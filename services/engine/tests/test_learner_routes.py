@@ -74,10 +74,10 @@ def test_next_shape(client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"policyVersion", "action", "lessonId", "conceptId", "reasonCode", "reason"}
-    assert body["policyVersion"] == "6"
+    assert body["policyVersion"] == "7"
     assert body["action"] == "learn"
     assert body["lessonId"] == "l1"
-    assert body["reasonCode"] == "REVIEW"
+    assert body["reasonCode"] == "LEARN"
     assert body["reason"]
 
 

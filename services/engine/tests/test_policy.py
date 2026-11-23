@@ -263,3 +263,13 @@ def test_unfinished_at_point_two_beats_finished_at_point_seven(names: list[str])
     mastery = [Mastery(finished, 0.7), Mastery(lower, 0.2), Mastery(higher, 0.8)]
     r = recommend(mastery, [], lessons)
     assert (r.concept_id, r.lesson_id) == (lower, "lower")
+
+
+def test_no_locked_lesson_is_returned_when_all_remaining_lessons_require_mastery() -> None:
+    lesson = Lesson("locked", ["loops"], "predict", False, 1, available=False)
+    result = recommend([], [], [lesson])
+    assert (result.action, result.lesson_id, result.reason_code) == (
+        Action.PRACTICE,
+        None,
+        ReasonCode.PREREQUISITES,
+    )

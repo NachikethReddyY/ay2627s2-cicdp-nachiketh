@@ -314,6 +314,7 @@ test("the course unlocks a lesson when prerequisite mastery reaches 80%", async 
     return result.lessons.find((l: { slug: string }) => l.slug === "variables-1").missingPrerequisites;
   };
   assert.deepEqual(await requirements(), ["values and types"]);
+  assert.equal(code(await q(cookie, "lessons.get", { id: "variables-1" })), "PRECONDITION_FAILED");
   await db.execute(sql`
     INSERT INTO mastery (learner_id, concept_id, p_known, n_obs)
     SELECT learner.id, c.id, 0.79, 2 FROM learners learner CROSS JOIN concepts c
@@ -321,6 +322,7 @@ test("the course unlocks a lesson when prerequisite mastery reaches 80%", async 
   assert.deepEqual(await requirements(), ["values and types"]);
   await db.execute(sql`UPDATE mastery SET p_known = 0.8`);
   assert.deepEqual(await requirements(), []);
+  assert.equal((await q(cookie, "lessons.get", { id: "variables-1" })).statusCode, 200);
 });
 
 test("the post-test compares a different prediction against the baseline", async () => {
