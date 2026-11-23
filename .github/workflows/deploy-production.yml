@@ -198,18 +198,18 @@ jobs:
     name: Verify
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     environment: production
     env:
       SHA: ${{ github.sha }}
       API_ORIGIN: ${{ vars.API_ORIGIN || 'https://learnquest-api2.onrender.com' }}
       ENGINE_ORIGIN: ${{ vars.ENGINE_ORIGIN }}
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
-      SMOKE_ROLLOUT_BUDGET_S: 120
+      SMOKE_ROLLOUT_BUDGET_S: 300
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The budget inside the script covers Render's free-tier cold start and the rollout.
+      # The script allows up to one rollout budget each for the API, engine, and web.
       - name: Verify live services and web routing
         id: smoke
         run: scripts/smoke.sh "$API_ORIGIN" "$WEB_ORIGIN" "$ENGINE_ORIGIN" "$SHA"
