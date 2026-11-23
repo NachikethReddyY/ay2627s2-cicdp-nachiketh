@@ -11,7 +11,7 @@
 
 LearnSlop asks for an email address and a password to create an account. During onboarding, you confirm or choose a public handle. The weekly leaderboard shows public handles and XP. Everyone participates. You can change your handle in Account once every 30 days. As you learn, the app stores your answers, the hints you open, the steps and parts you finish, and a mastery estimate for each concept. Each sign-in session stores your IP address and browser type, and the server logs record request details and errors. When you use the AI features, the text involved (lesson topics, the code you are editing, chat messages, and, when a lesson is generated, the names of concepts you missed) is sent to third-party providers: OpenAI for content moderation, the language model provider the engine is configured to use, an image provider for generated pictures, and Daytona when code runs in a sandbox. The app is hosted on Vercel, Render and Neon Postgres, and media files are stored in an S3-compatible bucket. Fonts are loaded from Google, which receives the IP address and browser details of each visitor. The product is not intended for children under 13, and we do not knowingly collect their data. Nothing enforces the age limit yet. The sign-up form has no age, date of birth or parent-consent field.
 
-Feedback submitted through the app's GitHub Issues link is public on GitHub, including screenshots and replies. The forms ask reporters to leave out LearnSlop handles, email addresses, passwords, tokens and other personal details. Reporters can ask for a follow-up in the issue replies.
+The LearnSlop feedback form asks for a name or handle, a reply email and report details. Bug reports can include a screenshot. The app stores this information privately for admins to review and reply by email. Screenshots are re-encoded before storage to discard image metadata.
 
 ## Web analytics
 
@@ -25,6 +25,8 @@ The web app sends pageviews, performance metrics and named product events to Pos
 | `continue_clicked` | A learner activates the primary action on Home's Continue card or chooses Next or Review at the end of a lesson. | `source`, `action` |
 
 The learning events omit submitted answers, learner code, and email. The SDK adds standard event metadata, including the current page URL.
+
+When feedback analytics is configured, the API sends a `feedback_submitted` event with the report category and an opaque report ID. It disables person-profile processing and IP geolocation for that event.
 
 ## Data inventory
 
@@ -51,6 +53,7 @@ The learning events omit submitted answers, learner code, and email. The SDK add
 | API request logs: IP address, URL, errors with stack traces on 5xx. The API's own logs redact the shell ticket. | Render log stream | Operations and debugging | Render | Render retention not yet verified. Render edge logs are not covered here: the shell WebSocket goes from the browser straight to Render, so the ticket in the URL query may appear in platform logs. |
 | Engine logs: model, tokens, latency, error type | Render log stream | Operations | Render | Render retention not yet verified |
 | Narration audio and media | S3-compatible bucket (R2 per the CSP) | Playing lesson audio | Storage provider. Signed URLs expire after 2 hours (`apps/api/src/media/storage.ts:12`). | Retention not yet verified. Bucket policy not yet verified. |
+| Feedback name or handle, reply email, category, report details and optional screenshot | `feedback_reports` (Postgres), screenshots in the private S3-compatible bucket | Resolve requests and reply by email | LearnSlop admins. Render, Neon and the storage provider process the data. PostHog receives the category and an opaque report ID. | Indefinitely. There is no automatic expiry. |
 | Session cookie | Your browser, and sent to the API on every request | Keeps you signed in | Neon (`session` table); Render (API) | Until sign-out or expiry. Expiry not yet verified; rows are not purged. |
 | Browser storage: localStorage keys `lq.player.volume`, `lq.terminal`, `lq.workbench`, `lq.theme`, `lq.editor.wordWrap`; sessionStorage key `lq.chunk-reload` | Your browser only | Display preferences | Nobody (stays on the device) | Until cleared in the browser |
 | IP address and browser details of each visitor | Google's servers, when a font loads | Loading fonts | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`; `apps/web/vercel.json` CSP) | Set by Google |

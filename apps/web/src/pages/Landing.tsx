@@ -4,7 +4,7 @@ import "./landing.css";
 import "./landing/sections.css";
 import { Logo } from "./landing/Logo";
 import { plans } from "@learnquest/product-limits";
-import { FEEDBACK_URL } from "./feedback";
+import { FEEDBACK_URL } from "./feedback-config";
 
 const tiles = [
   { id: "a", src: "/images/tech/html.svg" },

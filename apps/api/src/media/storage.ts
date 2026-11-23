@@ -3,7 +3,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../env.ts";
 
 export interface Storage {
-  put(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  put(key: string, body: Uint8Array, contentType: string, options?: { cacheControl: string; signal: AbortSignal }): Promise<void>;
+  get(key: string, signal: AbortSignal): Promise<Uint8Array | undefined>;
   signGet(key: string): Promise<string>;
 }
 
@@ -24,16 +25,21 @@ export function s3Storage(cfg: {
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
   });
   return {
-    async put(key, body, contentType) {
+    async put(key, body, contentType, options) {
       await client.send(
         new PutObjectCommand({
           Bucket: cfg.bucket,
           Key: key,
           Body: body,
           ContentType: contentType,
-          CacheControl: "private, max-age=31536000, immutable",
+          CacheControl: options?.cacheControl ?? "private, max-age=31536000, immutable",
         }),
+        { abortSignal: options?.signal },
       );
+    },
+    async get(key, signal) {
+      const result = await client.send(new GetObjectCommand({ Bucket: cfg.bucket, Key: key }), { abortSignal: signal });
+      return result.Body?.transformToByteArray();
     },
     signGet(key) {
       return getSignedUrl(client, new GetObjectCommand({ Bucket: cfg.bucket, Key: key }), {
@@ -50,6 +56,9 @@ export function memoryStorage(): Storage & { objects: Map<string, { body: Uint8A
     objects,
     async put(key, body, contentType) {
       objects.set(key, { body, contentType });
+    },
+    async get(key) {
+      return objects.get(key)?.body;
     },
     async signGet(key) {
       return `memory://${key}`;

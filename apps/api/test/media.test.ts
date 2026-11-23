@@ -161,7 +161,7 @@ test("a rejected or failed replacement leaves the old narration ready", async ()
   const [before] = await readyRows();
 
   await rejects(importNarration("lesson-1", [{ idx: a!.idx, body: PNG }], { replace: true }), "Media bytes do not match type");
-  setStorage({ put: async () => { throw new Error("bucket down"); }, signGet: async (key) => key });
+  setStorage({ ...memoryStorage(), put: async () => { throw new Error("bucket down"); } });
   await assert.rejects(importNarration("lesson-1", [{ idx: a!.idx, body: MP3 }], { replace: true }), /bucket down/);
   setStorage(mem);
 

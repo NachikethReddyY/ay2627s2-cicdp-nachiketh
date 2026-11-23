@@ -1,0 +1,38 @@
+.lp-feedback-card {
+  min-width: 0;
+  border-radius: var(--r-lg);
+  background: var(--g1);
+  box-shadow: var(--ring), var(--lift);
+}
+
+.lp-feedback-card .lp-btn { margin-top: 0; }
+.lp-feedback-card .lp-ghost { min-height: 44px; }
+
+.lp-feedback-field {
+  border-radius: var(--r-md);
+  background: var(--bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--faint) 72%, var(--g1));
+}
+
+.lp-feedback-field::placeholder { color: var(--faint); }
+.lp-feedback-field:focus-visible { outline: 2px solid var(--acH); outline-offset: 3px; }
+.lp-feedback-field::file-selector-button {
+  margin-inline-end: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 100px;
+  background: var(--g3);
+  color: var(--tx);
+  cursor: pointer;
+}
+
+.lp-feedback-choice {
+  background: var(--bg);
+  border-radius: var(--r-md);
+  box-shadow: var(--ring);
+}
+
+.lp-feedback-choice:hover { box-shadow: var(--ring-hi); }
+.lp-feedback-choice:has(:checked) {
+  background: color-mix(in srgb, var(--ac) 14%, var(--g1));
+  box-shadow: 0 0 0 1px var(--acH);
+}

@@ -1,10 +1,8 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
-import { sql } from "drizzle-orm";
-import { db } from "../db/client.ts";
-import { resolveLearnerId } from "../auth/guards.ts";
+import { isAdmin, resolveLearnerId } from "../auth/guards.ts";
 
-export const createContext = ({ req }: CreateFastifyContextOptions) => ({ req });
+export const createContext = ({ req, res }: CreateFastifyContextOptions) => ({ req, res });
 
 const t = initTRPC.context<ReturnType<typeof createContext>>().create({
   isDev: false,
@@ -23,7 +21,7 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
 });
 
 export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const { rows } = await db.execute(sql`SELECT 1 FROM learners WHERE id = ${ctx.learnerId} AND is_admin`);
-  if (rows.length === 0) throw new TRPCError({ code: "FORBIDDEN", message: "Admins only" });
+  if (!await isAdmin(ctx.learnerId)) throw new TRPCError({ code: "FORBIDDEN", message: "Admins only" });
+  ctx.res.header("Cache-Control", "private, no-store");
   return next();
 });

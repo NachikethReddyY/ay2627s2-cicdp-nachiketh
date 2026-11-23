@@ -9,7 +9,7 @@ import {
   BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
 import { releases } from "./changelog-releases.generated";
-import { FEEDBACK_URL, REPO_URL } from "./feedback";
+import { FEEDBACK_URL, REPO_URL } from "./feedback-config";
 import "./changelog.css";
 
 const RELEASES_URL = `${REPO_URL}/releases`;
