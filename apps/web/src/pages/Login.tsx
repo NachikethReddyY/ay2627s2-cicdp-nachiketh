@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, X } from "lucide-react";
+import { usePostHog } from "@posthog/react";
 import { authClient } from "../lib/auth";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 import { Logo } from "./landing/Logo";
@@ -33,6 +34,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { data } = authClient.useSession();
+  const posthog = usePostHog();
   const [dragX, setDragX] = useState<number | null>(null);
   const [pressing, setPressing] = useState(false);
   const drag = useRef<{ x: number; thumb: number; moved: boolean } | null>(null);
@@ -52,7 +54,10 @@ export default function Login() {
           ? await authClient.signIn.email({ email, password })
           : await authClient.signUp.email({ email, password, name: "Learner" });
       if (result.error) setError(describeAuthError(result.error, action));
-      else location.assign(action === "up" ? "/onboarding" : "/");
+      else {
+        posthog?.capture(action === "up" ? "account_created" : "user_signed_in");
+        location.assign(action === "up" ? "/onboarding" : "/");
+      }
     } catch {
       setError("Can't reach the server. Check your connection and try again.");
     } finally {
@@ -75,6 +80,7 @@ export default function Login() {
     try {
       const { error } = await authClient.signOut();
       if (error) throw error;
+      posthog?.reset();
       location.reload();
     } catch {
       setError("Sign out failed. Check your connection and try again.");

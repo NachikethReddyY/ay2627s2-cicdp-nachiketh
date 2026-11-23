@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { usePostHog } from "@posthog/react";
 import { trpc } from "../../lib/trpc";
 import { dismissJob, getJob, getQueue, startGeneration, subscribeJob } from "./generationJob";
 import { generatorError } from "./generatorErrors";
@@ -12,6 +13,7 @@ export default function Generator() {
   const [q, setQ] = useState(() => ("prompt" in job ? job.prompt : ""));
   const [empty, setEmpty] = useState(false);
   const navigate = useNavigate();
+  const posthog = usePostHog();
   const waiting = useRef(job.status === "running");
   const busy = job.status === "running";
   const err = job.status === "failed" ? generatorError(job.code) : null;
@@ -35,6 +37,8 @@ export default function Generator() {
       setEmpty(true);
       return;
     }
+    posthog?.capture("learning_path_generation_requested");
+    posthog?.logger.info("learning path generation requested", { workflow: "learning_path_generation" });
     run(q.trim());
     setQ("");
   };

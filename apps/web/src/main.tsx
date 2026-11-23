@@ -1,7 +1,8 @@
-import { StrictMode, Suspense, lazy } from "react";
+import { StrictMode, Suspense, lazy, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Link, Outlet, RouterProvider, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { TRPCClientError } from "@trpc/client";
+import { PostHogProvider, usePostHog } from "@posthog/react";
 import "./index.css";
 import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
@@ -26,12 +27,57 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const DevBlocks = import.meta.env.DEV ? lazy(() => import("./pages/DevBlocks")) : null;
 const EditorLab = lazy(() => import("./pages/EditorLab"));
 const TestPlayer = import.meta.env.DEV ? lazy(() => import("./pages/TestPlayer")) : null;
+const posthogToken = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
+const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
+
+function SessionIdentity() {
+  const { data: session } = authClient.useSession();
+  const posthog = usePostHog();
+  const identifiedUserId = useRef<string | undefined>(undefined);
+  const user = session?.user;
+  const syncIdentity = useCallback((node: HTMLSpanElement | null) => {
+    if (!node || !user?.id || identifiedUserId.current === user.id) return;
+
+    if (identifiedUserId.current) posthog.reset();
+    posthog.identify(user.id);
+    identifiedUserId.current = user.id;
+  }, [posthog, user]);
+
+  return <span ref={syncIdentity} hidden />;
+}
 
 function Root() {
+  if (!posthogToken || !posthogHost) {
+    if (import.meta.env.DEV) {
+      const missingVariable = posthogToken ? "VITE_PUBLIC_POSTHOG_HOST" : "VITE_PUBLIC_POSTHOG_PROJECT_TOKEN";
+      console.warn(`${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This warning stops appearing once ${missingVariable} is configured`);
+    }
+
+    return (
+      <Suspense fallback={<div className="grid min-h-screen place-items-center"><Loader label="Loading your quest" /></div>}>
+        <Outlet />
+      </Suspense>
+    );
+  }
+
   return (
-    <Suspense fallback={<div className="grid min-h-screen place-items-center"><Loader label="Loading your quest" /></div>}>
-      <Outlet />
-    </Suspense>
+    <PostHogProvider
+      apiKey={posthogToken}
+      options={{
+        api_host: posthogHost,
+        defaults: "2025-05-24",
+        autocapture: false,
+        disable_session_recording: true,
+        capture_exceptions: true,
+        debug: import.meta.env.DEV,
+        logs: { serviceName: "learnquest-web", environment: import.meta.env.MODE },
+      }}
+    >
+      <SessionIdentity />
+      <Suspense fallback={<div className="grid min-h-screen place-items-center"><Loader label="Loading your quest" /></div>}>
+        <Outlet />
+      </Suspense>
+    </PostHogProvider>
   );
 }
 

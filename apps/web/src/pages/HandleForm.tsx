@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { TRPCClientError } from "@trpc/client";
+import { usePostHog } from "@posthog/react";
 import { trpc, type RouterOutputs } from "../lib/trpc";
 
 export type HandleProfile = RouterOutputs["me"]["handle"]["profile"];
@@ -12,6 +13,7 @@ export default function HandleForm({ profile, onContinue }: { profile: HandlePro
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const posthog = usePostHog();
   const { nextChangeAt } = current;
   const locked = !onContinue && nextChangeAt !== null;
 
@@ -23,7 +25,11 @@ export default function HandleForm({ profile, onContinue }: { profile: HandlePro
     setSaved(false);
     try {
       const updated = await trpc.me.handle.save.mutate({ handle });
-      if (onContinue) onContinue();
+      if (onContinue) {
+        posthog?.capture("onboarding_completed");
+        posthog?.logger.info("onboarding completed", { workflow: "onboarding" });
+        onContinue();
+      }
       else {
         setCurrent(updated);
         setHandle(updated.handle);

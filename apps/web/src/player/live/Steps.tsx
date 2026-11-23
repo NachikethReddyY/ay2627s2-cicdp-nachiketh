@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMachine } from "@xstate/react";
 import { buildTimeline } from "@learnquest/player-core";
 import { TRPCClientError } from "@trpc/client";
+import { usePostHog } from "@posthog/react";
 import { trpc } from "../../lib/trpc";
 import { PredictPanel, RevealPanel } from "../LivePanels";
 import { canHint, canSubmit, stepMachine, type Reveal } from "../stepMachine";
@@ -14,6 +15,7 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
   const n = lesson.steps.length;
   const start = Math.max(0, lesson.steps.findIndex((s) => s.state !== "revealed" && s.state !== "skipped"));
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: n, idx: start } });
+  const posthog = usePostHog();
   const { idx, step, reveal, hints } = snap.context;
   const stepId = lesson.steps[idx]?.id;
   const [failed, setFailed] = useState("");
@@ -89,7 +91,20 @@ export default function Steps({ lesson, next, onFinished }: { lesson: Lesson; ne
       <PredictPanel
         key={id} idx={idx} total={n} step={step} hints={hints} feedback={snap.context.feedback} notice={snap.context.notice} busy={busy}
         canSubmit={canSubmit(snap)} canHint={canHint(snap)}
-        onSubmit={(answer) => run(async () => send({ type: "RESULT", r: await trpc.steps.attempt.mutate({ id, answer }) }))}
+        onSubmit={(answer) => run(async () => {
+          const result = await trpc.steps.attempt.mutate({ id, answer });
+          posthog?.capture("lesson_step_answered", {
+            step_kind: step.kind,
+            step_position: idx + 1,
+            is_correct: result.correct,
+          });
+          posthog?.logger.info("lesson step answered", {
+            step_kind: step.kind,
+            step_position: idx + 1,
+            is_correct: result.correct,
+          });
+          send({ type: "RESULT", r: result });
+        })}
         onHint={() => run(async () => send({ type: "HINT", hint: await trpc.steps.hint.mutate({ id }) }))}
       />
     );
