@@ -20,6 +20,7 @@ import { ENGINE_CALLS_PER_PART, ENGINE_CALLS_PER_REPLY, assertAiEnabled, reserve
 import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
+import { createLimiter, LimiterStopped } from "./limiter.ts";
 
 const Outline = z.union([
   z.object({ refused: z.literal(true) }),
@@ -284,17 +285,24 @@ export function lessonWriteState(lessonId: string, written: boolean): WriteState
   return failed.has(lessonId) ? "failed" : "pending";
 }
 
-export function ensureLesson(lessonId: string, learnerId: string): Promise<boolean> {
+export const LESSON_WRITE_CONCURRENCY = 3;
+const writeSlots = createLimiter(LESSON_WRITE_CONCURRENCY);
+
+export function ensureLesson(lessonId: string, learnerId: string, options: { background?: boolean } = {}): Promise<boolean> {
   const running = inflight.get(lessonId);
-  if (running) return running;
-  const p = writeLesson(lessonId, learnerId)
+  if (running) {
+    if (!options.background) writeSlots.promote(lessonId);
+    return running;
+  }
+  const p = writeSlots
+    .run(lessonId, () => writeLesson(lessonId, learnerId))
     .then(
       (ok) => {
         failed.delete(lessonId);
         return ok;
       },
       (e: unknown) => {
-        failed.add(lessonId);
+        if (!(e instanceof LimiterStopped)) failed.add(lessonId);
         throw e;
       },
     )
@@ -303,22 +311,24 @@ export function ensureLesson(lessonId: string, learnerId: string): Promise<boole
   return p;
 }
 
-export const LESSON_WRITE_CONCURRENCY = 3;
-
 export function writeLessons(lessonIds: readonly string[], learnerId: string): void {
-  for (const id of lessonIds) queued.add(id);
-  let next = 0;
-  const worker = async () => {
-    while (next < lessonIds.length) {
-      const id = lessonIds[next++]!;
-      await ensureLesson(id, learnerId)
-        .catch((e) => console.error("background lesson write failed", e))
-        .finally(() => queued.delete(id));
-    }
-  };
-  const workers = Math.min(LESSON_WRITE_CONCURRENCY, lessonIds.length);
-  const p: Promise<unknown> = Promise.all(Array.from({ length: workers }, worker)).finally(() => background.delete(p));
-  background.add(p);
+  for (const id of lessonIds) {
+    queued.add(id);
+    const p: Promise<unknown> = ensureLesson(id, learnerId, { background: true })
+      .catch((e: unknown) => {
+        if (!(e instanceof LimiterStopped)) console.error("background lesson write failed", e);
+      })
+      .finally(() => {
+        queued.delete(id);
+        background.delete(p);
+      });
+    background.add(p);
+  }
+}
+
+export function stopLessonWrites(): void {
+  const dropped = writeSlots.stop();
+  if (dropped > 0) console.warn(`${dropped} queued lesson writes were dropped on shutdown; learners can write them again from the course page`);
 }
 
 async function writeLesson(lessonId: string, learnerId: string): Promise<boolean> {

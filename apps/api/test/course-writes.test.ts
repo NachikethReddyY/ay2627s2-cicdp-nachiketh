@@ -1,14 +1,14 @@
 import { out, signUp, trpc, withChecks } from "./helpers.ts";
 import { after, afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
 import { lessons } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
-import { idle, LESSON_WRITE_CONCURRENCY } from "../src/ai/service.ts";
+import { idle, LESSON_WRITE_CONCURRENCY, lessonWriteState, stopLessonWrites } from "../src/ai/service.ts";
 
 const realLesson = engineParts.lesson;
 const app = buildApp();
@@ -41,8 +41,8 @@ function gate() {
   return { opened, open };
 }
 
-async function generate() {
-  const t = trpc(app, await signUp(app, "course-writes@example.com"));
+async function generate(email = "course-writes@example.com") {
+  const t = trpc(app, await signUp(app, email));
   const res = await t.m("paths.generate", { prompt: "learn rust" });
   assert.equal(res.statusCode, 200, res.body);
   return { t, firstCourseSlug: out(res).firstCourseSlug as string };
@@ -114,4 +114,66 @@ test("lessons.write refuses a lesson the learner cannot see", async () => {
   const stranger = trpc(app, await signUp(app, "someone-else@example.com"));
   const res = await stranger.m("lessons.write", { id: slug });
   assert.equal(res.statusCode, 404, res.body);
+});
+
+async function until(condition: () => boolean) {
+  for (let i = 0; i < 200 && !condition(); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.ok(condition(), "condition was not met in time");
+}
+
+test("the write limit is global: two paths together never exceed it", async () => {
+  let running = 0;
+  let peak = 0;
+  engineParts.lesson = async () => {
+    running++;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 20));
+    running--;
+    return learnPart;
+  };
+  await Promise.all([generate("global-one@example.com"), generate("global-two@example.com")]);
+  await idle();
+  const written = await db.select({ id: lessons.id }).from(lessons).where(sql`${lessons.sourceKind} = 'ai' AND ${lessons.currentVersionId} IS NOT NULL`);
+  assert.equal(written.length, 12);
+  assert.ok(peak <= LESSON_WRITE_CONCURRENCY, `writes across paths stay within the limit (peak ${peak})`);
+});
+
+test("opening a lesson that is waiting for a slot writes it before the rest of the queue", async () => {
+  const release = gate();
+  const order: string[] = [];
+  engineParts.lesson = async (ctx) => {
+    order.push(ctx.lesson.title);
+    await release.opened;
+    return learnPart;
+  };
+  const { t } = await generate();
+  await until(() => order.length === LESSON_WRITE_CONCURRENCY);
+  const lastTitle = "Lesson 1.3";
+  const [last] = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.title, lastTitle));
+  const opening = t.m("lessons.write", { id: last.id });
+  await new Promise((r) => setTimeout(r, 20));
+  release.open();
+  await opening;
+  await idle();
+  assert.equal(order[LESSON_WRITE_CONCURRENCY], lastTitle);
+});
+
+test("stopping lesson writes lets running writes finish and leaves queued lessons pending", async () => {
+  const release = gate();
+  let started = 0;
+  engineParts.lesson = async () => {
+    started++;
+    await release.opened;
+    return learnPart;
+  };
+  await generate("stop-writes@example.com");
+  await until(() => started === LESSON_WRITE_CONCURRENCY);
+  stopLessonWrites();
+  release.open();
+  await idle();
+  assert.equal(started, LESSON_WRITE_CONCURRENCY, "no queued write starts after the stop");
+  const rows = await db.select({ id: lessons.id, currentVersionId: lessons.currentVersionId }).from(lessons).where(eq(lessons.sourceKind, "ai"));
+  const states = rows.map((l) => lessonWriteState(l.id, l.currentVersionId !== null));
+  assert.equal(states.filter((s) => s === "ready").length, LESSON_WRITE_CONCURRENCY);
+  assert.equal(states.filter((s) => s === "pending").length, rows.length - LESSON_WRITE_CONCURRENCY, "queued lessons are pending, not failed");
 });
