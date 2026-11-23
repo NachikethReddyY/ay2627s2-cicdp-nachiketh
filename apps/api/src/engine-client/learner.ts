@@ -6,7 +6,8 @@ export type BktParams = { pSlip: number; pLearn: number; pInit: number };
 export type UpdateRequest = {
   priors: { conceptId: string; pKnown: number | null }[];
   params?: BktParams;
-  questionType: "mcq" | "cloze";
+  questionType: "mcq" | "cloze" | "practice";
+  options?: number;
   correct: boolean;
 };
 const UpdateResponse = z.object({

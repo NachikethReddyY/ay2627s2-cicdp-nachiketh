@@ -12,6 +12,9 @@ import { TEST_TIMEOUT_MS } from "./checkHarness.ts";
 import { getBackend } from "./backend.ts";
 import { CheckUnavailableError, type RawResult } from "./checkRunner.ts";
 
+import { catchUpMastery } from "../progress/mastery.ts";
+import { recordLessonObservation } from "../progress/observation.ts";
+
 export const MAX_CHECK_CODE = 20_000;
 async function runChecks(code: string, language: PracticeLanguage, tests: PracticeTest[]) {
   const backend = await getBackend();
@@ -135,10 +138,18 @@ export async function sandboxCheckRoute(app: FastifyInstance) {
         const attemptCount = await recordPracticeAttempt(tx, learner, found.versionId, contentKey);
         if (scored.complete) await recordCompletion(learner, found.lessonId, tx);
         const best = await saveBest(tx, learner, found.lessonId, scored.points, scored.maxPoints, scored.complete);
-        return { ...scored, best, attemptCount };
+        const observed = attemptCount === 1 && await recordLessonObservation(tx, {
+          learnerId: learner,
+          lessonVersionId: found.versionId,
+          activityKey: "check",
+          kind: "practice",
+          correct: scored.complete,
+        });
+        return { observed, result: { ...scored, best, attemptCount } };
       });
       if (!persisted) return reply.status(409).send(fail("lesson_updated", "Reload the lesson before submitting again"));
-      return persisted;
+      if (persisted.observed) await catchUpMastery(learner);
+      return persisted.result;
     } catch (e) {
       if (!(e instanceof CheckUnavailableError)) req.log.error(e);
       return reply.status(503).send(fail("check_failed", "Could not check the code"));

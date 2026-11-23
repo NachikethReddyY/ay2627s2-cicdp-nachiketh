@@ -169,13 +169,14 @@ test("an invalid bkt field falls back to its default while valid ones apply", as
   assert.deepEqual(seen, [{ pSlip: 0.1, pLearn: 0.3, pInit: 0.2 }]);
 });
 
-test("a row with an invalid engine response is marked and a later valid row still applies", async () => {
+test("an invalid engine response stays pending and is retried on the next read", async () => {
   const c = await signUp(app);
   engineLearner.update = async () => z.array(z.string()).parse([1]) as never;
   assert.equal((await attempt(c, 1)).statusCode, 200);
   let rows = await db.select().from(attempts);
   assert.equal(rows.length, 1);
-  assert.ok(rows[0]!.masteryAppliedAt, "permanent failure is marked applied");
+  assert.equal(rows[0]!.masteryAppliedAt, null);
+  assert.ok(rows[0]!.masteryError);
   assert.equal((await db.select().from(mastery)).length, 0);
 
   engineLearner.update = stubUpdate;
@@ -186,7 +187,7 @@ test("a row with an invalid engine response is marked and a later valid row stil
   assert.equal((await db.select().from(mastery)).length > 0, true);
 });
 
-test("a database error on one row is permanent, a 429 is transient", async () => {
+test("both rate limits and unexpected errors leave evidence pending", async () => {
   const c = await signUp(app);
   engineLearner.update = async () => {
     throw new EngineError("slow down", 429, null);
@@ -197,7 +198,9 @@ test("a database error on one row is permanent, a 429 is transient", async () =>
     throw new Error("relation does not exist");
   };
   await applyObservations(await learnerId());
-  assert.ok((await db.select().from(attempts))[0]!.masteryAppliedAt);
+  const [pending] = await db.select().from(attempts);
+  assert.equal(pending!.masteryAppliedAt, null);
+  assert.equal(pending!.masteryFailures, 2);
 });
 
 test("two reads with no change make one engine next call; new information makes one more", async () => {
@@ -285,6 +288,7 @@ test("a transient database error (40001) leaves the row pending and a later read
   await applyObservations(await learnerId());
   assert.equal((await db.select().from(attempts))[0]!.masteryAppliedAt, null);
 
+  await db.update(attempts).set({ masteryRetryAt: new Date(0) });
   engineLearner.update = stubUpdate;
   assert.equal((await trpc(app, c).q("me.mastery", { world: "codequest" })).statusCode, 200);
   assert.ok((await db.select().from(attempts))[0]!.masteryAppliedAt);
@@ -327,8 +331,10 @@ test("a row the engine rejects, or with a bad concept entry, does not block a la
   engineLearner.update = async () => {
     throw new EngineError("Engine answered 422", 422, null);
   };
-  await attempt(c, 0, "s2");
-  assert.ok((await db.select().from(attempts)).every((a) => a.masteryAppliedAt));
+  assert.equal((await trpc(app, c).m("steps.attempt", { id: "s2", answer: { kind: "cloze", text: "discount = 0" } })).statusCode, 200);
+  const pending = (await db.select().from(attempts)).find((a) => a.stepId === "s2");
+  assert.equal(pending?.masteryAppliedAt, null);
+  assert.match(pending?.masteryError ?? "", /422/);
   assert.equal((await pOf("loops"))?.n, 1);
 });
 

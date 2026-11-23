@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
 import { db } from "../src/db/client.ts";
-import { checkResults, lessons, lessonVersions, partCompletions, practiceAttempts, worlds, type PartSecret } from "../src/db/schema.ts";
+import { checkResults, lessonObservations, lessons, lessonVersions, partCompletions, practiceAttempts, worlds, type PartSecret } from "../src/db/schema.ts";
 import { parsePractice } from "../src/parts/practice-schema.ts";
 import { verifyReferenceSolution } from "../src/sandbox/check.ts";
 import { setCheckSpawnForTests } from "../src/sandbox/dockerChecks.ts";
@@ -248,6 +248,8 @@ test("POST /sandbox/check: scores, hides hidden tests, and records completion on
     fakeDocker([false, false, false]);
     assert.deepEqual((await check(cookie, body("multi"))).json().best, { points: 3, maxPoints: 3 });
   });
+  const evidence = await db.select().from(lessonObservations);
+  assert.deepEqual(evidence.map((row) => [row.kind, row.correct]), [["practice", false]]);
   const [row] = await db.select().from(checkResults);
   assert.equal(row!.lessonId, lessonId);
   assert.deepEqual([row!.bestPoints, row!.maxPoints, row!.complete], [3, 3, true]);

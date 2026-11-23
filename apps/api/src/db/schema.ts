@@ -372,6 +372,13 @@ export const stepProgress = pgTable(
   (t) => [primaryKey({ columns: [t.learnerId, t.stepId] })],
 );
 
+const masteryApplication = () => ({
+  masteryAppliedAt: timestamp("mastery_applied_at"),
+  masteryRetryAt: timestamp("mastery_retry_at"),
+  masteryFailures: integer("mastery_failures").notNull().default(0),
+  masteryError: text("mastery_error"),
+});
+
 export const attempts = pgTable(
   "attempts",
   {
@@ -392,7 +399,7 @@ export const attempts = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    masteryAppliedAt: timestamp("mastery_applied_at"),
+    ...masteryApplication(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -436,6 +443,23 @@ export const gameCompletions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.learnerId, t.lessonId, t.partIdx, t.blockId] })],
+);
+
+export const lessonObservations = pgTable(
+  "lesson_observations",
+  {
+    id: id(),
+    learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
+    lessonVersionId: text("lesson_version_id").notNull().references(() => lessonVersions.id, { onDelete: "cascade" }),
+    activityKey: text("activity_key").notNull(),
+    kind: text("kind", { enum: ["mcq", "practice"] }).notNull(),
+    optionCount: integer("option_count"),
+    correct: boolean("correct").notNull(),
+    hintsUsed: integer("hints_used").notNull().default(0),
+    ...masteryApplication(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("lesson_observations_first_try").on(t.learnerId, t.lessonVersionId, t.activityKey)],
 );
 
 export const gameAttempts = pgTable(

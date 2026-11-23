@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import { playableLesson } from "../access.ts";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { attempts, concepts, lessons, lessonVersions, mastery, recommendations, steps, worlds } from "../db/schema.ts";
+import { concepts, lessons, mastery, recommendations, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
-import { EngineError } from "../engine-client/client.ts";
-import { engineLearner, type BktParams, type NextRequest, type NextResult } from "../engine-client/learner.ts";
+import { engineLearner, type BktParams, type NextRequest, type NextResult, type UpdateRequest } from "../engine-client/learner.ts";
 import { lessonDone, lessonTotal, listed } from "./shared.ts";
 
 export const MASTERED_AT = 0.95;
@@ -14,7 +13,7 @@ const BATCH = 50;
 const ENGINE_CALL_TIMEOUT_MS = 8_000;
 const CATCH_UP_BUDGET_MS = 12_000;
 
-export type AttemptFacts = { observed: boolean; kind: "mcq" | "cloze" | "skip"; correct: boolean | null; hintsUsed: number };
+export type AttemptFacts = { observed: boolean; kind: UpdateRequest["questionType"] | "skip"; correct: boolean | null; hintsUsed: number };
 
 export function observationOf(a: AttemptFacts): "correct" | "incorrect" | null {
   if (!a.observed) return null;
@@ -63,18 +62,6 @@ export function mergeBkt(raw: unknown, where: string): BktParams | undefined {
   }
   return out;
 }
-
-const TRANSIENT_PG_CODES = new Set(["40001", "40P01", "55P03", "57014"]);
-const pgCode = (e: unknown): string | undefined => {
-  for (let cur: unknown = e, i = 0; cur && typeof cur === "object" && i < 3; cur = (cur as { cause?: unknown }).cause, i++) {
-    const c = (cur as { code?: unknown }).code;
-    if (typeof c === "string") return c;
-  }
-  return undefined;
-};
-const isTransient = (e: unknown) =>
-  (e instanceof EngineError && (e.status >= 500 || e.status === 408 || e.status === 429)) ||
-  TRANSIENT_PG_CODES.has(pgCode(e) ?? "");
 
 function conceptNames(stepConcepts: unknown, lessonConcepts: string[], where: string) {
   const own = validConcepts(stepConcepts, where);
@@ -223,71 +210,124 @@ export async function applyObservations(learnerId: string, opts: { worldId?: str
   }
 }
 
+type PendingObservation = {
+  id: string;
+  source: "attempts" | "lesson_observations";
+  kind: AttemptFacts["kind"];
+  correct: boolean | null;
+  hints_used: number;
+  mastery_failures: number;
+  question_type: UpdateRequest["questionType"];
+  option_count: number | null;
+  step_concepts: unknown;
+  lesson_concepts: string[];
+  world_id: string;
+  config: { bkt?: unknown } | null;
+};
+
+async function nextObservation(tx: Db, learnerId: string, failed: string[]) {
+  const { rows: [row] } = await tx.execute<PendingObservation>(sql`
+    WITH pending AS (
+      SELECT a.id, 'attempts' AS source, a.kind, a.correct, a.hints_used, a.mastery_failures,
+        s.public->>'kind' AS question_type,
+        CASE WHEN jsonb_typeof(s.public->'options') = 'array' THEN jsonb_array_length(s.public->'options') END AS option_count,
+        s.secret->'concepts' AS step_concepts, s.lesson_version_id, a.created_at
+      FROM attempts a JOIN steps s ON s.id = a.step_id
+      WHERE a.learner_id = ${learnerId} AND a.observed AND a.mastery_applied_at IS NULL
+        AND (a.mastery_retry_at IS NULL OR a.mastery_retry_at <= now())
+      UNION ALL
+      SELECT o.id, 'lesson_observations', o.kind, o.correct, o.hints_used, o.mastery_failures,
+        o.kind, o.option_count, NULL, o.lesson_version_id, o.created_at
+      FROM lesson_observations o
+      WHERE o.learner_id = ${learnerId} AND o.mastery_applied_at IS NULL
+        AND (o.mastery_retry_at IS NULL OR o.mastery_retry_at <= now())
+    )
+    SELECT p.*, l.concepts AS lesson_concepts, l.world_id, w.config
+    FROM pending p
+    JOIN lesson_versions v ON v.id = p.lesson_version_id
+    JOIN lessons l ON l.id = v.lesson_id
+    JOIN worlds w ON w.id = l.world_id
+    WHERE p.id <> ALL(ARRAY[${sql.join(failed.map((id) => sql`${id}`), sql`,`)}]::text[])
+    ORDER BY p.created_at, p.id LIMIT 1`);
+  return row;
+}
+
+const lockLearner = (tx: Db, learnerId: string) =>
+  tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
+
+const pendingRow = (a: PendingObservation) => sql`id = ${a.id} AND mastery_applied_at IS NULL AND mastery_failures = ${a.mastery_failures}`;
+
+async function priorsFor(tx: Db, learnerId: string, conceptIds: string[]) {
+  return conceptIds.length ? tx.select({ conceptId: mastery.conceptId, pKnown: mastery.pKnown, nObs: mastery.nObs })
+    .from(mastery).where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds))) : [];
+}
+
 async function processObservations(learnerId: string, opts: { worldId?: string }): Promise<void> {
   const started = Date.now();
   const touched = new Set<string>();
+  const failed: string[] = [];
   for (let count = 0; count < BATCH && Date.now() - started <= CATCH_UP_BUDGET_MS; count++) {
     const snapshot = await withTx(async (tx) => {
-      await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
-      const [a] = await tx.select({
-        id: attempts.id, observed: attempts.observed, attemptKind: attempts.kind,
-        correct: attempts.correct, hintsUsed: attempts.hintsUsed,
-        questionType: sql<"mcq" | "cloze">`${steps.public}->>'kind'`,
-        stepConcepts: sql<unknown>`${steps.secret}->'concepts'`,
-        lessonConcepts: lessons.concepts, worldId: lessons.worldId, config: worlds.config,
-      }).from(attempts)
-        .innerJoin(steps, eq(steps.id, attempts.stepId))
-        .innerJoin(lessonVersions, eq(lessonVersions.id, steps.lessonVersionId))
-        .innerJoin(lessons, eq(lessons.id, lessonVersions.lessonId))
-        .innerJoin(worlds, eq(worlds.id, lessons.worldId))
-        .where(and(eq(attempts.learnerId, learnerId), eq(attempts.observed, true), isNull(attempts.masteryAppliedAt)))
-        .orderBy(asc(attempts.createdAt), asc(attempts.id)).limit(1);
+      await lockLearner(tx, learnerId);
+      const a = await nextObservation(tx, learnerId, failed);
       if (!a) return null;
-      const names = conceptNames(a.stepConcepts, a.lessonConcepts, `attempt ${a.id}`);
-      const ids = await ensureConcepts(tx, a.worldId, names);
+      const names = conceptNames(a.step_concepts, a.lesson_concepts, `observation ${a.id}`);
+      const ids = await ensureConcepts(tx, a.world_id, names);
       const conceptIds = [...ids.values()];
-      const priors = conceptIds.length ? await tx.select({ conceptId: mastery.conceptId, pKnown: mastery.pKnown, nObs: mastery.nObs })
-        .from(mastery).where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds))) : [];
-      return { a, conceptIds, priors };
+      return { a, conceptIds, priors: await priorsFor(tx, learnerId, conceptIds) };
     });
     if (!snapshot) break;
     const { a, conceptIds, priors } = snapshot;
-    const obs = observationOf({ observed: a.observed, kind: a.attemptKind, correct: a.correct, hintsUsed: a.hintsUsed });
+    const obs = observationOf({ observed: true, kind: a.kind, correct: a.correct, hintsUsed: a.hints_used });
+    const table = sql.identifier(a.source);
     let updates: Awaited<ReturnType<typeof engineLearner.update>> = [];
     try {
       if (obs && conceptIds.length) {
         const prior = new Map(priors.map((p) => [p.conceptId, p.pKnown]));
-        const bkt = mergeBkt((a.config as { bkt?: unknown } | null)?.bkt, `world ${a.worldId}`);
+        const bkt = mergeBkt(a.config?.bkt, `world ${a.world_id}`);
         updates = await engineLearner.update({
           priors: conceptIds.map((conceptId) => ({ conceptId, pKnown: prior.get(conceptId) ?? null })),
-          ...(bkt && { params: bkt }), questionType: a.questionType, correct: obs === "correct",
+          ...(bkt && { params: bkt }), questionType: a.question_type,
+          ...(a.question_type === "mcq" && a.option_count !== null && { options: a.option_count }),
+          correct: obs === "correct",
         }, { timeoutMs: ENGINE_CALL_TIMEOUT_MS });
+        if (updates.length !== conceptIds.length || new Set(updates.map((u) => u.conceptId)).size !== conceptIds.length ||
+            updates.some((u) => !conceptIds.includes(u.conceptId) || !(u.pNext >= 0 && u.pNext <= 1))) {
+          throw new Error("Mastery response does not match the observed concepts");
+        }
       }
     } catch (e) {
-      if (isTransient(e)) {
-        console.error(`mastery: attempt ${a.id} will be retried`, e);
-        break;
-      }
-      console.error(`mastery: attempt ${a.id} failed and is skipped`, e);
+      const message = e instanceof Error ? e.message : String(e);
+      failed.push(a.id);
+      const retryDelay = a.mastery_failures === 0 ? 0 : Math.min(600, 2 ** Math.min(a.mastery_failures, 10));
+      await withTx(async (tx) => {
+        await lockLearner(tx, learnerId);
+        await tx.execute(sql`
+          UPDATE ${table}
+          SET mastery_failures = mastery_failures + 1, mastery_error = ${message.slice(0, 500)},
+            mastery_retry_at = now() + ${retryDelay} * interval '1 second'
+          WHERE ${pendingRow(a)}`);
+      });
+      console.error(`mastery: observation ${a.id} will be retried`, e);
+      continue;
     }
     const applied = await withTx(async (tx) => {
-      await tx.execute(sql`SELECT 1 FROM learners WHERE id = ${learnerId} FOR NO KEY UPDATE`);
-      const [pending] = await tx.select({ id: attempts.id }).from(attempts)
-        .where(and(eq(attempts.id, a.id), isNull(attempts.masteryAppliedAt)));
-      if (!pending) return false;
-      const current = conceptIds.length ? await tx.select({ conceptId: mastery.conceptId, pKnown: mastery.pKnown, nObs: mastery.nObs })
-        .from(mastery).where(and(eq(mastery.learnerId, learnerId), inArray(mastery.conceptId, conceptIds))) : [];
+      await lockLearner(tx, learnerId);
+      const current = await priorsFor(tx, learnerId, conceptIds);
       const versions = new Map(current.map((p) => [p.conceptId, p.nObs]));
       if (current.length !== priors.length || priors.some((p) => versions.get(p.conceptId) !== p.nObs)) return false;
+      const { rowCount } = await tx.execute(sql`
+        UPDATE ${table} SET mastery_applied_at = now(), mastery_error = NULL, mastery_retry_at = NULL
+        WHERE ${pendingRow(a)}`);
+      if (!rowCount) return false;
       for (const u of updates) {
         await tx.insert(mastery).values({ learnerId, conceptId: u.conceptId, pKnown: u.pNext, nObs: 1 })
           .onConflictDoUpdate({ target: [mastery.learnerId, mastery.conceptId],
             set: { pKnown: u.pNext, nObs: sql`${mastery.nObs} + 1`, updatedAt: new Date() } });
       }
-      await tx.update(attempts).set({ masteryAppliedAt: new Date() }).where(eq(attempts.id, a.id));
       return true;
     });
-    if (applied && updates.length) touched.add(a.worldId);
+    if (applied && updates.length) touched.add(a.world_id);
   }
   for (const worldId of new Set([...touched, ...(opts.worldId ? [opts.worldId] : [])])) {
     if (Date.now() - started > CATCH_UP_BUDGET_MS) break;
@@ -296,5 +336,13 @@ async function processObservations(learnerId: string, opts: { worldId?: string }
     } catch (e) {
       console.error(`mastery: recommendation for world ${worldId} failed`, e);
     }
+  }
+}
+
+export async function catchUpMastery(learnerId: string, worldId?: string) {
+  try {
+    await applyObservations(learnerId, { worldId });
+  } catch (e) {
+    console.error("mastery update failed; will catch up on read", e);
   }
 }

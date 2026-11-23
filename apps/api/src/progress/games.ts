@@ -8,6 +8,8 @@ import { gameAttempts } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { lessonRef, meUser, playableLesson, visibleWorld } from "../access.ts";
 import { BadSubmission, grade, submissionSchema } from "../games/grade.ts";
+import { catchUpMastery } from "./mastery.ts";
+import { recordLessonObservation } from "./observation.ts";
 import { currentGameBlockWon, everyGameWon } from "./shared.ts";
 
 const gameInput = z.object({
@@ -112,29 +114,43 @@ const isWatchGrid = (game: GameProps) => game.kind.kind === "grid" && game.kind.
 const check = protectedProcedure
   .input(gameInput.extend({ submission: submissionSchema }))
   .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionCorrect: z.boolean().optional(), remainingAttempts: z.number().int().nonnegative() }))
-  .mutation(({ ctx, input }) => withTx(async (tx) => {
-    const learnerId = ctx.learnerId;
-    const loaded = await loadGame(tx, learnerId, input, true);
-    const { game } = loaded;
-    if (isWatchGrid(game)) throw new TRPCError({ code: "BAD_REQUEST", message: "Watch games complete with games.completeWatch" });
-    const key = attemptKey(learnerId, loaded);
-    const day = attemptDay();
-    const state = await loadAttempts(tx, key, day);
-    const limit = attemptLimit(game);
-    const remaining = Math.max(0, limit - state.misses);
-    if (remaining === 0) return { correct: false, complete: false, remainingAttempts: 0 };
-    let verdict;
-    try {
-      verdict = grade(game, input.submission);
-    } catch (e) {
-      if (e instanceof BadSubmission) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
-      throw e;
-    }
-    if (verdict.complete) await recordWin(tx, learnerId, loaded);
-    const miss = !verdict.correct && !verdict.questionCorrect;
-    if (miss) await saveAttempts(tx, key, day, { ...state, misses: state.misses + 1 });
-    return { ...verdict, remainingAttempts: remaining - Number(miss) };
-  }));
+  .mutation(async ({ ctx, input }) => {
+    const committed = await withTx(async (tx) => {
+      const learnerId = ctx.learnerId;
+      const loaded = await loadGame(tx, learnerId, input, true);
+      const { game } = loaded;
+      if (isWatchGrid(game)) throw new TRPCError({ code: "BAD_REQUEST", message: "Watch games complete with games.completeWatch" });
+      const key = attemptKey(learnerId, loaded);
+      const day = attemptDay();
+      const state = await loadAttempts(tx, key, day);
+      const limit = attemptLimit(game);
+      const remaining = Math.max(0, limit - state.misses);
+      if (remaining === 0) return { observed: false, result: { correct: false, complete: false, remainingAttempts: 0 } };
+      let verdict;
+      try {
+        verdict = grade(game, input.submission);
+      } catch (e) {
+        if (e instanceof BadSubmission) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        throw e;
+      }
+      const quiz = game.kind.kind === "quiz" ? game.kind : null;
+      const observed = await recordLessonObservation(tx, {
+        learnerId,
+        lessonVersionId: loaded.versionId,
+        activityKey: `game:${loaded.blockId}`,
+        kind: quiz ? "mcq" : "practice",
+        optionCount: quiz?.questions[0]?.options.length,
+        correct: verdict.questionCorrect ?? verdict.correct,
+        hintsUsed: state.hintsRevealed,
+      });
+      if (verdict.complete) await recordWin(tx, learnerId, loaded);
+      const miss = !verdict.correct && !verdict.questionCorrect;
+      if (miss) await saveAttempts(tx, key, day, { ...state, misses: state.misses + 1 });
+      return { observed, result: { ...verdict, remainingAttempts: remaining - Number(miss) } };
+    });
+    if (committed.observed) await catchUpMastery(ctx.learnerId);
+    return committed.result;
+  });
 
 const completeWatch = protectedProcedure
   .input(gameInput)

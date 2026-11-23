@@ -4,7 +4,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { userOfLearner, visibleWorld } from "../access.ts";
-import { applyObservations, MASTERED_AT } from "./mastery.ts";
+import { catchUpMastery, MASTERED_AT } from "./mastery.ts";
 import { Slug, listed } from "./shared.ts";
 import { handleRouter } from "./handle.ts";
 
@@ -41,14 +41,6 @@ async function mustWorld(learnerId: string, slug: string) {
   return rows[0].id;
 }
 
-async function catchUp(learnerId: string, worldId: string) {
-  try {
-    await applyObservations(learnerId, { worldId });
-  } catch (e) {
-    console.error("mastery catch-up failed", e);
-  }
-}
-
 const meMastery = protectedProcedure
   .input(z.object({ world: Slug.shape.slug }))
   .output(
@@ -56,7 +48,7 @@ const meMastery = protectedProcedure
   )
   .query(async ({ ctx, input }) => {
     const worldId = await mustWorld(ctx.learnerId, input.world);
-    await catchUp(ctx.learnerId, worldId);
+    await catchUpMastery(ctx.learnerId, worldId);
     const { rows } = await db.execute<{ slug: string; name: string; p_known: number; n_obs: number }>(sql`
       SELECT c.slug, c.name, m.p_known, m.n_obs FROM mastery m JOIN concepts c ON c.id = m.concept_id
       WHERE m.learner_id = ${ctx.learnerId} AND c.world_id = ${worldId}
@@ -86,7 +78,7 @@ const meNext = protectedProcedure
   )
   .query(async ({ ctx, input }) => {
     const worldId = await mustWorld(ctx.learnerId, input.world);
-    await catchUp(ctx.learnerId, worldId);
+    await catchUpMastery(ctx.learnerId, worldId);
     const { rows } = await db.execute<{
       action: "start" | "learn" | "practice" | "advance" | "done";
       lesson_slug: string | null;

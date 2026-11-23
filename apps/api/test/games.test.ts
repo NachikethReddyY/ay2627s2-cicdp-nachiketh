@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { gameAttempts, gameCompletions, lessons, lessonVersions, partCompletions, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { gameAttempts, gameCompletions, lessonObservations, lessons, lessonVersions, partCompletions, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
 import { toPublicGame, type GameProps } from "@learnquest/ui-catalog";
 
 const app = buildApp();
@@ -277,4 +277,17 @@ test("completeWatch refuses other game kinds and stale versions", async () => {
   assert.equal(code(wrongMode), "BAD_REQUEST");
   const stale = await m(cookie, "games.completeWatch", { lessonId: "games-watch-guard", versionId: "00000000-0000-4000-8000-000000000000", gameIndex: 1 });
   assert.equal(stale.statusCode, 409);
+});
+
+test("the first quiz check is the only observation and records any prior hints", async () => {
+  const cookie = await signUp(app);
+  await addGame("games-evidence");
+  const input = { lessonId: "games-evidence", gameIndex: 0 };
+  assert.equal((await m(cookie, "games.hint", { ...input, hintIndex: 0 })).statusCode, 200);
+  for (const answers of [[0], [1, 2]]) {
+    assert.equal((await m(cookie, "games.check", { ...input, submission: { kind: "quiz", answers } })).statusCode, 200);
+  }
+  const rows = await db.select().from(lessonObservations);
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0]!.kind, rows[0]!.optionCount, rows[0]!.correct, rows[0]!.hintsUsed], ["mcq", 2, false, 1]);
 });

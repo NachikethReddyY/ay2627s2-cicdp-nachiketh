@@ -10,7 +10,7 @@ import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
 import { scrimGateOpen } from "../lessons/scrim.ts";
 import { loadScrimGates } from "../lessons/scrim-gates.ts";
-import { applyObservations, resolveConcepts } from "../progress/mastery.ts";
+import { catchUpMastery, resolveConcepts } from "../progress/mastery.ts";
 import { fresh, next, type Action, type Progress } from "./machine.ts";
 
 const Id = z.object({ id: z.string().regex(/^[\w-]{1,64}$/) });
@@ -179,14 +179,7 @@ function mutate(
   });
 }
 
-async function applyMastery(learnerId: string, out: { observed: boolean }) {
-  if (!out.observed) return;
-  try {
-    await applyObservations(learnerId);
-  } catch (e) {
-    console.error("mastery update failed; will catch up on read", e);
-  }
-}
+
 
 export async function guideStep(learnerId: string, stepIds: string[]) {
   for (const id of stepIds) {
@@ -278,7 +271,7 @@ export const stepsRouter = router({
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);
       const out = await mutate(ctx.learnerId, step, { type: "attempt", correct });
       if ("conflict" in out) throw conflict(out.conflict);
-      await applyMastery(ctx.learnerId, out);
+      if (out.observed) await catchUpMastery(ctx.learnerId);
       return {
         attemptId: out.attemptId!,
         correct,
@@ -309,7 +302,7 @@ export const stepsRouter = router({
       if (isReadLesson(step) || step.lessonKind === "scrim") throw conflict("This check cannot be skipped");
       const out = await mutate(ctx.learnerId, step, { type: "skip" });
       if ("conflict" in out) throw conflict(out.conflict);
-      await applyMastery(ctx.learnerId, out);
+      if (out.observed) await catchUpMastery(ctx.learnerId);
       return { state: "skipped" as const };
     }),
 

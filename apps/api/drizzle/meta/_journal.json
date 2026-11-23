@@ -211,6 +211,13 @@
       "when": 1795401415088,
       "tag": "0029_drop_leaderboard_opt_in",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795402791639,
+      "tag": "0030_first-try-observations",
+      "breakpoints": true
     }
   ]
 }
