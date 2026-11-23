@@ -11,7 +11,7 @@ export { type OrderProps, type MatchProps, type SortProps } from "./blocks/game/
 export { simulateLaunch, MIN_ANGLE, MAX_ANGLE, type PhysicsProps } from "./blocks/game/physics.ts";
 export { type QuizProps } from "./blocks/game/quiz.ts";
 export { gameSchema, type GameProps } from "./blocks/game/schema.ts";
-export { toPublicGame, publicDoc, gameBlocksOf, type PublicGameProps, type PublicQuiz, type PublicOrder, type PublicMatch, type PublicSort } from "./blocks/game/public.ts";
+export { toPublicGame, publicDoc, gameBlocksOf, type PublicGameProps, type PublicQuiz, type PublicOrder, type PublicMatch, type PublicSort, type PublicGridProps, type PublicGridFrame } from "./blocks/game/public.ts";
 export { programSchema as gridProgramSchema } from "./blocks/game/grid.ts";
 export { simulate, blockCount, DIRS, MAX_PROGRAM_STEPS, type GridProps, type GridProgram, type GridStep, type GridCommand, type GridRun, type Cell } from "./blocks/game/grid.ts";
 

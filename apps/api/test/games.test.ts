@@ -103,11 +103,15 @@ test("lessons.get strips quiz answers and hints from game blocks in a learn doc"
   for (const secret of ["learn hint secret", "\"answer\"", "\"hints\""]) assert.ok(!raw.includes(secret), secret);
 });
 
-test("watch mode sends its solution, debug mode its starter, and nothing else extra", () => {
+test("watch mode sends per-step frames and never the solution, debug mode its starter, and nothing else extra", () => {
   const base = { title: "T", goalText: "G", alt: "A", hints: ["h"], shell: { lives: 2 } };
   const grid = { kind: "grid", size: { w: 3, h: 1 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 2, y: 0 }, walls: [], gems: [], commands: ["forward"], maxSteps: 5, solution: ["forward", "forward"] };
   const watch = toPublicGame({ ...base, kind: { ...grid, mode: "watch" } } as unknown as GameProps, 3);
-  assert.deepEqual(keys(watch.kind), ["commands", "gems", "goal", "kind", "maxSteps", "mode", "size", "solution", "start", "walls"]);
+  assert.deepEqual(keys(watch.kind), ["commands", "frames", "gems", "goal", "kind", "maxSteps", "mode", "size", "start", "walls"]);
+  assert.deepEqual(watch.kind.kind === "grid" && watch.kind.frames, [
+    { x: 1, y: 0, dir: "right", collected: [] },
+    { x: 2, y: 0, dir: "right", collected: [] },
+  ]);
   assert.deepEqual(watch.shell, { lives: 2 });
   assert.equal(watch.gameIndex, 3);
   const debug = toPublicGame({ ...base, kind: { ...grid, mode: "debug", starter: ["forward"] } } as unknown as GameProps, 0);
@@ -238,4 +242,39 @@ test("a game lesson completes only when its last game block is won", async () =>
   assert.equal(await count(), 0);
   assert.equal(out(await win(1)).complete, true);
   assert.equal(await count(), 1);
+});
+
+const watchGrid = { kind: "grid", size: { w: 3, h: 1 }, start: { x: 0, y: 0, dir: "right" }, goal: { x: 2, y: 0 }, walls: [], gems: [], commands: ["forward"], mode: "watch", maxSteps: 5, solution: ["forward", "forward"] };
+const watchPart: PartSecret = { kind: "game-practice", intro: "Watch.", doc: { v: 1, blocks: [game("watch", "Watch", [], watchGrid)] } as never };
+
+test("a watch game serves frames without the solution and completes only through completeWatch", async () => {
+  const cookie = await signUp(app);
+  await addGame("watch-1", watchPart);
+  const res = await q(cookie, "lessons.get", { id: "watch-1" });
+  const props = (out(res).part.doc as { blocks: { props: Record<string, any> }[] }).blocks[0]!.props;
+  assert.deepEqual(keys(props.kind), ["commands", "frames", "gems", "goal", "kind", "maxSteps", "mode", "size", "start", "walls"]);
+  assert.deepEqual(props.kind.frames.map((f: { x: number }) => f.x), [1, 2]);
+  assert.ok(!res.body.includes("\"solution\""), "no solution key anywhere in the lesson");
+
+  const versionId = await versionOf("watch-1");
+  const generic = await m(cookie, "games.check", { lessonId: "watch-1", versionId, gameIndex: 0, submission: { kind: "grid", program: ["forward", "forward"] } });
+  assert.equal(generic.statusCode, 400);
+  assert.equal(code(generic), "BAD_REQUEST");
+
+  const first = await m(cookie, "games.completeWatch", { lessonId: "watch-1", versionId, gameIndex: 0 });
+  assert.equal(first.statusCode, 200);
+  assert.deepEqual(out(first), { correct: true, complete: true, remainingAttempts: 3 });
+  assert.equal(out(await m(cookie, "games.completeWatch", { lessonId: "watch-1", versionId, gameIndex: 0 })).complete, true, "a repeat is accepted");
+  assert.equal(out(await q(cookie, "lessons.get", { id: "watch-1" })).completed, true);
+});
+
+test("completeWatch refuses other game kinds and stale versions", async () => {
+  const cookie = await signUp(app);
+  await addGame("games-watch-guard");
+  const versionId = await versionOf("games-watch-guard");
+  const wrongMode = await m(cookie, "games.completeWatch", { lessonId: "games-watch-guard", versionId, gameIndex: 0 });
+  assert.equal(wrongMode.statusCode, 400);
+  assert.equal(code(wrongMode), "BAD_REQUEST");
+  const stale = await m(cookie, "games.completeWatch", { lessonId: "games-watch-guard", versionId: "00000000-0000-4000-8000-000000000000", gameIndex: 1 });
+  assert.equal(stale.statusCode, 409);
 });

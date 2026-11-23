@@ -43,6 +43,12 @@ export const stepText = (s: GridStep) => (typeof s === "string" ? s : `repeat ${
 
 export const announceStep = (run: GridRun, i: number) => `Step ${i + 1} of ${run.trace.length}: ${run.moves[i]}.`;
 
+export const announceFrame = (frames: readonly { x: number; y: number; dir: string; collected: number[] }[], i: number) => {
+  const f = frames[i];
+  const gems = f.collected.length;
+  return `Step ${i + 1} of ${frames.length}: column ${f.x + 1}, row ${f.y + 1}, facing ${f.dir}, ${gems} gem${gems === 1 ? "" : "s"} picked.`;
+};
+
 const bumps = (run: GridRun) => run.moves.filter((m) => m.startsWith("bump")).length;
 
 export function announceRun(run: GridRun, state: Outcome): string {

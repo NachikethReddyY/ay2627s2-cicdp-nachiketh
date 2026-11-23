@@ -95,13 +95,28 @@ const hint = protectedProcedure
     return { text };
   }));
 
+async function recordWin(tx: Db, learnerId: string, { lessonDbId, versionId, partIndex, blockId }: LoadedGame) {
+  await tx.execute(sql`
+    INSERT INTO game_completions (learner_id, lesson_id, part_idx, block_id)
+    SELECT ${learnerId}, ${lessonDbId}, ${partIndex}, ${blockId}
+    WHERE NOT ${currentGameBlockWon(learnerId, lessonDbId, versionId, blockId)}
+    ON CONFLICT DO NOTHING`);
+  await tx.execute(sql`
+    INSERT INTO part_completions (learner_id, lesson_id)
+    SELECT ${learnerId}, l.id FROM lessons l WHERE l.id = ${lessonDbId} AND ${everyGameWon(learnerId)}
+    ON CONFLICT DO NOTHING`);
+}
+
+const isWatchGrid = (game: GameProps) => game.kind.kind === "grid" && game.kind.mode === "watch";
+
 const check = protectedProcedure
   .input(gameInput.extend({ submission: submissionSchema }))
   .output(z.object({ correct: z.boolean(), complete: z.boolean(), questionCorrect: z.boolean().optional(), remainingAttempts: z.number().int().nonnegative() }))
   .mutation(({ ctx, input }) => withTx(async (tx) => {
     const learnerId = ctx.learnerId;
     const loaded = await loadGame(tx, learnerId, input, true);
-    const { lessonDbId, versionId, partIndex, blockId, game } = loaded;
+    const { game } = loaded;
+    if (isWatchGrid(game)) throw new TRPCError({ code: "BAD_REQUEST", message: "Watch games complete with games.completeWatch" });
     const key = attemptKey(learnerId, loaded);
     const day = attemptDay();
     const state = await loadAttempts(tx, key, day);
@@ -115,20 +130,29 @@ const check = protectedProcedure
       if (e instanceof BadSubmission) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
       throw e;
     }
-    if (verdict.complete) {
-      await tx.execute(sql`
-        INSERT INTO game_completions (learner_id, lesson_id, part_idx, block_id)
-        SELECT ${learnerId}, ${lessonDbId}, ${partIndex}, ${blockId}
-        WHERE NOT ${currentGameBlockWon(learnerId, lessonDbId, versionId, blockId)}
-        ON CONFLICT DO NOTHING`);
-      await tx.execute(sql`
-        INSERT INTO part_completions (learner_id, lesson_id)
-        SELECT ${learnerId}, l.id FROM lessons l WHERE l.id = ${lessonDbId} AND ${everyGameWon(learnerId)}
-        ON CONFLICT DO NOTHING`);
-    }
+    if (verdict.complete) await recordWin(tx, learnerId, loaded);
     const miss = !verdict.correct && !verdict.questionCorrect;
     if (miss) await saveAttempts(tx, key, day, { ...state, misses: state.misses + 1 });
     return { ...verdict, remainingAttempts: remaining - Number(miss) };
   }));
 
-export const gamesRouter = router({ status, hint, check });
+const completeWatch = protectedProcedure
+  .input(gameInput)
+  .output(z.object({ correct: z.literal(true), complete: z.literal(true), remainingAttempts: z.number().int().nonnegative() }))
+  .mutation(({ ctx, input }) => withTx(async (tx) => {
+    const learnerId = ctx.learnerId;
+    const loaded = await loadGame(tx, learnerId, input, true);
+    const { game } = loaded;
+    const kind = game.kind;
+    if (kind.kind !== "grid" || kind.mode !== "watch" || !kind.solution) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Only a watch game completes this way" });
+    }
+    if (!grade(game, { kind: "grid", program: kind.solution }).complete) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The authored solution does not solve this game" });
+    }
+    await recordWin(tx, learnerId, loaded);
+    const { misses } = await loadAttempts(tx, attemptKey(learnerId, loaded), attemptDay());
+    return { correct: true as const, complete: true as const, remainingAttempts: Math.max(0, attemptLimit(game) - misses) };
+  }));
+
+export const gamesRouter = router({ status, hint, check, completeWatch });
