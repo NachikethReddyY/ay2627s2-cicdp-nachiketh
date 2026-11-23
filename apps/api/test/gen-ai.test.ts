@@ -14,7 +14,6 @@ import { setModerationClient } from "../src/safety/moderation.ts";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import lesson1 from "../../web/src/player/fixtures/lesson1.ts";
 
 const realLesson = generator.lesson;
 const app = buildApp();
@@ -213,31 +212,22 @@ test("predict generation rejects an ambiguous union cloze and serves the repaire
     new URL("../../../services/engine/tests/fixtures/ambiguous_union_cloze.json", import.meta.url), "utf8",
   ));
   const question = "Which assignment leaves item holding a number?";
-  const mcqStep: GeneratedMcqStep = {
+  const mcqStep: GeneratedMcqStep & { scenario: string } = {
     title: clozeStep.title,
     beforeFiles: clozeStep.beforeFiles,
     hints: clozeStep.hints,
     explanations: clozeStep.explanations,
     concepts: clozeStep.concepts,
     kind: "mcq",
+    scenario: "Suppose item is reassigned to a numeric value instead of a string.",
     prompt: question,
     options: ['item = "42";', "item = 42;", "item = false;", "item === 42;"],
     answer: 1,
     hunks: [{ id: "assign", file: "main.ts", oldStart: 1, lines: [' let item: string | number = "tea";', "+item = 42;"] }],
   };
-  const input = lesson1.steps[0]!.input;
-  const step = (n: number) => ({
-    title: `Step ${n}`,
-    prompt: "What changes?",
-    kind: "mcq",
-    options: ["a", "b", "c", "d"],
-    answer: 2,
-    beforeFiles: input.beforeFiles,
-    hunks: input.hunks,
-    hints: [{ text: "Look at the new line." }],
-    explanations: { workedExample: "It adds a line.", practice: "Add another." },
-    concepts: ["ownership"],
-  });
+  const scenarios: { unrevealedLine: string; step: GeneratedMcqStep & { scenario: string } }[] = JSON.parse(readFileSync(
+    new URL("../../../services/engine/tests/fixtures/predict_scenarios.json", import.meta.url), "utf8",
+  ));
   const seen: { path?: string; token?: unknown; kind?: string } = {};
   let calls = 0;
   const srv = createServer((req, res) => {
@@ -246,7 +236,7 @@ test("predict generation rejects an ambiguous union cloze and serves the repaire
     req.on("end", () => {
       Object.assign(seen, { path: req.url, token: req.headers["x-engine-token"], kind: JSON.parse(raw).lesson.kind });
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ lesson: { steps: [calls++ === 0 ? clozeStep : mcqStep, step(2), step(3)] } }));
+      res.end(JSON.stringify({ lesson: { steps: [calls++ === 0 ? { ...clozeStep, scenario: mcqStep.scenario } : mcqStep, ...scenarios.map(({ step }) => step)] } }));
     });
   }).listen(0);
   const savedUrl = env.ENGINE_URL;
@@ -274,6 +264,21 @@ test("predict generation rejects an ambiguous union cloze and serves the repaire
   const attempt = await t.m("steps.attempt", { id, answer: { kind: "mcq", choice: 1 } });
   assert.equal(out(attempt).correct, true);
   assert.deepEqual(out(await t.q("steps.reveal", { id })).answer, { type: "mcq", index: 1 });
+
+  for (const [i, { step, unrevealedLine }] of scenarios.entries()) {
+    const id = out(res).steps[i + 1].id;
+    const visible = await t.q("steps.get", { id });
+    assert.equal(visible.statusCode, 200, visible.body);
+    assert.equal(out(visible).prompt, `${step.scenario} ${step.prompt}`);
+    assert.deepEqual(out(visible).beforeFiles, step.beforeFiles);
+    assert.deepEqual(out(visible).options, step.options);
+    assert.deepEqual(out(visible).hints, []);
+    assert.doesNotMatch(visible.body, /"(answer|hunks|explanations)":/);
+    assert.equal(visible.body.includes(unrevealedLine), false);
+    assert.equal((await t.q("steps.reveal", { id })).statusCode, 409);
+    assert.equal(out(await t.m("steps.attempt", { id, answer: { kind: "mcq", choice: step.answer } })).correct, true);
+    assert.ok(out(await t.q("steps.reveal", { id })).hunks.some((hunk: { lines: string[] }) => hunk.lines.includes(`+${unrevealedLine}`)));
+  }
 
   setModerationClient(async (text) => ({ flagged: text.includes(question), scores: {} }));
   try {

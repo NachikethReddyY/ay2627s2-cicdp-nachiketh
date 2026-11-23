@@ -8,7 +8,7 @@ import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
 import { aiGenerations, enrollments, generationCache, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type GeneratedPart } from "../db/schema.ts";
 import { generator, type LessonContext } from "./generator.ts";
-import { checkStep, McqStep, text, type GeneratedMcqStep } from "./step-schema.ts";
+import { checkStep, PredictStep, text, type GeneratedMcqStep } from "./step-schema.ts";
 import { EngineError } from "../engine-client/client.ts";
 import { engineParts, type PartContext } from "../engine-client/parts.ts";
 import { validatePart } from "../visuals/gate.ts";
@@ -43,7 +43,7 @@ const Outline = z.union([
   }),
 ]);
 
-const Lesson = z.object({ steps: z.array(McqStep).min(3).max(5) });
+const Lesson = z.object({ steps: z.array(PredictStep).min(3).max(5) });
 
 const slugify = (s: string, max: number) =>
   `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(6).toString("hex")}`;

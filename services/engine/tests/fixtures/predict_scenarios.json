@@ -1,0 +1,58 @@
+[
+  {
+    "hiddenPrompt": "After applying the diff, what does this program print?",
+    "vagueScenario": "Make the upcoming edit.",
+    "unrevealedLine": "const isReady = false;",
+    "step": {
+      "title": "Invert the starting boolean",
+      "scenario": "Suppose isReady starts with the opposite boolean value.",
+      "prompt": "What does this program print?",
+      "kind": "mcq",
+      "options": ["true", "false", "undefined", "null"],
+      "answer": 1,
+      "beforeFiles": {"main.js": "const isReady = true;\nconsole.log(isReady);\n"},
+      "hunks": [
+        {
+          "id": "invert",
+          "file": "main.js",
+          "oldStart": 1,
+          "lines": ["-const isReady = true;", "+const isReady = false;", " console.log(isReady);"]
+        }
+      ],
+      "hints": [{"text": "Trace the value stored in isReady into the log call."}],
+      "explanations": {
+        "workedExample": "The log displays the value held by isReady.",
+        "practice": "Predict what happens if you negate isReady in the log call."
+      },
+      "concepts": ["booleans"]
+    }
+  },
+  {
+    "hiddenPrompt": "What does Python print after the proposed change?",
+    "vagueScenario": "Apply the patch first.",
+    "unrevealedLine": "count = 4",
+    "step": {
+      "title": "Change the starting count",
+      "scenario": "Suppose the initial value of count is doubled.",
+      "prompt": "What does Python print?",
+      "kind": "mcq",
+      "options": ["2", "3", "4", "5"],
+      "answer": 3,
+      "beforeFiles": {"main.py": "count = 2\nprint(count + 1)\n"},
+      "hunks": [
+        {
+          "id": "double",
+          "file": "main.py",
+          "oldStart": 1,
+          "lines": ["-count = 2", "+count = 4", " print(count + 1)"]
+        }
+      ],
+      "hints": [{"text": "First double the starting value, then trace the addition."}],
+      "explanations": {
+        "workedExample": "The new starting value is used as the left operand of the addition.",
+        "practice": "Predict the result when the starting value is tripled."
+      },
+      "concepts": ["addition"]
+    }
+  }
+]
