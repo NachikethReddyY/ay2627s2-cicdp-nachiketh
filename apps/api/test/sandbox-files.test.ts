@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
 import { limiter } from "../src/sandbox/files.ts";
-import { SandboxFileTooLargeError, SandboxNotRunningError, setBackend, type DirEntry, type SandboxFileName } from "../src/sandbox/backend.ts";
+import { SandboxFileTooLargeError, SandboxNotRunningError, setBackend, type DirEntry, type SandboxBackend, type SandboxFileName } from "../src/sandbox/backend.ts";
 
 const app = buildApp();
 env.SANDBOX_ENABLED = true;
@@ -13,7 +13,7 @@ after(() => {
   return app.close();
 });
 
-function fakeFiles(opts: { throwNotRunning?: boolean; entries?: number; missing?: boolean; omit?: boolean; files?: Record<string, string> } = {}) {
+function fakeFiles(opts: { throwNotRunning?: boolean; entries?: number; missing?: boolean; omit?: boolean; files?: Record<string, string> } = {}, methods?: Partial<SandboxBackend>) {
   const rec = {
     writes: [] as { learnerId: string; name: SandboxFileName; content: string }[],
     workspaceWrites: [] as { learnerId: string; path: string; content: string }[],
@@ -58,6 +58,7 @@ function fakeFiles(opts: { throwNotRunning?: boolean; entries?: number; missing?
       throw new Error("unused");
     },
     ...(opts.omit ? {} : { writeFile, listDir, writeWorkspaceFile, readWorkspaceFile }),
+    ...methods,
   });
   return rec;
 }
@@ -76,6 +77,67 @@ const batchRead = (cookie: string, paths: string[]) =>
   app.inject({ method: "POST", url: "/api/sandbox/workspace-files/read", headers: { cookie, origin: env.PUBLIC_ORIGIN }, payload: { paths } });
 const listBatch = (cookie: string, dirs: string[]) =>
   app.inject({ method: "GET", url: `/api/sandbox/files/batch?${dirs.map((dir) => `dir=${encodeURIComponent(dir)}`).join("&")}`, headers: { cookie } });
+const readWorkspace = (cookie: string, path: string) =>
+  app.inject({ url: `/api/sandbox/workspace-file?path=${encodeURIComponent(path)}`, headers: { cookie } });
+const moveWorkspace = (cookie: string, source: string, targetDir: string) =>
+  app.inject({ method: "POST", url: "/api/sandbox/workspace-file/move", headers: { cookie, origin: env.PUBLIC_ORIGIN }, payload: { source, targetDir } });
+
+test("single workspace reads distinguish missing, oversized and unavailable files", async () => {
+  const cookie = await signUp(app);
+  const files = fakeFiles({ files: { "src/app.js": "let n = 1;", "src/wide.js": "文".repeat(22000) } });
+  assert.equal((await readWorkspace("", "src/app.js")).statusCode, 401);
+  for (const path of ["", "../outside"]) assert.equal((await readWorkspace(cookie, path)).statusCode, 400);
+  assert.deepEqual((await readWorkspace(cookie, "src/app.js")).json(), { content: "let n = 1;" });
+  assert.equal((await readWorkspace(cookie, "src/gone.js")).statusCode, 404);
+  for (const path of ["src/wide.js", "huge/file"]) assert.equal((await readWorkspace(cookie, path)).statusCode, 413);
+  assert.deepEqual(files.workspaceReads.map((call) => call.path), ["src/app.js", "src/gone.js", "src/wide.js", "huge/file"]);
+  fakeFiles({ throwNotRunning: true });
+  assert.equal((await readWorkspace(cookie, "src/app.js")).statusCode, 409);
+  fakeFiles({ omit: true });
+  assert.equal((await readWorkspace(cookie, "src/app.js")).statusCode, 501);
+  assert.equal((await batchRead(cookie, ["src/app.js"])).statusCode, 501);
+  assert.equal((await listBatch(cookie, ["src"])).statusCode, 501);
+});
+
+test("workspace moves validate both paths before the backend is called", async () => {
+  const cookie = await signUp(app);
+  const moves: string[][] = [];
+  fakeFiles({}, { moveWorkspaceFile: async (_learner, source, targetDir) => { moves.push([source, targetDir]); } });
+  assert.equal((await moveWorkspace("", "src/app.js", "archive")).statusCode, 401);
+  assert.equal((await moveWorkspace(cookie, "../app.js", "archive")).statusCode, 400);
+  assert.equal((await moveWorkspace(cookie, "src/app.js", "")).statusCode, 400);
+  assert.equal((await moveWorkspace(cookie, "src/app.js", "../archive")).statusCode, 400);
+  assert.deepEqual(moves, []);
+  assert.equal((await moveWorkspace(cookie, "src/app.js", "archive")).statusCode, 204);
+  assert.deepEqual(moves, [["src/app.js", "archive"]]);
+  fakeFiles({}, { moveWorkspaceFile: async () => { throw new SandboxNotRunningError(); } });
+  assert.equal((await moveWorkspace(cookie, "src/app.js", "archive")).statusCode, 409);
+  fakeFiles();
+  assert.equal((await moveWorkspace(cookie, "src/app.js", "archive")).statusCode, 501);
+});
+
+test("workspace saves propagate backend size and shell failures and can be retried", async () => {
+  const cookie = await signUp(app);
+  const body = { path: "src/app.js", content: "let n = 1;" };
+  let failure: Error | undefined = new SandboxNotRunningError();
+  const writes: string[] = [];
+  fakeFiles({}, { writeWorkspaceFile: async (_learner, _path, content) => {
+    if (failure) throw failure;
+    writes.push(content);
+  } });
+  assert.equal((await putWorkspace("", body)).statusCode, 401);
+  assert.equal((await putWorkspace(cookie, { ...body, path: "../app.js" })).statusCode, 400);
+  assert.equal((await putWorkspace(cookie, { ...body, content: 1 })).statusCode, 400);
+  assert.equal((await putWorkspace(cookie, body)).statusCode, 409);
+  failure = new SandboxFileTooLargeError();
+  assert.equal((await putWorkspace(cookie, body)).statusCode, 413);
+  failure = new Error("filesystem unavailable");
+  assert.equal((await putWorkspace(cookie, body)).statusCode, 500);
+  assert.deepEqual(writes, []);
+  failure = undefined;
+  assert.equal((await putWorkspace(cookie, body)).statusCode, 204);
+  assert.deepEqual(writes, [body.content]);
+});
 
 test("signed out is 401 and a disabled sandbox is 503", async () => {
   fakeFiles();

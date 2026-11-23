@@ -2,7 +2,8 @@ import "./helpers.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { daytonaBackend, learnerHash, type DaytonaClient, type DaytonaSandbox } from "../src/sandbox/daytona.ts";
-import { SandboxBusyError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
+import { SandboxBusyError, SandboxFileTooLargeError, SandboxNotRunningError, LIST_MAX_ENTRIES } from "../src/sandbox/backend.ts";
+import { CheckUnavailableError } from "../src/sandbox/checkRunner.ts";
 
 function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: number;  existing?: Partial<DaytonaSandbox>[]; exitCode?: number; mktemp?: { exitCode?: number; result?: string }; logs?: [string, string]; home?: string | undefined; files?: Array<{ name: string; isDir: boolean; size: number; mode: string }>; listStatus?: number; listError?: Error; details?: { isDir: boolean; mode?: string } | "fail"; deleteFails?: boolean; check?: { exitCode: number } } = {}) {
   const log = { created: [] as Record<string, unknown>[], network: [] as boolean[], ptyOptions: [] as Array<{ cwd?: string; envs?: Record<string, string> }>, deleted: 0, started: 0, waited: 0, failedDeletes: 0, reqs: [] as Record<string, unknown>[],  listed: [] as unknown[], input: [] as string[], uploaded: [] as string[], fsOps: [] as string[], homeCalls: 0, listedPaths: [] as string[], cmds: [] as string[], execs: [] as string[], ptyInput: [] as string[], resized: [] as number[][] };
@@ -100,8 +101,155 @@ function fake(opts: { hangLogs?: boolean; failDeletes?: number; createDelay?: nu
       log.deleted++;
     },
   };
-  return { client, log, emit: (s: string) => onData(Buffer.from(s)), end: (code: number) => endPty({ exitCode: code }) };
+  return { client, log, mk, emit: (s: string) => onData(Buffer.from(s)), end: (code: number) => endPty({ exitCode: code }) };
 }
+
+function workspace() {
+  const f = fake();
+  const sandbox = f.mk();
+  const details = new Map<string, { isDir: boolean; mode?: string; size?: number }>([
+    ["src", { isDir: true }],
+    ["archive", { isDir: true }],
+    ["src/app.js", { isDir: false, size: 4 }],
+  ]);
+  const downloaded: string[] = [];
+  const home = "/home/daytona/";
+  sandbox.fs.getFileDetails = async (path) => {
+    const info = details.get(path.slice(home.length));
+    if (!info) throw Object.assign(new Error("not found"), { statusCode: 404 });
+    return info;
+  };
+  sandbox.fs.downloadFile = async (path) => {
+    downloaded.push(path);
+    return Buffer.from("code");
+  };
+  f.client.list = async function* () { yield sandbox; };
+  return { ...f, sandbox, details, downloaded, backend: daytonaBackend({ client: f.client }), home };
+}
+
+test("workspace reads regular files and skips missing files, folders and links", async () => {
+  const { backend, details, downloaded, home, log } = workspace();
+  details.set("src/link.js", { isDir: false, mode: "L", size: 4 });
+  details.set("link", { isDir: true, mode: "L" });
+  const read = (path: string) => backend.readWorkspaceFile!("learner", path);
+  assert.equal(await read("src/app.js"), "code");
+  for (const path of ["src", "src/gone.js", "src/link.js", "link/app.js", "src/app.js/child"]) {
+    assert.equal(await read(path), null, path);
+  }
+  assert.deepEqual(downloaded, [home + "src/app.js"]);
+  assert.equal(log.homeCalls, 1);
+});
+
+test("workspace reads reject unknown sizes and enforce the byte limit again after download", async () => {
+  const { backend, details, sandbox, downloaded } = workspace();
+  const read = () => backend.readWorkspaceFile!("learner", "src/app.js");
+  details.set("src/app.js", { isDir: false });
+  await assert.rejects(read(), SandboxFileTooLargeError);
+  details.set("src/app.js", { isDir: false, size: 65537 });
+  await assert.rejects(read(), SandboxFileTooLargeError);
+  assert.deepEqual(downloaded, []);
+
+  details.set("src/app.js", { isDir: false, size: 65536 });
+  sandbox.fs.downloadFile = async () => Buffer.alloc(65537);
+  await assert.rejects(read(), SandboxFileTooLargeError);
+  delete sandbox.fs.downloadFile;
+  await assert.rejects(read(), /not supported/);
+});
+
+test("a failed Daytona workspace read invalidates the cached shell", async () => {
+  const { backend, client, sandbox } = workspace();
+  const read = () => backend.readWorkspaceFile!("learner", "src/app.js");
+  assert.equal(await read(), "code");
+  sandbox.fs.getFileDetails = async () => { throw new Error("Daytona unavailable"); };
+  await assert.rejects(read(), /Daytona unavailable/);
+  const recovered = workspace().sandbox;
+  client.list = async function* () { yield recovered; };
+  assert.equal(await read(), "code");
+});
+
+test("workspace moves require a regular source and a free destination", async () => {
+  const { backend, details, home, log, sandbox } = workspace();
+  const move = () => backend.moveWorkspaceFile!("learner", "src/app.js", "archive");
+  details.set("archive/app.js", { isDir: false });
+  await assert.rejects(move(), /already exists/);
+  details.delete("archive/app.js");
+  details.set("archive", { isDir: true, mode: "L" });
+  await assert.rejects(move(), /Destination folder is unavailable/);
+  details.set("archive", { isDir: true });
+  details.set("src/app.js", { isDir: true });
+  await assert.rejects(move(), /Workspace file is unavailable/);
+  details.set("src/app.js", { isDir: false });
+  details.set("src", { isDir: false });
+  await assert.rejects(move(), /Workspace file is unavailable/);
+  assert.deepEqual(log.execs, []);
+  details.set("src", { isDir: true });
+  await move();
+  assert.equal(log.execs[0], `mv -n -T -- '${home}src/app.js' '${home}archive/app.js' && test ! -e '${home}src/app.js'`);
+  sandbox.process.executeCommand = async () => ({ exitCode: 1 });
+  await assert.rejects(move(), /Could not move the file/);
+});
+
+test("workspace writes reject a directory or a linked parent and replace a linked file", async () => {
+  const { backend, details, home, log } = workspace();
+  const write = () => backend.writeWorkspaceFile!("learner", "src/app.js", "updated");
+  details.set("src", { isDir: true, mode: "L" });
+  await assert.rejects(write(), /not a regular file path/);
+  details.set("src", { isDir: true });
+  details.set("src/app.js", { isDir: true });
+  await assert.rejects(write(), /not a regular file path/);
+  assert.deepEqual(log.fsOps, []);
+  details.set("src/app.js", { isDir: false, mode: "L" });
+  await write();
+  assert.deepEqual(log.fsOps, [`delete ${home}src/app.js`, `upload ${home}src/app.js`]);
+});
+
+test("concurrent shell creation across servers reuses the named sandbox with matching ownership", async () => {
+  const f = fake();
+  const owner = "learner-1";
+  const shell = f.mk({ labels: { app: "learnquest", role: "shell", learner: learnerHash(owner) } });
+  f.client.create = async () => {
+    f.client.get = async () => shell;
+    throw Object.assign(new Error("duplicate name"), { statusCode: 409 });
+  };
+  const backend = daytonaBackend({ client: f.client });
+  const size = { cols: 80, rows: 24 };
+  const terminal = await backend.openShell(owner, size);
+  assert.equal(f.log.ptyOptions.length, 1);
+  terminal.kill();
+  await assert.rejects(backend.openShell("different-learner", size), /unexpected ownership labels/);
+  assert.equal(f.log.ptyOptions.length, 1);
+});
+
+test("opening a terminal releases the slot when workspace setup fails", async () => {
+  const f = fake();
+  const shell = f.mk({ labels: { app: "learnquest", role: "shell", learner: learnerHash("learner") } });
+  f.client.get = async () => shell;
+  const details = shell.fs.getFileDetails;
+  shell.fs.getFileDetails = async () => ({ isDir: false, mode: "-" });
+  const backend = daytonaBackend({ client: f.client, maxShells: () => 1 });
+  const size = { cols: 80, rows: 24 };
+  await assert.rejects(backend.openShell("learner", size), /Workspace path is not a regular directory/);
+  assert.deepEqual(f.log.uploaded, []);
+  shell.fs.getFileDetails = details;
+  const terminal = await backend.openShell("learner", size);
+  terminal.kill();
+});
+
+test("checks clean up the disposable sandbox if preparation fails", async () => {
+  const noHome = fake({ home: undefined });
+  const failedSetup = fake();
+  failedSetup.client.create = async () => {
+    const shell = failedSetup.mk();
+    shell.process.executeCommand = async () => ({ exitCode: 1 });
+    return shell;
+  };
+  for (const f of [noHome, failedSetup]) {
+    const backend = daytonaBackend({ client: f.client });
+    await assert.rejects(backend.runChecks!("console.log(1)", "javascript", []), CheckUnavailableError);
+    assert.equal(f.log.deleted, 1);
+    assert.deepEqual(f.log.uploaded, []);
+  }
+});
 
 test("writeWorkspaceFile creates missing parent folders before uploading", async () => {
   const f = fake({ existing: [{ state: "started" }] });
