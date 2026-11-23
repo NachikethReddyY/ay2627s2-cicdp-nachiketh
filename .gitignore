@@ -18,3 +18,6 @@ __pycache__/
 .DS_Store
 .repo-index/
 .agent-review/
+.posthog/
+.posthog-wizard-cache/
+posthog-ai-observability-report.md
