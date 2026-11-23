@@ -1,6 +1,9 @@
 import { Link } from "@tanstack/react-router";
+import { authClient } from "../lib/auth";
 import type { RouterOutputs } from "../lib/trpc";
+import { Logo } from "./landing/Logo";
 import "./home.css";
+import "./dashboard.css";
 
 type Dashboard = RouterOutputs["admin"]["dashboard"];
 type Totals = Dashboard["monthToDate"];
@@ -32,11 +35,24 @@ function SpendRow({ label, totals }: { label: string; totals: Totals }) {
 
 export default function Admin({ dashboard }: { dashboard: Dashboard }) {
   const { monthToDate, days } = dashboard;
+  const { data: session } = authClient.useSession();
+  const initial = session?.user.email?.charAt(0).toUpperCase() ?? "?";
   return (
-    <div className="lq lq-moon">
+    <div className="lq lq-dashboard">
+      <header className="lq-dashboard-header">
+        <div className="lq-topbar">
+          <Link to="/" className="lq-logo">
+            <Logo />
+          </Link>
+          <nav className="lq-topnav" aria-label="Main">
+            <Link to="/" className="lq-topnav-link">Home</Link>
+            <Link to="/explore" className="lq-topnav-link">Explore</Link>
+            <Link to="/account" className="lq-avatar" aria-label="Account settings">{initial}</Link>
+          </nav>
+        </div>
+      </header>
       <main className="lq-wrap grid gap-5">
-        <Link to="/account" className="lq-topnav-link mt-6 justify-self-start">Back to account</Link>
-        <h1 className="lq-hero-title">AI spend</h1>
+        <h1>AI spend</h1>
         <section className="lq-card grid gap-4 p-5 sm:p-7" aria-labelledby="spend-period">
           <h2 id="spend-period" className="text-lg">Month to date (UTC)</h2>
           <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Daily AI spend">
