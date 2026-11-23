@@ -19,7 +19,7 @@ Routes marked dev or test only exist in non-production builds.
 | Editor lab | `/editor?lesson=<slug>` (optional `&course=<slug>`) | `apps/web/src/pages/EditorLab.tsx`, target in `pages/labTarget.ts` | Opens the same **Workbench** as `/play`, with Run, Submit, Lint and Sloppy. A scrim lab opens after all its predictions are confirmed. **Results** offers the reference solution after three graded submissions for the current lesson version, when the exercise has a saved solution. Run and Lint do not count. All expected output and hidden test inputs stay server-side. |
 | Account | `/account` | `apps/web/src/pages/Account.tsx` | Changes their public handle under **Profile** once every 30 days after confirming it and sees when they can change it again. |
 | Docs | `/docs` | `apps/web/src/pages/Docs.tsx` | Reads how lessons work, sees the Free limits and planned Pro limits, and finds the feedback link. |
-| Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads the committed release notes. Refresh them with `pnpm --filter @learnquest/web changelog:sync`. |
+| Changelog | `/changelog` | `apps/web/src/pages/Changelog.tsx` | Reads the committed release notes and can report a problem on GitHub. Refresh the release notes with `pnpm --filter @learnquest/web changelog:sync`. |
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
 | Editor / player fixtures (test) | `/test/editor`, `/test/player` | `apps/web/src/pages/TestEditor.tsx`, `TestPlayer.tsx` | Fixtures for e2e. |

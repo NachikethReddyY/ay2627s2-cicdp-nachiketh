@@ -1,0 +1,49 @@
+name: Other feedback
+description: Report another problem or suggest an improvement.
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This report and any attachments will be public on GitHub.
+        Leave out LearnSlop handles, email addresses, passwords, tokens and other personal details.
+  - type: textarea
+    id: actual
+    attributes:
+      label: What went wrong?
+      description: Describe the problem or what could be better.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+      description: Describe what you expected or what would help.
+  - type: input
+    id: where
+    attributes:
+      label: Where did it happen?
+      description: Give the page, course or lesson name if relevant. You can include a public URL without query parameters.
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List what you did before the problem appeared, if relevant.
+  - type: input
+    id: browser-device
+    attributes:
+      label: Browser and device (optional)
+      placeholder: Safari on iPhone
+  - type: upload
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Cover any personal details before attaching a screenshot.
+    validations:
+      accept: ".png,.jpg,.jpeg,.gif,.webp"
+  - type: input
+    id: contact
+    attributes:
+      label: Contact preference (optional)
+      description: Say if you would like a follow-up in the replies on this GitHub issue.

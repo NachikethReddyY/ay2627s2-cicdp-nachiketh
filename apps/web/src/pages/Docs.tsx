@@ -96,8 +96,8 @@ export default function Docs() {
         <section id="feedback" className="dc-section" aria-labelledby="feedback-h">
           <h2 id="feedback-h" className="dc-h2">Feedback</h2>
           <p>
-            Report a bug or request a feature on <a href={FEEDBACK_URL}>GitHub Issues</a>. Bug reports help most when they include the
-            lesson or page, what you did, what you expected, and what happened. Do not include passwords or personal details.
+            Report a bug, flag a lesson problem or suggest an improvement on <a href={FEEDBACK_URL}>GitHub Issues</a>.
+            Reports and screenshots are public. Leave out LearnSlop handles, email addresses, passwords, tokens and other personal details.
           </p>
         </section>
       </main>

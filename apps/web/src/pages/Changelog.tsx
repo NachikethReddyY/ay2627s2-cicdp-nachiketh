@@ -9,9 +9,10 @@ import {
   BreadcrumbSeparator,
 } from "../components/ui/breadcrumb";
 import { releases } from "./changelog-releases.generated";
+import { FEEDBACK_URL, REPO_URL } from "./feedback";
 import "./changelog.css";
 
-const RELEASES_URL = "https://github.com/NachikethReddyY/ay2627s2-cicdp-nachiketh/releases";
+const RELEASES_URL = `${REPO_URL}/releases`;
 
 const formatDate = (iso: string) =>
   new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(iso));
@@ -46,6 +47,7 @@ export default function Changelog() {
         <h1 className="cl-h1">Release notes</h1>
         <p className="cl-lead">
           Each LearnSlop release, newest first. Open one to see what changed. <a href={RELEASES_URL}>All releases on GitHub</a>
+          {" · "}<a href={FEEDBACK_URL}>Report a problem</a>
         </p>
         <ol className="cl-list">
           {releases.map((release) => (
