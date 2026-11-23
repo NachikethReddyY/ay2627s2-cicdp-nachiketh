@@ -93,7 +93,9 @@ export type GuideWidget =
   | { type: "hint"; title: string; body: string }
   | { type: "steps"; title: string; items: string[] }
   | { type: "question"; text: string };
-export type GuideChatMessage = { role: "user" | "assistant"; content: string };
+export type GuideChatMessage =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; widgets?: GuideWidget[] };
 export const askEditorGuide = (input: {
   lessonId?: string;
   fileName: string;

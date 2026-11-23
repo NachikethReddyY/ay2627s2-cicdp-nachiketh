@@ -3,7 +3,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { trpc } from "../../lib/trpc";
 import { dismissJob, getJob, getQueue, startGeneration, subscribeJob } from "./generationJob";
 import { generatorError } from "./generatorErrors";
-import { Flame } from "lucide-react";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
 
@@ -41,11 +40,8 @@ export default function Generator() {
   };
 
   return (
-    <section className="lq-card lq-gen lq-gen-photo lq-bg-blue lq-rise d1" aria-labelledby="gen-h">
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h2 id="gen-h" style={{ fontSize: 14, fontFamily: "var(--mono)", fontWeight: 500, letterSpacing: ".04em", color: "var(--mu)" }}>Learn a programming concept</h2>
-        <span className="lq-ai-tag">AI</span>
-      </div>
+    <section className="lq-card lq-gen" aria-labelledby="gen-h">
+      <h2 id="gen-h">Learn a programming concept</h2>
       <form onSubmit={submit}>
         <label htmlFor="gen-q">What do you want to learn to code?</label>
         <div className="lq-gen-row">
@@ -64,10 +60,9 @@ export default function Generator() {
         </div>
       </form>
       <ul className="lq-chips" aria-label="Quick picks">
-        {chips.map((c, i) => (
+        {chips.map((c) => (
           <li key={c}>
-            <button className="lq-chip relative" type="button" onClick={() => { setQ(c); setEmpty(false); }}>
-              {i === 0 && <span className="lq-hot"><Flame size={12} strokeWidth={2.5} aria-hidden="true" />HOT</span>}
+            <button className="lq-chip" type="button" onClick={() => { setQ(c); setEmpty(false); }}>
               {c}
             </button>
           </li>

@@ -14,6 +14,11 @@ import { lintCode, sourceLineOf } from "../lint/index.ts";
 import { getBackend, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxBackend } from "../sandbox/backend.ts";
 
 const Body = z.object({ prompt: z.string().min(1).max(500) });
+const GuideWidget = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("hint"), title: z.string().trim().min(1).max(80), body: z.string().trim().min(1).max(350) }),
+  z.object({ type: z.literal("steps"), title: z.string().trim().min(1).max(80), items: z.array(z.string().trim().min(1).max(350)).min(1).max(4) }),
+  z.object({ type: z.literal("question"), text: z.string().trim().min(1).max(250) }),
+]);
 const GuideBody = z.object({
   lessonId: z.string().regex(/^[\w-]{1,64}$/).optional(),
   fileName: z.string().min(1).max(240),
@@ -22,14 +27,12 @@ const GuideBody = z.object({
   code: z.string().max(12_000),
   finding: z.object({ ruleId: z.string().min(1).max(120), line: z.number().int().min(1).max(100_000), column: z.number().int().min(1).max(100_000).optional() }).optional(),
   selection: z.string().max(3_000).default(""),
-  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(2_000) })).min(1).max(8),
+  messages: z.array(z.discriminatedUnion("role", [
+    z.object({ role: z.literal("user"), content: z.string().min(1).max(2_000) }),
+    z.object({ role: z.literal("assistant"), content: z.string().min(1).max(2_000), widgets: z.array(GuideWidget).max(3).optional() }),
+  ])).min(1).max(8),
 }).refine((body) => body.messages.at(-1)?.role === "user");
-const GuideWidget = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("hint"), title: z.string().max(80), body: z.string().max(350) }),
-  z.object({ type: z.literal("steps"), title: z.string().max(80), items: z.array(z.string().max(350)).min(1).max(4) }),
-  z.object({ type: z.literal("question"), text: z.string().max(250) }),
-]);
-const GuideResponse = z.object({ guide: z.object({ message: z.string().min(1).max(1200), widgets: z.array(GuideWidget).max(3) }) });
+const GuideResponse = z.object({ guide: z.object({ message: z.string().trim().min(1).max(1200), widgets: z.array(GuideWidget).max(3) }) });
 const guideCalls = new Map<string, { started: number; count: number }>();
 const GUIDE_MAX_FILES = 24;
 const GUIDE_MAX_DEPTH = 4;
