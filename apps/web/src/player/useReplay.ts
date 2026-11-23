@@ -49,6 +49,7 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
     let last = performance.now();
     let shown = last;
     const tick = (now: number) => {
+      if (!playingRef.current) return;
       const sp = speedRef.current;
       const nt = Math.min(timeline.duration, tRef.current + (now - last) * (sp === "instant" ? 1 : sp));
       last = now;
@@ -104,6 +105,11 @@ export function useReplay(timeline: Timeline, onFrame: (r: SeekResult) => void) 
     t,
     play,
     pause,
+    pauseAtFrame: () => {
+      pause();
+      setT(tRef.current);
+      return seek(timeline, tRef.current);
+    },
     toggle: () => (playingRef.current ? pause() : play()),
     seek: go,
     seekBy: (ms: number) => go(tRef.current + ms),

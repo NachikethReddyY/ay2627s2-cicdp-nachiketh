@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
-import { seek, type Timeline } from "@learnquest/player-core";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
+import { seek, type SeekResult, type Timeline } from "@learnquest/player-core";
 import EditorPane, { type EditorHandle } from "./EditorPane";
 import Window from "./Window";
 import TransportBar from "./TransportBar";
@@ -12,6 +12,8 @@ import { FOCUS } from "./ui";
 import { Logo } from "../pages/landing/Logo";
 import { createSpeaker, type Synth, type Utterance } from "./speech";
 import "./player.css";
+
+const ReplayFork = lazy(() => import("./live/ReplayFork"));
 
 const KEYS: [string, string][] = [
   ["Space / K", "Play or pause"],
@@ -49,7 +51,7 @@ const useDesktop = () =>
     () => false,
   );
 
-type Live = { idx: number; finished?: boolean; panel: ReactNode | null; footer?: ReactNode; footerAfterReplay?: boolean; playKey: unknown; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
+type Live = { idx: number; finished?: boolean; panel: ReactNode | null; footer?: ReactNode; footerAfterReplay?: boolean; playKey: unknown; forkLessonId?: string; narration?: string; narrationText?: string; code?: { title: string; tool: ReactNode; body: ReactNode } };
 type Sample = { mode: "task" | "video"; examples: string[] };
 type Props = { title: string; stepTitles: string[]; timeline: Timeline; live?: Live; sample?: Sample };
 
@@ -70,6 +72,9 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
   const code = live?.code;
   const editorRef = useRef<EditorHandle>(null);
   const playRef = useRef<HTMLButtonElement>(null);
+  const forkRef = useRef<HTMLDialogElement>(null);
+  const forkButtonRef = useRef<HTMLButtonElement>(null);
+  const [fork, setFork] = useState<{ frame: SeekResult; path: string } | null>(null);
   const helpRef = useRef<HTMLDialogElement>(null);
   const aboutRef = useRef<HTMLDialogElement>(null);
   const deskRef = useRef<HTMLElement>(null);
@@ -190,7 +195,7 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
       e.preventDefault();
       return;
     }
-    if (code) return;
+    if (code || el.closest("dialog")) return;
     if (e.ctrlKey || e.metaKey || e.altKey || el.closest(".monaco-editor, input, select, textarea, [role=slider], [role=menubar], [role=menu], [data-move-handle]")) return;
     const onButton = el.tagName === "BUTTON";
     const k = e.key;
@@ -274,6 +279,22 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
           {stepTitle}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {live?.forkLessonId && paths.length > 0 && (
+            <button
+              ref={forkButtonRef}
+              type="button"
+              className={`pill min-h-8 px-3 text-sm ${FOCUS}`}
+              onClick={() => {
+                const snapshot = r.pauseAtFrame();
+                audioRef.current?.pause();
+                speaker?.pause();
+                setFork({ frame: snapshot, path: picked && picked in snapshot.files ? picked : snapshot.activePath });
+                forkRef.current?.showModal();
+              }}
+            >
+              Edit from here
+            </button>
+          )}
           {live?.footer && (!live.footerAfterReplay || ended) && <div className="menu-next flex items-center gap-2">{live.footer}</div>}
           <div role="group" aria-label={`Step ${cur + 1} of ${N}`} className="flex items-center gap-1.5">
             <div aria-hidden="true" className="flex gap-0.5">
@@ -396,6 +417,28 @@ export default function Player({ title, stepTitles, timeline, live, sample }: Pr
         Step {cur + 1}: {stepTitle}
       </div>
       {narration && <audio ref={audioRef} key={narration} src={narration} preload="auto" onError={() => setFailedAudio(narration)} />}
+
+      {live?.forkLessonId && (
+        <dialog
+          ref={forkRef}
+          aria-labelledby="fork-h"
+          className="m-auto w-[calc(100%_-_1rem)] max-w-4xl overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] text-ink shadow-xl backdrop:bg-black/55"
+          onClose={() => {
+            setFork(null);
+            forkButtonRef.current?.focus();
+          }}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-2">
+            <h2 id="fork-h" className="text-base font-semibold">Replay workspace</h2>
+            <button type="button" autoFocus className={`pill min-h-11 px-3 text-sm ${FOCUS}`} onClick={() => forkRef.current?.close()}>Back to replay</button>
+          </div>
+          {fork && (
+            <Suspense fallback={<p role="status" className="p-4">Opening the editor…</p>}>
+              <ReplayFork lessonId={live.forkLessonId} files={fork.frame.files} initialPath={fork.path} />
+            </Suspense>
+          )}
+        </dialog>
+      )}
 
       <dialog ref={aboutRef} aria-labelledby="about-h" className="chunk m-auto max-w-sm p-5 text-ink">
         <h2 id="about-h" className="text-xl font-semibold tracking-tight">

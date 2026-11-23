@@ -102,7 +102,7 @@ export default function LiveLesson({ slug, course }: { slug: string; course?: st
       </Notice>;
     const read = (footer: ReactNode) => {
       if (part?.kind === "learn") return <Suspense fallback={fallback}><div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div></Suspense>;
-      if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView title={data.title} part={part} next={footer} completed={data.completed} /></Suspense>;
+      if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView lessonId={data.id} title={data.title} part={part} next={footer} completed={data.completed} /></Suspense>;
       return fallback;
     };
     if (checked) return <Suspense fallback={fallback}><CheckedLesson key={data.id} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson></Suspense>;
