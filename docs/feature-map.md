@@ -36,7 +36,7 @@ The Course Path track labels one lesson **Up next** and distinguishes it from ot
 
 | Name | Code | Notes |
 |---|---|---|
-| Workbench | `player/live/LessonWorkbench.tsx` | The top toolbar opens File explorer and Sloppy AI. Sloppy opens on the right alongside the editor, where the lesson panel offers Task, Results and Docs. On desktop the dock provides shortcuts to the editor, Terminal, Task, Docs and Sloppy. |
+| Workbench | `player/live/LessonWorkbench.tsx` | The top toolbar opens File explorer and Sloppy AI. Sloppy opens on the right alongside the editor, where the lesson panel offers Task, Results and Docs. Lesson navigation sits at the bottom of Task. On desktop the dock opens the editor, Terminal and Sloppy. |
 | Steps | `player/live/Steps.tsx`, `player/stepMachine.ts` | The lesson step sequence. **Predict before reveal** is enforced here and on the server. |
 | Editor pane | `player/EditorPane.tsx` | Monaco editor for practice code. |
 | Explorer / file tree | `player/workbench/SandboxFiles.tsx`, `player/workbench/FileTreeView.tsx` | In Files, the Explorer lists the current lesson workspace. Its toolbar creates files and folders, saves the selected file and refreshes the list. Search finds text in the open file, and Problems lists its editor and lint diagnostics. Source control and the debugger are unavailable in lesson workspaces. |

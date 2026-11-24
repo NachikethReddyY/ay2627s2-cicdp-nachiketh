@@ -1,6 +1,6 @@
 import type { GuideChat } from "../workbench/PlannedParts";
 import { Suspense, lazy, useRef, useState, type ReactNode } from "react";
-import { BookOpen, Check, FileText, ListChecks, Play, Sparkles, Terminal } from "lucide-react";
+import { Check, ListChecks, Play, Sparkles, Terminal } from "lucide-react";
 import { usePostHog } from "@posthog/react";
 import { useLessonAnalytics } from "./lessonAnalytics";
 import { usePanel } from "../terminal/usePanel";
@@ -129,6 +129,7 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
     setGuideOpen(true);
     setRevealDocs((n) => n + 1);
   };
+  const toggleGuide = () => guideOpen ? setGuideOpen(false) : showGuide();
   const can = actionGuards({ busy: launching, checkBusy: r.checkBusy, lintBusy: r.lintBusy, code: extra ? "" : code });
   const run = async () => {
     const socket = r.terminals.find((item) => item.id === r.activeTerminal)?.socket;
@@ -204,8 +205,8 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
       {lintButton}
       {media && <button type="button" className="wb-tb" onClick={() => show("video")}>Watch</button>}
     </div>
-    <aside className="wb-lesson-next">{next}</aside>
   </>;
+  const lessonNavigation = <div className="wb-lesson-next">{next}</div>;
   const editorPath = extra?.path ?? fileName;
   const editorLanguage = extra ? extra.path.endsWith(".py") ? "python" : /\.tsx?$/.test(extra.path) ? "typescript" : "javascript" : language;
   const docs = (
@@ -224,7 +225,10 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
           </Segmented>
         )}
       </div>
-      <div hidden={guideOpen || tab !== "instructions"} className="wb-prose wb-scroll min-h-0 flex-1 overflow-auto px-3 py-2.5">{instructions}</div>
+      <div hidden={guideOpen || tab !== "instructions"} className="flex min-h-0 flex-1 flex-col">
+        <div className="wb-prose wb-scroll min-h-0 flex-1 overflow-auto px-3 py-2.5">{instructions}</div>
+        {lessonNavigation}
+      </div>
       {media && !guideOpen && tab === "video" && (
         <div className="wb-scroll min-h-0 flex-1 overflow-auto">
           <LessonVideo
@@ -295,12 +299,8 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
         { id: "editor", label: "Focus code editor", art: <EditorAppIcon />, onSelect: () => editorRef.current?.focus() },
         { id: "terminal", label: "Toggle terminal", art: <span className={`${dockTile} bg-gradient-to-b from-zinc-600 to-zinc-950`}><Terminal size={23} aria-hidden="true" /></span>,
           pressed: panel.state.open, onSelect: () => panelDispatch({ type: "toggle" }) },
-        { id: "task", label: "Open lesson task", art: <span className={`${dockTile} bg-gradient-to-b from-emerald-600 to-emerald-800`}><FileText size={23} aria-hidden="true" /></span>,
-          dividerBefore: true, onSelect: () => show("instructions") },
-        { id: "docs", label: "Open lesson docs", art: <span className={`${dockTile} bg-gradient-to-b from-blue-500 to-blue-800`}><BookOpen size={23} aria-hidden="true" /></span>,
-          onSelect: () => show("docs") },
         { id: "sloppy", label: "Open Sloppy AI", art: <span className={`${dockTile} bg-gradient-to-b from-violet-500 to-violet-800`}><Sparkles size={23} aria-hidden="true" /></span>,
-          onSelect: showGuide },
+          pressed: guideOpen, onSelect: toggleGuide },
       ]} />}
       terminalSessions={{
         items: r.terminals,
@@ -310,7 +310,7 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
         split: r.splitTerminals,
         onToggleSplit: r.toggleSplit,
       }}
-      instructions={instructions}
+      instructions={<>{instructions}{lessonNavigation}</>}
       docs={docs}
       actions={actions}
       paletteFiles={[{ id: fileName, title: fileName, sub: lessonId }]}
@@ -332,7 +332,7 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
         onDragMove: win.onDragMove,
         onDragEnd: win.onDragEnd,
       }}
-      guide={{ active: guideOpen, onToggle: () => guideOpen ? setGuideOpen(false) : showGuide(), onOpen: showGuide }}
+      guide={{ active: guideOpen, onToggle: toggleGuide, onOpen: showGuide }}
       onGuideSelection={setSelection}
     />
   );

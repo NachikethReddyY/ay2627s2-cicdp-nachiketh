@@ -752,8 +752,23 @@ input.wb-dt-edit:not(.wb-dt-prop):not(.wb-dt-val) { width: calc(100% - 12px); ma
 }
 .wb-workspace-tool:hover:enabled { background: var(--hov); color: var(--tx); }
 .wb-workspace-tool:disabled { opacity: .45; }
-.wb-lesson .wb-lesson-next { margin-top: 16px; padding: 0 10px 10px; border: 1px solid var(--line); border-radius: 10px; }
-.wb-lesson .wb-lesson-next .btn { margin-top: 8px; }
+.wb-lesson .wb-lesson-next { flex: none; padding: 8px 12px; border-top: 1px solid var(--line); }
+.wb-lesson .wb-lesson-next .btn {
+  min-height: 32px;
+  margin: 0;
+  padding: 5px 10px;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--tx);
+  font: inherit;
+  font-weight: 500;
+}
+.wb-lesson .wb-lesson-next .btn:hover:not(:disabled) { background: var(--hov); }
+.wb-lesson .wb-lesson-next .btn svg { flex: none; color: var(--mu); }
+.wb-lesson section .wb-lesson-next { margin-top: 12px; padding-inline: 0; }
 .wb-lesson .wb-ai-user { overflow-wrap: anywhere; }
 .wb-lesson .wb-ai-head { padding-block: 6px 4px; }
 .wb-lesson .wb-ai-avatar { width: 36px; height: 36px; }
