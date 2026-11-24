@@ -21,7 +21,6 @@ export const EFFECT_ALLOWLIST = [
   "src/player/Player.tsx",
   "src/player/Window.tsx",
   "src/player/live/LessonVideo.tsx",
-  "src/player/live/LessonWorkbench.tsx",
   "src/player/live/Steps.tsx",
   "src/player/live/usePracticeRunner.ts",
   "src/player/terminal/TerminalView.tsx",

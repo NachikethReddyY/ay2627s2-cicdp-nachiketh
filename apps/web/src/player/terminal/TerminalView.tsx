@@ -6,7 +6,7 @@ import "@wterm/react/css";
 import type { ShellSocket } from "./shellSocket";
 import { isToggleKey } from "./usePanel";
 
-type TerminalViewProps = { shell: ShellSocket; active?: boolean; fitKey?: string | number };
+type TerminalViewProps = { shell: ShellSocket; active?: boolean; fitKey?: string | number; focusOnActive?: boolean; focusKey?: number };
 
 const LIGHT_COLORS: TerminalThemeColors = {
   foreground: 0x1c1c1e,
@@ -53,15 +53,15 @@ const ROOT_TERM_VARS = {
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 
-export default function TerminalView({ shell, active = true, fitKey }: TerminalViewProps) {
+export default function TerminalView({ shell, active = true, fitKey, focusOnActive = true, focusKey }: TerminalViewProps) {
   const { ref, focus } = useTerminal();
   const [core, setCore] = useState<GhosttyCore | null>(null);
   const [coreError, setCoreError] = useState(false);
   const [terminal, setTerminal] = useState<WTerm | null>(null);
-  const activeRef = useRef(active);
+  const focusActiveRef = useRef(active && focusOnActive);
   const connectedRef = useRef(false);
   const priorFocusRef = useRef<Element | null>(null);
-  activeRef.current = active;
+  focusActiveRef.current = active && focusOnActive;
 
   const applyWorkbenchTheme = useCallback((terminal: WTerm) => {
     const workbench = terminal.element.closest<HTMLElement>(".wb");
@@ -89,8 +89,8 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
 
   useEffect(() => {
     shell.setActive(active);
-    if (active) focus();
-  }, [shell, active, focus]);
+    if (active && focusOnActive) focus();
+  }, [shell, active, focus, focusOnActive, focusKey]);
 
   useEffect(() => {
     if (!active || !terminal) return;
@@ -166,7 +166,7 @@ export default function TerminalView({ shell, active = true, fitKey }: TerminalV
       onReady={(terminal) => {
         setTerminal(terminal);
         connectOnce(terminal.cols, terminal.rows);
-        if (activeRef.current) {
+        if (focusActiveRef.current) {
           focus();
         } else {
           terminal.element.querySelector("textarea")?.blur();

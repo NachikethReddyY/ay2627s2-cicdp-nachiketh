@@ -24,14 +24,15 @@ export function shellUrl(
   loc: { protocol: string; host: string },
   cols: number,
   rows: number,
-  opts?: { wsOrigin?: string; ticket?: string; tabId?: string },
+  opts?: { wsOrigin?: string; ticket?: string; tabId?: string; workspace?: string },
 ): string {
   const tabId = encodeURIComponent(opts?.tabId ?? "practice");
+  const scope = opts?.workspace ? `&workspace=${encodeURIComponent(opts.workspace)}` : "";
   if (opts?.wsOrigin && opts.ticket) {
-    return `${opts.wsOrigin}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}`;
+    return `${opts.wsOrigin}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}&ticket=${encodeURIComponent(opts.ticket)}${scope}`;
   }
   const scheme = loc.protocol.replace(/^http/, "ws");
-  return `${scheme}//${loc.host}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}`;
+  return `${scheme}//${loc.host}/api/sandbox/shell?tab=${tabId}&cols=${cols}&rows=${rows}${scope}`;
 }
 
 export function normalizeWsOrigin(raw: string | undefined): string | undefined {
@@ -97,6 +98,7 @@ interface Deps {
   probe: () => Promise<number>;
   wsOrigin?: string;
   tabId?: string;
+  workspace?: string;
   fetchTicket: () => Promise<string>;
 }
 
@@ -109,7 +111,7 @@ interface Pending {
 export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   const WS = deps.WebSocket ?? globalThis.WebSocket;
   const probe =
-    deps.probe ?? (() => fetch("/api/sandbox/files", { credentials: "include" }).then((r) => r.status));
+    deps.probe ?? (() => fetch(deps.workspace ? `/api/sandbox/files?workspace=${encodeURIComponent(deps.workspace)}` : "/api/sandbox/files", { credentials: "include" }).then((r) => r.status));
   const fetchTicket = deps.fetchTicket ?? defaultFetchTicket;
   const wsOrigin = "wsOrigin" in deps ? normalizeWsOrigin(deps.wsOrigin) : defaultWsOrigin();
   const encoder = new TextEncoder();
@@ -240,7 +242,7 @@ export function createShellSocket(deps: Partial<Deps> = {}): ShellSocket {
   const connectSocket = (gen: number, ticket?: string) => {
     const urlSize = size;
     const socket = new WS(
-      shellUrl(deps.location ?? globalThis.location, urlSize.cols, urlSize.rows, { wsOrigin, ticket, tabId: deps.tabId }),
+      shellUrl(deps.location ?? globalThis.location, urlSize.cols, urlSize.rows, { wsOrigin, ticket, tabId: deps.tabId, workspace: deps.workspace }),
     );
     ws = socket;
     socket.binaryType = "arraybuffer";

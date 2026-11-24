@@ -1,11 +1,11 @@
 import { Suspense, useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { authClient } from "../../lib/auth";
-import { Pause, Play, Square, Volume2, VolumeX } from "lucide-react";
+import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { Notice } from "../../player/live/Notice";
 import { usePracticeRunner } from "../../player/live/usePracticeRunner";
 import { formatTime } from "../../player/live/videoModel";
-import TerminalView from "../../player/terminal/TerminalView";
+import RunBottom, { RunOutput } from "../../player/live/RunBottom";
 import { usePanel } from "../../player/terminal/usePanel";
 import FileTreeView from "../../player/workbench/FileTreeView";
 import Workbench from "../../player/workbench/Workbench";
@@ -391,27 +391,7 @@ function Watch({
     </div>
   );
 
-  const bottom = (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--code)] text-[var(--tx)]">
-      {runner.showOutput && (
-        <section aria-labelledby="studio-out" className="flex max-h-[45%] min-h-24 flex-none flex-col border-b border-[var(--line)]">
-          <div className="flex flex-none items-center gap-2 px-3 py-1">
-            <h3 id="studio-out" className="text-xs font-semibold">Output</h3>
-            {runner.sid && (
-              <button type="button" onClick={runner.stop} className="wb-tb wb-outline ml-auto h-6 px-2 text-xs">
-                <Square size={11} fill="currentColor" aria-hidden="true" /> Stop
-              </button>
-            )}
-          </div>
-          <pre aria-label="Output" tabIndex={0} className="wb-mono m-0 min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-3 pb-2 text-xs">{runner.term}</pre>
-        </section>
-      )}
-      {runner.runNote && <p role="status" className="px-3 py-1 text-xs text-[var(--mu)]">{runner.runNote}</p>}
-      <div className="relative min-h-0 flex-1 p-1">
-        {runner.shell && <TerminalView shell={runner.shell} active={panel.state.open} />}
-      </div>
-    </div>
-  );
+  const bottom = <RunBottom runner={runner} terminalActive={panel.state.open && runner.bottomView === "main"} />;
 
   return (
     <>
@@ -428,6 +408,7 @@ function Watch({
           </div>
         }
         bottom={bottom}
+        runConsole={{ content: <RunOutput runner={runner} />, view: runner.bottomView, select: runner.setBottomView }}
         actions={actions}
         paletteFiles={[{ id: STUDIO_FILE, title: STUDIO_FILE }]}
         paletteCommands={[]}

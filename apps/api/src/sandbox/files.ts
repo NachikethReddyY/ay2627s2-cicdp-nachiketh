@@ -3,7 +3,7 @@ import { z } from "zod";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { MAX_CODE } from "./run.ts";
-import { getBackend, LIST_MAX_ENTRIES, SANDBOX_FILES, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxFileName } from "./backend.ts";
+import { WORKSPACE_NAME, workspaceDir, visibleWorkspaceEntry, WorkspaceEntryExistsError, getBackend, LIST_MAX_ENTRIES, SANDBOX_FILES, SandboxFileTooLargeError, SandboxNotRunningError, type SandboxFileName, type DirListing } from "./backend.ts";
 
 const WINDOW_MS = 60_000;
 const MAX_WRITES = 30;
@@ -21,6 +21,14 @@ export function parseDir(raw: unknown): string | null {
   const parts = raw.split("/");
   if (parts.length > MAX_DEPTH) return null;
   return parts.every((p) => SEGMENT.test(p) && p !== "." && p !== "..") ? raw : null;
+}
+
+function fileListing(listing: DirListing) {
+  return {
+    entries: listing.entries.filter((e) => visibleWorkspaceEntry(e.name)).slice(0, LIST_MAX_ENTRIES)
+      .map((e) => ({ ...e, name: e.name.slice(0, MAX_NAME) })),
+    truncated: listing.truncated || listing.entries.length > LIST_MAX_ENTRIES,
+  };
 }
 
 const fail = (code: string, message: string) => ({ error: { code, message } });
@@ -186,27 +194,52 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  app.get<{ Querystring: { dir?: unknown } }>("/sandbox/files", async (req, reply) => {
+  app.post("/sandbox/workspace-entry", async (req, reply) => {
+    const learner = await learnerFor(req, reply);
+    if (!learner) return reply;
+    if (!writeAllowed(learner)) return tooMany(reply);
+    const input = z.object({
+      workspace: z.string().regex(WORKSPACE_NAME),
+      name: z.string().regex(SEGMENT).refine(visibleWorkspaceEntry),
+      kind: z.enum(["file", "folder"]),
+    }).safeParse(req.body);
+    if (!input.success) return reply.status(400).send(fail("bad_request", "Invalid workspace entry"));
+    const backend = await getBackend();
+    if (!backend.createWorkspaceEntry) return notImplemented(reply);
+    const { workspace, name, kind } = input.data;
+    try {
+      await serial(learner, () => backend.createWorkspaceEntry!(learner, `${workspaceDir(workspace)}/${name}`, kind));
+    } catch (err) {
+      if (err instanceof SandboxNotRunningError) return noShell(reply);
+      if (err instanceof WorkspaceEntryExistsError) return reply.status(409).send(fail("exists", "That name already exists"));
+      throw err;
+    }
+    return reply.status(201).send({ ok: true });
+  });
+
+  app.get<{ Querystring: { dir?: unknown; workspace?: unknown } }>("/sandbox/files", async (req, reply) => {
     const learner = await learnerFor(req, reply);
     if (!learner) return reply;
     if (!listAllowed(learner)) return tooMany(reply);
     const dir = parseDir(req.query.dir);
-    if (dir === null) return reply.status(400).send(fail("bad_request", "Invalid directory"));
+    const scope = req.query.workspace;
+    if (dir === null || (scope !== undefined && (typeof scope !== "string" || !WORKSPACE_NAME.test(scope)
+      || (dir.length > 0 && !dir.split("/").every(visibleWorkspaceEntry))))) {
+      return reply.status(400).send(fail("bad_request", "Invalid directory"));
+    }
+    const target = typeof scope === "string" ? [workspaceDir(scope), dir].filter(Boolean).join("/") : dir;
     const backend = await getBackend();
     if (!backend.listDir) return notImplemented(reply);
     const list = backend.listDir.bind(backend);
     let listing;
     try {
-      listing = await serial(learner, () => list(learner, dir));
+      listing = await serial(learner, () => list(learner, target));
     } catch (err) {
       if (err instanceof SandboxNotRunningError) return noShell(reply);
       throw err;
     }
     if (!listing) return reply.status(404).send(fail("not_found", "No such directory"));
-    return {
-      entries: listing.entries.slice(0, LIST_MAX_ENTRIES).map((e) => ({ ...e, name: e.name.slice(0, MAX_NAME) })),
-      truncated: listing.truncated || listing.entries.length > LIST_MAX_ENTRIES,
-    };
+    return fileListing(listing);
   });
 
   app.get<{ Querystring: { dir?: unknown } }>("/sandbox/files/batch", async (req, reply) => {
@@ -225,10 +258,7 @@ export async function sandboxFilesRoute(app: FastifyInstance) {
       return {
         directories: Object.fromEntries(parsed.map((dir, index) => {
           const listing = listings[index];
-          return [dir, listing ? {
-            entries: listing.entries.slice(0, LIST_MAX_ENTRIES).map((e) => ({ ...e, name: e.name.slice(0, MAX_NAME) })),
-            truncated: listing.truncated || listing.entries.length > LIST_MAX_ENTRIES,
-          } : null];
+          return [dir, listing ? fileListing(listing) : null];
         })),
       };
     } catch (err) {

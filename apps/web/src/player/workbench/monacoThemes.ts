@@ -19,6 +19,16 @@ const DARK: Palette = {
   suggestBg: "#141414", suggestSelectedBg: "#1f1f1f", suggestFocusBorder: "#5583ff", suggestAccent: "#5583ff",
 };
 
+const WORKBENCH_DARK: Palette = {
+  ...DARK,
+  code: "#242426",
+  cur: "#303034",
+  numdim: "#a1a1a8",
+  line: "#37373c",
+  suggestBg: "#2b2b2f",
+  suggestSelectedBg: "#393946",
+};
+
 function build(p: Palette): editor.IStandaloneThemeData {
   return {
     base: p.base,
@@ -62,4 +72,5 @@ function build(p: Palette): editor.IStandaloneThemeData {
 export function defineWorkbenchThemes(monaco: Monaco): void {
   monaco.editor.defineTheme("learnslop-light", build(LIGHT));
   monaco.editor.defineTheme("learnslop-dark", build(DARK));
+  monaco.editor.defineTheme("learnslop-workbench-dark", build(WORKBENCH_DARK));
 }

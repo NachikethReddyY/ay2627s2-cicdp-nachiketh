@@ -698,3 +698,71 @@ input.wb-dt-edit:not(.wb-dt-prop):not(.wb-dt-val) { width: calc(100% - 12px); ma
 }
 .wb .lq-next .btn:hover, .wb .lq-next .btn:active { transform: none; box-shadow: none; filter: brightness(1.1); }
 .wb .lq-next .btn:disabled { opacity: 0.5; }
+
+.wb.wb-lesson[data-resolved="dark"] {
+  --code: #242426;
+  --tbar: #28282b;
+  --side: #252530;
+  --win: #242426;
+  --edge: #43434e;
+  --line: rgb(255 255 255 / 12%);
+  --vib: #252530;
+  --pane2: #303036;
+  --selrow: #3b3b46;
+  --sel: #394766;
+  --hov: #383840;
+  --ac: #305ddd;
+  --acT: #aac2ff;
+  --mu: #b0b0bb;
+}
+
+.wb-desk.wb-lesson[data-resolved="dark"]::before {
+  background-image: url("/img/desktop-dark-wallpaper.jpg");
+  opacity: 0.88;
+}
+
+.wb-desk.wb-lesson[data-resolved="dark"] .wb-win {
+  border-color: var(--edge);
+  border-radius: 16px;
+  box-shadow: 0 20px 55px rgb(8 9 25 / 55%), 0 1px 0 rgb(255 255 255 / 10%) inset;
+}
+
+.wb-lesson .wb-sidebar-top { height: 46px; padding-top: 0; border-bottom: 1px solid var(--line); }
+.wb-lesson .wb-lesson-tools > .wb-tog { min-width: 30px; padding-inline: 0; }
+.wb-lesson .wb-lesson-tools > .wb-tog[aria-pressed="true"] { background: var(--sel); color: var(--acT); }
+.wb-lesson .wb-side .wb-row { height: 25px; }
+.wb-lesson .wb-utility { background: var(--tbar); }
+.wb-lesson .wb-bottom-toolbar { background: var(--tbar); }
+.wb-lesson[data-resolved="dark"] .wb-split-v,
+.wb-lesson[data-resolved="dark"] .wb-split-h { background: var(--code); }
+.wb-lesson[data-resolved="dark"] .wb-tb.wb-primary { box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%); }
+.wb-lesson .wb-file-path,
+.wb-lesson-subhead { height: 36px; border-bottom: 1px solid var(--line); }
+
+.wb-lesson-tabs { width: 100%; min-width: 0; }
+.wb-lesson-tabs > .wb-ptab { flex: 1 1 0; min-width: 0; justify-content: center; padding-inline: 4px; }
+
+.wb-workspace-tool {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--mu);
+}
+.wb-workspace-tool:hover:enabled { background: var(--hov); color: var(--tx); }
+.wb-workspace-tool:disabled { opacity: .45; }
+.wb-lesson .wb-lesson-next { margin-top: 16px; padding: 0 10px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.wb-lesson .wb-lesson-next .btn { margin-top: 8px; }
+.wb-lesson .wb-ai-user { overflow-wrap: anywhere; }
+.wb-lesson .wb-ai-head { padding-block: 6px 4px; }
+.wb-lesson .wb-ai-avatar { width: 36px; height: 36px; }
+.wb-lesson .wb-ai-name { height: 23px; margin-top: -3px; padding-inline: 8px; font-size: 12px; }
+.wb-lesson .wb-ai-guide .wb-ai-composer {
+  margin: auto 0 0;
+  border-width: 1px 0 0;
+  border-style: solid;
+  border-color: var(--line);
+  border-radius: 0;
+  background: var(--tbar);
+}

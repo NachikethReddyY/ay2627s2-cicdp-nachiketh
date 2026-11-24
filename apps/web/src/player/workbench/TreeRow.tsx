@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode, type Ref } from "react";
 import { ChevronRight, Folder, FolderOpen } from "lucide-react";
 import { FileIcon } from "./FileBadge";
 
-export const DrawerCloseContext = createContext<(() => void) | null>(null);
+export const DrawerCloseContext = createContext<((afterClose?: () => void) => void) | null>(null);
 
 type Props = {
   depth: number;

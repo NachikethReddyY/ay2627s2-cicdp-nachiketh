@@ -362,6 +362,15 @@ test("runCode runs in a network-blocked ephemeral sandbox, streams output and de
   assert.equal(f.log.deleted, 1);
 });
 
+test("a Daytona run preloads sample input and redirects stdin from the private file", async () => {
+  const f = fake({ exitCode: 0 });
+  const run = daytonaBackend({ client: f.client }).runCode!("learner", "javascript", "console.log(42)", { timeoutS: 5, stdin: "first\nsecond\n" });
+  assert.equal(await new Promise((resolve) => run.onExit(resolve)), 0);
+  assert.deepEqual(f.log.uploaded, ["/tmp/tmp.Ab3dEf9x/main.js", "/tmp/tmp.Ab3dEf9x/stdin"]);
+  assert.equal(f.log.cmds[0], "timeout -s KILL 5 node '/tmp/tmp.Ab3dEf9x/main.js' < '/tmp/tmp.Ab3dEf9x/stdin'");
+  assert.deepEqual(f.log.input, []);
+});
+
 test("runCode uses a private mktemp directory, not a fixed /tmp name, and removes it after the run", async () => {
   for (const [language, name] of [["python", "main.py"], ["javascript", "main.js"], ["typescript", "main.ts"]] as const) {
     const f = fake({ mktemp: { result: "/tmp/tmp.Zq81\n" } });

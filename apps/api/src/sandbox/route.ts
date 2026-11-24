@@ -3,7 +3,7 @@ import websocket, { type WebSocket } from "@fastify/websocket";
 import { env } from "../env.ts";
 import { resolveLearnerId } from "../auth/guards.ts";
 import { redeemTicket } from "./ticket.ts";
-import { getBackend, SandboxBusyError } from "./backend.ts";
+import { WORKSPACE_NAME, getBackend, SandboxBusyError } from "./backend.ts";
 
 const dim = (v: unknown, fallback: number) =>
   Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 500 ? (v as number) : fallback;
@@ -36,6 +36,8 @@ export async function sandboxRoutes(app: FastifyInstance) {
         if (origin !== env.PUBLIC_ORIGIN && !devLoopback) return fail(403, "forbidden", "Bad origin");
         const tab = (req.query as Record<string, unknown>).tab;
         if (tab !== undefined && !(typeof tab === "string" && TAB.test(tab))) return fail(400, "bad_request", "Invalid tab id");
+        const workspace = (req.query as Record<string, unknown>).workspace;
+        if (workspace !== undefined && !(typeof workspace === "string" && WORKSPACE_NAME.test(workspace))) return fail(400, "bad_request", "Invalid workspace");
         const ticket = (req.query as Record<string, unknown>).ticket;
         const learnerId =
           ticket === undefined ? await resolveLearnerId(req.headers) : typeof ticket === "string" ? redeemTicket(ticket) : null;
@@ -48,7 +50,7 @@ export async function sandboxRoutes(app: FastifyInstance) {
       const learnerId = (req as unknown as { learnerId: string }).learnerId;
       const q = req.query as Record<string, string>;
       const key = `${learnerId}:${q.tab ?? "default"}`;
-      const size = { cols: dim(Number(q.cols), 80), rows: dim(Number(q.rows), 24) };
+      const size = { cols: dim(Number(q.cols), 80), rows: dim(Number(q.rows), 24), ...(q.workspace && { workspace: q.workspace }) };
 
       const sendJson = (m: object) => socket.readyState === socket.OPEN && socket.send(JSON.stringify(m));
       const finish = (m: object) => {

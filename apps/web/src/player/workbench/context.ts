@@ -13,7 +13,7 @@ export type WorkbenchProblem = {
 };
 
 export type WorkbenchContextValue = {
-  monacoTheme: "learnslop-light" | "learnslop-dark";
+  monacoTheme: "learnslop-light" | "learnslop-dark" | "learnslop-workbench-dark";
   wordWrap: boolean;
   setWordWrap(value: boolean): void;
   fileName: string;

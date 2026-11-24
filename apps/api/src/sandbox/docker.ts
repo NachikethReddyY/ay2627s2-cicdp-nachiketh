@@ -8,6 +8,8 @@ import { runInContainer } from "./dockerChecks.ts";
 import { env } from "../env.ts";
 import {
   LIST_MAX_ENTRIES,
+  workspaceDir,
+  WorkspaceEntryExistsError,
   SandboxBusyError,
   SandboxFileTooLargeError,
   SandboxNotRunningError,
@@ -63,7 +65,7 @@ const BASH_RC_PATH = `${HOME}/.learnquest-bashrc`;
 const PIPE_MAX_BYTES = 64 * 1024;
 const PIPE_TIMEOUT_MS = 10_000;
 const NOT_A_DIR = 3;
-const LIST_SCRIPT = `test -d "$1" && ! test -L "$1" || exit ${NOT_A_DIR}; exec find -P "$1" -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%f\\0'`;
+const LIST_SCRIPT = `test -d "$1" && [ "$(realpath -e -- "$1")" = "$1" ] || exit ${NOT_A_DIR}; exec find -P "$1" -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%f\\0'`;
 
 export function containerName(learnerId: string): string {
   return `lq-sbx-${createHash("sha256").update(learnerId).digest("hex").slice(0, 32)}`;
@@ -232,6 +234,15 @@ export function dockerBackend(opts: {
       if (r.code !== 0) throw await failed(name, `writing ${fileName}`, r.code);
     },
 
+    async createWorkspaceEntry(learnerId, relPath, kind) {
+      const name = containerName(learnerId);
+      if (!(await isRunning(name))) throw new SandboxNotRunningError();
+      const script = 'target="$1"; parent=${target%/*}; [ -d "$parent" ] && [ "$(realpath -e -- "$parent")" = "$parent" ] || exit 4; [ ! -e "$target" ] && [ ! -L "$target" ] || exit 5; if [ "$2" = folder ]; then mkdir -- "$target"; else set -C; : > "$target"; fi';
+      const result = await pipe(["exec", "-u", LEARNER_UID, name, "sh", "-c", script, "sh", `${HOME}/${relPath}`, kind]);
+      if (result.code === 5) throw new WorkspaceEntryExistsError();
+      if (result.code !== 0) throw await failed(name, "creating workspace entry", result.code);
+    },
+
     async listDir(learnerId, relDir) {
       const name = containerName(learnerId);
       if (!(await isRunning(name))) throw new SandboxNotRunningError();
@@ -243,7 +254,7 @@ export function dockerBackend(opts: {
       return parseFindOutput(r.stdout, LIST_MAX_ENTRIES);
     },
 
-    async openShell(learnerId, { cols, rows }) {
+    async openShell(learnerId, { cols, rows, workspace }) {
       const name = containerName(learnerId);
       claim(name);
       clearTimeout(timers.get(name));
@@ -262,6 +273,7 @@ export function dockerBackend(opts: {
         t.unref();
         timers.set(name, t);
       };
+      const cwd = `${HOME}/${workspace ? workspaceDir(workspace) : "task-tracker"}`;
       let started = false;
       try {
         await stopping.get(name);
@@ -272,8 +284,10 @@ export function dockerBackend(opts: {
         if (rc.code !== 0) throw await failed(name, "preparing the shell", rc.code);
         const bashRc = await pipe(["exec", "-i", "-u", LEARNER_UID, name, "sh", "-c", 'umask 077; cat > "$1"', "sh", BASH_RC_PATH], BASH_RC);
         if (bashRc.code !== 0) throw await failed(name, "preparing the fallback shell", bashRc.code);
-        const workspace = await pipe(["exec", "-u", LEARNER_UID, name, "mkdir", "-p", `${HOME}/task-tracker`]);
-        if (workspace.code !== 0) throw await failed(name, "preparing the project folder", workspace.code);
+        const prepared = await pipe(workspace
+          ? ["exec", "-u", LEARNER_UID, name, "sh", "-c", 'set -eu; [ "$(realpath -m -- "$1")" = "$1" ]; mkdir -p -- "$1"; [ "$(realpath -e -- "$1")" = "$1" ]', "sh", cwd]
+          : ["exec", "-u", LEARNER_UID, name, "mkdir", "-p", cwd]);
+        if (prepared.code !== 0) throw await failed(name, "preparing the project folder", prepared.code);
       } catch (err) {
         release();
         if (!started && !attached.has(name)) live.delete(name);
@@ -283,9 +297,10 @@ export function dockerBackend(opts: {
       try {
         const hasZsh = await exec("docker", ["exec", name, "sh", "-c", "command -v zsh >/dev/null 2>&1"])
           .then(() => true, () => false);
+        const workdir = workspace ? ["-e", `LQ_WORKSPACE=${cwd}`] : [];
         const command = hasZsh
-          ? ["exec", "-it", "-e", `ZDOTDIR=${SHELL_RC_DIR}`, "-e", "TERM=xterm-256color", name, "zsh", "-i"]
-          : ["exec", "-it", name, "bash", "--rcfile", BASH_RC_PATH, "-i"];
+          ? ["exec", "-it", "-e", `ZDOTDIR=${SHELL_RC_DIR}`, "-e", "TERM=xterm-256color", ...workdir, name, "zsh", "-i"]
+          : ["exec", "-it", ...workdir, name, "bash", "--rcfile", BASH_RC_PATH, "-i"];
         term = spawn("docker", command, {
           name: "xterm-256color",
           cols,

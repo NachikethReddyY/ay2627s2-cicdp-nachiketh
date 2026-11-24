@@ -11,6 +11,7 @@ import { getBackend, type RunHandle } from "./backend.ts";
 export const MAX_CODE = 4000;
 const MAX_OUT = 8000;
 const MAX_LINE = 200;
+const MAX_STDIN = 16_000;
 const LIMIT_S = 60;
 const MAX_ACTIVE = 2;
 let rmTimeoutMs = 10_000;
@@ -24,7 +25,7 @@ type Spawn = typeof nodeSpawn;
 type RunChild = {
   stdout: { on(ev: "data", cb: (d: Buffer) => void): unknown } | null;
   stderr: { on(ev: "data", cb: (d: Buffer) => void): unknown } | null;
-  stdin: { write(s: string): unknown; on(ev: "error", cb: () => void): unknown } | null;
+  stdin: { end?(s: string): unknown; write(s: string): unknown; on(ev: "error", cb: () => void): unknown } | null;
   kill(sig?: NodeJS.Signals): unknown;
   on(ev: "error", cb: () => void): unknown;
   on(ev: "close", cb: (exit: number | null) => void): unknown;
@@ -42,6 +43,7 @@ type Run = {
   overflow: boolean;
   error?: string;
   timer: NodeJS.Timeout;
+  acceptsInput: boolean;
   check?: PracticeCheck;
   passed?: boolean;
 };
@@ -103,7 +105,7 @@ export function reserveCheckSlot(): (() => void) | null {
   return () => { if (!released) { released = true; checkSlots--; } };
 }
 
-function backendChild(learner: string, language: Language, code: string, onStarted: () => void): { child: RunChild; remove: () => Promise<void> } {
+function backendChild(learner: string, language: Language, code: string, onStarted: () => void, input?: string): { child: RunChild; remove: () => Promise<void> } {
   const ee = new EventEmitter();
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
@@ -116,7 +118,7 @@ function backendChild(learner: string, language: Language, code: string, onStart
   const fail = () => { ee.emit("error", new Error("Could not run the code")); };
   const ready = getBackend().then((b) => {
     if (!b.runCode) throw new Error("backend cannot run code");
-    handle = b.runCode(learner, language, code, { timeoutS: LIMIT_S });
+    handle = b.runCode(learner, language, code, { timeoutS: LIMIT_S, ...(input !== undefined && { stdin: input }) });
     handle.onStart(onStarted);
     handle.onStdout((d) => stdout.emit("data", Buffer.from(d)));
     handle.onStderr((d) => stderr.emit("data", Buffer.from(d)));
@@ -134,7 +136,7 @@ function backendChild(learner: string, language: Language, code: string, onStart
   return { child, remove: async () => { await ready; await handle?.kill(); } };
 }
 
-export function startRun(code: string, learner: string, language: Language, spawn: Spawn = nodeSpawn, check?: PracticeCheck): string | null {
+export function startRun(code: string, learner: string, language: Language, spawn: Spawn = nodeSpawn, check?: PracticeCheck, input?: string): string | null {
   let active = 0;
   for (const r of runs.values()) if (r.learner === learner && !r.done) active++;
   if (active >= MAX_ACTIVE || atCapacity()) return null;
@@ -146,21 +148,26 @@ export function startRun(code: string, learner: string, language: Language, spaw
     "--read-only", "--tmpfs", "/tmp:rw,exec,size=16m", "--user", "1001:1001",
     env.SANDBOX_IMAGE, "timeout", "-s", "KILL", String(LIMIT_S), ...INTERPRETER[language], code,
   ];
-  const viaBackend = env.SANDBOX_BACKEND === "daytona" && spawn === nodeSpawn ? backendChild(learner, language, code, () => armBackstop(LIMIT_S + 5)) : null;
+  const viaBackend = env.SANDBOX_BACKEND === "daytona" && spawn === nodeSpawn ? backendChild(learner, language, code, () => armBackstop(LIMIT_S + 5), input) : null;
   const child: RunChild = viaBackend?.child ?? (spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] }));
   const backstop = (s: number) => setTimeout(() => terminate(run, STOPPED), s * 1000).unref();
   const armBackstop = (s: number) => { clearTimeout(run.timer); run.timer = backstop(s); };
-  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, timer: backstop(LIMIT_S + (viaBackend ? SETUP_S : 0) + 5), check };
+  const run: Run = { id, learner, child, spawn, remove: viaBackend?.remove, out: "", done: false, stopping: false, saving: false, overflow: false, acceptsInput: input === undefined, timer: backstop(LIMIT_S + (viaBackend ? SETUP_S : 0) + 5), check };
   runs.set(id, run);
   let err = "";
-  child.stdout?.on("data", (d: Buffer) => {
-    const chunk = d.toString();
+  const capture = (chunk: string) => {
     const room = MAX_OUT - run.out.length;
     run.overflow ||= chunk.length > room;
     if (room > 0) run.out += chunk.slice(0, room);
+  };
+  const streamStderr = input !== undefined && !check;
+  child.stdout?.on("data", (data) => capture(data.toString()));
+  child.stderr?.on("data", (data) => {
+    if (streamStderr) capture(data.toString());
+    else if (err.length < MAX_OUT) err = (err + data.toString()).slice(0, MAX_OUT);
   });
-  child.stderr?.on("data", (d: Buffer) => { if (err.length < MAX_OUT) err = (err + d.toString()).slice(0, MAX_OUT); });
   child.stdin?.on("error", () => {});
+  if (input !== undefined && !viaBackend) child.stdin?.end?.(input);
   child.on("error", () => finish(run, "Could not run the code"));
   child.on("close", (exit) => {
     if (run.stopping) return;
@@ -200,7 +207,7 @@ export function runStatus(id: string, learner: string, from: number) {
 
 export function sendRunInput(id: string, learner: string, line: string): boolean {
   const r = own(id, learner);
-  if (!r || r.done) return false;
+  if (!r || r.done || !r.acceptsInput) return false;
   r.child.stdin?.write(`${line}\n`);
   return true;
 }
@@ -215,6 +222,7 @@ export function stopRun(id: string, learner: string): boolean {
 export async function sandboxRunRoute(app: FastifyInstance) {
   const Start = z.object({
     code: z.string().max(MAX_CODE),
+    stdin: z.string().max(MAX_STDIN).refine((value) => !value.includes("\0")).optional(),
     language: z.enum(["python", "javascript", "typescript"]).default("python"),
     lessonId: z.string().regex(/^[\w-]{1,64}$/).optional(),
   });
@@ -234,7 +242,7 @@ export async function sandboxRunRoute(app: FastifyInstance) {
     const learner = await learnerFor(req, reply);
     if (!learner) return reply;
     const body = Start.safeParse(req.body);
-    if (!body.success) return reply.status(400).send(fail("bad_request", "Code is too long"));
+    if (!body.success) return reply.status(400).send(fail("bad_request", "Invalid code or standard input"));
     let check: PracticeCheck | undefined;
     if (body.data.lessonId) {
       const found = await practiceCheck(learner, body.data.lessonId);
@@ -242,7 +250,7 @@ export async function sandboxRunRoute(app: FastifyInstance) {
       check = found;
     }
     if (atCapacity()) return reply.status(503).send(fail("busy", "The sandbox is busy, try again soon"));
-    const id = startRun(body.data.code, learner, body.data.language, nodeSpawn, check);
+    const id = startRun(body.data.code, learner, body.data.language, nodeSpawn, check, body.data.stdin);
     if (!id) return reply.status(429).send(fail("busy", "Finish your running programs first"));
     return { id };
   });

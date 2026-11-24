@@ -1,8 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createShellSocket, type ShellSocket, type ShellState } from "../terminal/shellSocket";
-import { RunInShellError, STILL_RUNNING, runInShell } from "../terminal/runInShell";
-import { checkPractice, lintPractice, pollPython, putFile, sendPythonLine, startPython, stopPython, type LintFinding, type PyPoll } from "../runPython";
-import { practiceActions, shouldFallBack, skipShellWait } from "./practiceActions";
+import { checkPractice, lintPractice, pollPython, startPython, stopPython, type LintFinding, type PyPoll } from "../runPython";
 import { lintErrorMessage } from "./lintModel";
 import { outputTail } from "./lessonWorkbenchModel";
 import { createRunGate, createRunQueue, withDeadline } from "./runQueue";
@@ -18,10 +16,11 @@ const msg = (e: unknown) => {
   return e.name === "TimeoutError" ? "The sandbox took too long to respond" : e.message;
 };
 
-type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; refreshTree?: () => void; onLint?: (findings: LintFinding[]) => void; startShell?: boolean; standalone?: boolean };
-type RunJob = { source: string; authored: boolean };
+type Options = { lessonId: string; versionId?: string; revision?: string; language: PracticeLanguage; code: string; openTerminal: () => void; workspace?: string; onLint?: (findings: LintFinding[]) => void; startShell?: boolean; standalone?: boolean };
+type TerminalSession = { id: string; label: string; socket: ShellSocket };
+const PRIMARY_TERMINAL = "practice";
 
-export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, refreshTree, onLint, startShell = false, standalone = false }: Options) {
+export function usePracticeRunner({ lessonId, versionId, revision, language, code, openTerminal, workspace, onLint, startShell = false, standalone = false }: Options) {
   const [term, setTerm] = useState("");
   const [attemptCount, setAttemptCount] = useState(0);
   const [result, setResult] = useState<CheckResponse | null>(null);
@@ -32,21 +31,21 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
   const [lintError, setLintError] = useState("");
   const [sid, setSid] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  const [typed, setTyped] = useState("");
-  const [shellRun, setShellRun] = useState(false);
-  const [runNote, setRunNote] = useState<string | undefined>();
-  const [sandboxEnabled, setSandboxEnabled] = useState(true);
+  const [additionalTerminals, setAdditionalTerminals] = useState<TerminalSession[]>([]);
+  const terminalSessionsRef = useRef<TerminalSession[]>([]);
+  const [activeTerminal, setActiveTerminal] = useState(PRIMARY_TERMINAL);
+  const [splitTerminals, setSplitTerminals] = useState(false);
+  const sessionNumber = useRef(1);
+  const [bottomView, setBottomView] = useState<"main" | "console">("main");
   const [shellState, setShellState] = useState<ShellState>({ kind: "idle" });
   const sidRef = useRef<string | null>(null);
   const live = useRef(true);
   const stdout = useRef("");
-  const shellUnreachable = useRef(false);
-  const readyTimeouts = useRef(0);
   const lintSeq = useRef(0);
   const codeRevision = useRef(0);
-  const runNow = useRef<(job: RunJob) => Promise<void>>(async () => {});
+  const runNow = useRef<(job: string) => Promise<void>>(async () => {});
   const [runGate] = useState(createRunGate);
-  const [enqueue] = useState(() => createRunQueue<RunJob>((job) => runNow.current(job), { isLive: () => live.current }));
+  const [enqueue] = useState(() => createRunQueue<string>((job) => runNow.current(job), { isLive: () => live.current }));
   const [stopThenRelease] = useState(() => (id: string) => {
     void withDeadline((signal) => stopPython(id, signal), STOP_TIMEOUT_MS)
       .catch(() => {})
@@ -57,7 +56,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
   const [shell, setShell] = useState<ShellSocket | null>(null);
   useEffect(() => {
     if (standalone) return;
-    const s = createShellSocket();
+    const s = createShellSocket({ workspace });
     if (startShell) {
       s.setActive(false);
       s.connect();
@@ -65,24 +64,15 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     setShell(s);
     return () => {
       s.dispose();
+      for (const terminal of terminalSessionsRef.current) terminal.socket.dispose();
+      terminalSessionsRef.current = [];
       setShell(null);
     };
-  }, [standalone, startShell]);
+  }, [standalone, startShell, workspace]);
   useEffect(() => {
     if (!shell) return;
-    const track = () => {
-      const s = shell.state();
-      setShellState(s);
-      setSandboxEnabled(!(s.kind === "closed" && s.reason === "disabled"));
-    };
-    track();
-    return shell.onState((st) => {
-      track();
-      if (st.kind === "open" && st.ready) {
-        readyTimeouts.current = 0;
-        setRunNote(undefined);
-      }
-    });
+    setShellState(shell.state());
+    return shell.onState(setShellState);
   }, [shell]);
   useEffect(() => {
     live.current = true;
@@ -92,7 +82,6 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
       else runGate.release();
     };
   }, [runGate, stopThenRelease]);
-  useEffect(() => { sidRef.current = sid; }, [sid]);
 
   useEffect(() => {
     if (!sid) return;
@@ -108,6 +97,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
         if (!alive) return;
         if (++failures < MAX_POLL_FAILURES) { timer = setTimeout(poll, 300 * failures); return; }
         append(`\n${msg(e)}\n`);
+        sidRef.current = null;
         stopThenRelease(sid);
         setSid(null);
         return;
@@ -119,6 +109,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
       if (!p.done) { timer = setTimeout(poll, 300); return; }
       if (p.error) append(`${p.error}\n`);
       else if (!stdout.current) append("The program ran and printed nothing.\n");
+      sidRef.current = null;
       setSid(null);
       runGate.release();
     };
@@ -126,15 +117,16 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     return () => { alive = false; clearTimeout(timer); };
   }, [sid, runGate, stopThenRelease]);
 
-  const oneShot = async (args: Parameters<typeof startPython>) => {
+  runNow.current = async (source) => {
     if (!live.current) return;
     stdout.current = "";
+    setBottomView("console");
     openTerminal();
     setTerm((current) => outputTail(`${current}${current ? "\n" : ""}[Run]\n`, MAX_OUTPUT));
     setStarting(true);
     let id: string;
     try {
-      id = (await withDeadline((signal) => startPython(args[0], args[1], args[2], signal), START_TIMEOUT_MS)).id;
+      id = (await withDeadline((signal) => startPython(source, language, undefined, signal, ""), START_TIMEOUT_MS)).id;
     } catch (e) {
       if (!live.current) return;
       setStarting(false);
@@ -144,10 +136,10 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     if (!live.current) { void stopPython(id).catch(() => {}); return; }
     setStarting(false);
     const finished = runGate.wait();
+    sidRef.current = id;
     setSid(id);
     await finished;
   };
-  const actionsFor = (enabled: boolean, source: string = code, authored = false) => practiceActions({ language, code: source, lessonId, versionId, revision, sandboxEnabled: enabled, authored });
 
   const resetResults = () => {
     codeRevision.current++;
@@ -180,7 +172,7 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
     setCheckBusy(true);
     setCheckError("");
     try {
-      const res = await checkPractice(...actionsFor(sandboxEnabled).check.args);
+      const res = await checkPractice({ code, language, lessonId, versionId, revision });
       if (live.current) {
         setAttemptCount(res.attemptCount);
         if (revisionAtSubmit === codeRevision.current) setResult(res);
@@ -193,69 +185,52 @@ export function usePracticeRunner({ lessonId, versionId, revision, language, cod
       if (live.current) setCheckBusy(false);
     }
   };
-  runNow.current = async ({ source, authored }) => {
-    const a = actionsFor(sandboxEnabled && !standalone, source, authored).run;
-    if (a.via === "oneshot") { await oneShot(a.args); return; }
+  const terminals = shell ? [{ id: PRIMARY_TERMINAL, label: "Terminal 1", socket: shell }, ...additionalTerminals] : [];
+  const selectTerminal = (id: string) => {
+    setActiveTerminal(id);
+    setBottomView("main");
+  };
+  const newTerminal = () => {
+    if (!shell || terminalSessionsRef.current.length >= 3) return;
+    const id = crypto.randomUUID();
+    const socket = createShellSocket({ tabId: id, workspace });
+    terminalSessionsRef.current = [...terminalSessionsRef.current, { id, label: `Terminal ${++sessionNumber.current}`, socket }];
+    setAdditionalTerminals(terminalSessionsRef.current);
+    socket.setActive(false);
+    socket.connect();
+    selectTerminal(id);
+  };
+  const toggleSplit = () => {
     if (!shell) return;
-    if (shellUnreachable.current || skipShellWait(false, shell.state())) {
-      setRunNote(undefined);
-      const fb = actionsFor(false, source).run;
-      if (fb.via === "oneshot") await oneShot(fb.args);
-      return;
-    }
-    setRunNote(undefined);
-    setShellRun(true);
-    try {
-      const end = await runInShell({
-        language: language === "python" ? "python" : "javascript",
-        code: source,
-        panel: { open: openTerminal },
-        socket: shell,
-        putFile,
-        refreshTree: () => refreshTree?.(),
-        onTimeout: () => live.current && setRunNote(STILL_RUNNING),
-      });
-      if (end === "timeout" && live.current) setRunNote(undefined);
-    } catch (e) {
-      if (!live.current) return;
-      if (e instanceof RunInShellError && e.kind === "starting") readyTimeouts.current += 1;
-      if (e instanceof RunInShellError && e.kind === "unavailable") shellUnreachable.current = true;
-      if (e instanceof RunInShellError && shouldFallBack(e.kind, shell.state(), readyTimeouts.current)) {
-        shellUnreachable.current = true;
-        setShellRun(false);
-        const fb = actionsFor(false, source).run;
-        if (fb.via === "oneshot") await oneShot(fb.args);
-        return;
-      }
-      setRunNote(msg(e));
-    }
-    if (live.current) setShellRun(false);
+    if (!splitTerminals && terminals.length === 1) newTerminal();
+    setBottomView("main");
+    setSplitTerminals(!splitTerminals);
   };
-  const run = (source: string = code) => enqueue({ source, authored: false });
-  const runAuthored = (source: string) => enqueue({ source, authored: true });
+  const closeTerminal = (id: string) => {
+    const terminal = terminalSessionsRef.current.find((item) => item.id === id);
+    if (!terminal) return;
+    terminal.socket.dispose();
+    terminalSessionsRef.current = terminalSessionsRef.current.filter((item) => item.id !== id);
+    setAdditionalTerminals(terminalSessionsRef.current);
+    if (activeTerminal === id) selectTerminal(PRIMARY_TERMINAL);
+    if (terminalSessionsRef.current.length === 0) setSplitTerminals(false);
+  };
+
+  const run = (source: string = code) => enqueue(source);
+  const runAuthored = run;
   const stop = () => {
-    if (sid) {
-      stopThenRelease(sid);
-      setSid(null);
-      append("\n[stopped]\n");
-      return;
-    }
-    if (shellRun && shell) shell.send("\u0003");
-  };
-  const answer = (e: FormEvent) => {
-    e.preventDefault();
-    if (!sid) return;
-    const line = typed;
-    setTyped("");
-    append(`${line}\n`);
-    void sendPythonLine(sid, line).catch(() => append("[could not send that line]\n"));
+    if (!sid || sidRef.current !== sid) return;
+    sidRef.current = null;
+    stopThenRelease(sid);
+    setSid(null);
+    append("\n[stopped]\n");
   };
 
   return {
-    shell, shellState, term, sid, starting, shellRun, runNote, typed, setTyped,
+    shell, shellState, terminals, activeTerminal, splitTerminals, selectTerminal, newTerminal, toggleSplit, closeTerminal, term, sid, starting, bottomView, setBottomView,
     result, attemptCount, checkBusy, checkError, findings, lintBusy, lintError,
-    busy: starting || sid !== null || shellRun,
-    showOutput: sid !== null || starting || shellRun || term !== "",
-    run, runAuthored, check, lint, stop, answer, resetResults,
+    busy: starting || sid !== null,
+    showOutput: sid !== null || starting || term !== "",
+    run, runAuthored, check, lint, stop, resetResults,
   };
 }

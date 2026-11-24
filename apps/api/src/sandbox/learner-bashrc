@@ -4,7 +4,7 @@ alias ls='ls --color=auto'
 alias ll='ls -lah --color=auto'
 alias la='ls -A --color=auto'
 alias grep='grep --color=auto'
-cd "$HOME/task-tracker" 2>/dev/null || cd "$HOME"
+cd "${LQ_WORKSPACE:-$HOME/task-tracker}" 2>/dev/null || cd "$HOME"
 export CLICOLOR=1
 export LESS='-FRX'
 export HISTSIZE=5000

@@ -9,7 +9,7 @@ import { explainMarker } from "./workbench/editorHelp";
 import { CODE_FONT, type WorkbenchProblem } from "./workbench/context";
 import type { LintFinding } from "./runPython";
 
-export type EditorHandle = { show(r: SeekResult): void; focus(): void; showLint(findings: LintFinding[]): void };
+export type EditorHandle = { show(r: SeekResult): void; focus(): void; focusLine(line: number): void; showLint(findings: LintFinding[]): void };
 
 const DARK = "(prefers-color-scheme: dark)";
 
@@ -110,6 +110,13 @@ export default function EditorPane({ ref, transportRef, viewPath, overlay, edit,
       apply(r);
     },
     focus: () => editorRef.current?.focus(),
+    focusLine(lineNumber) {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.setPosition({ lineNumber, column: 1 });
+      editor.revealLineInCenterIfOutsideViewport(lineNumber);
+      editor.focus();
+    },
     showLint(findings) {
       const model = editorRef.current?.getModel();
       const monaco = monacoRef.current;

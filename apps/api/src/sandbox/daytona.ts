@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { env } from "../env.ts";
 import { checkHarnessSource } from "./checkHarness.ts";
 import { BUDGET_S, CheckUnavailableError, encodeCheckInput, readCheckResults } from "./checkRunner.ts";
-import { LIST_MAX_ENTRIES, SandboxBusyError, SandboxFileTooLargeError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
+import { LIST_MAX_ENTRIES, workspaceDir, WorkspaceEntryExistsError, visibleWorkspaceEntry, SandboxBusyError, SandboxFileTooLargeError, SandboxNotRunningError, type DirEntry, type RunHandle, type RunLimits, type SandboxBackend } from "./backend.ts";
 
 export interface DaytonaPty {
   sendInput(data: string | Uint8Array): Promise<void>;
@@ -168,6 +168,28 @@ export function daytonaBackend(opts: {
     return p;
   }
 
+  async function workspaceDirectory(sbx: DaytonaSandbox, relDir: string, create = false) {
+    let path = await homeOf(sbx);
+    for (const segment of relDir.split("/")) {
+      path += `/${segment}`;
+      let info: { isDir: boolean; mode?: string };
+      try {
+        info = await sbx.fs.getFileDetails(path);
+      } catch (err) {
+        if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
+        if (!create) return null;
+        try {
+          await sbx.fs.createFolder(path, "755");
+        } catch (error) {
+          if ((error as { statusCode?: number } | null)?.statusCode !== 409) throw error;
+        }
+        info = await sbx.fs.getFileDetails(path);
+      }
+      if (!info.isDir || info.mode?.startsWith("L")) return null;
+    }
+    return path;
+  }
+
   return {
     async readWorkspaceFile(learnerId, relPath) {
       const cached = shells.get(learnerId);
@@ -263,7 +285,7 @@ export function daytonaBackend(opts: {
       if (res.exitCode !== 0) throw new Error("Could not move the file: a file with that name may already exist");
     },
 
-    async openShell(learnerId, { cols, rows }) {
+    async openShell(learnerId, { cols, rows, workspace }) {
       if (openTerminals >= maxShells()) throw new SandboxBusyError();
       openTerminals++;
       let released = false;
@@ -275,18 +297,8 @@ export function daytonaBackend(opts: {
       try {
         const sbx = await shellSandbox(learnerId);
         const home = await homeOf(sbx);
-        const workspace = `${home}/task-tracker`;
-        let workspaceInfo: { isDir: boolean; mode?: string } | undefined;
-        try {
-          workspaceInfo = await sbx.fs.getFileDetails(workspace);
-        } catch (err) {
-          if ((err as { statusCode?: number } | null)?.statusCode !== 404) throw err;
-          await sbx.fs.createFolder(workspace, "755");
-          workspaceInfo = await sbx.fs.getFileDetails(workspace);
-        }
-        if (!workspaceInfo.isDir || workspaceInfo.mode?.startsWith("L")) {
-          throw new Error("Workspace path is not a regular directory");
-        }
+        const cwd = await workspaceDirectory(sbx, workspace ? workspaceDir(workspace) : "task-tracker", true);
+        if (!cwd) throw new Error("Workspace path is not a regular directory");
         const zshDir = `${home}/.learnquest-zsh`;
         let zshDirInfo: { isDir: boolean; mode?: string } | undefined;
         try {
@@ -304,8 +316,8 @@ export function daytonaBackend(opts: {
         const early: Uint8Array[] = [];
         const pty = await sbx.process.createPty({
           id: `lq-${randomUUID()}`,
-          cwd: workspace,
-          envs: { TERM: "xterm-256color", ZDOTDIR: zshDir },
+          cwd,
+          envs: { TERM: "xterm-256color", ZDOTDIR: zshDir, ...(workspace && { LQ_WORKSPACE: cwd }) },
           cols,
           rows,
           onData: (d) => {
@@ -362,10 +374,24 @@ export function daytonaBackend(opts: {
       await sbx.fs.uploadFile(Buffer.from(content), path);
     },
 
+    async createWorkspaceEntry(learnerId, relPath, kind) {
+      const sbx = await findShell(learnerId);
+      const index = relPath.lastIndexOf("/");
+      const directory = await workspaceDirectory(sbx, relPath.slice(0, index));
+      if (!directory) throw new Error("The workspace folder is unavailable");
+      const target = shQuote(`${directory}/${relPath.slice(index + 1)}`);
+      const create = kind === "folder" ? `mkdir -- ${target}` : `set -C; : > ${target}`;
+      const result = await sbx.process.executeCommand(`if [ -e ${target} ] || [ -L ${target} ]; then exit 5; fi; ${create}`, undefined, undefined, SANDBOX_FILE_S);
+      if (result.exitCode === 5) throw new WorkspaceEntryExistsError();
+      if (result.exitCode !== 0) throw new Error("Could not create workspace entry");
+    },
+
     async listDir(learnerId, relDir) {
       const sbx = await findShell(learnerId);
       const home = await homeOf(sbx);
-      const path = relDir ? `${home}/${relDir}` : home;
+      const scoped = relDir.startsWith("workspaces/");
+      const path = scoped ? await workspaceDirectory(sbx, relDir) : relDir ? `${home}/${relDir}` : home;
+      if (!path) return null;
       let files;
       try {
         files = await sbx.fs.listFiles(path);
@@ -375,6 +401,7 @@ export function daytonaBackend(opts: {
         if (info && info.isDir === false) return null;
         throw err;
       }
+      if (scoped) files = files.filter((file) => visibleWorkspaceEntry(file.name));
       const entries = files.slice(0, LIST_MAX_ENTRIES).map((f): DirEntry => ({
         name: f.name,
         type: f.mode.startsWith("L") ? "link" : f.isDir ? "dir" : "file",
@@ -500,8 +527,11 @@ function runInSandbox(
       const path = `${dir}/${f.name}`;
       await created.fs.uploadFile(Buffer.from(code), path);
       await created.process.createSession(session);
+      const stdinPath = `${dir}/stdin`;
+      if (limits.stdin !== undefined) await created.fs.uploadFile(Buffer.from(limits.stdin), stdinPath);
+      const redirection = limits.stdin === undefined ? "" : ` < ${shQuote(stdinPath)}`;
       const res = await created.process.executeSessionCommand(session, {
-        command: `timeout -s KILL ${limits.timeoutS} ${f.cmd(shQuote(path)).join(" ")}`,
+        command: `timeout -s KILL ${limits.timeoutS} ${f.cmd(shQuote(path)).join(" ")}${redirection}`,
         runAsync: true,
         suppressInputEcho: true,
       });
