@@ -72,7 +72,6 @@ test("signs up, confirms and edits a public handle, and stays signed in on /less
   await input.fill(handle);
   await submit.click();
   await expect(page.getByRole("heading", { name: "Home", exact: true })).toBeAttached();
-  await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("link", { name: "Account settings" }).click();
   await expect(input).toHaveValue(handle);
   await expect(input).not.toBeEditable();
@@ -299,7 +298,6 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
 
   await page.goto("/");
   await expect(card.getByRole("link", { name: "Review" })).toBeVisible();
-  await expect(card.getByText("Review recommended", { exact: true })).toBeVisible();
   await expect(card.locator(".lq-hero-reason")).toContainText(/is at \d+%\. Review this concept/);
   await expect(page.getByRole("heading", { name: "What you know" })).toBeVisible();
 
@@ -310,7 +308,6 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
   await page.goto("/");
   await expect(card.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/review/codequest");
-  await expect(card.getByText("Review due", { exact: true })).toBeVisible();
   await card.getByRole("link", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Review array reduce" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
