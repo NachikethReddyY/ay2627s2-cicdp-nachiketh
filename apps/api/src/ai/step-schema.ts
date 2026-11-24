@@ -20,7 +20,7 @@ const OPTION_WHITESPACE_RUN = new RegExp(`[${OPTION_WHITESPACE}]+`, "g");
 const OPTION_WHITESPACE_EDGE = new RegExp(`^[${OPTION_WHITESPACE}]+|[${OPTION_WHITESPACE}]+$`, "g");
 const OPTION_IDENTIFIER = /^[a-z0-9_]+$/;
 
-function containsMcqOption(text: string, answer: string): boolean {
+export function containsMcqOption(text: string, answer: string): boolean {
   const haystack = text.toLowerCase();
   const needle = answer.toLowerCase().replace(OPTION_WHITESPACE_EDGE, "");
   if (OPTION_IDENTIFIER.test(needle)) {

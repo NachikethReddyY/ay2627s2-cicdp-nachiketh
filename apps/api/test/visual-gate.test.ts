@@ -37,6 +37,15 @@ test("a truncated learn body is rejected so the caller retries", () => {
   assert.throws(() => validatePart(withChecks({ kind: "learn", body: "Use `print(" })), /truncated/);
 });
 
+test("a learn introduction can set up the prediction without repeating its answer", () => {
+  const intro = "Imagine collecting the prices in a shopping cart.";
+  const part = withChecks({ kind: "learn", intro, body: "Combine the individual prices." });
+  const opening = readSteps[0];
+  assert.equal((validatePart(part) as LearnPart).intro, intro);
+  assert.throws(() => validatePart({ ...part, intro: opening.options[opening.answer] }), /intro repeats the opening prediction answer/);
+  assert.equal((validatePart({ ...part, intro: null }) as LearnPart).intro, undefined);
+});
+
 test("a game-practice part needs a valid document", () => {
   assert.throws(() => validatePart({ kind: "game-practice", intro: "Sort them", doc: { v: 1, blocks: [{ type: "run", id: "x", props: {} }] } }), /catalog/);
 });

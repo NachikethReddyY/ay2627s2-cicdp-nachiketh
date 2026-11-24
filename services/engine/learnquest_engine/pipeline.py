@@ -27,8 +27,13 @@ def _prompt(name: str) -> str:
     return (PROMPTS / f"{name}.md").read_text(encoding="utf-8")
 
 
-def outline(topic: str) -> Result[Outline]:
-    return generate(_prompt("outline"), {"topic": topic}, Outline)
+def outline(topic: str, focus_concepts: list[str] | None = None) -> Result[Outline]:
+    return generate(
+        _prompt("outline"),
+        {"topic": topic, "learnerMemory": {"focusConcepts": focus_concepts or []}},
+        Outline,
+        context={"learningSequence": True},
+    )
 
 
 def studio_plan(topic: str, source: str) -> Result[StudioPlan]:
@@ -61,9 +66,7 @@ def lesson(ctx: LessonContext) -> Result[BaseModel]:
         if isinstance(res.value, ScrimDraft):
             return Result(timed(res.value, ctx.stretchTests), res.usage, res.attempts)
         return res
-    ctx_data = ctx.model_dump()
-    res = generate(system + "\n\n" + visual._system(embedded=True), ctx_data, PARTS[kind])
-    return _checked_document(system, ctx_data, res, kind)
+    return _checked_document(system, ctx.model_dump(), kind)
 
 
 def _stretch_note(stretch_tests: int) -> str:
@@ -96,13 +99,16 @@ def _document_issues(part: BaseModel, kind: str) -> tuple[dict[str, Any] | None,
 
 
 def _checked_document(
-    system: str, ctx_data: dict[str, Any], res: Result[BaseModel], kind: str
+    system: str, ctx_data: dict[str, Any], kind: str
 ) -> Result[BaseModel]:
     """Fail an unsolvable game here, not later in the API gate (that forces a full regeneration)."""
+    system += "\n\n" + visual._system(embedded=True)
+    context = {"requireLearnIntro": True} if kind == "learn" else None
+    res = generate(system, ctx_data, PARTS[kind], context=context)
     doc, found = _document_issues(res.value, kind)
     if found:
         payload = {**ctx_data, "fix_these_issues": found, "previous_part": res.value.model_dump()}
-        fixed = generate(system + "\n\n" + visual._system(embedded=True), payload, PARTS[kind])
+        fixed = generate(system, payload, PARTS[kind], context=context)
         res = Result(
             fixed.value,
             {

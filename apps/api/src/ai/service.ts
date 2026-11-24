@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, count, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, lt, max, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { lessonRef, playableLesson } from "../access.ts";
 import { db, type Db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
-import { aiGenerations, enrollments, generationCache, learners, lessons, lessonVersions, pathCourses, paths, steps, worlds, type GeneratedPart } from "../db/schema.ts";
+import { aiGenerations, concepts, enrollments, generationCache, learners, lessons, lessonVersions, mastery, pathCourses, paths, steps, worlds, type GeneratedPart } from "../db/schema.ts";
 import { generator, type LessonContext } from "./generator.ts";
 import { checkStep, PredictStep, text, type GeneratedMcqStep } from "./step-schema.ts";
 import { EngineError } from "../engine-client/client.ts";
@@ -21,6 +21,8 @@ import { isSafe, isSafeText } from "../safety/moderation.ts";
 import { REFUSAL_COPY } from "../safety/copy.ts";
 import { measureGeneration } from "./telemetry.ts";
 import { createLimiter, LimiterStopped } from "./limiter.ts";
+import { isCatalogueConcept, UNLOCK_AT } from "../progress/catalogue.ts";
+import { slugOf } from "../progress/mastery.ts";
 
 const Outline = z.union([
   z.object({ refused: z.literal(true) }),
@@ -48,6 +50,27 @@ const Lesson = z.object({ steps: z.array(PredictStep).min(3).max(5) });
 const slugify = (s: string, max: number) =>
   `${s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, max) || "x"}-${randomBytes(6).toString("hex")}`;
 
+const FOCUS_CONCEPT_LIMIT = 6;
+
+async function generationFocusConcepts(learnerId: string, lesson?: { ownerId: string; tags: readonly string[] }) {
+  const candidates = await db.select({ slug: concepts.slug })
+    .from(mastery)
+    .innerJoin(concepts, eq(concepts.id, mastery.conceptId))
+    .innerJoin(learners, eq(learners.id, mastery.learnerId))
+    .where(and(
+      eq(mastery.learnerId, learnerId),
+      gt(mastery.nObs, 0),
+      lt(mastery.pKnown, UNLOCK_AT),
+      isNull(concepts.worldId),
+      lesson && eq(learners.userId, lesson.ownerId),
+    ))
+    .orderBy(asc(mastery.pKnown), asc(concepts.slug));
+  const tags = lesson?.tags.map(slugOf);
+  return candidates.map(({ slug }) => slug)
+    .filter((slug) => isCatalogueConcept(slug) && (!tags || tags.includes(slug)))
+    .slice(0, FOCUS_CONCEPT_LIMIT);
+}
+
 export async function generatePath(learnerId: string, topic: string) {
   assertAiEnabled();
   if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
@@ -73,7 +96,8 @@ export async function generatePath(learnerId: string, topic: string) {
 
   let outline;
   try {
-    outline = Outline.parse(await measureGeneration("outline", () => generator.outline(topic)));
+    const focusConcepts = await generationFocusConcepts(learnerId);
+    outline = Outline.parse(await measureGeneration("outline", () => generator.outline(topic, { focusConcepts })));
     if (!(await isSafeText(JSON.stringify(outline)))) throw new Error("Generated content refused by safety filter");
   } catch (e) {
     console.error("outline generation failed");
@@ -147,7 +171,7 @@ async function moderated<T>(v: T, isPublic: boolean): Promise<T> {
   return v;
 }
 
-const PART_CACHE_VERSION = 2;
+const PART_CACHE_VERSION = 3;
 
 type LessonRow = typeof lessons.$inferSelect;
 
@@ -176,7 +200,8 @@ async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonCon
     .innerJoin(paths, eq(paths.id, pathCourses.pathId))
     .where(eq(pathCourses.worldId, l.worldId))
     .limit(1);
-  const { rows: misses } = world.visibility === "private" && world.ownerId ? await db.execute<{ concept: string }>(sql`
+  const focus = world.visibility === "private" && world.ownerId ? { ownerId: world.ownerId, tags: l.concepts } : undefined;
+  const [{ rows: misses }, weakConcepts] = focus ? await Promise.all([db.execute<{ concept: string }>(sql`
     SELECT DISTINCT miss AS concept
     FROM learners me
     JOIN attempts a ON a.learner_id = me.id
@@ -184,15 +209,15 @@ async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonCon
     JOIN lesson_versions v ON v.id = s.lesson_version_id
     JOIN lessons prior ON prior.id = v.lesson_id
     CROSS JOIN LATERAL unnest(a.missed_concepts) miss
-    WHERE me.id = ${learnerId} AND me.user_id = ${world.ownerId}
+    WHERE me.id = ${learnerId} AND me.user_id = ${focus.ownerId}
       AND prior.world_id = ${l.worldId} AND a.observed AND a.correct IS FALSE
       AND miss = ANY(ARRAY[${sql.join(l.concepts.map((concept) => sql`${concept}`), sql`,`)}]::text[])
-    ORDER BY concept LIMIT 6`) : { rows: [] };
+    ORDER BY concept LIMIT ${FOCUS_CONCEPT_LIMIT}`), generationFocusConcepts(learnerId, focus)]) : [{ rows: [] }, []];
   return {
     path: path ?? { title: world.title, tagline: "" },
     course: { title: world.title, description: world.description },
     lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
-    missedConcepts: misses.map((r) => r.concept),
+    missedConcepts: [...new Set([...misses.map((r) => r.concept), ...weakConcepts])].slice(0, FOCUS_CONCEPT_LIMIT),
     ...((l.kind === "practice" || l.kind === "scrim") && { stretchTests: env.PRACTICE_STRETCH_TESTS }),
   };
 }
@@ -334,14 +359,15 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
   const [pre] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
-  const ctx = await lessonContext(pre, learnerId);
-  const key = pre.kind === "predict" ? null : partCacheKey(ctx);
-  const cached = key ? await cachedPart(key, pre.kind) : {};
+  const initialContext = await lessonContext(pre, learnerId);
 
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     const [world] = await db.select({ visibility: worlds.visibility }).from(worlds).where(eq(worlds.id, pre.worldId));
     const isPublic = world?.visibility === "public";
+    const ctx = isPublic ? { ...initialContext, missedConcepts: [] } : initialContext;
+    const key = pre.kind === "predict" ? null : partCacheKey(ctx);
+    const cached = key ? await cachedPart(key, pre.kind) : {};
     if (!cached.part) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);

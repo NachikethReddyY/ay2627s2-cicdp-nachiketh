@@ -45,9 +45,16 @@ def test_missing_or_wrong_token_is_401(client: TestClient, headers: dict[str, st
     assert r.status_code == 401
 
 
-def test_outline_shape(client: TestClient, fake_llm: Callable[[str], list[dict[str, Any]]]) -> None:
-    fake_llm("outline_rust")
-    r = client.post("/v1/pipeline/outline", json={"topic": "rust"}, headers=TOKEN)
+@pytest.mark.parametrize("with_memory", [False, True])
+def test_outline_shape(
+    client: TestClient, fake_llm: Callable[[str], list[dict[str, Any]]], with_memory: bool
+) -> None:
+    calls = fake_llm("outline_rust")
+    request: dict[str, Any] = {"topic": "rust"}
+    focus = ["js.return-values", "js.functions"] if with_memory else []
+    if with_memory:
+        request["learnerMemory"] = {"focusConcepts": focus}
+    r = client.post("/v1/pipeline/outline", json=request, headers=TOKEN)
     assert r.status_code == 200
     body = r.json()
     assert body["outline"]["title"] == "Learn Rust"
@@ -56,6 +63,15 @@ def test_outline_shape(client: TestClient, fake_llm: Callable[[str], list[dict[s
     assert json.loads(r.headers["x-engine-usage"]) == [
         {"prompt_tokens": 10, "completion_tokens": 5, "model": "openai/test", "estimated_usd": None}
     ]
+    payload = json.loads(calls[0]["messages"][1]["content"].split("\n", 1)[1])
+    assert payload == {"topic": "rust", "learnerMemory": {"focusConcepts": focus}}
+
+
+@pytest.mark.parametrize("focus", [["js.variables"] * 7, ["a private concept title"]])
+def test_outline_refuses_invalid_learner_memory(client: TestClient, focus: list[str]) -> None:
+    request = {"topic": "JavaScript", "learnerMemory": {"focusConcepts": focus}}
+    r = client.post("/v1/pipeline/outline", json=request, headers=TOKEN)
+    assert r.status_code == 422
 
 
 def test_lesson_shape(client: TestClient, fake_llm: Callable[[str], list[dict[str, Any]]]) -> None:

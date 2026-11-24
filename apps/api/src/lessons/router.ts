@@ -72,6 +72,7 @@ const Lesson = z.object({
   versionId: z.string(),
   title: z.string(),
   kind: z.enum(["predict", "learn", "watch", "practice", "game-practice", "scrim"]),
+  learnIntro: z.string().optional(),
   part: z
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("learn"), body: z.string(), doc: z.unknown().optional() }),
@@ -274,6 +275,7 @@ export const lessonsRouter = router({
         versionId: lesson.currentVersionId,
         title: lesson.title,
         kind: lesson.kind,
+        learnIntro: lesson.kind === "learn" && version?.content?.kind === "learn" ? version.content.intro : undefined,
         part,
         steps: servedRows.map((r) => ({
           id: r.id,

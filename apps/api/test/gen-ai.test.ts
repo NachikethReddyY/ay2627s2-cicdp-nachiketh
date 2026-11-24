@@ -1,12 +1,12 @@
 import { code, out, signUp, trpc, withChecks } from "./helpers.ts";
 import { after, afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db, pool } from "../src/db/client.ts";
-import { lessons, lessonVersions, worlds } from "../src/db/schema.ts";
+import { concepts, learners, lessons, lessonVersions, mastery, user, worlds } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
-import { generator } from "../src/ai/generator.ts";
+import { generator, type LearnerMemory } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
 import { ensureLesson, idle } from "../src/ai/service.ts";
 import type { GeneratedMcqStep } from "../src/ai/step-schema.ts";
@@ -56,6 +56,44 @@ function gate() {
   const opened = new Promise<void>((r) => (open = r));
   return { opened, open };
 }
+
+test("new path outlines receive bounded observed global focus from the signed-in learner", async () => {
+  const mine = trpc(app, await signUp(app, "focus@example.com"));
+  const other = trpc(app, await signUp(app, "other@example.com"));
+  assert.equal((await mine.q("home.get")).statusCode, 200);
+  assert.equal((await other.q("home.get")).statusCode, 200);
+  const [owner] = await db.select({ id: learners.id }).from(learners).innerJoin(user, eq(user.id, learners.userId))
+    .where(eq(user.email, "focus@example.com"));
+  const [different] = await db.select({ id: learners.id }).from(learners).innerJoin(user, eq(user.id, learners.userId))
+    .where(eq(user.email, "other@example.com"));
+  const slugs = ["js.return-values", "js.functions", "js.conditionals", "js.loops", "js.arrays", "js.array-reduce", "js.values-types", "js.variables"];
+  await db.insert(concepts).values(slugs.map((slug) => ({ slug, name: slug }))).onConflictDoNothing();
+  const globalIds = new Map((await db.select().from(concepts).where(isNull(concepts.worldId))).map((row) => [row.slug, row.id]));
+  const [world] = await db.select({ id: worlds.id }).from(worlds).where(eq(worlds.slug, "variables"));
+  const [custom] = await db.insert(concepts).values({ worldId: world.id, slug: "local-only", name: "Local only" }).returning();
+  const [extra] = await db.insert(concepts).values({ slug: "not-canonical", name: "Not canonical" }).returning();
+  await db.insert(mastery).values([
+    ...slugs.map((slug, index) => ({ learnerId: owner.id, conceptId: globalIds.get(slug)!, pKnown: (index + 1) / 10, nObs: slug === "js.loops" ? 0 : 1 })),
+    { learnerId: owner.id, conceptId: custom.id, pKnown: 0.01, nObs: 1 },
+    { learnerId: owner.id, conceptId: extra.id, pKnown: 0.01, nObs: 1 },
+    { learnerId: different.id, conceptId: globalIds.get("js.variables")!, pKnown: 0.01, nObs: 1 },
+  ]);
+
+  const calls: { topic: string; learnerMemory: LearnerMemory }[] = [];
+  generator.outline = async (topic, learnerMemory) => {
+    calls.push({ topic, learnerMemory });
+    return outline;
+  };
+  const first = await mine.m("paths.generate", { prompt: "learn JavaScript" });
+  assert.equal(first.statusCode, 200, first.body);
+  await db.update(mastery).set({ nObs: 1 }).where(and(eq(mastery.learnerId, owner.id), eq(mastery.conceptId, globalIds.get("js.loops")!)));
+  const second = await mine.m("paths.generate", { prompt: "learn JavaScript" });
+  assert.equal(second.statusCode, 200, second.body);
+  assert.deepEqual(calls, [
+    { topic: "learn JavaScript", learnerMemory: { focusConcepts: slugs.slice(0, 7).filter((slug) => slug !== "js.loops") } },
+    { topic: "learn JavaScript", learnerMemory: { focusConcepts: slugs.slice(0, 6) } },
+  ]);
+});
 
 test("generation holds no transaction or pooled connection, and a concurrent writer wins exactly once", async () => {
   const { lesson, learnerId } = await firstLesson();
@@ -165,9 +203,13 @@ test("moderation down: a lesson in a public course is refused, a private one sti
 
 test("a lesson generated while its path is published must pass public moderation", { timeout: 15_000 }, async () => {
   const { t, slug, lesson, learnerId } = await firstLesson();
+  await db.update(lessons).set({ concepts: ["js.variables"] }).where(eq(lessons.id, lesson.id));
+  const [variables] = await db.select({ id: concepts.id }).from(concepts).where(and(eq(concepts.slug, "js.variables"), isNull(concepts.worldId)));
+  await db.insert(mastery).values({ learnerId, conceptId: variables.id, pKnown: 0.4, nObs: 1 });
   const started = gate();
   const release = gate();
   const draftBody = "Variables store values the learner can reuse.";
+  const promptMisses: string[][] = [];
   const safe = async () => ({ flagged: false, scores: {} });
   let moderationCalls = 0;
   setModerationClient(async (input) => {
@@ -177,7 +219,8 @@ test("a lesson generated while its path is published must pass public moderation
     }
     return safe();
   });
-  engineParts.lesson = async () => {
+  engineParts.lesson = async (ctx) => {
+    promptMisses.push(ctx.missedConcepts);
     started.open();
     await release.opened;
     return withChecks({ kind: "learn", body: draftBody });
@@ -192,6 +235,7 @@ test("a lesson generated while its path is published must pass public moderation
     release.open();
     await rejected;
     assert.equal(moderationCalls, 2);
+    assert.deepEqual(promptMisses, [["js.variables"], []]);
     const [row] = await db.select().from(lessons).where(eq(lessons.id, lesson.id));
     assert.equal(row?.currentVersionId, null);
   } finally {

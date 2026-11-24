@@ -1,5 +1,5 @@
 # LearnSlop
-LearnSlop is an interactive tool for learning to program. Pick a JavaScript or TypeScript concept to generate a private path with short lessons, predictions, diagrams, replays, games and coding practice. LearnSlop recommends what to study or review next based on concept mastery. Sloppy offers hints and prediction questions in the practice workbench. The advanced track for real code changes is planned. LearnSlop is for beginners and early-career developers aged 13 and over.
+LearnSlop teaches beginners and early-career developers aged 13 and over to read and write code. Pick a JavaScript or TypeScript concept to generate a private path. Start with a short explanation, trace a worked example in a narrated Scrim, practice in the Workbench, and check what you learned on fresh code. LearnSlop uses concept mastery to suggest what to study or review next. Sloppy offers hints and prediction questions in the Workbench. An advanced track for real code changes is planned.
 
 The monorepo holds the Fastify + tRPC API (`apps/api`), the React/Vite web app (`apps/web`), the Python LLM engine (`services/engine`), the sandbox (`services/sandbox`), and the shared `packages/player-core` and `packages/ui-catalog` packages. See the [feature map](docs/feature-map.md), [project plan](docs/plan.md) and [agent instructions](AGENTS.md).
 

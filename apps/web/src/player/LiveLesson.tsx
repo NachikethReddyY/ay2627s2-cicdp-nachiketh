@@ -114,12 +114,17 @@ export default function LiveLesson({ slug, course, entrySource }: { slug: string
         {update}
         <Link to="/" className="underline">Home</Link>
       </Notice>;
+    const learnPage = (body: string, footer: ReactNode, doc?: unknown) => (
+      <Suspense fallback={fallback}><div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={body} doc={doc} next={footer} /></div></Suspense>
+    );
     const read = (footer: ReactNode) => {
-      if (part?.kind === "learn") return <Suspense fallback={fallback}><div className="lq lq-moon flex h-dvh flex-col"><LearnView title={data.title} body={part.body} doc={part.doc} next={footer} /></div></Suspense>;
+      if (part?.kind === "learn") return learnPage(part.body, footer, part.doc);
       if (part?.kind === "watch") return <Suspense fallback={fallback}><WatchView lessonId={data.id} title={data.title} part={part} next={footer} completed={data.completed} /></Suspense>;
       return fallback;
     };
-    if (checked) return <Suspense fallback={fallback}><CheckedLesson key={data.id} kind={data.kind} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} next={next} onFinished={reloadChecked}>{read}</CheckedLesson></Suspense>;
+    const learnIntro = data.learnIntro;
+    const intro = data.kind === "learn" && learnIntro ? (footer: ReactNode) => learnPage(learnIntro, footer) : undefined;
+    if (checked) return <Suspense fallback={fallback}><CheckedLesson key={data.id} kind={data.kind} checks={data.steps} completed={data.completed} refreshing={refreshing} contentAvailable={part !== null} intro={intro} next={next} onFinished={reloadChecked}>{read}</CheckedLesson></Suspense>;
     return read(update ? <div className="flex flex-wrap items-center justify-center gap-3">{next}{update}</div> : next);
   }
   if (data.kind === "practice" && part?.kind === "practice")

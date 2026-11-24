@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { parseSpec } from "@learnquest/ui-catalog";
 import { buildTimeline, seek } from "@learnquest/player-core";
-import { checkStep, Hunk, McqStep, text } from "../ai/step-schema.ts";
+import { checkStep, containsMcqOption, Hunk, McqStep, text } from "../ai/step-schema.ts";
 import { GeneratedScrim } from "../parts/scrim-schema.ts";
 import { PracticeContent } from "../parts/practice-schema.ts";
 import type { GeneratedPart } from "../db/schema.ts";
 
-const ReadSteps = z.array(McqStep).length(2);
+const ReadSteps = z.tuple([McqStep, McqStep]);
 
 const Part = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("learn"), body: text(4000), doc: z.unknown().optional(), steps: ReadSteps }),
+  z.object({ kind: z.literal("learn"), intro: text(500).nullish(), body: text(4000), doc: z.unknown().optional(), steps: ReadSteps }),
   z.object({
     kind: z.literal("watch"),
     beforeFiles: z.record(text(200), z.string().max(6000)).refine((f) => Object.keys(f).length >= 1 && Object.keys(f).length <= 4),
@@ -40,9 +40,16 @@ export function validatePart(raw: unknown): GeneratedPart {
     case "learn": {
       checkBody(part.body);
       for (const step of part.steps) checkStep(step);
+      const opening = part.steps[0];
+      const answer = opening.options[opening.answer];
+      if (part.intro && (part.intro.toLowerCase() === answer.toLowerCase() || containsMcqOption(part.intro, answer)))
+        throw new Error("The intro repeats the opening prediction answer. Give context only.");
       const parsed = part.doc === undefined ? null : parseSpec(part.doc);
-      if (!parsed?.ok) return { kind: "learn", body: part.body, steps: part.steps };
-      return { kind: "learn", body: part.body, doc: dropClientImages(parsed.spec), steps: part.steps };
+      return {
+        kind: "learn", body: part.body, steps: part.steps,
+        ...(part.intro ? { intro: part.intro } : {}),
+        ...(parsed?.ok ? { doc: dropClientImages(parsed.spec) } : {}),
+      };
     }
     case "watch": {
       const tl = buildTimeline([{ beforeFiles: part.beforeFiles, hunks: part.hunks }]);

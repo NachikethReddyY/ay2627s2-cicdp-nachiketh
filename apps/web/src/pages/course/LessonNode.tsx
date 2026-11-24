@@ -8,7 +8,7 @@ import { writeLabel } from "./writeProgress";
 
 type Lesson = CourseData["lessons"][number];
 
-const kinds = { predict: "Predict", learn: "📖 Learn", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game", scrim: "🎬 Scrim" };
+const kinds = { predict: "Predict", learn: "📖 Open page", watch: "▶ Watch", practice: "⌨ Practice", "game-practice": "🎮 Game", scrim: "🎬 Scrim" };
 
 function Pill({ kind }: { kind: Lesson["kind"] }) {
   return <span className="lesson-kind">{kinds[kind]}</span>;

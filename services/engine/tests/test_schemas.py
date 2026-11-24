@@ -127,6 +127,25 @@ def test_outline_shapes() -> None:
         Outline.model_validate({"title": "x"})
 
 
+def test_generated_outline_rejects_a_quiz_as_the_first_lesson() -> None:
+    lesson = {"title": "Trace a call", "level": 1, "concepts": ["js.functions"], "kind": "predict"}
+    course = {
+        "title": "Functions",
+        "description": "JavaScript",
+        "lessons": [
+            lesson,
+            {**lesson, "title": "Walk through a function call", "kind": "scrim"},
+            {**lesson, "title": "Recap: Follow a function call", "kind": "learn"},
+            {**lesson, "title": "Code reading check: Trace a call"},
+        ],
+    }
+    data = {"title": "JavaScript", "tagline": "Learn functions", "courses": [course, course]}
+    with pytest.raises(ValidationError, match="a Learn introduction"):
+        Outline.model_validate(data, context={"learningSequence": True})
+    lesson["kind"] = "learn"
+    assert Outline.model_validate(data, context={"learningSequence": True}).courses is not None
+
+
 @pytest.mark.parametrize(
     "kind", ["predict", "learn", "watch", "practice", "game-practice", "scrim"]
 )

@@ -274,7 +274,7 @@ export type LessonSource = { repo: string; sha: string; path: string };
 
 export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
 export type PartSecret =
-  | { kind: "learn"; body: string; doc?: Spec }
+  | { kind: "learn"; intro?: string; body: string; doc?: Spec }
   | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
   | {
       kind: "practice";
