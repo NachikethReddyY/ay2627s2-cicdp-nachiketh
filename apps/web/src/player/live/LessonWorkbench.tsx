@@ -1,6 +1,6 @@
 import type { GuideChat } from "../workbench/PlannedParts";
 import { Suspense, lazy, useRef, useState, type ReactNode } from "react";
-import { Check, ListChecks, Play } from "lucide-react";
+import { BookOpen, Check, FileText, ListChecks, Play, Sparkles, Terminal } from "lucide-react";
 import { usePostHog } from "@posthog/react";
 import { useLessonAnalytics } from "./lessonAnalytics";
 import { usePanel } from "../terminal/usePanel";
@@ -12,6 +12,8 @@ import Segmented from "../workbench/Segmented";
 import Workbench from "../workbench/Workbench";
 import { useFloatingWindow } from "../workbench/useFloatingWindow";
 import { PreviewResizeHandles } from "../../pages/PreviewResizeHandles";
+import EditorDock from "../../pages/EditorDock";
+import { EditorAppIcon } from "../../pages/DockAppIcons";
 import WorkbenchEditor from "../workbench/WorkbenchEditor";
 import type { WorkbenchStatus } from "../workbench/StatusBar";
 import { getWorkspaceFile, putWorkspaceFile, type LintFinding } from "../runPython";
@@ -27,6 +29,8 @@ import RunBottom from "./RunBottom";
 import { runShellCommand } from "../terminal/runInShell";
 import { usePracticeRunner } from "./usePracticeRunner";
 import type { Part } from "./types";
+
+const dockTile = "grid size-full place-items-center text-white";
 
 const AIGuide = lazy(() => import("../workbench/PlannedParts").then((m) => ({ default: m.AIGuide })));
 
@@ -287,6 +291,17 @@ export default function LessonWorkbench({ kind, lessonId, title, part, next, med
       bottom={bottom}
       bottomTitle="Terminal"
       lessonLayout
+      desktopDock={<EditorDock items={[
+        { id: "editor", label: "Focus code editor", art: <EditorAppIcon />, onSelect: () => editorRef.current?.focus() },
+        { id: "terminal", label: "Toggle terminal", art: <span className={`${dockTile} bg-gradient-to-b from-zinc-600 to-zinc-950`}><Terminal size={23} aria-hidden="true" /></span>,
+          pressed: panel.state.open, onSelect: () => panelDispatch({ type: "toggle" }) },
+        { id: "task", label: "Open lesson task", art: <span className={`${dockTile} bg-gradient-to-b from-emerald-600 to-emerald-800`}><FileText size={23} aria-hidden="true" /></span>,
+          dividerBefore: true, onSelect: () => show("instructions") },
+        { id: "docs", label: "Open lesson docs", art: <span className={`${dockTile} bg-gradient-to-b from-blue-500 to-blue-800`}><BookOpen size={23} aria-hidden="true" /></span>,
+          onSelect: () => show("docs") },
+        { id: "sloppy", label: "Open Sloppy AI", art: <span className={`${dockTile} bg-gradient-to-b from-violet-500 to-violet-800`}><Sparkles size={23} aria-hidden="true" /></span>,
+          onSelect: showGuide },
+      ]} />}
       terminalSessions={{
         items: r.terminals,
         activeId: r.activeTerminal,

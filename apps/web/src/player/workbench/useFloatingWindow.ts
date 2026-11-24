@@ -3,6 +3,7 @@ import { resizeRect, type PreviewRect, type ResizeEdge } from "../../pages/previ
 import { readStoredCodeWindow, writeStoredCodeWindow } from "../../pages/codeWindowMemory";
 
 const WORKBENCH_MIN_WIDTH = 840;
+const DOCK_INSET = 84;
 
 function lockSelectionUntilRelease() {
   const root = document.documentElement;
@@ -33,7 +34,7 @@ export function useFloatingWindow() {
     const { width, height, left, top } = start.rect;
     setRect({
       left: Math.min(Math.max(left + event.clientX - start.pointerX, 8), window.innerWidth - width - 8),
-      top: Math.min(Math.max(top + event.clientY - start.pointerY, 8), window.innerHeight - height - 8),
+      top: Math.min(Math.max(top + event.clientY - start.pointerY, 8), window.innerHeight - height - DOCK_INSET),
       width,
       height,
     });
@@ -49,7 +50,7 @@ export function useFloatingWindow() {
     if (!start) return;
     setRect(resizeRect(start.rect, start.edge, event.clientX - start.pointerX, event.clientY - start.pointerY, {
       width: window.innerWidth,
-      height: window.innerHeight,
+      height: window.innerHeight - DOCK_INSET,
     }, WORKBENCH_MIN_WIDTH));
   };
 
@@ -58,9 +59,9 @@ export function useFloatingWindow() {
     position: "absolute",
     zIndex: 61,
     left: rect ? `clamp(8px, ${rect.left}px, calc(100% - ${storedWidth}px - 8px))` : 32,
-    top: rect ? `clamp(8px, ${rect.top}px, calc(100% - ${rect.height}px - 8px))` : 32,
+    top: rect ? `clamp(8px, ${rect.top}px, calc(100% - ${rect.height}px - ${DOCK_INSET}px))` : 32,
     width: rect ? `min(${storedWidth}px, calc(100% - 16px))` : "calc(100% - 64px)",
-    height: rect ? `min(${rect.height}px, calc(100% - 16px))` : "calc(100% - 104px)",
+    height: rect ? `min(${rect.height}px, calc(100% - ${DOCK_INSET + 8}px))` : `calc(100% - ${DOCK_INSET + 32}px)`,
   };
   return {
     style,

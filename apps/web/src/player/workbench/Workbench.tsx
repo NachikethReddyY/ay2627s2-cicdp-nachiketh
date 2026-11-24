@@ -28,6 +28,7 @@ type Props = {
   symbol?: string;
   language: WorkbenchLanguage;
   navigator: ReactNode;
+  desktopDock?: ReactNode;
   navigatorSearch?: ReactNode;
   editor: ReactNode;
   playerOverlay?: ReactNode;
@@ -133,7 +134,12 @@ export default function Workbench(p: Props) {
   const windowRef = useRef<HTMLDivElement>(null);
   const [windowActive, setWindowActive] = useState(true);
   useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => setWindowActive(windowRef.current?.contains(event.target as Node) ?? false);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const dock = target.closest(".editor-dock");
+      setWindowActive(Boolean(windowRef.current?.contains(target) || (dock && wbRef.current?.contains(dock))));
+    };
     const onBlur = () => setWindowActive(false);
     document.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("blur", onBlur);
@@ -549,6 +555,7 @@ export default function Workbench(p: Props) {
             {p.playerOverlay}
           </div>
         )}
+        {wide && p.desktopDock}
         <CommandPalette
           open={palette.open}
           initial={palette.mode}

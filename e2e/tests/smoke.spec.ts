@@ -569,7 +569,10 @@ async function verifyNarratedPractice(page: Page) {
   await watch.click();
   await expect(page.getByRole("group", { name: `Lesson video: ${title}` })).toBeVisible();
 
-  await page.evaluate(() => localStorage.setItem("lq.terminal", JSON.stringify({ open: true, height: 240 })));
+  await page.evaluate(() => {
+    localStorage.setItem("lq.terminal", JSON.stringify({ open: true, height: 240 }));
+    localStorage.setItem("lq.test-editor.code-window", JSON.stringify({ left: 32, top: 32, width: 1600, height: 1400 }));
+  });
   const practicePage = await page.goto("/editor?lesson=practice-greeting");
   expect(practicePage?.headers()["content-security-policy"]).toBe(policy);
   await watch.click();
@@ -638,12 +641,31 @@ async function verifyNarratedPractice(page: Page) {
     expect(box && box.x + box.width <= bounds.x + bounds.width).toBe(true);
     await expect(tab).toBeInViewport();
   }
+  const dock = page.getByRole("group", { name: "Workbench dock" });
+  const dockBounds = await dock.boundingBox();
+  expect(dockBounds && bounds.y + bounds.height <= dockBounds.y).toBe(true);
+  const dockTerminal = dock.getByRole("button", { name: "Toggle terminal", exact: true });
+  await dockTerminal.click();
+  await expect(panel).toBeVisible();
+  await expect(dockTerminal).toHaveAttribute("aria-pressed", "true");
+  await dockTerminal.click();
+  await expect(panel).toBeHidden();
+  await dock.getByRole("button", { name: "Open lesson docs" }).click();
+  await expect(page.getByRole("textbox", { name: "Search docs" })).toBeVisible();
+  await dock.getByRole("button", { name: "Open Sloppy AI" }).click();
+  await expect(page.getByRole("textbox", { name: "Ask about this code" })).toBeVisible();
+  await dock.getByRole("button", { name: "Open lesson task" }).click();
+  await expect(tabs.getByRole("button", { name: "Task" })).toHaveAttribute("aria-pressed", "true");
+  await dock.getByRole("button", { name: "Focus code editor" }).click();
+  await expect(page.getByRole("textbox", { name: "Your code. Press Escape to leave the editor." })).toBeFocused();
+
   const explorer = page.getByRole("button", { name: "File explorer", exact: true });
   await explorer.click();
   await expect(files).toBeHidden();
   await explorer.click();
   await expect(files).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(dock).toBeHidden();
   await explorer.click();
   const drawer = page.getByRole("dialog", { name: "Files" });
   await drawer.getByRole("button", { name: "Search", exact: true }).click();
