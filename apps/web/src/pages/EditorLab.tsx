@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { isNotFound, trpc } from "../lib/trpc";
 import { useApi } from "../lib/api";
 import { NextLink } from "../player/live/CourseNav";
@@ -33,10 +34,15 @@ function Lab({ slug, course }: { slug: string; course?: string }) {
           : <Link to="/" className="underline">Home</Link>}
       </Notice>
     );
-  const back = course ? <NextLink href={`/courses/${course}`}>Back to course</NextLink> : <NextLink href="/">Back home</NextLink>;
+  const back = (
+    <NextLink href={course ? `/courses/${course}` : "/"}>
+      <ArrowLeft size={15} aria-hidden="true" />
+      {course ? "Back to course" : "Back home"}
+    </NextLink>
+  );
   return (
     <Suspense fallback={<Notice><p>Loading the lab…</p></Notice>}>
-      <LessonWorkbench key={`${data.id}:${target.part.revision}`} kind={target.origin} lessonId={data.id} title={data.title} part={target.part} media={data.kind === "practice" ? practiceMedia(data.media) : undefined} next={<div className="flex justify-center">{back}</div>} />
+      <LessonWorkbench key={`${data.id}:${target.part.revision}`} kind={target.origin} lessonId={data.id} title={data.title} part={target.part} media={data.kind === "practice" ? practiceMedia(data.media) : undefined} next={back} />
     </Suspense>
   );
 }
