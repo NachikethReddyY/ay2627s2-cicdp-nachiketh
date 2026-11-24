@@ -4,7 +4,7 @@ import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { generatePath, lessonWriteState } from "../ai/service.ts";
-import { isSafe } from "../safety/moderation.ts";
+import { checkModeration } from "../safety/moderation.ts";
 import { catalogueName, edgesFor, knownCatalogue, unmetPrerequisites } from "./catalogue.ts";
 import { TRPCError } from "@trpc/server";
 import { lessonDone, lessonTotal, listed, myUser, notFound, Origin, pathCards, PathListItem, Slug, visibleCourse } from "./shared.ts";
@@ -93,17 +93,19 @@ const pathList = protectedProcedure
       return pathCards(me, sql`${scoped} ${search}`, sql`learners DESC, p.created_at DESC`, 50);
   });
 
-const PUBLISH_REFUSAL = "This path can't be published right now: it couldn't be cleared by our safety check.";
+const PUBLISH_UNAVAILABLE = "Publishing is unavailable because the automatic safety check couldn't run. Your path is still private.";
+const PUBLISH_REFUSAL = "This path didn't pass the automatic safety check. It is still private.";
 const MODERATION_CHUNK = 8000;
 const publish = protectedProcedure
   .input(Slug)
   .output(z.void())
   .mutation(({ ctx, input }) => withTx(async (tx) => {
-    const { rows: [path] } = await tx.execute<{ id: string }>(sql`
-      SELECT id FROM paths
+    const { rows: [path] } = await tx.execute<{ id: string; visibility: "public" | "private" }>(sql`
+      SELECT id, visibility FROM paths
       WHERE slug = ${input.slug} AND owner_id = ${myUser(ctx.learnerId)}
       FOR UPDATE`);
     if (!path) throw notFound("Path not found");
+    if (path.visibility === "public") return;
 
     const ownedWorlds = sql`
       SELECT w.id FROM worlds w
@@ -125,7 +127,11 @@ const publish = protectedProcedure
       WHERE p.id = ${path.id}`);
     const body = pending.map((row) => row.text).join("\n");
     for (let offset = 0; offset < body.length; offset += MODERATION_CHUNK) {
-      if (!(await isSafe(body.slice(offset, offset + MODERATION_CHUNK)))) {
+      const check = await checkModeration(body.slice(offset, offset + MODERATION_CHUNK));
+      if (check.status === "unavailable") {
+        throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: PUBLISH_UNAVAILABLE });
+      }
+      if (check.status === "flagged") {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: PUBLISH_REFUSAL });
       }
     }

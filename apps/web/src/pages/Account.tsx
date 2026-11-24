@@ -1,33 +1,13 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { usePostHog } from "@posthog/react";
+import { Link } from "@tanstack/react-router";
 import { authClient } from "../lib/auth";
+import { useSignOut } from "../lib/useSignOut";
 import { Logo } from "./landing/Logo";
 import HandleForm, { type HandleProfile } from "./HandleForm";
 import "./home.css";
 
 export default function Account({ profile }: { profile: HandleProfile }) {
   const { data, error: sessionError, isPending, refetch } = authClient.useSession();
-  const posthog = usePostHog();
-  const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
-
-  const [signingOut, setSigningOut] = useState(false);
-
-  async function signOut() {
-    setError(null);
-    setSigningOut(true);
-    try {
-      const { error } = await authClient.signOut();
-      if (error) throw error;
-      posthog?.reset();
-      void navigate({ to: "/login" });
-    } catch {
-      setError("Sign out failed. Check your connection and try again.");
-    } finally {
-      setSigningOut(false);
-    }
-  }
+  const { signOut, signingOut, error } = useSignOut();
 
   return (
     <div className="lq lq-moon">
