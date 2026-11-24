@@ -93,8 +93,10 @@ html:has(.lp) { scroll-padding-top: 88px; color-scheme: dark; }
 @media (prefers-reduced-motion: reduce) { .lp-tile { animation: none; } .lp-btn, .lp-ghost { transition: none; } }
 
 /* the real editor, framed */
-.lp-shot { position: relative; z-index: 2; max-width: 1120px; margin: 0 auto; border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--ring), 0 40px 80px -24px rgba(0, 0, 0, 0.8); }
+.lp-shot { position: relative; z-index: 2; display: block; max-width: 1120px; margin: 0 auto; border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--ring), 0 40px 80px -24px rgba(0, 0, 0, 0.8); }
 .lp-shot img { display: block; width: 100%; height: auto; }
+.lp-shot > span { display: flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; border-top: 1px solid rgb(255 255 255 / 12%); background: var(--g1); color: var(--tx); font-size: 14px; }
+.lp-shot:hover > span { background: var(--g2); }
 
 .lp-footer { max-width: 1080px; margin: 96px auto 0; padding: 32px 24px 44px; display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; align-items: center; color: var(--faint); font-size: 14px; box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.1); }
 .lp-footer .lp-logo { color: var(--tx); }

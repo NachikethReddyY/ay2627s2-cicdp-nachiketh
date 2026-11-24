@@ -1,6 +1,7 @@
 import { ArrowRight, Check } from "lucide-react";
 import { HintMock, MasteryMock, TopicMock } from "./landing/Mocks";
-import LearningModes from "./landing/LearningModes";
+import LearningStory from "./landing/LearningStory";
+import ScrimDemo from "./landing/ScrimDemo";
 import "./landing.css";
 import "./landing/sections.css";
 import { Logo } from "./landing/Logo";
@@ -69,12 +70,14 @@ export default function Landing() {
             <a href="#learning-modes" className="lp-sub">See how it works</a>
           </div>
 
-          <div className="lp-shot">
-            <img src="/images/landing-editor.png" width={2000} height={1210} alt="A LearnSlop Scrim paused for a prediction about JavaScript return values." />
-          </div>
+          <a href="#scrim-demo" className="lp-shot">
+            <img src="/images/landing-editor.png" width={2000} height={1199} alt="The LearnSlop Workbench with JavaScript code, documentation, a terminal, and a live task tracker preview." />
+            <span>Try the interactive Scrim <ArrowRight size={16} aria-hidden="true" /></span>
+          </a>
         </section>
 
-        <LearningModes />
+        <LearningStory />
+        <ScrimDemo />
 
         {features.map(({ id, Mock, flip, alt, title, body, ticks }) => (
           <section key={id} id={id} className={`lp-feat${flip ? " is-flip" : ""}`} aria-labelledby={`${id}-title`}>
