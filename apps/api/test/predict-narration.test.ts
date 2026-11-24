@@ -40,6 +40,7 @@ async function fixture(t: TestContext) {
 
 test("a private Predict step synthesizes only after reveal and shares the cached MP3 across requests", async (t) => {
   const { a, b, lesson, step, store, text } = await fixture(t);
+  env.STUDIO_TTS_VOICE = "af_bella";
   const req = { id: step.id };
   let respond!: (response: Response) => void;
   let markContacted!: () => void;
@@ -49,7 +50,7 @@ test("a private Predict step synthesizes only after reveal and shares the cached
     assert.equal(url, "https://openrouter.ai/api/v1/audio/speech");
     assert.equal(options?.method, "POST");
     assert.deepEqual(options.headers, { authorization: "Bearer mock-openrouter-key", "content-type": "application/json" });
-    assert.equal(options.body, JSON.stringify({ model: "hexgrad/kokoro-82m", input: text, voice: "af_heart", response_format: "mp3" }));
+    assert.equal(options.body, JSON.stringify({ model: "hexgrad/kokoro-82m", input: text, voice: "af_bella", response_format: "mp3" }));
     assert.ok(options.signal);
     markContacted();
     return provider;
@@ -98,15 +99,18 @@ test("provider failure falls back and rapid retries reuse the failed reservation
 });
 
 const pricingCases = [
-  { name: "uses LiteLLM's live Together character rate", provider: "Together", cost: 0.000123, source: "litellm" },
+  { name: "prices the default DeepInfra route without a generation ID", provider: null, cost: 0.00004802, source: "openrouter_catalog" },
+  { name: "uses LiteLLM's live Together character rate", provider: "Together", customVoice: true, cost: 0.000123, source: "litellm" },
   { name: "prefers OpenRouter's reported zero", provider: "Together", billed: 0, cost: 0, source: "openrouter" },
-  { name: "leaves a provider without a matching rate unpriced", provider: "DeepInfra", cost: null },
+  { name: "leaves a custom route without a generation ID unpriced", provider: null, customVoice: true, cost: null },
 ] as const;
 
 for (const scenario of pricingCases) {
   test(`narration accounting ${scenario.name}`, async (t) => {
     const { a, step, text } = await fixture(t);
     const expectedCost = scenario.cost;
+    const customVoice = "customVoice" in scenario;
+    if (customVoice) env.STUDIO_TTS_VOICE = "af_bella";
     env.POSTHOG_PROJECT_TOKEN = "mock-posthog-token";
     env.POSTHOG_HOST = "https://posthog.example";
     const captures: unknown[] = [];
@@ -114,7 +118,11 @@ for (const scenario of pricingCases) {
     const http = t.mock.method(globalThis, "fetch", (async (url, options) => {
       switch (String(url)) {
         case "https://openrouter.ai/api/v1/audio/speech":
-          return new Response(audio, { headers: { "content-type": "audio/mpeg", "x-generation-id": "gen-test" } });
+          assert.deepEqual(JSON.parse(String(options?.body)).provider, customVoice ? undefined : { only: ["deepinfra/us"] });
+          return new Response(audio, { headers: {
+            "content-type": "audio/mpeg",
+            ...(scenario.provider ? { "x-generation-id": "gen-test" } : {}),
+          } });
         case "https://openrouter.ai/api/v1/generation?id=gen-test":
           assert.deepEqual(options?.headers, { authorization: "Bearer mock-openrouter-key" });
           return Response.json({ data: {
@@ -128,6 +136,13 @@ for (const scenario of pricingCases) {
           return Response.json({ "together_ai/hexgrad/Kokoro-82M": {
             litellm_provider: "together_ai", mode: "audio_speech", input_cost_per_character: 0.000123 / [...text].length,
           } });
+        case "https://openrouter.ai/api/v1/models/hexgrad/kokoro-82m/endpoints":
+          catalogCalls += 1;
+          assert.equal(options?.headers, undefined);
+          return Response.json({ data: { id: "hexgrad/kokoro-82m", endpoints: [
+            { tag: "together", pricing: { prompt: "0.000004", completion: "0" } },
+            { tag: "deepinfra/us", pricing: { prompt: "0.00000098", completion: "0", discount: 0 } },
+          ] } });
         case "https://posthog.example/capture/":
           captures.push(JSON.parse(String(options?.body)));
           return new Response(null, { status: 200 });
@@ -146,7 +161,7 @@ for (const scenario of pricingCases) {
     const callsBeforeReplay = http.mock.callCount();
     assert.match(out(await a.m("steps.narration", { id: step.id })).url, /^memory:/);
     assert.equal(http.mock.callCount(), callsBeforeReplay);
-    assert.equal(catalogCalls, "source" in scenario && scenario.source === "litellm" ? 1 : 0);
+    assert.equal(catalogCalls, "source" in scenario && scenario.source !== "openrouter" ? 1 : 0);
     assert.equal(await db.$count(aiCallSpend, matchingSpend), countBefore + 1);
     const [{ properties, event }] = captures as { properties: Record<string, unknown>; event: string }[];
     assert.equal(captures.length, 1);
@@ -154,6 +169,7 @@ for (const scenario of pricingCases) {
     assert.equal(properties.modality, "audio");
     assert.equal(properties.$ai_model, "hexgrad/kokoro-82m");
     assert.equal(properties.$ai_is_error, false);
+    assert.equal(properties.$ai_http_status, 200);
     assert.equal(properties.pricing_status, scenario.cost === null ? "unpriced" : "priced");
     assert.equal(properties.pricing_source, "source" in scenario ? scenario.source : undefined);
     assert.equal(properties.$ai_total_cost_usd, expectedCost ?? undefined);
