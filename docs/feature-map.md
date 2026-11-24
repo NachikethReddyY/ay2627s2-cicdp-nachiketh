@@ -9,7 +9,7 @@ Routes marked dev or test only exist in non-production builds.
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
 | Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Scrolls through six full-screen learning mode examples, then shows the six cards together on black. Visitors can try a Scrim prediction. Pro and the advanced track are marked coming soon. |
-| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. The next learning action appears first on both desktop and phones, followed by total XP, streak, daily goal and path progress. New learners can open Explore from Home. Home also shows **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
+| Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. The next learning action appears first on both desktop and phones, followed by total XP, streak, daily goal and path progress. New learners can open Explore from Home. The next row contains **Learn a programming concept** and the **Weekly XP leaderboard**, followed by paths, mastery and assessment scores. The generator creates a private path. Top weekly rows show a public handle and XP. The account menu offers settings, feedback and sign-out. |
 | Spaced review | `/review/$slug` | `apps/web/src/pages/Review.tsx`, `apps/api/src/progress/review.ts` | Gets a due prediction from a previously answered lesson. Checks it server-side before showing the answer and scheduling the next review. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |
 | Handle onboarding | `/onboarding` | `apps/web/src/pages/Onboarding.tsx` | New learners and existing learners who haven't confirmed a handle see how the leaderboard uses it, then accept or edit their generated handle before entering the app. |
@@ -27,6 +27,8 @@ Routes marked dev or test only exist in non-production builds.
 | Block gallery (dev) | `/dev/blocks` | `apps/web/src/pages/DevBlocks.tsx` | Previews every UI block. |
 | Diff view (dev) | `/diff` | `apps/web/src/player/DiffPage.tsx` | Compares lesson versions. |
 | Player replay fixture (test) | `/test/player` | `apps/web/src/pages/TestPlayer.tsx`, `TestEditor.tsx` | Development harness for the replay transport and editor. Browser tests for practice use the Editor lab and Lesson player routes. |
+
+Home shows a dashboard skeleton while loading. Its shimmer follows the learner's reduced-motion preference. The streak rings track observed attempts, and the daily goal tracks XP. **Review due** identifies a spaced review. In **What you know**, **Practice** fills and focuses the path generator with the selected skill.
 
 The Course Path track labels one lesson **Up next** and distinguishes it from other available, complete and locked lessons. The syllabus shows the same states.
 

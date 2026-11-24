@@ -1,16 +1,24 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { usePostHog } from "@posthog/react";
+import { BookOpen, Code2, Film, Repeat2, Sparkles } from "lucide-react";
 import { trpc } from "../../lib/trpc";
 import { dismissJob, getJob, getQueue, startGeneration, subscribeJob } from "./generationJob";
 import { generatorError } from "./generatorErrors";
+import "./generator.css";
 
 const chips = ["Python basics", "React hooks", "SQL joins", "Git"];
 
-export default function Generator() {
+const sequence = [
+  { icon: BookOpen, name: "Read", note: "Short explainer" },
+  { icon: Film, name: "Scrim", note: "Watch it run" },
+  { icon: Code2, name: "Practice", note: "Predict, code" },
+  { icon: Repeat2, name: "Review", note: "Spaced recall" },
+];
+
+export default function Generator({ prompt, setPrompt, promptField }: { prompt: string; setPrompt: (prompt: string) => void; promptField: Ref<HTMLInputElement> }) {
   const job = useSyncExternalStore(subscribeJob, getJob);
   const queue = useSyncExternalStore(subscribeJob, getQueue);
-  const [q, setQ] = useState(() => ("prompt" in job ? job.prompt : ""));
   const [empty, setEmpty] = useState(false);
   const navigate = useNavigate();
   const posthog = usePostHog();
@@ -45,28 +53,34 @@ export default function Generator() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!q.trim()) {
+    if (!prompt.trim()) {
       setEmpty(true);
       return;
     }
-    run(q.trim());
-    setQ("");
+    run(prompt.trim());
+    setPrompt("");
   };
 
   return (
     <section className="lq-card lq-gen" aria-labelledby="gen-h">
-      <h2 id="gen-h">Learn a programming concept</h2>
+      <header className="lq-gen-head">
+        <h2 id="gen-h">Learn a programming concept</h2>
+        <p className="lq-tagline">Name a topic and get a path of lessons built around it.</p>
+      </header>
       <form onSubmit={submit}>
         <label htmlFor="gen-q">What do you want to learn to code?</label>
         <div className="lq-gen-row">
-          <input
-            id="gen-q" type="text" autoComplete="off" placeholder="e.g. loops, hooks, joins" value={q} aria-describedby="gen-status"
-            onChange={(e) => {
-              setQ(e.target.value);
-              setEmpty(false);
-              dismissJob();
-            }}
-          />
+          <div className="lq-dashboard-prompt">
+            <Sparkles size={17} aria-hidden="true" />
+            <input
+              ref={promptField} id="gen-q" type="text" autoComplete="off" placeholder="e.g. loops, hooks, joins" value={prompt} aria-describedby="gen-status"
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                setEmpty(false);
+                dismissJob();
+              }}
+            />
+          </div>
           <button className="lq-btn lq-btn-blue" type="submit" aria-busy={busy}>
             {busy && <svg className="lq-spin" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" /></svg>}
             {busy ? "Queue" : "Generate"}
@@ -76,7 +90,7 @@ export default function Generator() {
       <ul className="lq-chips" aria-label="Quick picks">
         {chips.map((c) => (
           <li key={c}>
-            <button className="lq-chip" type="button" onClick={() => { setQ(c); setEmpty(false); }}>
+            <button className="lq-chip" type="button" onClick={() => { setPrompt(c); setEmpty(false); }}>
               {c}
             </button>
           </li>
@@ -112,8 +126,16 @@ export default function Generator() {
             </button>
           </div>
         )}
-        {empty && <p className="lq-msg err lq-shake" role="alert">Type what you want to learn first, or tap a quick pick.</p>}
+        {empty && !prompt.trim() && <p className="lq-msg err lq-shake" role="alert">Type what you want to learn first, or tap a quick pick.</p>}
       </div>
+      <ol className="lq-gen-steps" aria-label="A typical course">
+        {sequence.map(({ icon: Icon, name, note }) => (
+          <li key={name}>
+            <span className="lq-gen-step-icon"><Icon size={16} aria-hidden="true" /></span>
+            <span className="lq-gen-step-text"><b>{name}</b><small>{note}</small></span>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
