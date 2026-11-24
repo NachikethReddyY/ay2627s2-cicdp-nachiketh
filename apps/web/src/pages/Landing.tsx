@@ -1,5 +1,6 @@
 import { ArrowRight, Check } from "lucide-react";
-import { GuessMock, HintMock, MasteryMock, ReplayMock, TopicMock } from "./landing/Mocks";
+import { HintMock, MasteryMock, TopicMock } from "./landing/Mocks";
+import LearningModes from "./landing/LearningModes";
 import "./landing.css";
 import "./landing/sections.css";
 import { Logo } from "./landing/Logo";
@@ -17,20 +18,6 @@ const tiles = [
 
 const features = [
   {
-    id: "guess", Mock: GuessMock, flip: false,
-    alt: "Example of a step asking what a line does to the total, with +=, = and -= as the choices.",
-    title: "Pick the answer first. Then the editor writes it.",
-    body: "Every step asks what the next line will do. You choose, the editor writes the line, and you see straight away whether you were right.",
-    ticks: ["The answer stays hidden until you commit", "A wrong guess shows what to review", "Your first attempt is the one that counts"],
-  },
-  {
-    id: "replay", Mock: ReplayMock, flip: false,
-    alt: "Example of a replayed code change: one line removed and two added, at step 4 of 6.",
-    title: "Watch code change step by step.",
-    body: "Follow along in the editor as each change is written and explained.",
-    ticks: ["Replay any step in the editor", "Pauses at the line you have to predict"],
-  },
-  {
     id: "hints", Mock: HintMock, flip: true,
     alt: "Example: two hints used, one still locked, the help chat declining to write the answer, and no mastery credit after a hint.",
     title: "Hints nudge. They never answer.",
@@ -40,9 +27,9 @@ const features = [
   {
     id: "mastery", Mock: MasteryMock, flip: true,
     alt: "Example: Strings at 58% after a clean first try, with Loops 45%, Arrays 31%, Conditionals 18% and Functions 12%.",
-    title: "It learns what you know.",
-    body: "Your first attempt at each question updates what LearnSlop thinks you know about that concept.",
-    ticks: ["Updates after your first attempt at each question", "Answers after a hint do not count toward mastery"],
+    title: "Review what needs another try.",
+    body: "LearnSlop tracks your progress by concept and brings back earlier questions for spaced review.",
+    ticks: ["See which concepts you know and where to practice", "Return to concepts at spaced intervals"],
   },
   {
     id: "track", Mock: TopicMock, flip: false,
@@ -76,16 +63,18 @@ export default function Landing() {
           </div>
 
           <div className="lp-hero-in">
-            <h1 id="hero-title" className="lp-h1"><span>Guess the next line.</span> <span>Then watch it get written.</span></h1>
-            <p className="lp-lead">Learn JavaScript and TypeScript in short lessons that start with a prediction.</p>
+            <h1 id="hero-title" className="lp-h1"><span>Learn to read</span> <span>and write code.</span></h1>
+            <p className="lp-lead">Learn JavaScript and TypeScript through short reading lessons, narrated Scrims, hands-on coding practice, and spaced review.</p>
             <a href="/login" className="lp-btn">Start learning <ArrowRight size={17} strokeWidth={2.25} aria-hidden /></a>
-            <a href="#guess" className="lp-sub">See how it works</a>
+            <a href="#learning-modes" className="lp-sub">See how it works</a>
           </div>
 
           <div className="lp-shot">
-            <img src="/images/landing-editor.png" width={2000} height={1200} alt="The LearnSlop editor: a file tree, JavaScript code, a documentation panel, a running task tracker preview and a dock." />
+            <img src="/images/landing-editor.png" width={2000} height={1210} alt="A LearnSlop Scrim paused for a prediction about JavaScript return values." />
           </div>
         </section>
+
+        <LearningModes />
 
         {features.map(({ id, Mock, flip, alt, title, body, ticks }) => (
           <section key={id} id={id} className={`lp-feat${flip ? " is-flip" : ""}`} aria-labelledby={`${id}-title`}>
@@ -125,7 +114,7 @@ export default function Landing() {
         </section>
 
         <section className="lp-close" aria-labelledby="final-title">
-          <h2 id="final-title" className="lp-h2">What does the next line do?</h2>
+          <h2 id="final-title" className="lp-h2">What do you want to learn to code?</h2>
           <a href="/login" className="lp-btn">Start learning <ArrowRight size={17} strokeWidth={2.25} aria-hidden /></a>
         </section>
       </main>
