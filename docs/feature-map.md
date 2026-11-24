@@ -8,7 +8,7 @@ Routes marked dev or test only exist in non-production builds.
 
 | Name | Route | Code | What the learner does |
 |---|---|---|---|
-| Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Scrolls through how six learning modes form a path and tries a Scrim prediction. Pro and the advanced track are marked coming soon. |
+| Landing | `/` (signed out) | `apps/web/src/pages/Landing.tsx` | Scrolls through six full-screen learning mode examples, then shows the six cards together on black. Visitors can try a Scrim prediction. Pro and the advanced track are marked coming soon. |
 | Home | `/` (signed in) | `apps/web/src/pages/Home.tsx`, parts in `pages/home/` | Sees **Continue** with its recommendation and reason and a direct **Resume** link when the most recent unfinished lesson differs. The next learning action appears first on both desktop and phones, followed by total XP, streak, daily goal and path progress. New learners can open Explore from Home. Home also shows **What you know** (mastery), **Before and after** (pre-/post-test scores), **Your paths**, **Learn a programming concept** and the **Weekly XP leaderboard**. The generator creates a private path. Top weekly rows show a public handle and XP. |
 | Spaced review | `/review/$slug` | `apps/web/src/pages/Review.tsx`, `apps/api/src/progress/review.ts` | Gets a due prediction from a previously answered lesson. Checks it server-side before showing the answer and scheduling the next review. |
 | Sign in | `/login` | `apps/web/src/pages/Login.tsx` | Signs in or up with Better Auth. |

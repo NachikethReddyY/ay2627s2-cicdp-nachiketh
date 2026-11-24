@@ -747,7 +747,7 @@ test("a lesson with no lab can open a temporary Watch workspace", async ({ page 
 });
 
 const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
-  ["/", (page) => page.getByRole("heading", { level: 1, name: /Guess the next line/ })],
+  ["/", (page) => page.getByRole("heading", { level: 1, name: "Learn to read and write code." })],
   ["/login", (page) => page.getByRole("heading", { name: "Sign in", exact: true })],
 ];
 const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
@@ -807,6 +807,7 @@ test("landing scroll expands each learning mode in order before showing all six"
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   const story = page.locator(".lp-story-scroll");
+  await page.evaluate(() => document.fonts.ready);
   const at = (progress: number) => story.evaluate((stage, progress) => {
     const start = stage.getBoundingClientRect().top + window.scrollY;
     window.scrollTo({ top: start + progress * (stage.clientHeight - window.innerHeight), behavior: "instant" });
@@ -817,6 +818,12 @@ test("landing scroll expands each learning mode in order before showing all six"
   const cards = story.locator(".lp-story-tile-position");
   await at(.58);
   await expect(cards.last()).toHaveCSS("--detail", "0");
+  const firstCard = cards.first();
+  await at(.5965);
+  await expect(firstCard).toHaveCSS("opacity", "1");
+  await expect(cards.nth(1)).toHaveCSS("opacity", "0");
+  await expect(firstCard.locator(".lp-story-tile-summary")).toHaveCSS("opacity", "0");
+  await expect(firstCard.locator(".lp-story-expanded-layout")).toHaveCSS("opacity", "0");
   for (const [index, progress] of [.616, .668, .72, .772, .824, .876].entries()) {
     await at(progress);
     await expect(cards.nth(index)).toHaveCSS("--focus", "1");
@@ -827,11 +834,17 @@ test("landing scroll expands each learning mode in order before showing all six"
     await expect(expanded.locator(".lp-story-expanded-layout")).toHaveCSS("opacity", "1");
   }
   await at(.98);
-  await expect(story.locator(".lp-story-blue")).toHaveCSS("opacity", "1");
+  await expect(story.locator(".lp-story-pin")).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  for (const line of await story.locator(".lp-story-words, .lp-story-word").all()) {
+    await expect(line).toHaveCSS("visibility", "hidden");
+  }
   for (const card of await cards.all()) {
     await expect(card).toHaveCSS("--focus", "0");
     await expect(card).toHaveCSS("--detail", "1");
+    await expect(card).toHaveCSS("opacity", "1");
   }
+  await at(.32);
+  await expect(story.locator(".lp-story-framework")).toHaveCSS("visibility", "visible");
 });
 
 test("axe: no serious or critical violations on signed-in pages", async ({ page }) => {

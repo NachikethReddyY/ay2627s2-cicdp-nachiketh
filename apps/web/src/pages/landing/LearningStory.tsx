@@ -30,23 +30,36 @@ type MovingTileProps = {
   overview: MotionValue<number>;
 };
 
+const firstFocus = .59;
+const focusDuration = .052;
+const lastFocusEnd = firstFocus + modes.length * focusDuration;
+const tileFadeDuration = .006;
+const spotlightIn = firstFocus - .015;
+const spotlightOut = lastFocusEnd + .02;
+
 function MovingTile({ mode, index, progress, spotlight, overview }: MovingTileProps) {
   const { icon: Icon } = mode;
   const drop = .43 + index * .018;
-  const start = .59 + index * .052;
+  const start = firstFocus + index * focusDuration;
+  const end = start + focusDuration;
   const shown = useTransform(progress, [drop, drop + .042], [0, 1]);
   const y = useTransform(progress, [drop, drop + .055], [-60, 0]);
   const rotate = useTransform(progress, [drop, drop + .055], [index % 2 === 0 ? -9 : 9, 0]);
-  const focus = useTransform(progress, [start, start + .011, start + .041, start + .052], [0, 1, 1, 0]);
-  const detail = useTransform(() => Math.max(focus.get(), overview.get()));
-  const opacity = useTransform(() => shown.get() * (1 - .68 * spotlight.get() * (1 - focus.get())));
+  const focus = useTransform(progress, [start, start + .011, end - .011, end], [0, 1, 1, 0]);
+  const presence = useTransform(progress, [
+    index === 0 ? spotlightIn - tileFadeDuration : start - tileFadeDuration,
+    index === 0 ? spotlightIn : start,
+    index === modes.length - 1 ? spotlightOut : end,
+    index === modes.length - 1 ? spotlightOut + tileFadeDuration : end + tileFadeDuration,
+  ], [0, 1, 1, 0]);
+  const opacity = useTransform(() => shown.get() * (1 - spotlight.get() * (1 - presence.get())));
   const zIndex = useTransform(focus, (amount) => amount > 0 ? 2 : 1);
-  const visibility = useTransform(focus, (amount) => amount > .62 ? "visible" : "hidden");
+  const visibility = useTransform(focus, (amount) => amount > .72 ? "visible" : "hidden");
   return (
     <motion.li
       className="lp-story-tile-position"
       data-mode={index + 1}
-      style={{ "--focus": focus, "--overview": overview, "--detail": detail, opacity, zIndex } as MotionStyle}
+      style={{ "--focus": focus, "--overview": overview, opacity, zIndex } as MotionStyle}
     >
       <motion.div className="lp-story-tile" style={{ y, rotate }}>
         <div className="lp-story-tile-summary"><ModeTile mode={mode} /></div>
@@ -67,12 +80,12 @@ export default function LearningStory() {
   const stage = useRef<HTMLDivElement>(null);
   const { scrollYProgress: progress } = useScroll({ target: stage, offset: ["start start", "end end"] });
   const difficulty = useTransform(progress, [.025, .085, .155, .225], [0, 1, 1, 0]);
-  const framework = useTransform(progress, [.19, .295, .365, .445], [0, 1, 1, 0]);
-  const wordOpacity = useTransform(progress, [.025, .085, .365, .445], [0, 1, 1, 0]);
+  const framework = useTransform(progress, [.19, .295, .365, .43], [0, 1, 1, 0]);
+  const wordOpacity = useTransform(progress, [.025, .085, .365, .43], [0, 1, 1, 0]);
   const wordY = useTransform(progress, [.15, .295], [0, .75]);
   const wordColor = useTransform(progress, [.15, .295], ["#ededed", "#85acff"]);
-  const blue = useTransform(progress, [.585, .635], [0, 1]);
-  const spotlight = useTransform(progress, [.59, .605, .887, .906], [0, 1, 1, 0]);
+  const introVisibility = useTransform(progress, (amount) => amount < .43 ? "visible" : "hidden");
+  const spotlight = useTransform(progress, [spotlightIn, firstFocus, lastFocusEnd, spotlightOut], [0, 1, 1, 0]);
   const overview = useTransform(progress, [.905, .95], [0, 1]);
 
   return (
@@ -87,15 +100,16 @@ export default function LearningStory() {
 
       <div ref={stage} className="lp-story-scroll" aria-hidden="true">
         <div className="lp-story-pin">
-          <motion.div className="lp-story-blue" style={{ opacity: blue }} />
           <div className="lp-story-scene">
-            <motion.div className="lp-story-words lp-story-difficulty" style={{ opacity: difficulty }}>
-              <span>Learning to</span><span>is difficult.</span>
+            <motion.div style={{ visibility: introVisibility }}>
+              <motion.div className="lp-story-words lp-story-difficulty" style={{ opacity: difficulty }}>
+                <span>Learning to</span><span>is difficult.</span>
+              </motion.div>
+              <motion.div className="lp-story-words lp-story-framework" style={{ opacity: framework }}>
+                <span>We built a framework</span><span>for teaching</span>
+              </motion.div>
+              <motion.div className="lp-story-word" style={{ opacity: wordOpacity, color: wordColor, "--word-shift": wordY } as MotionStyle}>code</motion.div>
             </motion.div>
-            <motion.div className="lp-story-words lp-story-framework" style={{ opacity: framework }}>
-              <span>We built a framework</span><span>for teaching</span>
-            </motion.div>
-            <motion.div className="lp-story-word" style={{ opacity: wordOpacity, color: wordColor, "--word-shift": wordY } as MotionStyle}>code</motion.div>
             <ol className="lp-story-tiles">
               {modes.map((mode, index) => <MovingTile key={mode.label} mode={mode} index={index} progress={progress} spotlight={spotlight} overview={overview} />)}
             </ol>

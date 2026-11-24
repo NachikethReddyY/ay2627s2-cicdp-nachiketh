@@ -105,12 +105,7 @@
     height: 100svh;
     place-items: center;
     overflow: clip;
-  }
-
-  .lp-story-blue {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 50% 50%, #245fbf 0%, #163e91 56%, #102761 100%);
+    background: #000;
   }
 
   .lp-story-scene {
@@ -148,6 +143,7 @@
     --y: -61px;
     --tile-width: clamp(130px, 23vw, 224px);
     --distance: calc(1 - var(--focus));
+    --detail: var(--overview);
     position: absolute;
     inset: 50% auto auto 50%;
     width: calc(var(--tile-width) + (100vw - var(--tile-width)) * var(--focus));
@@ -172,7 +168,7 @@
       color-mix(in srgb, var(--mode-edge) var(--scene-weight), #101115) 84%);
   }
 
-  .lp-story-tile-summary { opacity: clamp(0, calc((.78 - var(--focus)) * 4), 1); }
+  .lp-story-tile-summary { opacity: clamp(0, calc(1 - var(--focus) * 2), 1); }
 
   .lp-story-expanded-layout {
     position: absolute;
@@ -183,7 +179,7 @@
     align-items: center;
     gap: clamp(22px, 5vw, 82px);
     margin-inline: auto;
-    opacity: clamp(0, calc((var(--focus) - .62) * 3), 1);
+    opacity: clamp(0, calc((var(--focus) - .72) / .28), 1);
   }
 
   .lp-story-expanded-copy h3 {
