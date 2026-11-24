@@ -62,6 +62,7 @@ services:
     # fake, so these caps only satisfy that check.
     environment:
       PUBLIC_ORIGIN: http://localhost:${E2E_WEB_PORT:-5173}
+      TRUSTED_PROXY: "loopback,uniquelocal"
       AI_DAILY_BUDGET_USD: "1"
       AI_MONTHLY_BUDGET_USD: "10"
     # The API stays on the default network (Postgres, host port) and joins llm to reach the engine.

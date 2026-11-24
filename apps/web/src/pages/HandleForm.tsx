@@ -5,7 +5,8 @@ import { trpc, type RouterOutputs } from "../lib/trpc";
 
 export type HandleProfile = RouterOutputs["me"]["handle"]["profile"];
 
-const changeDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const changeDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" });
+const legacyChangeDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export default function HandleForm({ profile, onContinue }: { profile: HandleProfile; onContinue?: () => void }) {
   const [current, setCurrent] = useState(profile);
@@ -14,8 +15,14 @@ export default function HandleForm({ profile, onContinue }: { profile: HandlePro
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const posthog = usePostHog();
-  const { nextChangeAt } = current;
-  const locked = !onContinue && nextChangeAt !== null;
+  const lockDate = onContinue ? null : current.nextChangeDate;
+  const legacyLock = !onContinue && lockDate === undefined ? current.nextChangeAt : null;
+  const locked = Boolean(lockDate) || legacyLock != null;
+  const rules = lockDate
+    ? `You can change your handle again on ${changeDate.format(new Date(lockDate))}, starting at midnight in your account time zone.`
+    : legacyLock != null
+      ? `You can change your handle again on ${legacyChangeDate.format(legacyLock)}.`
+      : "Use 3 to 20 letters, numbers, or underscores. You can change your handle once per calendar day.";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,9 +71,7 @@ export default function HandleForm({ profile, onContinue }: { profile: HandlePro
           aria-describedby={`handle-visibility handle-rules${error ? " handle-error" : ""}`}
           onChange={(event) => { setHandle(event.target.value); setError(null); setSaved(false); }}
         />
-        <p id="handle-rules" className="text-sm text-[var(--mu)]">
-          {locked ? `You can change your handle again on ${changeDate.format(nextChangeAt)}.` : "Use 3 to 20 letters, numbers, or underscores. You can change your handle once every 30 days."}
-        </p>
+        <p id="handle-rules" className="text-sm text-[var(--mu)]">{rules}</p>
       </div>
       {error && <p id="handle-error" role="alert" className="text-sm text-[var(--bad)]">{error}</p>}
       {saved && <p role="status" className="text-sm">Public handle saved.</p>}

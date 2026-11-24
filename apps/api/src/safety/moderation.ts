@@ -8,6 +8,7 @@ export const CATEGORIES = [
 ] as const;
 type ModerationResult = { flagged: boolean; scores: Partial<Record<(typeof CATEGORIES)[number], number>> };
 export type ModerationClient = (input: string) => Promise<ModerationResult>;
+type ModerationCheck = { status: "allowed" | "flagged" } | { status: "unavailable"; cause: unknown };
 
 const THRESHOLD = 0.8;
 const allowList = /^(javascript|typescript|python|java|c\+\+|rust|go|html|css|sql|programming|coding)$/i;
@@ -33,19 +34,28 @@ export function setModerationTimeoutForTests(ms: number): void {
   moderationTimeoutMs = ms;
 }
 
+export async function checkModeration(input: string, client: ModerationClient = moderationClient): Promise<ModerationCheck> {
+  try {
+    const result = await client(input);
+    const allowed = !result.flagged && Object.values(result.scores).every((score) => score < THRESHOLD);
+    return { status: allowed ? "allowed" : "flagged" };
+  } catch (cause) {
+    return { status: "unavailable", cause };
+  }
+}
+
 export async function isSafe(
   input: string,
   client: ModerationClient = moderationClient,
   { failOpen = false }: { failOpen?: boolean } = {},
 ): Promise<boolean> {
   if (allowList.test(input.trim())) return true;
-  try {
-    const result = await client(input);
-    return !result.flagged && Object.values(result.scores).every((score) => score < THRESHOLD);
-  } catch (error) {
-    if (failOpen) console.warn("moderation unavailable; text allowed", error instanceof Error ? error.message : "");
+  const result = await checkModeration(input, client);
+  if (result.status === "unavailable") {
+    if (failOpen) console.warn("moderation unavailable; text allowed", result.cause instanceof Error ? result.cause.message : "");
     return failOpen;
   }
+  return result.status === "allowed";
 }
 
 export const isSafeText = (input: string) => input.trim().length < 4 ? Promise.resolve(true) : isSafe(input, moderationClient, { failOpen: true });
