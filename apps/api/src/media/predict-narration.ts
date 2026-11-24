@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { recordMediaCallSpend } from "../admin/ai-spend.ts";
 import { reserveAiSpend } from "../config/budget.ts";
 import { db } from "../db/client.ts";
 import { lessonMedia } from "../db/schema.ts";
 import { env } from "../env.ts";
+import { recordNarrationCall } from "./narration-spend.ts";
 import { storeMedia } from "./service.ts";
 import { storage } from "./storage.ts";
 
@@ -48,17 +49,28 @@ async function loadOrGenerate({ lessonVersionId, stepId, text }: Input): Promise
   if (!claimed) return null;
 
   let key: string;
+  let accounting: Promise<void> | undefined;
   try {
     await reserveAiSpend(env.STUDIO_TTS_ESTIMATE_USD);
     const signal = AbortSignal.timeout(SPEECH_TIMEOUT_MS);
-    const response = await fetch(OPENROUTER_SPEECH, {
-      method: "POST",
-      signal,
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: env.STUDIO_TTS_MODEL, input: text, voice: env.STUDIO_TTS_VOICE, response_format: "mp3" }),
-    });
-    if (response.ok) await recordMediaCallSpend(0, 0, env.STUDIO_TTS_ESTIMATE_USD);
-    const body = await readMp3(response);
+    const model = env.STUDIO_TTS_MODEL;
+    const started = performance.now();
+    let response: Response | undefined;
+    let body: Uint8Array | undefined;
+    try {
+      response = await fetch(OPENROUTER_SPEECH, {
+        method: "POST",
+        signal,
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model, input: text, voice: env.STUDIO_TTS_VOICE, response_format: "mp3" }),
+      });
+      body = await readMp3(response);
+    } finally {
+      accounting = recordNarrationCall({
+        id, apiKey, model, characters: [...text].length, latency: (performance.now() - started) / 1_000,
+        response, failed: body === undefined,
+      }).catch(() => { console.warn("Could not record narration spend"); });
+    }
     key = await storeMedia({ lessonVersionId, stepId, kind: "narration", body, contentType: MP3 }, signal);
     const [saved] = await db.update(lessonMedia).set({ status: "ready", key, bytes: body.byteLength })
       .where(eq(lessonMedia.id, id)).returning({ id: lessonMedia.id });
@@ -66,6 +78,8 @@ async function loadOrGenerate({ lessonVersionId, stepId, text }: Input): Promise
   } catch {
     await db.update(lessonMedia).set({ status: "failed" }).where(eq(lessonMedia.id, id));
     return null;
+  } finally {
+    await accounting;
   }
   return store.signGet(key);
 }
