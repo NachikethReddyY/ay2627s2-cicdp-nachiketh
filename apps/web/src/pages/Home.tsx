@@ -1,14 +1,17 @@
-import { studioEnabled } from "../lib/studio";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { ChevronDown, LogOut, MessageSquare, Settings } from "lucide-react";
 import { useApi } from "../lib/api";
 import { trpc } from "../lib/trpc";
 import { authClient } from "../lib/auth";
-import { EmptyNote, Spinner } from "../components/Bits";
+import { useSignOut } from "../lib/useSignOut";
+import { EmptyNote } from "../components/Bits";
 import { Logo } from "./landing/Logo";
 import Learning from "./home/Learning";
 import Continue, { ResumeLink } from "./home/Continue";
+import DashboardSkeleton from "./home/DashboardSkeleton";
 import Generator from "./home/Generator";
+import { getJob } from "./home/generationJob";
 import Leaderboard from "./home/Leaderboard";
 import Mastery from "./home/Mastery";
 import PathAction from "./home/PathAction";
@@ -20,7 +23,17 @@ import "./dashboard.css";
 export default function Home() {
   const { data, error, reload } = useApi("home", () => trpc.home.get.query());
   const { data: session } = authClient.useSession();
+  const { signOut, signingOut, error: signOutError } = useSignOut();
   const initial = session?.user.email?.charAt(0).toUpperCase() ?? "?";
+  const [prompt, setPrompt] = useState(() => {
+    const job = getJob();
+    return "prompt" in job ? job.prompt : "";
+  });
+  const promptField = useRef<HTMLInputElement>(null);
+  const practice = (skill: string) => {
+    setPrompt(skill);
+    promptField.current?.focus();
+  };
   const stored = data?.stats.timezone;
   const activePath = data?.paths.find((path) => path.slug === data.continue?.path.slug) ?? data?.paths[0];
   useEffect(() => {
@@ -46,8 +59,18 @@ export default function Home() {
           <nav className="lq-topnav" aria-label="Main">
             <Link to="/" className="lq-topnav-link" aria-current="page">Home</Link>
             <Link to="/explore" className="lq-topnav-link">Explore</Link>
-            {studioEnabled && <Link to="/studio" className="lq-topnav-link">Studio</Link>}
-            <Link to="/account" className="lq-avatar" aria-label="Account settings">{initial}</Link>
+            <button type="button" className="lq-dashboard-account" aria-label="Account menu" popoverTarget="home-account-menu">
+              <span className="lq-dashboard-avatar" aria-hidden="true">{initial}</span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+            <div id="home-account-menu" className="lq-dashboard-menu" popover="auto">
+              <Link to="/account"><Settings size={16} aria-hidden="true" /> Account settings</Link>
+              <Link to="/feedback"><MessageSquare size={16} aria-hidden="true" /> Send feedback</Link>
+              <button type="button" onClick={() => void signOut()} disabled={signingOut}>
+                <LogOut size={16} aria-hidden="true" /> {signingOut ? "Signing out…" : "Sign out"}
+              </button>
+              {signOutError && <p role="alert">{signOutError}</p>}
+            </div>
           </nav>
         </div>
       </header>
@@ -57,26 +80,33 @@ export default function Home() {
         <div className="lq-dashboard-flow">
           {error ? (
             <EmptyNote><span role="alert">Couldn't load your home.</span> <button type="button" className="lq-pill" onClick={reload}>Retry</button></EmptyNote>
-          ) : !data ? <Spinner /> : (
-            <>
-              <div className="lq-dashboard-pair">
-                {(data.continue || data.resume || data.paths.length === 0) && (
-                  <div className="lq-dashboard-next">
-                    {data.continue ? <Continue c={data.continue} resume={data.resume} /> : data.resume ? <ResumeLink resume={data.resume} /> : null}
-                    {data.paths.length === 0 && (
-                      <section className="lq-card lq-home-empty" aria-labelledby="home-empty">
-                        <div>
-                          <h2 id="home-empty">Find your first path</h2>
-                          <p className="lq-tagline">Browse paths and choose what you want to learn.</p>
-                        </div>
-                        <Link to="/explore" className="lq-btn lq-btn-ink">Explore paths</Link>
-                      </section>
-                    )}
-                  </div>
-                )}
-                <Progress stats={data.stats} path={activePath} />
-              </div>
+          ) : !data ? <DashboardSkeleton /> : (
+            <div className="lq-dashboard-pair">
+              {(data.continue || data.resume || data.paths.length === 0) && (
+                <div className="lq-dashboard-next">
+                  {data.continue ? <Continue c={data.continue} resume={data.resume} /> : data.resume ? <ResumeLink resume={data.resume} /> : null}
+                  {data.paths.length === 0 && (
+                    <section className="lq-card lq-home-empty" aria-labelledby="home-empty">
+                      <div>
+                        <h2 id="home-empty">Find your first path</h2>
+                        <p className="lq-tagline">Browse paths and choose what you want to learn.</p>
+                      </div>
+                      <Link to="/explore" className="lq-btn lq-btn-ink">Explore paths</Link>
+                    </section>
+                  )}
+                </div>
+              )}
+              <Progress stats={data.stats} path={activePath} />
+            </div>
+          )}
 
+          <div className="lq-dashboard-pair">
+            <Generator prompt={prompt} setPrompt={setPrompt} promptField={promptField} />
+            {data && <Leaderboard leaderboard={data.leaderboard} />}
+          </div>
+
+          {data && (
+            <>
               {!data.continue && data.paths.length === 0 && data.official.length > 0 && (
                 <section aria-labelledby="start">
                   <div className="lq-sec-head"><h2 id="start">Start a path</h2></div>
@@ -104,17 +134,12 @@ export default function Home() {
 
               {(data.mastery.length > 0 || data.learning.length > 0) && (
                 <div className="lq-dashboard-pair">
-                  <Mastery items={data.mastery} />
+                  <Mastery items={data.mastery} onPractice={practice} />
                   <Learning items={data.learning} />
                 </div>
               )}
             </>
           )}
-
-          <div className="lq-dashboard-pair">
-            <Generator />
-            {data && <Leaderboard leaderboard={data.leaderboard} />}
-          </div>
 
           {data && data.community.length > 0 && (
             <section aria-labelledby="comm-h">
