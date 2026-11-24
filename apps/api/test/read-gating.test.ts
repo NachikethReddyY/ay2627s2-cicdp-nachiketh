@@ -9,10 +9,10 @@ import { attempts, learners, lessons, lessonVersions, partCompletions, stepProgr
 const app = buildApp();
 after(() => app.close());
 
-async function addLesson(kind: "learn" | "watch", count: number) {
+async function addLesson(kind: "learn" | "watch", count: number, intro?: string) {
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));
   const [lesson] = await db.insert(lessons).values({ slug: `${kind}-${count}`, title: "Read", worldId: world!.id, sourceKind: "authored", kind, status: "published" }).returning();
-  const content: PartSecret = kind === "learn" ? { kind, body: "PRIVATE_READ_CONTENT" } : { kind, beforeFiles: { "main.js": "before" }, hunks: [{ id: "h", file: "main.js", oldStart: 1, lines: ["+PRIVATE_READ_CONTENT"] }] };
+  const content: PartSecret = kind === "learn" ? { kind, intro, body: "PRIVATE_READ_CONTENT" } : { kind, beforeFiles: { "main.js": "before" }, hunks: [{ id: "h", file: "main.js", oldStart: 1, lines: ["+PRIVATE_READ_CONTENT"] }] };
   const [version] = await db.insert(lessonVersions).values({ lessonId: lesson!.id, version: 1, content }).returning();
   await db.update(lessons).set({ currentVersionId: version!.id }).where(eq(lessons.id, lesson!.id));
   const checks = count ? await db.insert(steps).values(readSteps.slice(0, count).map((s, idx) => ({
@@ -28,9 +28,11 @@ for (const kind of ["learn", "watch"] as const) {
     const cookie = await signUp(app);
     const api = trpc(app, cookie);
     for (const count of [0, 1, 2]) {
-      const { checks } = await addLesson(kind, count);
+      const intro = kind === "learn" && count === 2 ? "Here's a small program that collects cart totals." : undefined;
+      const { checks } = await addLesson(kind, count, intro);
       const get = async () => out(await api.q("lessons.get", { id: `${kind}-${count}` }));
       const before = await get();
+      assert.equal(before.learnIntro, intro);
       assert.equal(before.part, null);
       assert.deepEqual(before.media, []);
       assert.equal(before.steps.length, count);

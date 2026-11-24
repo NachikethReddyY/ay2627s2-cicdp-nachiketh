@@ -133,7 +133,9 @@ export default function Course() {
                     <ol className="course-nodes">
                       {ls.map((l, i) => {
                         const state = stateOf(l);
-                        const cta = state === "done" ? "Review" : l.done > 0 ? "Continue" : "Start";
+                        const cta = l.kind === "scrim"
+                          ? state === "done" ? "Reopen Scrim" : l.done > 0 ? "Continue Scrim" : "Start Scrim"
+                          : state === "done" ? "Review" : l.done > 0 ? "Continue" : "Start";
                         return <LessonNode key={l.slug} l={l} slug={slug} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} onWritten={reload} />;
                       })}
                     </ol>

@@ -59,6 +59,27 @@ class Course(BaseModel):
     description: T300
     lessons: list[OutlineLesson] = Field(min_length=3, max_length=6)
 
+    @model_validator(mode="after")
+    def _learning_sequence(self, info: ValidationInfo) -> "Course":
+        if not info.context or not info.context.get("learningSequence"):
+            return self
+        kinds = [lesson.kind for lesson in self.lessons]
+        if (
+            len(kinds) < 4
+            or kinds[0] != "learn"
+            or kinds[1] not in ("scrim", "watch")
+            or kinds[-2:] != ["learn", "predict"]
+            or kinds.count("scrim") > 2
+            or not self.lessons[-2].title.startswith("Recap:")
+            or not self.lessons[-1].title.startswith("Code reading check:")
+        ):
+            raise ValueError(
+                "Use 4 to 6 lessons: a Learn introduction, a Scrim (Watch only for unsupported "
+                "languages), optional practice, a Learn titled Recap:, and a Predict titled "
+                "Code reading check:. Use at most two Scrims."
+            )
+        return self
+
 
 class Outline(BaseModel):
     """Either `refused: true` alone, or title + tagline + courses.
@@ -208,9 +229,22 @@ T4000 = Annotated[str, _c(4000)]
 
 class LearnPart(BaseModel):
     kind: Literal["learn"]
+    intro: T500 | None = None
     body: T4000
     doc: dict[str, Any] | None = None
     steps: list[McqStep] = Field(min_length=2, max_length=2)
+
+    @model_validator(mode="after")
+    def _intro_hides_answer(self, info: ValidationInfo) -> "LearnPart":
+        if (info.context or {}).get("requireLearnIntro") and self.intro is None:
+            raise ValueError("include a short intro before the opening prediction")
+        opening = self.steps[0]
+        answer = opening.options[opening.answer]
+        if self.intro and (
+            self.intro.casefold() == answer.casefold() or _contains_mcq_option(self.intro, answer)
+        ):
+            raise ValueError("the intro repeats the opening prediction answer; give context only")
+        return self
 
 
 class WatchPart(BaseModel):
@@ -371,6 +405,8 @@ class ScrimDraft(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> "ScrimDraft":
+        if self.segments[0].gate is not None:
+            raise ValueError("introduce the concept in segment 0 before opening a prediction gate")
         _check_scrim(self.language, self.segments, self.steps, self.lab)
         return self
 

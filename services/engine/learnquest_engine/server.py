@@ -50,8 +50,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="LearnSlop engine", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
+class OutlineLearnerMemory(BaseModel):
+    focusConcepts: list[
+        Annotated[str, StringConstraints(max_length=60, pattern=r"^js\.[a-z]+(?:-[a-z]+)*$")]
+    ] = Field(default_factory=list, max_length=6)
+
+
 class OutlineRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=200)
+    learnerMemory: OutlineLearnerMemory = Field(default_factory=OutlineLearnerMemory)
 
 
 class VisualRequest(BaseModel):
@@ -182,7 +189,7 @@ def healthz() -> dict[str, Any]:
 
 @app.post("/v1/pipeline/outline", dependencies=[Depends(require_token)])
 def outline_route(body: OutlineRequest) -> dict[str, Any]:
-    return _body("outline", pipeline.outline(body.topic))
+    return _body("outline", pipeline.outline(body.topic, body.learnerMemory.focusConcepts))
 
 
 @app.post("/v1/studio/plan", dependencies=[Depends(require_token)])

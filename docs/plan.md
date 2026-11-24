@@ -5,6 +5,7 @@
 >
 > **Pivot (2026-11-06): programming learning tool.** The audience is learners of programming, 13 and over, JavaScript and TypeScript first. Children, KidsQuest, parental consent and the YC Primer framing are dropped. Code and schema keep the names `world` and `worlds`; read them as *track*. Already built, per a 2026-11-06 check: game blocks (grid, order, match, sort, physics, quiz) and the visual engine (LQ-19, LQ-48 to LQ-58). Sections touching children, KidsQuest or the audience are updated; the superseded decision is marked in §17.
 > **Scope update (2026-11-20).** Programming concepts are the MVP input. The real-code-change capstone and Pro are coming soon. Generated paths start private to their creator. A path becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue.
+> **Learning sequence (2026-11-24).** Introduce the concept and its vocabulary, demonstrate code reading with a narrated Scrim, apply it in the Workbench, then recap and check understanding on fresh code. Standalone scenarios and games reinforce material after it has been taught. Spaced review revisits observed concepts later.
 > Date: 2026-10-27 · Owner: Nachikethreddyy · CICDP course project, solo, **6 weeks** (§11), deadline unknown (Q3).
 > Source: `docs/idea.md`, `docs/notes/`.
 
@@ -16,7 +17,7 @@
 
 The engine generates paths with predictions, hints and explanations. A path starts private to its creator. It becomes public only after it passes automatic moderation and its creator explicitly chooses to share it. There is no approval queue. Home shows a lesson or review recommendation and its reason. Sloppy offers hint, observation and prediction cards in the practice workbench. The API moderates requests, reserves AI spend and checks replies for known lesson answers. The engine rejects code-like replies. Answer keys stay server-side.
 
-Core loop: present a step → predict → hint ladder on a miss → reveal (replay + narration) → update the model → next step.
+Course loop: orient the learner → read and trace a worked example in a Scrim → predict before reveal → practice in the Workbench → recap → read fresh code in a summary quiz. Spaced review asks for retrieval again later. The sequence draws on guidance about alternating examples with independent practice, retrieval and spacing, and conversational video with active questions. [IES practice guide](https://ies.ed.gov/ncee/wwc/PracticeGuide/1) · [Effective Educational Videos](https://pmc.ncbi.nlm.nih.gov/articles/PMC5132380/)
 
 - From the earlier **Primer** idea: the learner model and adaptive next step. Dropped: the children's-tutor framing and the YC Primer link (that request is for ages 4–10).
 - From **Scrim-Forge**: editable replay from commit history, narration. Dropped: any-repo import, recorded keystrokes, O(1) scrub, "AI knows why the author wrote it" (§12).

@@ -9,8 +9,10 @@ export type LessonContext = {
   stretchTests?: number;
 };
 
+export type LearnerMemory = { focusConcepts: string[] };
+
 export const generator = {
-  outline: (topic: string): Promise<unknown> =>
-    callEngine<{ outline?: unknown }>("/v1/pipeline/outline", { topic }, { timeoutMs: env.OUTLINE_TIMEOUT_MS }).then((r) => r.outline),
+  outline: (topic: string, learnerMemory: LearnerMemory): Promise<unknown> =>
+    callEngine<{ outline?: unknown }>("/v1/pipeline/outline", { topic, learnerMemory }, { timeoutMs: env.OUTLINE_TIMEOUT_MS }).then((r) => r.outline),
   lesson: (ctx: LessonContext): Promise<unknown> => callEngine<{ lesson?: unknown }>("/v1/pipeline/lesson", ctx).then((r) => r.lesson),
 };

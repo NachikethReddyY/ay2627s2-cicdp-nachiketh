@@ -101,6 +101,12 @@ def test_segment_zero_must_show_code() -> None:
     rejects(data, "segment 0")
 
 
+def test_the_first_segment_introduces_the_concept_before_the_gate() -> None:
+    data = raw()
+    data["segments"][0]["gate"] = data["segments"][1].pop("gate")
+    rejects(data, "introduce the concept in segment 0")
+
+
 def test_the_lab_must_use_the_scrim_language() -> None:
     data = raw()
     data["lab"]["language"] = "python"
@@ -165,7 +171,7 @@ def test_duration_never_shrinks_when_a_word_is_added(words: list[str]) -> None:
 
 
 @given(st.lists(st.one_of(st.none(), st.integers(0, 2)), min_size=4, max_size=8))
-def test_gates_are_valid_only_when_they_run_zero_to_n_in_order(
+def test_gates_are_valid_only_between_the_first_and_last_segments_in_order(
     gates: list[int | None],
 ) -> None:
     data = raw()
@@ -182,7 +188,9 @@ def test_gates_are_valid_only_when_they_run_zero_to_n_in_order(
         segment.pop("edit", None)
     present = [g for g in gates if g is not None]
     expected = (
-        gates[-1] is None and present == list(range(len(data["steps"]))) and len(data["steps"]) >= 1
+        gates[0] is None
+        and gates[-1] is None
+        and present == list(range(len(data["steps"])))
     )
     try:
         build(data)

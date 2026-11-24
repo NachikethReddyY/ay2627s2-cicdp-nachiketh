@@ -108,3 +108,24 @@ def test_learn_part_without_two_checks_is_rejected() -> None:
 
     with pytest.raises(ValidationError):
         LearnPart.model_validate({"kind": "learn", "body": "x", "steps": []})
+
+
+def test_learn_intro_cannot_repeat_the_opening_answer(fake_llm: FakeLLM) -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    fake_llm("part_learn_1")
+    generated = pipeline.lesson(ctx("learn")).value
+    assert isinstance(generated, LearnPart)
+    assert generated.intro == "Take a look at a tiny program that keeps track of a value."
+    legacy = generated.model_dump(exclude={"intro"})
+    assert LearnPart.model_validate(legacy).intro is None
+    with pytest.raises(ValidationError, match="include a short intro"):
+        LearnPart.model_validate(legacy, context={"requireLearnIntro": True})
+    intro = "Let's look at what changes when the program runs."
+    assert LearnPart.model_validate({**generated.model_dump(), "intro": intro}).intro == intro
+    opening = generated.steps[0]
+    with pytest.raises(ValidationError, match="intro repeats the opening prediction answer"):
+        LearnPart.model_validate(
+            {**generated.model_dump(), "intro": opening.options[opening.answer]}
+        )

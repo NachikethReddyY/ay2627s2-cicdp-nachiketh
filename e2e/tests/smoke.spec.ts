@@ -691,6 +691,54 @@ test("a scrim keeps later code hidden until its prediction and shows the updated
   await expect(page.locator(".view-lines").first()).toContainText("return a + b");
 });
 
+test("a Learn page introduces the topic before the prediction unlocks the reading", async ({ page }) => {
+  const slug = `learn-intro-${randomUUID()}`;
+  const intro = "Let's follow a small program that keeps a running total.";
+  const body = "The assignment stores a new total that the next line can read.";
+  const db = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL });
+  await db.connect();
+  try {
+    await db.query("BEGIN");
+    const { rows: [lesson] } = await db.query(
+      `INSERT INTO lessons (id, slug, title, world_id, source_kind, kind, status)
+        SELECT gen_random_uuid()::text, $1, 'Track a running total', id, 'authored', 'learn', 'published'
+        FROM worlds WHERE slug = $2 RETURNING id`,
+      [slug, COURSE],
+    );
+    const { rows: [version] } = await db.query(
+      "INSERT INTO lesson_versions (id, lesson_id, version, content) VALUES (gen_random_uuid()::text, $1, 1, $2) RETURNING id",
+      [lesson.id, { kind: "learn", intro, body }],
+    );
+    const question = { kind: "mcq", title: "Read the result", prompt: "What will the program print when the addition changes from one to two?", options: ["1", "2", "3", "4"] };
+    const secret = {
+      beforeFiles: { "total.js": "let total = 1;\ntotal += 1;\nconsole.log(total);\n" },
+      hunks: [{ id: "h1", file: "total.js", oldStart: 2, lines: ["-total += 1;", "+total += 2;"] }],
+      answer: 2, hints: [{ text: "Follow both assignments." }],
+      explanations: { workedExample: body, practice: "Trace another total." },
+    };
+    await db.query(
+      "INSERT INTO steps (id, lesson_version_id, idx, public, secret) VALUES (gen_random_uuid()::text, $1, 0, $2, $3), (gen_random_uuid()::text, $1, 1, $2, $3)",
+      [version.id, question, secret],
+    );
+    await db.query("UPDATE lessons SET current_version_id = $1 WHERE id = $2", [version.id, lesson.id]);
+    await db.query("COMMIT");
+  } finally {
+    await db.end();
+  }
+  await signUp(page, newEmail(), `/lessons?lesson=${slug}`);
+  await expect(page.getByRole("heading", { name: "Track a running total" })).toBeVisible();
+  await expect(page.getByText(intro)).toBeVisible();
+  await expect(page.getByText(body)).toHaveCount(0);
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  await page.getByRole("button", { name: "Start the check" }).click();
+  await expect(page.getByText(body)).toHaveCount(0);
+  await page.getByRole("radio", { name: "3", exact: true }).check();
+  await page.getByRole("button", { name: "Check", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByText(body)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check what you learned" })).toBeVisible();
+});
+
 test("a lesson with no lab can open a temporary Watch workspace", async ({ page }) => {
   await signUp(page, newEmail(), `/editor?lesson=${LESSON}`);
   await expect(page.getByText("so it has no lab", { exact: false })).toBeVisible();
