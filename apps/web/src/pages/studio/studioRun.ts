@@ -1,11 +1,11 @@
 import type { StudioRun } from "./studioModel.ts";
 
-let current: StudioRun = {};
+let current: { accountId: string; run: StudioRun } | undefined;
 
-export function readStudioRun(): StudioRun {
-  return current;
+export function readStudioRun(accountId: string): StudioRun {
+  return current?.accountId === accountId ? current.run : {};
 }
 
-export function writeStudioRun(next: StudioRun): void {
-  current = next;
+export function writeStudioRun(accountId: string, run: StudioRun): void {
+  current = { accountId, run };
 }

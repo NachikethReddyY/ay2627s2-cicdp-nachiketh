@@ -61,7 +61,7 @@ grading.
    - `practice` → new `PracticeView` (instructions + editor + Run + output + Check).
    - `mcq` / `cloze` steps keep the existing predict flow.
 4. **Next button.** At the end of every part, a Next button links to the next
-   part's `/play?lesson=`. That navigation is what triggers generation.
+   part's `/lessons?lesson=`. That navigation is what triggers generation.
 5. **`runJs.ts`** (new, ~30 lines): Web Worker runner with timeout. Ships with a
    small test (prints, throws, infinite loop is killed).
 

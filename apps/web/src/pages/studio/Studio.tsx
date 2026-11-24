@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { authClient } from "../../lib/auth";
 import { studioApi } from "./studioApi";
 import { readStudioRun, writeStudioRun } from "./studioRun";
 import type { Clip, Plan, Script, SegmentTranscript, StudioRun, TimedEdit } from "./studioModel";
@@ -11,14 +12,20 @@ const DEFAULT_SOURCE = "https://docs.python.org/3/tutorial/datastructures.html";
 type Stage = "sample" | "plan" | "script" | "audio" | "transcribe" | "edits";
 
 export default function Studio() {
+  const { data: session } = authClient.useSession();
+  const accountId = session?.user.id;
+  return accountId ? <StudioForAccount key={accountId} accountId={accountId} /> : null;
+}
+
+function StudioForAccount({ accountId }: { accountId: string }) {
   const [topic, setTopic] = useState(DEFAULT_TOPIC);
   const [sourceUrl, setSourceUrl] = useState(DEFAULT_SOURCE);
-  const [run, setRun] = useState<StudioRun>(readStudioRun);
+  const [run, setRun] = useState(() => readStudioRun(accountId));
   const [busy, setBusy] = useState<Stage | null>(null);
   const [failed, setFailed] = useState<{ stage: Stage; message: string } | null>(null);
 
   function keep(next: StudioRun) {
-    writeStudioRun(next);
+    writeStudioRun(accountId, next);
     setRun(next);
   }
 
@@ -99,7 +106,7 @@ export default function Studio() {
           n={1}
           title="Plan"
           detail="Read the source and plan the sections."
-          action={<RunButton busy={busy === "plan"} onRun={runPlan} />}
+          action={<RunButton busy={busy === "plan"} disabled={busy !== null} onRun={runPlan} />}
           error={errorFor("plan")}
         >
           {run.plan && <PlanView plan={run.plan} />}
@@ -109,7 +116,7 @@ export default function Studio() {
           n={2}
           title="Script"
           detail="Write the narration, with a prediction question where the lesson pauses."
-          action={<RunButton busy={busy === "script"} disabled={!run.plan} onRun={runScript} />}
+          action={<RunButton busy={busy === "script"} disabled={busy !== null || !run.plan} onRun={runScript} />}
           error={errorFor("script")}
         >
           {run.script && <ScriptView script={run.script} />}
@@ -118,8 +125,8 @@ export default function Studio() {
         <StageCard
           n={3}
           title="Audio"
-          detail="Speak each segment as an mp3."
-          action={<RunButton busy={busy === "audio"} disabled={!run.script} onRun={runAudio} />}
+          detail="Speak each segment and generate WAV audio."
+          action={<RunButton busy={busy === "audio"} disabled={busy !== null || !run.script} onRun={runAudio} />}
           error={errorFor("audio")}
         >
           {run.clips && <ClipsView clips={run.clips} />}
@@ -129,7 +136,7 @@ export default function Studio() {
           n={4}
           title="Speech to text"
           detail="Hear each clip back with word timings, so edits can be keyed to the recorded audio."
-          action={<RunButton busy={busy === "transcribe"} disabled={!run.clips} onRun={runTranscribe} />}
+          action={<RunButton busy={busy === "transcribe"} disabled={busy !== null || !run.clips} onRun={runTranscribe} />}
           error={errorFor("transcribe")}
         >
           {run.transcripts && <TranscriptsView transcripts={run.transcripts} />}
@@ -139,7 +146,7 @@ export default function Studio() {
           n={5}
           title="Code edits at timestamps"
           detail="Write the on-screen code as edits, each cued to words in the narration and timed from stage 4."
-          action={<RunButton busy={busy === "edits"} disabled={!run.transcripts} onRun={runEdits} />}
+          action={<RunButton busy={busy === "edits"} disabled={busy !== null || !run.transcripts} onRun={runEdits} />}
           error={errorFor("edits")}
         >
           {run.edits && <EditsView edits={run.edits} />}

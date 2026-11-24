@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
+import { authClient } from "../../lib/auth";
 import { Pause, Play, Square, Volume2, VolumeX } from "lucide-react";
 import { Notice } from "../../player/live/Notice";
 import { usePracticeRunner } from "../../player/live/usePracticeRunner";
@@ -61,7 +62,13 @@ function ClipMetadata({ source, index, onReady, onError }: {
 }
 
 export default function StudioLesson() {
-  const run = readStudioRun();
+  const { data: session } = authClient.useSession();
+  const accountId = session?.user.id;
+  return accountId ? <StudioLessonForAccount key={accountId} accountId={accountId} /> : null;
+}
+
+function StudioLessonForAccount({ accountId }: { accountId: string }) {
+  const run = readStudioRun(accountId);
   const clips = run.clips ?? [];
   const segments = run.script?.segments ?? [];
   const [prepared, setPrepared] = useState<(PreparedClip | null)[]>(() => clips.map(() => null));

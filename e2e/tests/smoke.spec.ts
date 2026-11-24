@@ -464,7 +464,7 @@ async function verifyNarratedPractice(page: Page) {
   const policy = vercel.headers.find(({ source }) => source === "/(.*)")?.headers
     .find(({ key }) => key.toLowerCase() === "content-security-policy")?.value;
   if (!policy) throw new Error("The Vercel content security policy is missing.");
-  await page.route(/\/(play|editor)\?lesson=practice-greeting$/, async (route) => {
+  await page.route(/\/(lessons|editor)\?lesson=practice-greeting$/, async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": policy } });
   });
