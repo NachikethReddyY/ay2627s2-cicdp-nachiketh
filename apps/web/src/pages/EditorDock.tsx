@@ -16,13 +16,13 @@ export type EditorDockItem = {
 export default function EditorDock({ items }: { items: EditorDockItem[] }) {
   return (
     <TooltipProvider>
-    <div className="editor-dock fixed bottom-3 left-1/2 z-[70] -translate-x-1/2 max-md:hidden">
+    <div role="group" aria-label="Workbench dock" className="editor-dock fixed bottom-3 left-1/2 z-[70] -translate-x-1/2 max-md:hidden">
       <Dock
         direction="bottom"
         iconSize={44}
         iconMagnification={60}
         iconDistance={100}
-        className="h-[56px] gap-1.5 rounded-[30px] border-transparent bg-white/20 px-2.5 py-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,.4),0_12px_32px_rgba(0,0,0,.16)] backdrop-blur-3xl"
+        className="mt-0 h-[56px] gap-1.5 rounded-[30px] border-transparent bg-white/20 px-2.5 py-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,.4),0_12px_32px_rgba(0,0,0,.16)] backdrop-blur-3xl"
       >
         {items.flatMap((item) => [
           ...(item.dividerBefore ? [<span key={`${item.id}-divider`} aria-hidden="true" className="mx-1.5 h-10 w-px self-center bg-[var(--line)]" />] : []),
