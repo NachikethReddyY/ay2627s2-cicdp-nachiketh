@@ -5,7 +5,7 @@ import { reserveAiSpend } from "../config/budget.ts";
 import { db } from "../db/client.ts";
 import { lessonMedia } from "../db/schema.ts";
 import { env } from "../env.ts";
-import { recordNarrationCall } from "./narration-spend.ts";
+import { narrationRouting, recordNarrationCall } from "./narration-spend.ts";
 import { storeMedia } from "./service.ts";
 import { storage } from "./storage.ts";
 
@@ -54,6 +54,8 @@ async function loadOrGenerate({ lessonVersionId, stepId, text }: Input): Promise
     await reserveAiSpend(env.STUDIO_TTS_ESTIMATE_USD);
     const signal = AbortSignal.timeout(SPEECH_TIMEOUT_MS);
     const model = env.STUDIO_TTS_MODEL;
+    const voice = env.STUDIO_TTS_VOICE;
+    const routing = narrationRouting(model, voice);
     const started = performance.now();
     let response: Response | undefined;
     let body: Uint8Array | undefined;
@@ -62,13 +64,13 @@ async function loadOrGenerate({ lessonVersionId, stepId, text }: Input): Promise
         method: "POST",
         signal,
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, input: text, voice: env.STUDIO_TTS_VOICE, response_format: "mp3" }),
+        body: JSON.stringify({ model, input: text, voice, response_format: "mp3", provider: routing }),
       });
       body = await readMp3(response);
     } finally {
       accounting = recordNarrationCall({
         id, apiKey, model, characters: [...text].length, latency: (performance.now() - started) / 1_000,
-        response, failed: body === undefined,
+        response, routing, failed: body === undefined,
       }).catch(() => { console.warn("Could not record narration spend"); });
     }
     key = await storeMedia({ lessonVersionId, stepId, kind: "narration", body, contentType: MP3 }, signal);

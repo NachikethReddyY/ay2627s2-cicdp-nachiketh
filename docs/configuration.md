@@ -28,7 +28,7 @@ Set these variables on the **Render API service** (`learnquest-api`). The API al
 | `STUDIO_TTS_VOICE` | Defaults to `af_heart`. Choose a voice supported by the configured model. |
 | `STUDIO_TTS_ESTIMATE_USD` | Defaults to `0.01` per provider request. The API reserves this amount against its shared daily and monthly AI budgets. |
 
-After a learner reveals a prediction, the API requests MP3 audio from `https://openrouter.ai/api/v1/audio/speech` and caches the clip in private storage for that lesson version and step. The reveal text and code replay load independently. If audio generation or playback fails, the player uses browser speech when available. The API waits 24 hours before retrying failed generation for a step. MP3 playback needs no sample-rate variable or speech-to-text setup.
+After a learner reveals a prediction, the API requests MP3 audio from `https://openrouter.ai/api/v1/audio/speech` and caches the clip in private storage for that lesson version and step. Kokoro with `af_heart` uses DeepInfra US so the spend report can use the matching character rate when billing metadata is unavailable. Other model and voice combinations use standard OpenRouter routing. The reveal text and code replay load independently. If audio generation or playback fails, the player uses browser speech when available. The API waits 24 hours before retrying failed generation for a step. MP3 playback needs no sample-rate variable or speech-to-text setup.
 
 ## Sandbox (LQ-76)
 
