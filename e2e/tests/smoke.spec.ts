@@ -1,9 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { expect, test as base, type Locator, type Page } from "@playwright/test";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { silentWav } from "../../apps/api/src/media/silent-wav.ts";
+
+const test = base.extend({
+  extraHTTPHeaders: async ({ extraHTTPHeaders }, use, { testId }) => {
+    const address = createHash("sha256").update(testId).digest();
+    await use({
+      ...extraHTTPHeaders,
+      "x-forwarded-for": `198.${18 + (address[0] & 1)}.${address[1]}.${address[2]}`,
+    });
+  },
+});
 
 const COURSE = "codequest";
 const LESSON = "lesson-1";
