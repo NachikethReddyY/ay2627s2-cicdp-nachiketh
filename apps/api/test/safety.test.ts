@@ -7,14 +7,25 @@ process.env.NODE_ENV ??= "test";
 process.env.MODERATION_API_KEY = "test-key";
 process.env.ENGINE_TOKEN = "x".repeat(32);
 const { pool } = await import("../src/db/client.ts");
+const { env } = await import("../src/env.ts");
 after(() => pool.end());
-const { CATEGORIES, isSafe, setModerationTimeoutForTests } = await import("../src/safety/moderation.ts");
+const { CATEGORIES, checkModeration, isSafe, setModerationTimeoutForTests } = await import("../src/safety/moderation.ts");
 type ModerationClient = import("../src/safety/moderation.ts").ModerationClient;
 
 const clean: ModerationClient = async () => ({ flagged: false, scores: Object.fromEntries(CATEGORIES.map((c) => [c, 0.1])) });
 
 test("exact coding allow-list topics pass", async () => {
   assert.equal(await isSafe("Python", async () => { throw new Error("should not call"); }), true);
+});
+
+test("a public safety check needs a provider even for an allow-listed topic", async () => {
+  const key = env.MODERATION_API_KEY;
+  try {
+    env.MODERATION_API_KEY = undefined;
+    assert.equal((await checkModeration("Python")).status, "unavailable");
+  } finally {
+    env.MODERATION_API_KEY = key;
+  }
 });
 
 test("flagged categories and high confidence scores block", async () => {

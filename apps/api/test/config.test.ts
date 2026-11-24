@@ -14,6 +14,12 @@ const imageEnv = {
   IMAGE_MODEL: "image-model",
 };
 
+test("an empty moderation key leaves the provider unconfigured", () => {
+  const parsed = parseEnv({ ...imageEnv, MODERATION_API_KEY: "" });
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.MODERATION_API_KEY, undefined);
+});
+
 test("image generation prefers the TokenRouter key and honors an explicit base URL", () => {
   const parsed = parseEnv({
     ...imageEnv,
