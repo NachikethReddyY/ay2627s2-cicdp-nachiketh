@@ -107,6 +107,8 @@ test("signs up, confirms and edits a public handle, and stays signed in on /less
   expect((await session.json()).user.email).toBe(email);
 
   await test.step("AI spend is visible only to admins and shows aggregate totals", () => checkAdminSpend(page, email));
+  await test.step("Explore shows a fallback cover and keeps the path private when moderation is unavailable",
+    () => verifyUnavailablePublication(page, email));
 
   await test.step("phone Home shows progress and offers Explore or one-click resume", async () => {
     await page.setViewportSize({ width: 375, height: 667 });
@@ -144,6 +146,26 @@ function visualLineCount(text: Locator) {
     range.selectNodeContents(element);
     return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
   });
+}
+
+async function verifyUnavailablePublication(page: Page, email: string) {
+  const slug = `publish-${randomUUID()}`;
+  await page.goto("/explore");
+  const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
+  try {
+    await pool.query(`INSERT INTO paths (id, slug, title, visibility, origin, owner_id)
+      SELECT gen_random_uuid()::text, $1, 'Private publishing example', 'private', 'ai', id FROM "user" WHERE email = $2`, [slug, email]);
+    await page.getByRole("tab", { name: "Mine" }).click();
+    const card = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Private publishing example" }) });
+    await expect(card.locator(".explore-cover")).toHaveCSS("background-image", /sample-courses\.jpg/);
+    await card.getByRole("button", { name: "Publish", exact: true }).click();
+    await card.getByRole("button", { name: "Yes, publish" }).click();
+    await expect(card.getByRole("alert")).toContainText(/safety check couldn't run.*still private/i);
+    const { rows: [path] } = await pool.query<{ visibility: string }>("SELECT visibility FROM paths WHERE slug = $1", [slug]);
+    expect(path.visibility).toBe("private");
+  } finally {
+    await pool.end();
+  }
 }
 
 test("a private generated Python prediction distinguishes multiline choices and reveals replay after an answer", async ({ page, browser }) => {

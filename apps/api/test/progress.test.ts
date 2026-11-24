@@ -243,10 +243,13 @@ test("paths.publish fails closed when moderation is unavailable or flags the pat
       throw new Error("Moderation is not configured");
     });
     let res = await m(cookie, "paths.publish", { slug: "pub-me" });
-    assert.equal(code(res), "PRECONDITION_FAILED");
+    assert.equal(res.statusCode, 503);
+    assert.equal(code(res), "SERVICE_UNAVAILABLE");
+    assert.match(res.json<{ error: { message: string } }>().error.message, /safety check couldn't run.*still private/);
     setModerationClient(async () => ({ flagged: true, scores: {} }));
     res = await m(cookie, "paths.publish", { slug: "pub-me" });
     assert.equal(code(res), "PRECONDITION_FAILED");
+    assert.match(res.json<{ error: { message: string } }>().error.message, /didn't pass the automatic safety check.*still private/);
     const [still] = await db.select().from(paths).where(eq(paths.slug, "pub-me"));
     assert.equal(still!.visibility, "private");
     assert.equal((await db.select().from(worlds).where(eq(worlds.slug, "pub-course")))[0]!.visibility, "private");
@@ -254,6 +257,8 @@ test("paths.publish fails closed when moderation is unavailable or flags the pat
     setModerationClient(async () => clean);
     assert.equal((await m(cookie, "paths.publish", { slug: "pub-me" })).statusCode, 200);
     assert.equal((await db.select().from(paths).where(eq(paths.slug, "pub-me")))[0]!.visibility, "public");
+    setModerationClient(async () => { throw new Error("offline"); });
+    assert.equal((await m(cookie, "paths.publish", { slug: "pub-me" })).statusCode, 200);
   } finally {
     setModerationClient(async () => clean);
   }

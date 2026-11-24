@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { TRPCClientError } from "@trpc/client";
 import { LayoutGrid, List } from "lucide-react";
 import { usePostHog } from "@posthog/react";
 import { useApi, type ExplorePath } from "../lib/api";
@@ -14,36 +15,45 @@ import "./explore.css";
 
 const tabs = [["official", "Official"], ["community", "Community"], ["mine", "Mine"]] as const;
 
-const covers: Record<string, string> = {
-  "js-foundations": "/images/covers/js-foundations.jpg",
-  "sample-courses": "/images/covers/sample-courses.jpg",
-};
+const covers = new Map([
+  ["js-foundations", "/images/covers/js-foundations.jpg"],
+  ["sample-courses", "/images/covers/sample-courses.jpg"],
+]);
+
+type PublishState = { status: "idle" | "confirm" | "busy" } | { status: "error"; message: string };
+
+function publishError(error: unknown) {
+  if (error instanceof TRPCClientError
+    && (error.data?.code === "PRECONDITION_FAILED" || error.data?.code === "SERVICE_UNAVAILABLE")) return error.message;
+  return "Couldn't publish. Try again.";
+}
 
 function Publish({ p, onDone }: { p: ExplorePath; onDone: () => void }) {
-  const [state, setState] = useState<"idle" | "confirm" | "busy" | "error">("idle");
+  const [state, setState] = useState<PublishState>({ status: "idle" });
   const posthog = usePostHog();
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const { status } = state;
   useEffect(() => {
-    if (state === "confirm") confirmRef.current?.focus();
-  }, [state]);
-  if (state === "idle" || state === "error")
+    if (status === "confirm") confirmRef.current?.focus();
+  }, [status]);
+  if (status === "idle" || status === "error")
     return (
       <div className="explore-pub">
-        <button type="button" className="pill explore-action" onClick={() => setState("confirm")}>Publish</button>
-        {state === "error" && <p role="alert" className="explore-pub-err">Couldn't publish. Try again.</p>}
+        <button type="button" className="pill explore-action" onClick={() => setState({ status: "confirm" })}>Publish</button>
+        {state.status === "error" && <p role="alert" className="explore-pub-err">{state.message}</p>}
       </div>
     );
   return (
     <div role="group" aria-label={`Publish ${p.title}`} className="explore-confirm">
       <span>Make this path public?</span>
-      <button ref={confirmRef} type="button" disabled={state === "busy"} className="btn explore-action"
-        onClick={() => { setState("busy"); trpc.paths.publish.mutate({ slug: p.slug }).then(() => {
+      <button ref={confirmRef} type="button" disabled={status === "busy"} className="btn explore-action"
+        onClick={() => { setState({ status: "busy" }); trpc.paths.publish.mutate({ slug: p.slug }).then(() => {
           posthog?.capture("learning_path_published", { path_origin: p.origin });
           onDone();
-        }, () => setState("error")); }}>
+        }, (error: unknown) => setState({ status: "error", message: publishError(error) })); }}>
         Yes, publish
       </button>
-      <button type="button" disabled={state === "busy"} className="pill explore-action" onClick={() => setState("idle")}>Cancel</button>
+      <button type="button" disabled={status === "busy"} className="pill explore-action" onClick={() => setState({ status: "idle" })}>Cancel</button>
     </div>
   );
 }
@@ -54,10 +64,11 @@ function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: 
   const posthog = usePostHog();
   const navigate = useNavigate();
   const first = p.courses[0];
+  const cover = covers.get(p.slug);
   const body = (
     <>
       <div className="explore-cover" aria-hidden="true"
-        style={{ "--cover": covers[p.slug] ? `url("${covers[p.slug]}")` : "none" } as React.CSSProperties} />
+        style={cover ? { "--cover": `url("${cover}")` } as React.CSSProperties : undefined} />
       <div className="explore-card-title">
         <h2>
           {p.title}

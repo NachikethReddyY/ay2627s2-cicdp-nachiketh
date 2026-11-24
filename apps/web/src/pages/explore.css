@@ -58,7 +58,10 @@
   height: 180px;
   margin: -19px -21px 4px;
   border-radius: 12px 12px 0 0;
-  background: linear-gradient(180deg, rgba(10, 10, 12, 0) 60%, rgba(10, 10, 12, 0.35) 100%), var(--cover) center / cover no-repeat;
+  background:
+    linear-gradient(180deg, rgba(10, 10, 12, 0) 60%, rgba(10, 10, 12, 0.35) 100%),
+    var(--cover, none) center / cover no-repeat,
+    url("/images/covers/sample-courses.jpg") center / cover no-repeat var(--pane2);
 }
 .lq-explore .explore-list[data-view="list"] .explore-cover { height: 120px; }
 
