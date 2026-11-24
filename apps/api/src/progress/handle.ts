@@ -6,15 +6,26 @@ import { db } from "../db/client.ts";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 
 const blockedWords = new Set(["admin", "administrator", "fuck", "learnslop", "moderator", "shit", "sloppy", "support"]);
-const cooldown = sql`interval '720 hours'`;
+const localToday = sql`date_trunc('day', now() AT TIME ZONE timezone)`;
+const changedBeforeToday = sql`(handle_updated_at AT TIME ZONE timezone) < ${localToday}`;
+const nextLocalDay = sql`(${localToday} + interval '1 day')`;
 const profileFields = sql`
   handle,
   is_admin AS "isAdmin",
   handle_updated_at IS NULL AS "onboardingRequired",
-  CASE WHEN handle_updated_at + ${cooldown} > now()
-    THEN (extract(epoch FROM handle_updated_at + ${cooldown}) * 1000)::float8
-  END AS "nextChangeAt"`;
-const Profile = z.object({ handle: z.string(), isAdmin: z.boolean(), onboardingRequired: z.boolean(), nextChangeAt: z.number().nullable() });
+  CASE WHEN NOT (${changedBeforeToday})
+    THEN (extract(epoch FROM ${nextLocalDay} AT TIME ZONE timezone) * 1000)::float8
+  END AS "nextChangeAt",
+  CASE WHEN NOT (${changedBeforeToday})
+    THEN to_char(${nextLocalDay}, 'YYYY-MM-DD')
+  END AS "nextChangeDate"`;
+const Profile = z.object({
+  handle: z.string(),
+  isAdmin: z.boolean(),
+  onboardingRequired: z.boolean(),
+  nextChangeAt: z.number().nullable(),
+  nextChangeDate: z.iso.date().nullable(),
+});
 type Profile = z.infer<typeof Profile>;
 
 async function readProfile(learnerId: string) {
@@ -46,7 +57,7 @@ export const handleRouter = router({
       const { rows: [updated] } = await db.execute<Profile>(sql`
         UPDATE learners SET handle = ${handle}, handle_updated_at = now()
         WHERE id = ${ctx.learnerId} AND (
-          handle_updated_at IS NULL OR (handle <> ${handle} AND handle_updated_at + ${cooldown} <= now())
+          handle_updated_at IS NULL OR (handle <> ${handle} AND ${changedBeforeToday})
         )
         RETURNING ${profileFields}`);
       if (updated) return updated;
@@ -59,6 +70,6 @@ export const handleRouter = router({
     }
     const profile = await readProfile(ctx.learnerId);
     if (profile.handle === handle) return profile;
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "You can change your handle once every 30 days." });
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "You can change your handle once per calendar day in your account time zone." });
   }),
 });

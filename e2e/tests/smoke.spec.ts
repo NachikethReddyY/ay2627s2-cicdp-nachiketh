@@ -1,9 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { randomUUID } from "node:crypto";
+import { expect, test as base, type Locator, type Page } from "@playwright/test";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import { silentWav } from "../../apps/api/src/media/silent-wav.ts";
+
+const test = base.extend({
+  extraHTTPHeaders: async ({ extraHTTPHeaders }, use, { testId }) => {
+    const address = createHash("sha256").update(testId).digest();
+    await use({
+      ...extraHTTPHeaders,
+      "x-forwarded-for": `198.${18 + (address[0] & 1)}.${address[1]}.${address[2]}`,
+    });
+  },
+});
 
 const COURSE = "codequest";
 const LESSON = "lesson-1";
@@ -80,7 +90,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /less
 
   const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
   try {
-    await pool.query(`UPDATE learners SET handle_updated_at = now() - interval '31 days'
+    await pool.query(`UPDATE learners SET handle_updated_at = (date_trunc('day', now() AT TIME ZONE timezone) - interval '1 second') AT TIME ZONE timezone
       WHERE user_id = (SELECT id FROM "user" WHERE email = $1)`, [email]);
   } finally {
     await pool.end();
@@ -108,6 +118,8 @@ test("signs up, confirms and edits a public handle, and stays signed in on /less
   expect((await session.json()).user.email).toBe(email);
 
   await test.step("AI spend is visible only to admins and shows aggregate totals", () => checkAdminSpend(page, email));
+  await test.step("Explore shows a fallback cover and keeps the path private when moderation is unavailable",
+    () => verifyUnavailablePublication(page, email));
 
   await test.step("phone Home shows progress and offers Explore or one-click resume", async () => {
     await page.setViewportSize({ width: 375, height: 667 });
@@ -153,6 +165,26 @@ function visualLineCount(text: Locator) {
     range.selectNodeContents(element);
     return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
   });
+}
+
+async function verifyUnavailablePublication(page: Page, email: string) {
+  const slug = `publish-${randomUUID()}`;
+  await page.goto("/explore");
+  const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
+  try {
+    await pool.query(`INSERT INTO paths (id, slug, title, visibility, origin, owner_id)
+      SELECT gen_random_uuid()::text, $1, 'Private publishing example', 'private', 'ai', id FROM "user" WHERE email = $2`, [slug, email]);
+    await page.getByRole("tab", { name: "Mine" }).click();
+    const card = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Private publishing example" }) });
+    await expect(card.locator(".explore-cover")).toHaveCSS("background-image", /sample-courses\.jpg/);
+    await card.getByRole("button", { name: "Publish", exact: true }).click();
+    await card.getByRole("button", { name: "Yes, publish" }).click();
+    await expect(card.getByRole("alert")).toContainText(/safety check couldn't run.*still private/i);
+    const { rows: [path] } = await pool.query<{ visibility: string }>("SELECT visibility FROM paths WHERE slug = $1", [slug]);
+    expect(path.visibility).toBe("private");
+  } finally {
+    await pool.end();
+  }
 }
 
 test("a private generated Python prediction distinguishes multiline choices and reveals replay after an answer", async ({ page, browser }) => {

@@ -12,7 +12,7 @@ const schema = z
     PORT: z.coerce.number().int().positive().default(3000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     TRUSTED_PROXY: z.string().optional(),
-    MODERATION_API_KEY: z.string().min(1).optional(),
+    MODERATION_API_KEY: z.preprocess(blankIsUnset, z.string().min(1).optional()),
     MODERATION_BASE_URL: z.url().default("https://api.openai.com/v1/"),
     MODERATION_ESTIMATE_USD: z.preprocess(blankIsUnset, z.coerce.number().nonnegative().default(0)),
     MODERATION_MODEL: z.string().min(1).default("omni-moderation-latest"),
