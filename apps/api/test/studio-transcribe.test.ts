@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 
 const { transcribe } = await import("../src/studio/transcribe.ts");
 const { TtsError } = await import("../src/studio/tts.ts");
+const { env } = await import("../src/env.ts");
 
 const CFG = { apiKey: "test-key", model: "openai/whisper-large-v3" };
 const AUDIO = new Uint8Array([0x49, 0x44, 0x33]);
@@ -90,3 +91,44 @@ test("a network failure is a 502 voice error", async () => {
     return true;
   });
 });
+
+const reports = [
+  { name: "billed transcription", status: 200, cost: 0.0001 },
+  { name: "zero-cost transcription", status: 200, cost: 0 },
+  { name: "unpriced transcription", status: 200 },
+  { name: "provider refusal", status: 429 },
+] as const;
+
+for (const report of reports) {
+  test(`PostHog records ${report.name} without transcript or audio`, async (t) => {
+    const { POSTHOG_PROJECT_TOKEN, POSTHOG_HOST } = env;
+    env.POSTHOG_PROJECT_TOKEN = "test-token";
+    env.POSTHOG_HOST = "https://posthog.example";
+    t.after(() => { Object.assign(env, { POSTHOG_PROJECT_TOKEN, POSTHOG_HOST }); });
+
+    const cost = "cost" in report ? report.cost : undefined;
+    const captures: { event: string; properties: Record<string, unknown> }[] = [];
+    const fetchImpl: typeof fetch = async (url, init) => {
+      if (String(url) === "https://openrouter.ai/api/v1/audio/transcriptions") {
+        return Response.json({ ...SAMPLE, usage: { cost } }, { status: report.status });
+      }
+      assert.equal(String(url), "https://posthog.example/capture/");
+      captures.push(JSON.parse(String(init?.body)));
+      return new Response(null, { status: 200 });
+    };
+
+    const result = transcribe(AUDIO, "wav", CFG, fetchImpl);
+    if (report.status === 200) assert.equal((await result).text, "Lists keep order.");
+    else await assert.rejects(result, TtsError);
+    assert.equal(captures.length, 1);
+    const [captured] = captures;
+    assert.equal(captured.event, "$ai_generation");
+    assert.equal(captured.properties.$ai_model, CFG.model);
+    assert.equal(captured.properties.audio_operation, "transcription");
+    assert.equal(captured.properties.$ai_http_status, report.status);
+    assert.equal(captured.properties.$ai_is_error, report.status !== 200);
+    assert.equal(captured.properties.pricing_status, cost === undefined ? "unpriced" : "priced");
+    assert.equal(captured.properties.$ai_total_cost_usd, cost);
+    assert.doesNotMatch(JSON.stringify(captured), /Lists keep order|SUQz|test-key/);
+  });
+}

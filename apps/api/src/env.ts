@@ -57,6 +57,8 @@ const schema = z
     STUDIO_TTS_VOICE: z.string().min(1).default("af_heart"),
     STUDIO_TTS_SAMPLE_RATE: z.coerce.number().int().positive().default(24_000),
     STUDIO_STT_MODEL: z.string().min(1).default("openai/whisper-large-v3"),
+    POSTHOG_PROJECT_TOKEN: z.preprocess(blankIsUnset, z.string().min(1).optional()),
+    POSTHOG_HOST: z.preprocess(blankIsUnset, z.url({ protocol: /^https?$/ }).optional()),
   })
   .refine((e) => !e.SANDBOX_ENABLED || e.SANDBOX_BACKEND !== "daytona" || !!e.DAYTONA_API_KEY, {
     message: "SANDBOX_BACKEND=daytona needs DAYTONA_API_KEY",
