@@ -1,0 +1,17 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"title\": \"Python data structures\", \"summary\": \"Python lists, tuples, sets and dictionaries hold collections of values. Each one trades order, mutability and lookup speed differently.\", \"sections\": [{\"goal\": \"Store an ordered, changeable collection in a list\", \"concepts\": [\"list\", \"append\", \"index\"]}, {\"goal\": \"Use a tuple for a fixed group of values\", \"concepts\": [\"tuple\", \"immutability\"]}, {\"goal\": \"Look up values by key in a dictionary\", \"concepts\": [\"dict\", \"key\", \"get\"]}]}"
+          }
+        }
+      ],
+      "usage": {"prompt_tokens": 420, "completion_tokens": 160, "total_tokens": 580}
+    }
+  ]
+}

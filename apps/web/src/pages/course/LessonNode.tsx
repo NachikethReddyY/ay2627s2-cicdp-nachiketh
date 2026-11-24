@@ -97,7 +97,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
             {face}
           </button>
         ) : (
-          <Link ref={node} to="/play" search={{ lesson: l.slug, course: slug }} state={{ lessonEntrySource: "lesson_node" }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={click}>
+          <Link ref={node} to="/lessons" search={{ lesson: l.slug, course: slug }} state={{ lessonEntrySource: "lesson_node" }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={click}>
             {face}
           </Link>
         )}
@@ -145,7 +145,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
             </>
           ) : (
             <Link
-              to="/play"
+              to="/lessons"
               search={{ lesson: l.slug, course: slug }}
               state={{ lessonEntrySource: "lesson_detail" }}
               className={`${state === "done" ? "pill" : "btn"} lesson-pop-btn`}

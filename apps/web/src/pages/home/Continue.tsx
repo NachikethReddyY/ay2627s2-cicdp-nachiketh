@@ -6,7 +6,7 @@ import { Arrow } from "./art";
 import { pct } from "./pct";
 
 export function ResumeLink({ resume }: { resume: NonNullable<HomeData["resume"]> }) {
-  return <Link to="/play" search={{ lesson: resume.lessonSlug, course: resume.courseSlug }} state={{ lessonEntrySource: "home_resume" }} className="lq-pill lq-resume-link">Resume {resume.title}<Arrow /></Link>;
+  return <Link to="/lessons" search={{ lesson: resume.lessonSlug, course: resume.courseSlug }} state={{ lessonEntrySource: "home_resume" }} className="lq-pill lq-resume-link">Resume {resume.title}<Arrow /></Link>;
 }
 
 export default function Continue({ c, resume }: { c: NonNullable<HomeData["continue"]>; resume: HomeData["resume"] }) {
@@ -40,7 +40,7 @@ export default function Continue({ c, resume }: { c: NonNullable<HomeData["conti
             ? <Link to="/courses/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink" onClick={track("course")}>Course<Arrow /></Link>
             : action === "review"
             ? <Link to="/review/$slug" params={{ slug: c.course.slug }} className="lq-btn lq-btn-ink" onClick={track("review")}>Review<Arrow /></Link>
-            : <Link to="/play" search={{ lesson: lesson.slug, course: c.course.slug }} state={{ lessonEntrySource: "home_continue" }} className="lq-btn lq-btn-ink" onClick={track(action === "assess" ? "assess" : "lesson")}>{actionLabel}<Arrow /></Link>}
+            : <Link to="/lessons" search={{ lesson: lesson.slug, course: c.course.slug }} state={{ lessonEntrySource: "home_continue" }} className="lq-btn lq-btn-ink" onClick={track(action === "assess" ? "assess" : "lesson")}>{actionLabel}<Arrow /></Link>}
           {showResume && <ResumeLink resume={resume} />}
         </div>
       </div>

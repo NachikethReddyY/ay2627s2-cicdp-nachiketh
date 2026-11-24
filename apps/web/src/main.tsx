@@ -7,12 +7,15 @@ import "./index.css";
 import Landing from "./pages/Landing";
 import { authClient } from "./lib/auth";
 import { safeRedirect } from "./lib/redirect";
+import { studioEnabled } from "./lib/studio";
 import { trpc } from "./lib/trpc";
 import Loader from "./components/Loader";
 import { NotFound, RouteError } from "./components/RouteStates";
 import { clearReloadGuard, reloadOnce } from "./lib/chunkReload";
 
-const PlayerPage = lazy(() => import("./player/PlayerPage"));
+const LessonPage = lazy(() => import("./player/LessonPage"));
+const Studio = studioEnabled ? lazy(() => import("./pages/studio/Studio")) : null;
+const StudioPreview = studioEnabled ? lazy(() => import("./pages/studio/StudioLesson")) : null;
 const DiffPage = import.meta.env.DEV ? lazy(() => import("./player/DiffPage")) : null;
 const Changelog = lazy(() => import("./pages/Changelog"));
 const Docs = lazy(() => import("./pages/Docs"));
@@ -209,14 +212,18 @@ const routeTree = root.addChildren([
   }),
   createRoute({
     ...r,
-    path: "/play",
-    component: () => <PlayerPage />,
+    path: "/lessons",
+    component: () => <LessonPage />,
     beforeLoad: guard,
     validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string } => ({
       lesson: typeof s.lesson === "string" ? s.lesson : undefined,
       course: typeof s.course === "string" ? s.course : undefined,
     }),
   }),
+  ...(Studio && StudioPreview ? [
+    createRoute({ ...r, path: "/studio", component: () => <Studio />, beforeLoad: guard }),
+    createRoute({ ...r, path: "/studio/preview", component: () => <StudioPreview />, beforeLoad: guard }),
+  ] : []),
   createRoute({ ...r, path: "/review/$slug", component: () => <Review />, beforeLoad: guard }),
   createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),

@@ -42,6 +42,10 @@ Set `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` on the Render API to count submit
 
 After deployment, send a test bug report with a screenshot at `/feedback` and open it while signed in as an admin at `/admin/feedback`. The reply email opens the admin's mail client. Switch shared feedback links after the deployed flow passes.
 
+### Studio
+
+Enable Studio authoring by setting `VITE_STUDIO=true` on the Vercel production build and `STUDIO_ENABLED=true` on the Render API. The API uses its OpenRouter key and AI budget. The existing `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` settings also enable Whisper cost events. Authors open `/studio` and preview drafts at `/studio/preview`. Saved lessons open at `/lessons?lesson=<slug>`.
+
 ### Vercel
 
 1. Use the production Vercel project (`learnslop`) with root directory `apps/web`. The committed `vercel.json` disables automatic Git deployments from `main` so the production workflow publishes the alias with the configured API origin. Other branches still get Git previews.

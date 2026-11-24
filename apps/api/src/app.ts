@@ -22,6 +22,7 @@ import { importRoutes } from "./imports/routes.ts";
 import { importsIdle } from "./imports/runner.ts";
 import { devRoutes, guideRoutes } from "./dev/route.ts";
 import { feedbackRoutes } from "./feedback/routes.ts";
+import { studioRoutes } from "./studio/route.ts";
 
 const CODES: Record<number, string> = {
   400: "bad_request",
@@ -130,6 +131,7 @@ export function buildApp(opts: { trustProxy?: string | false } = {}) {
       api.register(guideRoutes);
       api.register(designFeedbackRoutes);
       api.register(feedbackRoutes);
+      if (env.STUDIO_ENABLED) api.register(studioRoutes);
       api.get(
         "/healthz",
         { schema: { response: { 200: z.object({ ok: z.literal(true), sha: z.string() }) } } },

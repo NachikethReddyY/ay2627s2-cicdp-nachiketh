@@ -48,7 +48,7 @@ export function CourseNext({ id, slug, course }: { id: string; slug: string; cou
       {rec.data && <p className="mt-4 mb-0 text-sm text-[var(--mu)]">{rec.data.reason}</p>}
       {rec.data?.action === "review"
         ? <NextLink href={`/review/${slug}`} action="review">Review</NextLink>
-        : next ? <NextLink href={`/play?lesson=${next}&course=${slug}`} action={rec.data?.action === "assess" ? "assess" : "lesson"}>Next</NextLink>
+        : next ? <NextLink href={`/lessons?lesson=${next}&course=${slug}`} action={rec.data?.action === "assess" ? "assess" : "lesson"}>Next</NextLink>
           : <NextLink href={`/courses/${slug}`}>Back to course</NextLink>}
     </div>
   );

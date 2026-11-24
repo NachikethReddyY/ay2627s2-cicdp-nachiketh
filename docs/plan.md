@@ -23,7 +23,7 @@ Core loop: present a step → predict → hint ladder on a miss → reveal (repl
 - **Tracks** (code and schema name: `world`): CodeQuest, the JavaScript and TypeScript track, is core. A second language track is stretch (Appendix A). A track is a plugin (§8.4).
 - **Lesson rendering.** Learn renders Markdown and validates visual documents against `ui-catalog`. Individual renderers load on demand, with fallback text for rejected or unsupported blocks. Watch replays code and lets learners run a temporary copy of the visible files.
 - **Game practice.** The `game-practice` lesson kind supports grid, order, match, sort, physics and quiz blocks. The server records hints and wrong guesses by learner and block. The default limit is three wrong guesses per UTC day, with an authored lives limit where specified. Every block needs a win to complete the lesson. Games embedded in Learn are read-only.
-- **Practice workbench.** `/play` and the standalone editor lab share the editor, Run, Submit, Lint, Sloppy and the sandbox terminal. Scrim labs unlock after the predictions are confirmed. Submissions grade the current lesson file and keep hidden test inputs and expected output server-side. Lint marks findings in the editor and lists them in Results.
+- **Practice workbench.** `/lessons` and the standalone editor lab share the editor, Run, Submit, Lint, Sloppy and the sandbox terminal. Scrim labs unlock after the predictions are confirmed. Submissions grade the current lesson file and keep hidden test inputs and expected output server-side. Lint marks findings in the editor and lists them in Results.
 - **"Video injection"** (assumption, Q1): narration and media cues on the replay timeline. Embed and MP4 are stretch or Won't.
 
 ---

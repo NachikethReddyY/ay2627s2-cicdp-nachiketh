@@ -32,7 +32,7 @@ Text and image catalogs refresh in the background. The narration catalog refresh
 
 Predict narration runs in the API. Its reservation uses `STUDIO_TTS_ESTIMATE_USD`. The spend dashboard records the reported or calculated cost separately from the reservation. Playback of cached narration creates no new spend entry.
 
-Transcription runs on the Studio branch. OpenRouter's `openai/whisper-large-v3` endpoint catalog lists $0.00045 per input audio minute via DeepInfra, $0.00150 via Together, and approximately $0.00185 via Groq. These are public rates as of 2026-11-24. OpenRouter reports the actual transcription charge in `usage.cost`. [Whisper endpoint catalog](https://openrouter.ai/api/v1/models/openai/whisper-large-v3/endpoints) · [Transcription response fields](https://openrouter.ai/docs/guides/overview/multimodal/stt#response-format)
+When Studio is enabled, its transcription events include OpenRouter's billed `usage.cost` and upstream HTTP status in PostHog. Budget reservations are recorded in `spend_ledger`. OpenRouter's `openai/whisper-large-v3` endpoint catalog lists $0.00045 per input audio minute via DeepInfra, $0.00150 via Together, and approximately $0.00185 via Groq. These are public rates as of 2026-11-24. [Whisper endpoint catalog](https://openrouter.ai/api/v1/models/openai/whisper-large-v3/endpoints) · [Transcription response fields](https://openrouter.ai/docs/guides/overview/multimodal/stt#response-format)
 
 `AI_DAILY_BUDGET_USD` and `AI_MONTHLY_BUDGET_USD` continue to apply to reservations in `spend_ledger` using `AI_CALL_ESTIMATE_USD`, `IMAGE_ESTIMATE_USD`, `STUDIO_TTS_ESTIMATE_USD`, or `MODERATION_ESTIMATE_USD` as applicable.
 

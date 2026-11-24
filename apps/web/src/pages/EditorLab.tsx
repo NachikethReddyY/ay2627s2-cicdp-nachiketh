@@ -29,7 +29,7 @@ function Lab({ slug, course }: { slug: string; course?: string }) {
       <Notice>
         {target.error}{" "}
         {target.locked
-          ? <Link to="/play" search={{ lesson: slug, course }} className="underline">Open the lesson</Link>
+          ? <Link to="/lessons" search={{ lesson: slug, course }} className="underline">Open the lesson</Link>
           : <Link to="/" className="underline">Home</Link>}
       </Notice>
     );

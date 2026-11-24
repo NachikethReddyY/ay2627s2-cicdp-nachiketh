@@ -55,7 +55,7 @@ async function checkAdminSpend(page: Page, email: string) {
   }
 }
 
-test("signs up, confirms and edits a public handle, and stays signed in on /play", async ({ page }) => {
+test("signs up, confirms and edits a public handle, and stays signed in on /lessons", async ({ page }) => {
   const email = newEmail();
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/login\?/);
@@ -94,11 +94,13 @@ test("signs up, confirms and edits a public handle, and stays signed in on /play
   await page.goto("/onboarding");
   await expect(page).toHaveURL(/\/$/);
 
-  await page.goto("/play");
+  await page.goto("/lessons");
   await expect(page.getByText("Pick a lesson to start.")).toBeVisible();
   await page.reload();
-  await expect(page).toHaveURL(/\/play$/);
+  await expect(page).toHaveURL(/\/lessons$/);
   await expect(page.getByText("Pick a lesson to start.")).toBeVisible();
+  await page.goto("/play");
+  await expect(page.getByText("We couldn't find that page.")).toBeVisible();
 
   const session = await page.request.get("/api/auth/get-session");
   expect(session.ok()).toBe(true);
@@ -198,7 +200,7 @@ test("a private generated Python prediction distinguishes multiline choices and 
     route.fulfill({ contentType: "audio/wav", body: Buffer.from(silentWav(2000)) }));
   await page.goto(`/courses/${course}`);
   const start = page.getByRole("link", { name: "Start", exact: true });
-  const href = `/play?lesson=${lesson}&course=${course}`;
+  const href = `/lessons?lesson=${lesson}&course=${course}`;
   await expect(start).toHaveAttribute("href", href);
   await start.click();
   const task = page.getByRole("region", { name: "Predict", exact: true });
@@ -462,7 +464,7 @@ async function verifyNarratedPractice(page: Page) {
   const policy = vercel.headers.find(({ source }) => source === "/(.*)")?.headers
     .find(({ key }) => key.toLowerCase() === "content-security-policy")?.value;
   if (!policy) throw new Error("The Vercel content security policy is missing.");
-  await page.route(/\/(play|editor)\?lesson=practice-greeting$/, async (route) => {
+  await page.route(/\/(lessons|editor)\?lesson=practice-greeting$/, async (route) => {
     const response = await route.fetch();
     await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": policy } });
   });
@@ -518,7 +520,7 @@ async function verifyNarratedPractice(page: Page) {
     });
     ws.send(Buffer.from("sandbox ready\r\n"));
   });
-  const lessonPage = await page.goto("/play?lesson=practice-greeting");
+  const lessonPage = await page.goto("/lessons?lesson=practice-greeting");
   expect(lessonPage?.headers()["content-security-policy"]).toBe(policy);
   const watch = page.getByRole("button", { name: "Watch", exact: true });
   await watch.click();
@@ -556,7 +558,7 @@ async function verifyNarratedPractice(page: Page) {
 }
 
 test("a scrim keeps later code hidden until its prediction and shows the updated replay", async ({ page }) => {
-  await signUp(page, newEmail(), "/play?lesson=scrim-return-values&course=scrim-demo");
+  await signUp(page, newEmail(), "/lessons?lesson=scrim-return-values&course=scrim-demo");
   await expect(page.getByRole("heading", { name: "What a function gives back" })).toBeVisible();
   await page.getByRole("button", { name: "Next part" }).click();
   await expect(page.getByRole("region", { name: "Predict" })).toBeVisible();
@@ -604,7 +606,7 @@ test("a lesson with no lab can open a temporary Watch workspace", async ({ page 
   });
   await page.route(`**/api/sandbox/run/${runId}?*`, (route) =>
     route.fulfill({ json: { output: "fork\n", next: 5, done: true } }));
-  await page.goto("/play?lesson=watch-fork");
+  await page.goto("/lessons?lesson=watch-fork");
   await expect(page.locator(".monaco-editor .view-lines")).toContainText(end);
   const edit = page.getByRole("button", { name: "Edit from here" });
   await edit.click();
@@ -631,7 +633,7 @@ const SIGNED_OUT_PAGES: [string, (page: Page) => Locator][] = [
   ["/login", (page) => page.getByRole("heading", { name: "Sign in", exact: true })],
 ];
 const SIGNED_IN_PAGES: [string, (page: Page) => Locator][] = [
-  ["/play", (page) => page.getByText("Pick a lesson to start.")],
+  ["/lessons", (page) => page.getByText("Pick a lesson to start.")],
   ["/editor", (page) => page.getByText("Pick a lesson to open its lab.")],
   [`/courses/${COURSE}`, (page) => page.getByRole("heading", { name: "Shopping Cart Basics" })],
   ["/explore", (page) => page.locator("ul.explore-list h2").first()],
