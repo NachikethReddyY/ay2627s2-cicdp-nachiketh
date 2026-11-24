@@ -1,5 +1,6 @@
+import { useRouter } from "@tanstack/react-router";
 import { Fragment, type ReactNode, type Ref } from "react";
-import { ChevronLeft, ChevronRight, Folder, PanelBottom, PanelLeft, PanelRight, type LucideIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, FolderTree, PanelBottom, PanelLeft, PanelRight, Sparkles, type LucideIcon } from "lucide-react";
 import FileBadge, { FileIcon } from "./FileBadge";
 import { Soon } from "./Planned";
 
@@ -11,8 +12,11 @@ type Props = {
   crumbs?: string[];
   symbol?: string;
   split?: boolean;
+  compact?: boolean;
   nav: Toggle;
   terminal?: Toggle;
+  guide?: Toggle;
+  navigatorOffset?: number;
   util?: Toggle;
   onRun(): void;
   actions: ReactNode;
@@ -64,7 +68,7 @@ const SymbolMark = () => (
 export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: string; fileName: string; crumbs?: string[]; symbol?: string; edge: "top" | "bottom" }) {
   if (!fileName) return null;
   return (
-  <nav aria-label="File path" className={`flex h-[33px] flex-none items-center overflow-hidden border-[var(--line)] px-3.5 text-[var(--mu)] ${edge === "top" ? "border-t" : "border-b bg-[var(--tbar)]"}`}>
+  <nav aria-label="File path" className={`wb-file-path flex h-[33px] flex-none items-center overflow-hidden border-[var(--line)] px-3.5 text-[var(--mu)] ${edge === "top" ? "border-t" : "border-b bg-[var(--tbar)]"}`}>
       <ol className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
         {crumbs ? (
           <>
@@ -111,11 +115,18 @@ export function Breadcrumbs({ title, fileName, crumbs, symbol, edge }: { title: 
   );
 }
 
-export default function Toolbar({ title, fileName, crumbs, symbol, split = false, nav, terminal, util, onRun, actions, trailing, lights = false, planned = false }: Props) {
+export default function Toolbar({ title, fileName, crumbs, symbol, split = false, compact = false, nav, terminal, util, guide, navigatorOffset, onRun, actions, trailing, lights = false, planned = false }: Props) {
+  const router = useRouter();
   return (
     <header className="flex flex-none flex-col border-b border-[var(--line)] bg-[var(--tbar)]">
-      <div className="flex min-h-12 flex-none flex-wrap items-center gap-2 px-2 py-1 sm:gap-3 sm:px-3">
+      <div className={`relative flex flex-none items-center gap-2 px-2 py-1 sm:gap-3 sm:px-3 ${compact ? "h-[45px]" : "min-h-12 flex-wrap"}`}>
         {lights && <TrafficLights />}
+        {compact && (
+          <span className="wb-pill flex-none gap-0 max-sm:hidden" role="group" aria-label="Page history">
+            <button type="button" className="wb-tb wb-n34" aria-label="Go back" onClick={() => router.history.back()}><ChevronLeft size={17} aria-hidden="true" /></button>
+            <button type="button" className="wb-tb wb-n34" aria-label="Go forward" onClick={() => router.history.forward()}><ChevronRight size={17} aria-hidden="true" /></button>
+          </span>
+        )}
         {planned && (
           <span className="wb-pill flex-none gap-0 shadow-[0_1px_2px_rgba(20,30,70,.1)]">
             <Soon label="Back" className="wb-tb wb-wide">
@@ -126,7 +137,18 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
             </Soon>
           </span>
         )}
-        <div className="flex min-w-0 flex-1 items-center gap-2 whitespace-nowrap">
+        {guide && (
+          <span
+            className={`wb-pill wb-lesson-tools flex-none ${navigatorOffset === undefined ? "" : "absolute top-1/2 z-10 -translate-y-1/2"}`}
+            style={navigatorOffset === undefined ? undefined : { left: 72 - navigatorOffset }}
+            role="group"
+            aria-label="Workbench tools"
+          >
+            <ToggleButton t={nav} icon={FolderTree} />
+            <ToggleButton t={guide} icon={Sparkles} />
+          </span>
+        )}
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap">
           <a href="/" className="flex flex-none items-center gap-1.5 rounded text-[13px] font-semibold" aria-label="LearnSlop home">
             <Mark size={18} className="sm:hidden" />
             <span className="max-sm:hidden">LearnSlop</span>
@@ -143,7 +165,7 @@ export default function Toolbar({ title, fileName, crumbs, symbol, split = false
         >{actions}</div>
         <span className="flex flex-none items-center gap-px">
           {trailing}
-          <ToggleButton t={nav} icon={PanelLeft} />
+          {!guide && <ToggleButton t={nav} icon={PanelLeft} />}
           {terminal && <ToggleButton t={terminal} icon={PanelBottom} />}
           {util && <ToggleButton t={util} icon={PanelRight} />}
         </span>

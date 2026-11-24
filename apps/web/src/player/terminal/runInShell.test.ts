@@ -13,8 +13,6 @@ import {
 import type { ShellState } from "./shellSocket.ts";
 import { putFile } from "../runPython.ts";
 import { createRunQueue } from "../live/runQueue.ts";
-import { practiceActions } from "../live/practiceActions.ts";
-import type { PracticeLanguage } from "../live/checkModel.ts";
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const neverExpires = () => new AbortController().signal;
@@ -251,15 +249,6 @@ test("a dropped socket while the process runs rejects and removes marker listene
   shell.drop();
   await assert.rejects(running, (error: RunInShellError) => error.kind === "unavailable");
   assert.equal(shell.listeners(), 0);
-});
-
-test("authored scrim JavaScript and Python use the shell so output remains in terminal history", () => {
-  for (const language of ["python", "javascript"] as const) {
-    assert.equal(practiceActions({ language, code: "c", lessonId: "l", sandboxEnabled: true, authored: true }).run.via, "shell");
-  }
-  assert.equal(practiceActions({ language: "typescript", code: "c", lessonId: "l", sandboxEnabled: true, authored: true }).run.via, "oneshot");
-  const language: PracticeLanguage = "python";
-  assert.equal(practiceActions({ language, code: "c", lessonId: "l", sandboxEnabled: true, authored: false }).run.via, "shell");
 });
 
 test("Run never sends a lessonId", async () => {

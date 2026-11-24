@@ -30,6 +30,11 @@ export type SandboxFileName = (typeof SANDBOX_FILES)[number];
 export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; size: number };
 export type DirListing = { entries: DirEntry[]; truncated: boolean };
 export const LIST_MAX_ENTRIES = 200;
+export const WORKSPACE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+export const workspaceDir = (name: string) => `workspaces/${name}`;
+export const visibleWorkspaceEntry = (name: string) => !name.startsWith(".") && name !== "node_modules";
+export class WorkspaceEntryExistsError extends Error {}
+
 
 export class SandboxNotRunningError extends Error {
   constructor() {
@@ -45,14 +50,16 @@ export class SandboxFileTooLargeError extends Error {
 
 export interface RunLimits {
   timeoutS: number;
+  stdin?: string;
 }
 
 export interface SandboxBackend {
-  openShell(learnerId: string, size: { cols: number; rows: number }): Promise<ShellHandle>;
+  openShell(learnerId: string, size: { cols: number; rows: number; workspace?: string }): Promise<ShellHandle>;
   writeFile?(learnerId: string, name: SandboxFileName, content: string): Promise<void>;
   readWorkspaceFile?(learnerId: string, path: string): Promise<string | null>;
   writeWorkspaceFile?(learnerId: string, path: string, content: string): Promise<void>;
   moveWorkspaceFile?(learnerId: string, source: string, targetDir: string): Promise<void>;
+  createWorkspaceEntry?(learnerId: string, relPath: string, kind: "file" | "folder"): Promise<void>;
   listDir?(learnerId: string, relDir: string): Promise<DirListing | null>;
   runChecks?(code: string, language: PracticeLanguage, tests: PracticeTest[]): Promise<RawResult[]>;
   runCode?(learnerId: string, language: "python" | "javascript" | "typescript", code: string, limits: RunLimits): RunHandle;

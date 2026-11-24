@@ -12,6 +12,7 @@ export function resizeRect(
   dx: number,
   dy: number,
   bounds: { width: number; height: number },
+  minWidth = MIN_WIDTH,
 ): PreviewRect {
   let { left, top, width, height } = start;
   const right = start.left + start.width;
@@ -19,9 +20,9 @@ export function resizeRect(
 
   if (edge.includes("e")) {
     const max = bounds.width - MARGIN - start.left;
-    width = Math.max(MIN_WIDTH, Math.min(start.width + dx, max));
+    width = Math.max(minWidth, Math.min(start.width + dx, max));
   } else if (edge.includes("w")) {
-    left = Math.max(MARGIN, Math.min(start.left + dx, right - MIN_WIDTH));
+    left = Math.max(MARGIN, Math.min(start.left + dx, right - minWidth));
     width = right - left;
   }
 

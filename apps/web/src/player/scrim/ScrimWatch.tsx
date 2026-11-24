@@ -3,7 +3,7 @@ import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-rea
 import { frameAt, runCrossed, segmentAt } from "@learnquest/player-core";
 import { monacoLanguage } from "../live/checkModel";
 import { lessonFile } from "../live/lessonWorkbenchModel";
-import RunBottom from "../live/RunBottom";
+import RunBottom, { RunOutput } from "../live/RunBottom";
 import type { Lesson, Part } from "../live/types";
 import { usePracticeRunner } from "../live/usePracticeRunner";
 import { formatTime } from "../live/videoModel";
@@ -277,8 +277,9 @@ export default function ScrimWatch({ title, part, steps, media, resumeAt, onGate
       navigator={<div className="min-w-0"><FileTreeView label="Lesson files" nodes={[{ name: fileName }]} open={new Set()} selected={fileName} onToggle={() => {}} onSelect={() => {}} /></div>}
       editor={<WorkbenchEditor ref={attachEditor} transportRef={playRef} edit={{ value: "", language, onChange: () => {}, readOnly: true }} fill />}
       playerOverlay={overlay}
-      bottom={<RunBottom runner={runner} terminalActive={panel.state.open} />}
+      bottom={<RunBottom runner={runner} terminalActive={panel.state.open && runner.bottomView === "main"} />}
       bottomTitle="Terminal"
+      runConsole={{ content: <RunOutput runner={runner} />, view: runner.bottomView, select: runner.setBottomView }}
       actions={actions}
       paletteFiles={[{ id: fileName, title: fileName }]}
       paletteCommands={[]}

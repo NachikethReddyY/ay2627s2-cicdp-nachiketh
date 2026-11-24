@@ -101,10 +101,12 @@ export async function runShellCommand(o: {
   command: string;
   panel: { open(): void };
   socket: Pick<ShellSocket, "whenReady" | "send">;
+  prepare?: () => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<void> {
   o.panel.open();
   await waitForShell(o.socket);
+  await o.prepare?.();
   if (!o.socket.send(CTRL_C)) throw lostShell();
   await (o.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(100);
   if (!o.socket.send(`${o.command}\r`)) throw lostShell();

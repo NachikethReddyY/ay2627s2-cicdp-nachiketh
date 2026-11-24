@@ -28,19 +28,22 @@ type Props = {
   symbol?: string;
   language: WorkbenchLanguage;
   navigator: ReactNode;
+  navigatorSearch?: ReactNode;
   editor: ReactNode;
   playerOverlay?: ReactNode;
   bottom?: ReactNode;
   editorFooter?: ReactNode;
   task?: ReactNode;
   bottomTitle?: string;
+  runConsole?: { content: ReactNode; view: "main" | "console"; select: (view: "main" | "console") => void };
+  lessonLayout?: boolean;
   terminalSessions?: {
     items: { id: string; label: string }[];
     activeId: string;
     onSelect(id: string): void;
-    onNew(): void;
+    onNew: () => void;
     split: boolean;
-    onToggleSplit(): void;
+    onToggleSplit: () => void;
   };
   instructions?: ReactNode;
   docs?: ReactNode;
@@ -66,6 +69,7 @@ type Props = {
   };
   revealDocs?: number;
   aiContext?: { fileName: string; filePath: string; projectRoot: string; code: string; language: string };
+  guide?: { active: boolean; onToggle: () => void; onOpen: () => void };
   onAskGuide?: () => void;
   onGuideSelection?: WorkbenchContextValue["setSelection"];
 };
@@ -138,8 +142,10 @@ export default function Workbench(p: Props) {
       window.removeEventListener("blur", onBlur);
     };
   }, []);
-  const view: NavView = planned ? navView : "files";
-  const bottomView = planned ? bottomTab : "main";
+  const lessonTools = p.navigatorSearch !== undefined;
+  const view: NavView = planned || lessonTools ? navView : "files";
+  const bottomView = p.runConsole?.view ?? (planned ? bottomTab : "main");
+  const selectBottom = p.runConsole?.select ?? setBottomTab;
   const panel = p.panel?.state;
   const panelDispatch = p.panel?.dispatch;
   const panelOpen = panel?.open ?? false;
@@ -234,6 +240,7 @@ export default function Workbench(p: Props) {
   const navBtn = useRef<HTMLButtonElement>(null);
   const utilBtn = useRef<HTMLButtonElement>(null);
   const termBtn = useRef<HTMLButtonElement>(null);
+  const guideBtn = useRef<HTMLButtonElement>(null);
   const panelWasOpen = useRef(panelOpen);
   useEffect(() => {
     if (panelWasOpen.current && !panelOpen) {
@@ -254,35 +261,37 @@ export default function Workbench(p: Props) {
       if (!r.showUtil) r.dispatch({ type: "toggleUtil" });
     } else setOverlay("docs");
   }, [p.revealDocs]);
-  const returnTo = useRef<HTMLButtonElement | null>(null);
-  const closeOverlay = () => {
-    returnTo.current = overlay === "nav" ? navBtn.current : utilBtn.current;
+  const afterDrawerClose = useRef<(() => void) | null>(null);
+  const closeOverlay = (afterClose?: () => void) => {
+    const trigger = overlay === "nav" ? navBtn.current : p.guide?.active ? guideBtn.current : utilBtn.current;
+    afterDrawerClose.current = afterClose ?? (() => trigger?.focus());
     setOverlay(null);
   };
   useEffect(() => {
-    if (openOverlay != null || !returnTo.current) return;
-    returnTo.current.focus();
-    returnTo.current = null;
+    if (openOverlay != null) return;
+    afterDrawerClose.current?.();
+    afterDrawerClose.current = null;
   }, [openOverlay]);
 
   const openDocRef = useRef(openDoc);
   openDocRef.current = openDoc;
   const onGuideSelection = p.onGuideSelection;
+  const monacoTheme = resolved === "light" ? "learnslop-light" : p.lessonLayout ? "learnslop-workbench-dark" : "learnslop-dark";
   const ctx = useMemo<WorkbenchContextValue>(
-    () => ({ monacoTheme: resolved === "dark" ? "learnslop-dark" : "learnslop-light", wordWrap, setWordWrap, fileName: p.fileName, setCursor, setSelection: (value) => { setSelection(value); onGuideSelection?.(value); }, setProblems, openDoc: (id) => openDocRef.current(id) }),
-    [resolved, wordWrap, p.fileName, onGuideSelection],
+    () => ({ monacoTheme, wordWrap, setWordWrap, fileName: p.fileName, setCursor, setSelection: (value) => { setSelection(value); onGuideSelection?.(value); }, setProblems, openDoc: (id) => openDocRef.current(id) }),
+    [monacoTheme, wordWrap, p.fileName, onGuideSelection],
   );
 
   const bottomPanel = panel?.everOpened && panelDispatch && (
     <section aria-label={`${p.bottomTitle ?? "Terminal"} panel`} hidden={!panelOpen} style={maximized ? undefined : { height: panelH }} className={`wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)] ${maximized ? "absolute inset-0 z-20" : ""}`}>
       <div className="wb-bottom-toolbar flex h-[43px] flex-none items-center border-b border-[var(--line)] px-2.5">
         <h2 className="sr-only">{p.bottomTitle ?? "Terminal"}</h2>
-        {planned ? (
+        {planned || p.runConsole ? (
           <Segmented className="wb-pill gap-1" role="group" aria-label="Panel view">
-            <button type="button" className="wb-ptab" aria-pressed={bottomView === "main"} onClick={() => setBottomTab("main")}>
+            <button type="button" className="wb-ptab" aria-pressed={bottomView === "main"} onClick={() => selectBottom("main")}>
               {p.bottomTitle ?? "Terminal"}
             </button>
-            <button type="button" className="wb-ptab" aria-label="Debug console" title="Debug console" aria-pressed={bottomView === "console"} onClick={() => setBottomTab("console")}><span className="wb-console-full">Debug console</span><span className="wb-console-short" aria-hidden="true">...</span></button>
+            <button type="button" className="wb-ptab" aria-label={p.runConsole ? "Console" : "Debug console"} aria-pressed={bottomView === "console"} onClick={() => selectBottom("console")}><span className="wb-console-full">{p.runConsole ? "Console" : "Debug console"}</span><span className="wb-console-short" aria-hidden="true">{p.runConsole ? "Console" : "..."}</span></button>
           </Segmented>
         ) : (
           <span className="wb-pill">
@@ -297,12 +306,12 @@ export default function Workbench(p: Props) {
               <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
             </button>
           )}
-          {planned && p.terminalSessions && (
+          {(planned || p.lessonLayout) && p.terminalSessions && (
             <button type="button" className="wb-tb wb-n34" aria-label={p.terminalSessions.split ? "Exit split terminal view" : "Split terminal view"} title={p.terminalSessions.split ? "Exit split view" : p.terminalSessions.items.length < 2 ? "Split view (opens a second terminal)" : "Split view"} onClick={p.terminalSessions.onToggleSplit}>
               <Columns2 size={15} strokeWidth={1.7} aria-hidden="true" />
             </button>
           )}
-          {planned && (
+          {(planned || p.runConsole || p.lessonLayout) && wide && (
             <button type="button" className="wb-tb wb-n34" aria-label={panelMaximized ? "Restore terminal panel" : "Maximize terminal panel"} title={panelMaximized ? "Restore" : "Maximize"} onClick={() => setPanelMaximized((value) => !value)}>
               {panelMaximized ? <Minimize2 size={15} strokeWidth={1.75} aria-hidden="true" /> : <Maximize2 size={15} strokeWidth={1.75} aria-hidden="true" />}
             </button>
@@ -317,7 +326,7 @@ export default function Workbench(p: Props) {
       </div>
       {bottomView === "console" && (
         <div className="wb-appear wb-scroll min-h-0 flex-1">
-          <Suspense fallback={null}><DebugConsole /></Suspense>
+          {p.runConsole?.content ?? <Suspense fallback={null}><DebugConsole /></Suspense>}
         </div>
       )}
     </section>
@@ -326,16 +335,24 @@ export default function Workbench(p: Props) {
   const toolbar = (split: boolean) => (
     <Toolbar
       split={split}
+      compact={p.lessonLayout}
       onRun={() => setBottomTab("main")}
       title={p.title}
       fileName={p.fileName}
       crumbs={p.crumbs}
       symbol={p.symbol}
       nav={{
-        label: wide ? "Toggle navigator" : "Show files",
+        label: p.guide ? "File explorer" : wide ? "Toggle navigator" : "Show files",
         pressed: wide ? layout.showLeft : openOverlay === "nav",
         onClick: toggleNav,
         ref: navBtn,
+      }}
+      navigatorOffset={wide && shown.showLeft ? shown.leftW + SPLIT : undefined}
+      guide={p.guide && {
+        label: "Sloppy AI",
+        pressed: p.guide.active && (wide ? layout.showUtil : openOverlay === "docs"),
+        onClick: wide ? (layout.showUtil ? p.guide.onToggle : p.guide.onOpen) : p.guide.onOpen,
+        ref: guideBtn,
       }}
       terminal={panelDispatch ? {
         label: "Toggle terminal panel (Ctrl+`)",
@@ -356,6 +373,38 @@ export default function Workbench(p: Props) {
     />
   );
 
+  const problemCount = diagnostics.errors + diagnostics.warnings;
+  const navigator = (
+    <>
+      {(planned || lessonTools) && view !== "ai" && (
+        <Segmented className="wb-pill wb-navtabs" role="group" aria-label="Navigator view">
+          {NAV_TABS.map(({ id, label, icon: Icon }) => (
+            <button key={id} type="button" className="wb-tb relative" aria-label={id === "problems" ? `${label} (${problemCount})` : label} title={label} aria-pressed={view === id} onClick={() => setNavView(id)}>
+              <Icon size={17} strokeWidth={1.7} aria-hidden="true" />
+              {id === "problems" && problemCount > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-3 rounded-full bg-[var(--bad)] px-1 text-[9px] leading-3 text-white">{problemCount}</span>}
+            </button>
+          ))}
+        </Segmented>
+      )}
+      {view === "ai" && p.aiContext ? (
+        <div className="wb-appear flex min-h-0 min-w-0 flex-1 pt-1.5"><Suspense fallback={null}><AIGuide {...p.aiContext} selection={selection} /></Suspense></div>
+      ) : (
+        <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : p.lessonLayout ? "" : "pt-3"}`}>
+          {lessonTools && <div hidden={view !== "files"}>{p.navigator}</div>}
+          {view === "files" && !lessonTools && <div className="wb-appear">{p.navigator}</div>}
+          {view !== "files" && (
+            <div key={view} className="wb-appear">
+              {lessonTools && view === "search" ? p.navigatorSearch
+                : lessonTools && view === "git" ? <p className="p-3 text-[var(--mu)]">Source control is unavailable in lesson workspaces.</p>
+                : lessonTools && view === "debug" ? <p className="p-3 text-[var(--mu)]">Use Run to execute your code in Terminal. The debugger is unavailable in lesson workspaces.</p>
+                : <Suspense fallback={null}><PlannedNavView view={view} problems={problems} branch={p.gitBranch} /></Suspense>}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
   const status = (
     <StatusBar planned={planned} branch={p.gitBranch} status={p.status} errors={diagnostics.errors} warnings={diagnostics.warnings} wordWrap={wordWrap} onWordWrap={() => setWordWrap((value) => !value)} cursor={p.noCursor ? null : cursor} language={p.languageLabel ?? LANG_NAMES[p.language]} onProblems={() => {
       setNavView("problems");
@@ -367,7 +416,7 @@ export default function Workbench(p: Props) {
     <WorkbenchContext value={ctx}>
       <div
         ref={wbRef}
-        className={`wb flex flex-col ${wide ? "wb-desk h-dvh overflow-hidden" : hasPlayerOverlay ? "relative h-dvh overflow-hidden bg-[var(--code)]" : "min-h-dvh bg-[var(--code)]"}`}
+        className={`wb flex flex-col ${p.lessonLayout ? "wb-lesson" : ""} ${wide ? "wb-desk h-dvh overflow-hidden" : hasPlayerOverlay ? "relative h-dvh overflow-hidden bg-[var(--code)]" : "min-h-dvh bg-[var(--code)]"}`}
         data-theme={layout.theme}
         data-resolved={resolved}
         data-ready={ready || undefined}
@@ -395,7 +444,7 @@ export default function Workbench(p: Props) {
               {shown.showLeft && (
                 <>
                   <nav aria-label="Navigator" style={{ width: shown.leftW }} className="wb-appear wb-side flex min-h-0 flex-none flex-col">
-                    <div data-window-drag className="flex flex-none items-center gap-2 px-3 pt-3">
+                    <div data-window-drag className="wb-sidebar-top flex flex-none items-center gap-2 px-3 pt-3">
                       <span className="flex h-[34px] items-center">
                         <TrafficLights />
                       </span>
@@ -413,23 +462,7 @@ export default function Workbench(p: Props) {
                         </>
                       )}
                     </div>
-                    {planned && view !== "ai" && (
-                      <Segmented className="wb-pill wb-navtabs" role="group" aria-label="Navigator view">
-                        {NAV_TABS.map((t) => (
-                          <button key={t.id} type="button" className="wb-tb relative" aria-label={t.id === "problems" ? `${t.label} (${diagnostics.errors + diagnostics.warnings})` : t.label} title={t.label} aria-pressed={view === t.id} onClick={() => setNavView(t.id)}>
-                            <t.icon size={17} strokeWidth={1.7} aria-hidden="true" />
-                            {t.id === "problems" && diagnostics.errors + diagnostics.warnings > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-3 rounded-full bg-[var(--bad)] px-1 text-[9px] leading-3 text-white">{diagnostics.errors + diagnostics.warnings}</span>}
-                          </button>
-                        ))}
-                      </Segmented>
-                    )}
-                    {view === "ai" && p.aiContext ? (
-                      <div className="wb-appear flex min-h-0 min-w-0 flex-1 pt-1.5"><Suspense fallback={null}><AIGuide {...p.aiContext} selection={selection} /></Suspense></div>
-                    ) : (
-                      <div className={`wb-scroll flex-1 pb-1.5 ${planned ? "pt-1.5" : "pt-3"}`}>
-                        <div key={view} className="wb-appear">{view === "files" ? p.navigator : <Suspense fallback={null}><PlannedNavView view={view} problems={problems} branch={p.gitBranch} /></Suspense>}</div>
-                      </div>
-                    )}
+                    {navigator}
                   </nav>
                   <Splitter
                     orientation="vertical"
@@ -484,7 +517,7 @@ export default function Workbench(p: Props) {
                     after
                     onResize={(px) => dispatch({ type: "resizeUtil", px, container: utilResizeContainer })}
                   />
-                  <aside aria-label={hasTask ? "Prediction task" : "Docs"} style={{ width: shown.utilW }} className="wb-appear flex min-h-0 flex-none flex-col bg-[var(--tbar)]">
+                  <aside aria-label={hasTask ? "Prediction task" : p.guide?.active ? "Sloppy AI" : p.lessonLayout ? "Lesson panel" : "Docs"} style={{ width: shown.utilW }} className="wb-appear wb-utility flex min-h-0 min-w-0 flex-none flex-col overflow-hidden bg-[var(--tbar)]">
                     {p.task ?? p.docs}
                   </aside>
                 </>
@@ -532,8 +565,8 @@ export default function Workbench(p: Props) {
           onClose={closePalette}
         />
         {openOverlay && (
-          <Drawer side={openOverlay === "nav" ? "left" : "right"} label={openOverlay === "nav" ? "Files" : "Docs"} onClose={closeOverlay}>
-            {openOverlay === "nav" ? p.navigator : p.docs}
+          <Drawer side={openOverlay === "nav" ? "left" : "right"} label={openOverlay === "nav" ? "Files" : p.guide?.active ? "Sloppy AI" : p.lessonLayout ? "Lesson panel" : "Docs"} onClose={closeOverlay}>
+            {openOverlay === "nav" ? lessonTools ? navigator : p.navigator : p.docs}
           </Drawer>
         )}
       </div>
@@ -541,7 +574,7 @@ export default function Workbench(p: Props) {
   );
 }
 
-function Drawer({ side, label, onClose, children }: { side: "left" | "right"; label: string; onClose(): void; children: ReactNode }) {
+function Drawer({ side, label, onClose, children }: { side: "left" | "right"; label: string; onClose(afterClose?: () => void): void; children: ReactNode }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -563,15 +596,15 @@ function Drawer({ side, label, onClose, children }: { side: "left" | "right"; la
       className="fixed inset-0 z-40 flex"
       style={{ justifyContent: side === "left" ? "flex-start" : "flex-end" }}
     >
-      <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} className="absolute inset-0 cursor-default bg-black/30" onClick={onClose} />
+      <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} className="absolute inset-0 cursor-default bg-black/30" onClick={() => onClose()} />
       <div role="dialog" aria-modal="true" aria-label={label} className="relative flex h-full w-[min(85vw,340px)] flex-col bg-[var(--side)] shadow-xl">
         <div className="flex h-12 flex-none items-center border-b border-[var(--line)] px-3">
           <h2 className={`text-[13px] font-semibold ${side === "right" ? "sr-only" : ""}`}>{label}</h2>
-          <button ref={closeRef} type="button" className="wb-tb ml-auto" aria-label={`Close ${label.toLowerCase()}`} onClick={onClose}>
+          <button ref={closeRef} type="button" className="wb-tb ml-auto" aria-label={`Close ${label.toLowerCase()}`} onClick={() => onClose()}>
             <X size={15} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
-        <div className={`flex-1 ${side === "right" ? "wb-prose flex min-h-0 flex-col" : "wb-scroll py-1.5"}`}><DrawerCloseContext.Provider value={onClose}>{children}</DrawerCloseContext.Provider></div>
+        <div className={`flex-1 ${side === "right" ? "wb-prose flex min-h-0 flex-col" : "wb-scroll flex min-h-0 flex-col py-1.5"}`}><DrawerCloseContext.Provider value={onClose}>{children}</DrawerCloseContext.Provider></div>
       </div>
     </div>
   );

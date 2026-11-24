@@ -18,8 +18,8 @@ async function call<T>(fullPath: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-export const startPython = (code: string, language: PracticeLanguage, lessonId?: string, signal?: AbortSignal) =>
-  call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId }), signal });
+export const startPython = (code: string, language: PracticeLanguage, lessonId?: string, signal?: AbortSignal, stdin?: string) =>
+  call<{ id: string }>("/api/sandbox/run", { method: "POST", body: JSON.stringify({ code, language, lessonId, stdin }), signal });
 
 export const checkPractice = (input: { code: string; language: PracticeLanguage; lessonId: string; versionId?: string; revision?: string }) =>
   call<CheckResponse>("/api/sandbox/check", { method: "POST", body: JSON.stringify(input) });
@@ -34,15 +34,23 @@ export const lintPractice = (code: string, language: PracticeLanguage) =>
 
 export const checkPassed = (p: Pick<PyPoll, "error" | "passed">) => !p.error && p.passed === true;
 export const pollPython = (id: string, from: number, signal?: AbortSignal) => call<PyPoll>(`/api/sandbox/run/${id}?from=${from}`, { signal });
-export const sendPythonLine = (id: string, line: string) => call<{ ok: boolean }>(`/api/sandbox/run/${id}/input`, { method: "POST", body: JSON.stringify({ line }) });
 export const stopPython = (id: string, signal?: AbortSignal) => call<{ ok: boolean }>(`/api/sandbox/run/${id}`, { method: "DELETE", signal });
 
 export const putFile = (name: "solution.py" | "solution.js" | "solution.ts", content: string) =>
   call<unknown>(`/api/sandbox/files/${name}`, { method: "PUT", body: JSON.stringify({ content }) }).then(() => undefined);
 
 export type DirEntry = { name: string; type: "file" | "dir" | "link" | "other"; size: number };
-export const listFiles = (dir?: string) =>
-  call<{ entries: DirEntry[]; truncated: boolean }>(`/api/sandbox/files${dir === undefined ? "" : `?dir=${encodeURIComponent(dir)}`}`);
+export const listFiles = (dir?: string, workspace?: string) => {
+  const query = [
+    dir === undefined ? "" : `dir=${encodeURIComponent(dir)}`,
+    workspace === undefined ? "" : `workspace=${encodeURIComponent(workspace)}`,
+  ].filter(Boolean).join("&");
+  return call<{ entries: DirEntry[]; truncated: boolean }>(`/api/sandbox/files${query ? `?${query}` : ""}`);
+};
+
+export const createWorkspaceEntry = (workspace: string, name: string, kind: "file" | "folder") =>
+  call<{ ok: boolean }>("/api/sandbox/workspace-entry", { method: "POST", body: JSON.stringify({ workspace, name, kind }) });
+
 
 export const listFileDirectories = (directories: string[]) => {
   const query = directories.map((dir) => `dir=${encodeURIComponent(dir)}`).join("&");

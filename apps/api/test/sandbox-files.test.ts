@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { buildApp } from "../src/app.ts";
 import { env } from "../src/env.ts";
 import { limiter } from "../src/sandbox/files.ts";
-import { SandboxFileTooLargeError, SandboxNotRunningError, setBackend, type DirEntry, type SandboxBackend, type SandboxFileName } from "../src/sandbox/backend.ts";
+import { WorkspaceEntryExistsError, SandboxFileTooLargeError, SandboxNotRunningError, setBackend, type DirEntry, type SandboxBackend, type SandboxFileName } from "../src/sandbox/backend.ts";
 
 const app = buildApp();
 env.SANDBOX_ENABLED = true;
@@ -330,4 +330,37 @@ test("batch read with no running shell is 409 no_shell", async () => {
   const r = await app.inject({ method: "POST", url: "/api/sandbox/workspace-files/read", headers: { cookie, origin: env.PUBLIC_ORIGIN }, payload: { paths: ["a.js"] } as object });
   assert.equal(r.statusCode, 409);
   assert.equal(r.json().error.code, "no_shell");
+});
+
+test("a lesson listing stays in its project and filters dotfiles and installed modules", async () => {
+  const cookie = await signUp(app, "scoped-explorer@example.com");
+  const dirs: string[] = [];
+  fakeFiles({}, { listDir: async (_, dir) => {
+    dirs.push(dir);
+    return { entries: [".bashrc", ".git", "node_modules", "solution.js"].map((name) => ({ name, size: 0, type: "file" })), truncated: false };
+  } });
+  const scoped = (query: string) => app.inject({ url: `/api/sandbox/files?${query}`, headers: { cookie } });
+  assert.equal((await scoped("workspace=practice&dir=..%2Fother")).statusCode, 400);
+  assert.equal((await scoped("workspace=practice&dir=.git")).statusCode, 400);
+  const listed = await scoped("workspace=practice&dir=src");
+  assert.equal(listed.statusCode, 200);
+  assert.deepEqual(listed.json().entries, [{ name: "solution.js", size: 0, type: "file" }]);
+  assert.deepEqual(dirs, ["workspaces/practice/src"]);
+});
+
+test("new files and folders can be created only under the selected project root", async () => {
+  const cookie = await signUp(app, "create-explorer@example.com");
+  const created: string[] = [];
+  fakeFiles({}, { createWorkspaceEntry: async (_, path, kind) => {
+    if (created.includes(`${kind}:${path}`)) throw new WorkspaceEntryExistsError();
+    created.push(`${kind}:${path}`);
+  } });
+  const create = (name: string, kind: string) => app.inject({ method: "POST", url: "/api/sandbox/workspace-entry",
+    headers: { cookie, origin: env.PUBLIC_ORIGIN }, payload: { workspace: "practice", name, kind } });
+  assert.equal((await create("../sibling", "file")).statusCode, 400);
+  assert.equal((await create(".zshrc", "file")).statusCode, 400);
+  assert.equal((await create("notes.txt", "file")).statusCode, 201);
+  assert.equal((await create("notes.txt", "file")).statusCode, 409);
+  assert.equal((await create("src", "folder")).statusCode, 201);
+  assert.deepEqual(created, ["file:workspaces/practice/notes.txt", "folder:workspaces/practice/src"]);
 });

@@ -72,6 +72,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /less
   await input.fill(handle);
   await submit.click();
   await expect(page.getByRole("heading", { name: "Home", exact: true })).toBeAttached();
+  await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("link", { name: "Account settings" }).click();
   await expect(input).toHaveValue(handle);
   await expect(input).not.toBeEditable();
@@ -298,6 +299,7 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
 
   await page.goto("/");
   await expect(card.getByRole("link", { name: "Review" })).toBeVisible();
+  await expect(card.getByText("Review recommended", { exact: true })).toBeVisible();
   await expect(card.locator(".lq-hero-reason")).toContainText(/is at \d+%\. Review this concept/);
   await expect(page.getByRole("heading", { name: "What you know" })).toBeVisible();
 
@@ -308,6 +310,7 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
   await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
   await page.goto("/");
   await expect(card.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/review/codequest");
+  await expect(card.getByText("Review due", { exact: true })).toBeVisible();
   await card.getByRole("link", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Review array reduce" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
@@ -337,16 +340,25 @@ test("a wrong prediction updates Continue to show a review and its reason", asyn
 
 
 test("practice workbench opens the scrim lab, runs code, lints, and submits", async ({ page }) => {
-  await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => ws.close({ code: 4503, reason: "Sandbox busy" }));
   let ran = false;
   let submitted = false;
   let requestedFeedback = false;
-  await page.route("**/api/sandbox/run", async (route) => {
-    expect(route.request().postDataJSON().code).toContain("function double");
-    ran = true;
-    await route.fulfill({ json: { id: "run-1" } });
+  await page.route("**/api/sandbox/workspace-file", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    expect(route.request().postDataJSON()).toMatchObject({
+      path: "workspaces/scrim-return-values/solution.js",
+      content: expect.stringContaining("function double"),
+    });
+    await route.fulfill({ json: { ok: true } });
   });
-  await page.route("**/api/sandbox/run/run-1?*", (route) => route.fulfill({ json: { output: "Practice output", next: 15, done: true } }));
+  await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => {
+    ws.send(Buffer.from("sandbox ready\r\n"));
+    ws.onMessage((message) => {
+      if (typeof message === "string") return;
+      if (message.toString() === `cd -- "$HOME"/'workspaces/scrim-return-values' && node solution.js\r`) ran = true;
+      if (ran && message.includes(4)) ws.send(Buffer.from("Practice output\r\n"));
+    });
+  });
   const cards = [
     { type: "hint", title: "Follow the value", body: "Trace `double` from the call site." },
     { type: "steps", title: "Trace a call", items: ["Choose a sample input.", "Follow the value back to the caller."] },
@@ -404,22 +416,46 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(page.getByText("Write double(n) so it returns n times 2.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
   await expect(page.locator(".view-lines").first()).toContainText("function double(n)");
-  await expect(page.getByRole("tree", { name: "Lesson files" }).getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tree", { name: "Workspace files" }).getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Watch", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Source control", exact: true })).toHaveCount(0);
+  const navigatorTabs = page.getByRole("group", { name: "Navigator view" });
+  const search = navigatorTabs.getByRole("button", { name: "Search", exact: true });
+  await search.click();
+  await expect(search).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("searchbox", { name: "Find in file" }).fill("DOUBLE");
+  const result = page.getByRole("button", { name: "1 function double(n) {" });
+  await result.click();
+  await expect(page.getByRole("textbox", { name: "Your code. Press Escape to leave the editor." })).toBeFocused();
+  await navigatorTabs.getByRole("button", { name: "Source control", exact: true }).click();
+  await expect(page.getByText("Source control is unavailable in lesson workspaces.")).toBeVisible();
+  await navigatorTabs.getByRole("button", { name: "Run and debug", exact: true }).click();
+  await expect(page.getByText(/The debugger is unavailable/)).toBeVisible();
+  await navigatorTabs.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(page.getByRole("tree", { name: "Workspace files" })).toBeVisible();
 
   await page.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(page.locator('pre[aria-label="Output"]')).toContainText("Practice output");
-  expect(ran).toBe(true);
+  const terminalPanel = page.getByRole("region", { name: "Terminal panel" });
+  const terminal = terminalPanel.locator(".wb-terminal");
+  await expect.poll(() => ran).toBe(true);
+  await expect(terminalPanel.getByRole("textbox", { name: "Standard input" })).toHaveCount(0);
+  await expect(terminal.locator("textarea")).toBeFocused();
+  await page.keyboard.type("2");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Control+d");
+  await expect(terminal).toContainText("Practice output");
 
   await page.getByRole("button", { name: "Lint", exact: true }).click();
   await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("region", { name: "Style findings" }).getByText(/Prettier formatting suggestion/).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".squiggly-warning").first()).toBeVisible();
+  const problems = navigatorTabs.getByRole("button", { name: /^Problems \([1-9]\d*\)$/ });
+  await problems.click();
+  await expect(problems).toHaveAttribute("aria-pressed", "true");
+  await navigatorTabs.getByRole("button", { name: "Files", exact: true }).click();
   const feedback = page.getByRole("region", { name: "AI design feedback" });
   await expect(feedback).toHaveCount(0);
   await page.getByRole("button", { name: "Ask Sloppy about line 1: prettier-format" }).click();
-  const sloppy = page.getByRole("region", { name: "AI learning guide" });
+  const sloppy = page.getByRole("complementary", { name: "Sloppy AI" }).getByRole("region", { name: "AI learning guide" });
   await expect(sloppy.getByText("Follow the value", { exact: true })).toBeVisible();
   await expect(sloppy.getByText("Trace double from the call site.")).toBeVisible();
   await expect(sloppy.locator("code")).toHaveText("double");
@@ -430,6 +466,14 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await sloppy.getByRole("textbox", { name: "Ask about this code" }).fill("I think nothing gets back to the caller. Why?");
   await sloppy.getByRole("button", { name: "Send" }).click();
   await expect(sloppy.getByText("You traced the call. Now look at how the function ends.")).toBeInViewport();
+  const ai = page.getByRole("button", { name: "Sloppy AI", exact: true });
+  await expect(ai).toHaveAttribute("aria-pressed", "true");
+  await ai.click();
+  await expect(sloppy).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Results", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await ai.click();
+  await expect(sloppy.getByText("You traced the call. Now look at how the function ends.")).toBeVisible();
+  await ai.click();
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText("Level complete! Every required test passed.", { exact: true })).toBeVisible();
   expect(submitted).toBe(true);
@@ -447,7 +491,7 @@ test("practice workbench opens the scrim lab, runs code, lints, and submits", as
   await expect(page.getByText(/Prettier formatting suggestion/)).toHaveCount(0);
   await expect(page.locator(".squiggly-warning")).toHaveCount(0);
 
-  await test.step("narrated practice plays Watch and runs in the connected terminal", async () => {
+  await test.step("narrated practice uses a project tree and runs the saved file in the terminal", async () => {
     const narratedPage = await page.context().newPage();
     try {
       await verifyNarratedPractice(narratedPage);
@@ -473,14 +517,15 @@ async function verifyNarratedPractice(page: Page) {
   const starter = 'console.log("hello practice");';
   const edited = "console.log(42);";
   const narration = "/practice-narration.wav";
-  let written = false;
+  const shellInput: string[] = [];
+  let folderCreated = false;
   await page.route("**/api/trpc/lessons.get?*", (route) => route.fulfill({
     json: [{ result: { data: {
       id: "practice-greeting",
       versionId: "v1",
       title,
       kind: "practice",
-      part: { kind: "practice", language: "javascript", starterCode: starter, instructions: "Print a greeting." },
+      part: { kind: "practice", language: "javascript", starterCode: starter, instructions: "Print a greeting.", tests: [{ id: "sample", name: "Sample", visibility: "sample", stretch: false, stdin: "42\n" }] },
       steps: [],
       media: [{ kind: "narration", stepId: null, segment: null, url: narration }],
     } } }],
@@ -489,33 +534,34 @@ async function verifyNarratedPractice(page: Page) {
     route.fulfill({ json: [{ result: { data: { ok: true } } }] }));
   await page.route(`**${narration}`, (route) =>
     route.fulfill({ contentType: "audio/wav", body: Buffer.from(silentWav(2000)) }));
-  await page.route("**/api/sandbox/files", (route) => route.fulfill({ json: {
-    entries: [
-      { name: "notes", type: "dir", size: 0 },
-      ...(written ? [{ name: "solution.js", type: "file", size: edited.length }] : []),
-    ],
+  await page.route("**/api/sandbox/files?workspace=practice-greeting", (route) => route.fulfill({ json: {
+    entries: [{ name: "notes", type: "dir", size: 0 }, ...(folderCreated ? [{ name: "examples", type: "dir", size: 0 }] : [])],
     truncated: false,
   } }));
-  await page.route("**/api/sandbox/files?dir=notes", (route) => route.fulfill({
+  await page.route("**/api/sandbox/workspace-entry", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ workspace: "practice-greeting", name: "examples", kind: "folder" });
+    folderCreated = true;
+    await route.fulfill({ status: 201, json: { ok: true } });
+  });
+  await page.route("**/api/sandbox/files?dir=notes&workspace=practice-greeting", (route) => route.fulfill({
     json: { entries: [{ name: "scratch.txt", type: "file", size: 0 }], truncated: false },
   }));
-  await page.route("**/api/sandbox/files/solution.js", async (route) => {
+  let uploaded = false;
+  await page.route("**/api/sandbox/workspace-file", async (route) => {
     expect(route.request().method()).toBe("PUT");
-    expect(route.request().postDataJSON()).toEqual({ content: edited });
-    written = true;
+    expect(route.request().postDataJSON()).toEqual({ path: "workspaces/practice-greeting/solution.js", content: edited });
+    uploaded = true;
     await route.fulfill({ json: { ok: true } });
   });
   await page.routeWebSocket(/\/api\/sandbox\/shell/, (ws) => {
+    expect(new URL(ws.url()).searchParams.get("workspace")).toBe("practice-greeting");
     ws.onMessage((message) => {
       if (typeof message === "string") return;
-      const command = message.toString();
-      const ready = /LQ_READY_([0-9a-f]+)/.exec(command);
-      if (ready) ws.send(Buffer.from(`\u001eLQ_READY_${ready[1]}\u001f\r\n`));
-      const run = /LQ_RUN_([0-9a-f]+)/.exec(command);
-      if (run) {
-        expect(command).toContain("cd ~ && node solution.js");
-        expect(written).toBe(true);
-        ws.send(Buffer.from(`42\r\n\u001eLQ_RUN_${run[1]}:0\u001f\r\n`));
+      const input = message.toString();
+      shellInput.push(input);
+      if (input.includes("node solution.js")) {
+        expect(uploaded).toBe(true);
+        ws.send(Buffer.from(`$ ${input.trim()}\r\n42\r\n`));
       }
     });
     ws.send(Buffer.from("sandbox ready\r\n"));
@@ -534,27 +580,80 @@ async function verifyNarratedPractice(page: Page) {
   await video.getByRole("button", { name: "Play video" }).click();
   await expect.poll(() => video.locator("video").evaluate((element) => (element as unknown as { currentTime: number }).currentTime)).toBeGreaterThan(0);
 
-  const lessonFiles = page.getByRole("tree", { name: "Lesson files" });
-  const sandboxFiles = page.getByRole("tree", { name: "Sandbox files" });
-  await sandboxFiles.getByRole("treeitem", { name: "notes" }).click();
-  await expect(sandboxFiles.getByRole("treeitem", { name: "scratch.txt" })).toBeVisible();
-  await lessonFiles.getByRole("treeitem", { name: "Lesson", exact: true }).click();
-  await expect(lessonFiles.getByRole("treeitem", { name: "solution.js" })).toHaveCount(0);
-  await lessonFiles.getByRole("treeitem", { name: "Lesson", exact: true }).click();
-  await lessonFiles.getByRole("treeitem", { name: "solution.js" }).click();
+  const subheads = await Promise.all([
+    page.locator(".wb-lesson-subhead").first().boundingBox(),
+    page.getByRole("navigation", { name: "File path" }).boundingBox(),
+    page.locator(".wb-lesson-subhead").last().boundingBox(),
+  ]);
+  expect(subheads.map((box) => box?.height)).toEqual([36, 36, 36]);
+  expect(subheads[1]?.y).toBe(subheads[2]?.y);
+  const navigatorRow = await page.getByRole("group", { name: "Navigator view" }).boundingBox();
+  if (!navigatorRow || !subheads[0]) throw new Error("The navigator and workspace headers are not visible.");
+  expect(navigatorRow.y + navigatorRow.height).toBeLessThanOrEqual(subheads[0].y);
+  const files = page.getByRole("tree", { name: "Workspace files" });
+  await files.getByRole("treeitem", { name: "notes" }).click();
+  await expect(files.getByRole("treeitem", { name: "scratch.txt" })).toBeVisible();
+  await expect(files.getByRole("treeitem", { name: "solution.js" })).toHaveCount(1);
+  await files.getByRole("treeitem", { name: "solution.js" }).click();
   await expect(page.getByRole("textbox", { name: "Your code. Press Escape to leave the editor." })).toBeFocused();
   await page.keyboard.press("End");
   await page.keyboard.press("Shift+Home");
   await page.keyboard.insertText(edited);
 
-  const terminal = page.getByRole("region", { name: "Terminal panel" }).locator(".wb-terminal");
+  const panel = page.getByRole("region", { name: "Terminal panel" });
+  const terminal = panel.locator(".wb-terminal");
   await expect(terminal).toContainText("sandbox ready");
-  const run = page.getByRole("button", { name: "Run", exact: true });
-  await run.click();
-  await expect(terminal).toContainText(/\b42\b/);
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(terminal).toContainText("node solution.js");
+  await expect(terminal).toContainText("42");
+  await expect(panel.getByRole("button", { name: "Console", exact: true })).toHaveCount(0);
+  await expect(terminal).not.toContainText("LQ_");
+  expect(shellInput).toEqual(["\u0003", `cd -- "$HOME"/'workspaces/practice-greeting' && node solution.js\r`]);
   await expect(page.locator("footer").getByText("Ready", { exact: true })).toBeVisible();
-  await expect(sandboxFiles.getByRole("treeitem", { name: "solution.js" })).toBeVisible();
-  await expect(lessonFiles.getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
+  await expect(files.getByRole("treeitem", { name: "solution.js" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("textbox", { name: "Folder name" }).fill("examples");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(files.getByRole("treeitem", { name: "examples" })).toBeVisible();
+
+  const split = panel.getByRole("button", { name: "Split terminal view" });
+  await split.click();
+  await expect(panel.getByRole("group", { name: "Terminal sessions" }).getByRole("button", { name: "Terminal 2", exact: true })).toBeVisible();
+  await expect(panel.locator(".wb-terminal:visible")).toHaveCount(2);
+  await panel.getByRole("button", { name: "Close Terminal 2" }).click();
+  await expect(panel.locator(".wb-terminal:visible")).toHaveCount(1);
+  await panel.getByRole("button", { name: "Maximize terminal panel" }).click();
+  await expect(panel.getByRole("button", { name: "Restore terminal panel" })).toBeVisible();
+  await panel.getByRole("button", { name: "Close panel" }).click();
+  await expect(panel).toBeHidden();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const resizer = page.getByRole("separator", { name: "Resize docs" });
+  await resizer.focus();
+  for (let i = 0; i < 12; i++) await resizer.press("ArrowRight");
+  const window = page.locator(".wb-win");
+  const tabs = page.getByRole("group", { name: "Side panel view" });
+  await expect(tabs.getByRole("button")).toHaveText(["Task", "Results", "Docs"]);
+  const bounds = await window.boundingBox();
+  if (!bounds) throw new Error("The Workbench window is not visible.");
+  for (const tab of await tabs.getByRole("button").all()) {
+    const box = await tab.boundingBox();
+    expect(box && box.x + box.width <= bounds.x + bounds.width).toBe(true);
+    await expect(tab).toBeInViewport();
+  }
+  const explorer = page.getByRole("button", { name: "File explorer", exact: true });
+  await explorer.click();
+  await expect(files).toBeHidden();
+  await explorer.click();
+  await expect(files).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await explorer.click();
+  const drawer = page.getByRole("dialog", { name: "Files" });
+  await drawer.getByRole("button", { name: "Search", exact: true }).click();
+  await drawer.getByRole("searchbox", { name: "Find in file" }).fill("console");
+  await drawer.getByRole("button", { name: /console\.log/ }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole("textbox", { name: "Your code. Press Escape to leave the editor." })).toBeFocused();
 }
 
 test("a scrim keeps later code hidden until its prediction and shows the updated replay", async ({ page }) => {
@@ -601,7 +700,7 @@ test("a lesson with no lab can open a temporary Watch workspace", async ({ page 
   }));
   const runId = randomUUID();
   await page.route("**/api/sandbox/run", (route) => {
-    expect(route.request().postDataJSON()).toEqual({ code: edited, language: "javascript" });
+    expect(route.request().postDataJSON()).toEqual({ code: edited, language: "javascript", stdin: "" });
     return route.fulfill({ json: { id: runId } });
   });
   await page.route(`**/api/sandbox/run/${runId}?*`, (route) =>

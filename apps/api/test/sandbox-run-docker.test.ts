@@ -11,13 +11,16 @@ after(() => app.close());
 const hasImage = spawnSync("docker", ["image", "inspect", env.SANDBOX_IMAGE], { stdio: "ignore" }).status === 0;
 const skip = !hasImage && `docker or image ${env.SANDBOX_IMAGE} not available`;
 
-test("a TypeScript program runs through /api/sandbox/run", { skip, timeout: 60_000 }, async () => {
+test("a TypeScript program reads piped stdin to EOF through /api/sandbox/run", { skip, timeout: 60_000 }, async () => {
   const cookie = await signUp(app, "ts-run@example.com");
   const headers = { cookie, origin: env.PUBLIC_ORIGIN };
   const was = env.SANDBOX_ENABLED;
   env.SANDBOX_ENABLED = true;
   try {
-    const start = await app.inject({ method: "POST", url: "/api/sandbox/run", headers, payload: { language: "typescript", code: "const x: number = 21;\nconsole.log(x * 2);" } });
+    const start = await app.inject({ method: "POST", url: "/api/sandbox/run", headers, payload: {
+      language: "typescript", stdin: "21\n",
+      code: 'const x: number = Number(require("fs").readFileSync(0, "utf8")); console.error("read input"); console.log(x * 2);',
+    } });
     assert.equal(start.statusCode, 200, start.body);
     const { id } = start.json() as { id: string };
     let status: { output: string; done: boolean; error?: string } = { output: "", done: false };
@@ -27,7 +30,8 @@ test("a TypeScript program runs through /api/sandbox/run", { skip, timeout: 60_0
     }
     assert.equal(status.done, true);
     assert.equal(status.error, undefined);
-    assert.equal(status.output.trim(), "42");
+    assert.match(status.output, /read input/);
+    assert.match(status.output, /42/);
   } finally {
     env.SANDBOX_ENABLED = was;
   }
