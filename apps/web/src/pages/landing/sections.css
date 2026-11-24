@@ -16,55 +16,6 @@
 .lp-ticks li { display: flex; gap: 12px; align-items: flex-start; color: var(--mu); font-size: 16px; line-height: 1.5; }
 .lp-ticks svg { flex: none; margin-top: 4px; color: var(--ok); }
 
-/* ---- product card ---- */
-.lp-mock { display: flex; flex-direction: column; align-items: center; width: 100%; user-select: none; }
-.lp-mcard { display: grid; gap: 14px; width: 100%; max-width: 520px; padding: 20px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); }
-.lp-mhead { display: flex; align-items: center; gap: 10px; }
-.lp-mhead b { font-size: 15px; font-weight: 500; }
-.lp-mic { display: grid; place-items: center; color: var(--ok); }
-.lp-mstat { margin-left: auto; font-size: 13px; color: var(--mu); }
-.lp-mstat.is-blue { color: var(--acH); } .lp-mstat.is-green { color: var(--ok); }
-.lp-msub { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: 12px; color: var(--mu); }
-.lp-mcard p, .lp-mcard ul { margin: 0; }
-.lp-mbox { border-radius: var(--r-md); background: #050505; box-shadow: var(--ring); overflow: hidden; }
-.lp-mq { font-size: 14px; color: var(--tx); }
-.lp-chips { display: flex; gap: 8px; }
-.lp-chips span { padding: 6px 16px; border-radius: 100px; box-shadow: var(--ring); font-family: var(--mono); font-size: 13px; }
-.lp-chips span.is-on { background: rgba(59, 110, 245, 0.18); box-shadow: 0 0 0 1px var(--acH); }
-
-/* code card used inside a product card (the card header already names the file) */
-.lp-mcodebox .lp-code-file { display: none; }
-.lp-code-file { padding: 8px 14px; font-family: var(--mono); font-size: 12px; color: var(--faint); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); }
-.lp-code-lines { padding: 8px 0; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--tx); }
-.lp-ln { display: flex; padding: 0 14px 0 0; white-space: pre; }
-.lp-ln.is-mark { background: rgba(59, 110, 245, 0.14); box-shadow: inset 2px 0 0 var(--ac); }
-.lp-n { flex: none; width: 36px; padding-right: 12px; text-align: right; color: #5c5c5c; user-select: none; }
-.lp-ln code { font: inherit; }
-.lp-tk-kw { color: #ff7ab2; } .lp-tk-str { color: #8fd18f; } .lp-tk-num { color: #e0b85c; } .lp-tk-cm { color: #7d7d7d; }
-
-/* ---- row 2: editor window with a diff and the six replay steps ---- */
-.lp-win { width: 100%; max-width: 540px; margin: 0 auto; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring), var(--lift); overflow: hidden; user-select: none; }
-.lp-wbar { display: flex; align-items: center; gap: 16px; padding: 12px 16px; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); }
-.lp-dots { display: flex; gap: 6px; } .lp-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2b2b2b; }
-.lp-tabs { display: flex; gap: 4px; font-family: var(--mono); font-size: 12px; }
-.lp-tabs em { padding: 3px 10px; border-radius: var(--r-sm); font-style: normal; color: var(--faint); }
-.lp-tabs em.is-on { background: var(--g3); color: var(--tx); }
-.lp-diff { padding: 10px 0; font-family: var(--mono); font-size: 13px; line-height: 22px; }
-.lp-diff p { display: flex; margin: 0; padding-right: 16px; white-space: pre; overflow: hidden; }
-.lp-diff code { font: inherit; }
-.lp-diff .lp-n { width: 40px; padding-right: 12px; } .lp-sign { width: 18px; color: var(--faint); }
-.lp-diff .is-add { background: rgba(63, 192, 122, 0.12); } .lp-diff .is-add .lp-sign { color: var(--ok); }
-.lp-diff .is-del { background: rgba(255, 99, 105, 0.12); color: #ffb3b6; } .lp-diff .is-del .lp-sign { color: var(--bad); }
-.lp-steps { display: flex; justify-content: space-between; margin: 6px 20px 0; padding: 0; list-style: none; font-size: 12px; color: var(--faint); }
-.lp-steps li { position: relative; display: grid; justify-items: center; gap: 8px; flex: 1; padding-top: 2px; }
-.lp-steps li::before { content: ""; position: absolute; top: 7px; left: -50%; width: 100%; height: 1px; background: rgba(255, 255, 255, 0.16); }
-.lp-steps li:first-child::before { display: none; }
-.lp-steps i { position: relative; z-index: 1; width: 9px; height: 9px; border-radius: 50%; background: #2b2b2b; box-shadow: 0 0 0 3px var(--g1); }
-.lp-steps .is-done { color: var(--mu); } .lp-steps .is-done i { background: var(--ac); }
-.lp-steps .is-done::before, .lp-steps .is-now::before { background: var(--ac); }
-.lp-steps .is-now { color: var(--tx); } .lp-steps .is-now i { background: var(--tx); box-shadow: 0 0 0 3px var(--g1), 0 0 0 4px var(--acH); }
-.lp-wcap { margin: 0; padding: 16px 20px 18px; font-size: 13px; color: var(--mu); }
-
 /* ---- row 3: hint cards stacked, then the help chat ---- */
 .lp-stack { position: relative; width: 100%; max-width: 500px; margin: 0 auto; user-select: none; }
 .lp-hcards { display: grid; }
@@ -115,13 +66,6 @@
 .lp-road p { flex: 1; margin: 0; font-size: 14px; line-height: 1.45; color: var(--faint); }
 .lp-road b { display: block; margin-bottom: 2px; font-size: 16px; font-weight: 500; color: var(--tx); }
 
-/* the connector from the card down to its action */
-.lp-conn { position: relative; width: 1px; height: 40px; background: rgba(255, 255, 255, 0.18); }
-.lp-conn::before, .lp-conn::after { content: ""; position: absolute; left: 50%; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: #3a3a3a; }
-.lp-conn::before { top: -3px; } .lp-conn::after { bottom: -3px; }
-.lp-pill { display: inline-flex; align-items: center; gap: 14px; padding: 10px 12px 10px 20px; border-radius: 100px; background: #ededed; color: #0a0a0a; font-size: 15px; font-weight: 500; }
-.lp-pill kbd { padding: 2px 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.09); font-family: var(--mono); font-size: 12px; font-weight: 400; }
-
 /* closing: no card, no glow */
 .lp-close { display: flex; flex-direction: column; align-items: center; text-align: center; padding-bottom: 8px; }
 .lp-close .lp-h2 { max-width: 16ch; margin-left: auto; margin-right: auto; font-size: clamp(36px, 5.2vw, 60px); line-height: 1; }
@@ -137,17 +81,10 @@
   .lp-feat .lp-lede { order: 2; margin-top: 16px; }
   .lp-feat .lp-mockwrap, .lp-feat.is-flip .lp-mockwrap { order: 3; margin-top: 32px; }
   .lp-feat .lp-ticks { order: 4; margin-top: 28px; }
-  .lp-mcard { padding: 16px; }
   .lp-chart { padding: 18px; } .lp-cbig { font-size: 52px; } .lp-cbig em { display: none; }
-  .lp-win, .lp-stack, .lp-road { max-width: none; }
+  .lp-stack, .lp-road { max-width: none; }
   .lp-close { padding-top: 72px; }
 }
-@media (max-width: 520px) {
-  .lp-msub { gap: 4px 12px; }
-  .lp-ln { font-size: 12px; }
-  .lp-diff { font-size: 12px; } .lp-steps { margin: 6px 12px 0; font-size: 11px; }
-}
-
 .lp-plans { max-width: 1080px; margin: 0 auto; padding: 112px 24px 0; }
 .lp-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 40px; }
 .lp-plan { padding: 28px; border-radius: var(--r-lg); background: var(--g1); box-shadow: var(--ring); }
