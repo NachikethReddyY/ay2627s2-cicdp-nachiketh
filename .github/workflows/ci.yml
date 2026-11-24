@@ -197,23 +197,51 @@ jobs:
           files: infra/docker/e2e.hcl
           load: true
 
+      - name: Read Playwright version
+        id: playwright
+        working-directory: e2e
+        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
 
-      # --with-deps pulls OS packages from the runner's Ubuntu mirror, which can fail to resolve. Only this install is
-      # retried. A failed test is never retried.
       - name: Install Playwright Chromium
+        working-directory: e2e
         run: |
-          for attempt in 1 2 3; do
-            if pnpm --filter @learnquest/e2e --fail-if-no-match exec playwright install --with-deps chromium; then
-              exit 0
-            fi
-            echo "Playwright install failed (attempt $attempt of 3), retrying in 30s"
-            sleep 30
-          done
-          exit 1
+          retry() {
+            for attempt in 1 2; do
+              if "$@"; then return 0; fi
+              echo "Playwright setup failed (attempt $attempt of 3), retrying in 30s"
+              sleep 30
+            done
+            "$@"
+          }
+
+          launch_chromium() {
+            node -e '
+              const { chromium } = require("@playwright/test");
+              (async () => {
+                const browser = await chromium.launch();
+                try {
+                  await browser.newPage();
+                } finally {
+                  await browser.close();
+                }
+              })().catch((error) => {
+                console.error(error);
+                process.exitCode = 1;
+              });
+            '
+          }
+
+          retry pnpm exec playwright install --only-shell chromium
+          if ! launch_chromium; then
+            echo "Chromium launch failed on the runner. Installing system dependencies."
+            retry pnpm exec playwright install-deps chromium
+            launch_chromium
+          fi
 
       - name: Run browser tests against Compose
         run: pnpm --filter @learnquest/e2e --fail-if-no-match run ci
