@@ -414,6 +414,112 @@ class LessonContext(BaseModel):
     stretchTests: int = Field(default=0, ge=0, le=PRACTICE_STRETCH_MAX)
 
 
+T600 = Annotated[str, _c(600)]
+
+
+class StudioSection(BaseModel):
+    goal: T200
+    concepts: list[T60] = Field(min_length=1, max_length=5)
+
+
+class StudioPlan(BaseModel):
+    title: T80
+    summary: T300
+    sections: list[StudioSection] = Field(min_length=3, max_length=6)
+
+
+class StudioSegment(BaseModel):
+    text: T600
+    predict: T200 | None
+
+
+class StudioScript(BaseModel):
+    segments: list[StudioSegment] = Field(min_length=3, max_length=12)
+
+
+STUDIO_CUE_WORDS = 8
+
+
+NUMBER_WORDS = {
+    w: str(n)
+    for n, w in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve".split()
+    )
+}
+
+
+def spoken_words(text: str) -> list[str]:
+    """Lowercase word tokens, no punctuation, number words as digits: what a voice says."""
+    words = re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)*", text.lower().replace("\u2019", "'"))
+    return [NUMBER_WORDS.get(w, w) for w in words]
+
+
+STUDIO_CLOSE_CUE_WORDS = 3
+
+
+def _find(haystack: list[str], needle: list[str], start: int) -> int:
+    """First exact match from start, else one wrong word in a cue of 3+ words that starts right."""
+    starts = range(start, len(haystack) - len(needle) + 1)
+
+    def misses(i: int) -> int:
+        return sum(a != b for a, b in zip(haystack[i : i + len(needle)], needle, strict=True))
+
+    exact = next((i for i in starts if misses(i) == 0), -1)
+    if exact >= 0 or len(needle) < STUDIO_CLOSE_CUE_WORDS:
+        return exact
+    return next((i for i in starts if haystack[i] == needle[0] and misses(i) == 1), -1)
+
+
+class StudioEdit(BaseModel):
+    segment: int = Field(ge=0, le=11)
+    cue: T200
+    predict: T200 | None
+    code: T4000
+    run: bool
+
+
+class StudioEdits(BaseModel):
+    """Code edits keyed to words in the narration. The API turns each cue into a timestamp.
+
+    With context {"segments": [text, ...]}, an edit is kept only when its cue is said in its
+    segment, after the previous kept cue there, and its segment does not go backwards. Every
+    edit holds the whole file, so dropping one only merges its lines into the next. More than
+    half dropped fails, so the model is asked again. A cue longer than STUDIO_CUE_WORDS is cut
+    to its first words, which is where its time is.
+    """
+
+    edits: list[StudioEdit] = Field(min_length=1, max_length=24)
+
+    @model_validator(mode="after")
+    def _cues(self, info: ValidationInfo) -> "StudioEdits":
+        texts = (info.context or {}).get("segments")
+        if texts is None:
+            return self
+        spoken = [spoken_words(t) for t in texts]
+        kept: list[StudioEdit] = []
+        unplaced: list[str] = []
+        segment, cursor = 0, 0
+        for n, edit in enumerate(self.edits):
+            edit.cue = " ".join(edit.cue.split()[:STUDIO_CUE_WORDS])
+            cue = spoken_words(edit.cue)
+            if not segment <= edit.segment < len(spoken) or not cue:
+                unplaced.append(f"edit {n} (segment {edit.segment}, cue {edit.cue!r})")
+                continue
+            start = cursor if edit.segment == segment else 0
+            at = _find(spoken[edit.segment], cue, start)
+            if at < 0:
+                unplaced.append(f"edit {n} cue {edit.cue!r} is not said in segment {edit.segment}")
+                continue
+            segment, cursor = edit.segment, at + len(cue)
+            kept.append(edit)
+        if len(kept) * 2 < len(self.edits):
+            raise ValueError(
+                "most cues are not words from their segment, in order: " + "; ".join(unplaced)
+            )
+        self.edits = kept
+        return self
+
+
 def json_schema(model: type[BaseModel]) -> dict[str, Any]:
     """JSON schema for response_format. Strict mode needs additionalProperties: false everywhere.
 

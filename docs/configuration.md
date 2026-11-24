@@ -9,7 +9,7 @@ Selected environment variables for the API and engine.
 | Text | TokenRouter via LiteLLM when configured | `TOKENROUTER_API_KEY` or `LLM_API_KEY` | `LLM_MODEL` | Required. The engine example uses `openai/gpt-5.1-mini`. | Live |
 | Image | TokenRouter | `TOKENROUTER_API_KEY` or `IMAGE_API_KEY` | `IMAGE_MODEL` | No default | Off in production |
 | Text-to-speech | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_TTS_MODEL` | `hexgrad/kokoro-82m` | Predict narration when configured |
-| Speech-to-text | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_STT_MODEL` | `openai/whisper-large-v3` | Studio branch only |
+| Speech-to-text | OpenRouter | `OPENROUTER_API_KEY` | `STUDIO_STT_MODEL` | `openai/whisper-large-v3` | Studio when enabled |
 | Moderation | OpenAI by default | `MODERATION_API_KEY` | `MODERATION_MODEL` | `omni-moderation-latest` | Live |
 
 - For text on TokenRouter, set `LLM_API_BASE=https://api.tokenrouter.com/v1` and `LLM_MODEL=openai/<confirmed-model-id>` on the engine. `TOKENROUTER_API_KEY` takes precedence over `LLM_API_KEY` when both have values.

@@ -61,6 +61,9 @@ const schema = z
     SANDBOX_MAX_SHELLS: z.coerce.number().int().positive().default(50),
     SANDBOX_MAX_RUNS: z.coerce.number().int().positive().default(20),
     PRACTICE_STRETCH_TESTS: z.coerce.number().int().min(0).max(10).default(0),
+    STUDIO_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+    STUDIO_TTS_SAMPLE_RATE: z.coerce.number().int().positive().default(24_000),
+    STUDIO_STT_MODEL: z.string().min(1).default("openai/whisper-large-v3"),
   })
   .refine((e) => !e.SANDBOX_ENABLED || e.SANDBOX_BACKEND !== "daytona" || !!e.DAYTONA_API_KEY, {
     message: "SANDBOX_BACKEND=daytona needs DAYTONA_API_KEY",
@@ -80,7 +83,8 @@ const schema = z
   }))
   .refine(
     (e) => {
-      const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL) || (e.OPENROUTER_API_KEY && e.S3_BUCKET));
+      const ai = !!(e.ENGINE_TOKEN || (e.IMAGE_BASE_URL && e.IMAGE_API_KEY && e.IMAGE_MODEL)
+        || (e.OPENROUTER_API_KEY && (e.S3_BUCKET || e.STUDIO_ENABLED)));
       return e.NODE_ENV !== "production" || !ai || e.AI_BUDGET_UNLIMITED || e.AI_DAILY_BUDGET_USD > 0 || e.AI_MONTHLY_BUDGET_USD > 0;
     },
     {

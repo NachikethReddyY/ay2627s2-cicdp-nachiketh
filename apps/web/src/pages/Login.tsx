@@ -1,6 +1,8 @@
+import { studioEnabled } from "../lib/studio";
 import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, X } from "lucide-react";
 import { usePostHog } from "@posthog/react";
+import { Link } from "@tanstack/react-router";
 import { authClient } from "../lib/auth";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../components/ui/breadcrumb";
 import { Logo } from "./landing/Logo";
@@ -153,7 +155,9 @@ export default function Login() {
                 <p className="break-all text-[15px] font-semibold text-[var(--tx)]">{data.user.email}</p>
               </div>
               <div className="space-y-3">
-                <a href="/play" className="lp-btn !mt-0 w-full justify-center">Continue to play</a>
+                <Link to={studioEnabled ? "/studio" : "/"} className="lp-btn !mt-0 w-full justify-center">
+                  {studioEnabled ? "Continue to Studio" : "Continue to Home"}
+                </Link>
                 <button type="button" onClick={() => void signOut()} className="min-h-11 w-full text-sm text-[var(--mu)] hover:text-[var(--tx)]">
                   Sign out
                 </button>

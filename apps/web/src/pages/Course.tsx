@@ -150,7 +150,7 @@ export default function Course() {
               <p className="course-cta-meta">Level {current.level} · Lesson {data.lessons.filter((l) => l.level === current.level).indexOf(current) + 1}</p>
               <p className="course-cta-title">{current.title}</p>
             </div>
-            <Link to="/play" search={{ lesson: current.slug, course: slug }} state={{ lessonEntrySource: "course_cta" }} className="btn course-cta-btn">
+            <Link to="/lessons" search={{ lesson: current.slug, course: slug }} state={{ lessonEntrySource: "course_cta" }} className="btn course-cta-btn">
               {current.done > 0 ? "Continue" : "Start"}
             </Link>
           </div>

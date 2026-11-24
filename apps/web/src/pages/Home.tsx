@@ -1,3 +1,4 @@
+import { studioEnabled } from "../lib/studio";
 import { useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { useApi } from "../lib/api";
@@ -45,6 +46,7 @@ export default function Home() {
           <nav className="lq-topnav" aria-label="Main">
             <Link to="/" className="lq-topnav-link" aria-current="page">Home</Link>
             <Link to="/explore" className="lq-topnav-link">Explore</Link>
+            {studioEnabled && <Link to="/studio" className="lq-topnav-link">Studio</Link>}
             <Link to="/account" className="lq-avatar" aria-label="Account settings">{initial}</Link>
           </nav>
         </div>

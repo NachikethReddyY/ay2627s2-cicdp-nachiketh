@@ -1,0 +1,17 @@
+{
+  "responses": [
+    {
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "message": {
+            "role": "assistant",
+            "content": "{\"segments\": [{\"text\": \"A list keeps items in order, and you can change it after you make it. Start with an empty list and add to it with append.\", \"predict\": \"After you append two words to an empty list, how many items does the list hold?\"}, {\"text\": \"The list now holds both words, in the order you added them. The count is two, because each append adds exactly one item.\", \"predict\": null}, {\"text\": \"A tuple holds values in order too, but you cannot change it once it is made. Use one when a group of values should stay fixed.\", \"predict\": null}, {\"text\": \"A dictionary maps keys to values. Reading a key with get returns the value, and a missing key gives None instead of an error.\", \"predict\": null}]}"
+          }
+        }
+      ],
+      "usage": {"prompt_tokens": 380, "completion_tokens": 210, "total_tokens": 590}
+    }
+  ]
+}

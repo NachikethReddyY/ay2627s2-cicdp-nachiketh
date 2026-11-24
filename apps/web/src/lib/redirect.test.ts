@@ -5,7 +5,7 @@ import test from "node:test";
 const { safeRedirect, loginUrl } = await import("./redirect.ts");
 
 test("same-origin paths survive with their query and hash", () => {
-  assert.equal(safeRedirect("/play?lesson=a&course=b#x"), "/play?lesson=a&course=b#x");
+  assert.equal(safeRedirect("/lessons?lesson=a&course=b#x"), "/lessons?lesson=a&course=b#x");
   assert.equal(safeRedirect("/explore"), "/explore");
 });
 
@@ -16,7 +16,7 @@ test("anything that could leave the site falls back to home", () => {
 });
 
 test("loginUrl round-trips through safeRedirect", () => {
-  const path = "/play?lesson=a&course=b";
+  const path = "/lessons?lesson=a&course=b";
   const param = new URL(loginUrl(path), "https://learnquest.example").searchParams.get("redirect");
   assert.equal(safeRedirect(param), path);
 });
