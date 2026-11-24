@@ -2,7 +2,7 @@
 
 Admins can open **Admin** from Account or visit `/admin`. The server checks the signed-in account's linked `learners.is_admin` flag on each dashboard request. A signed-in learner without that flag receives HTTP 403.
 
-The dashboard shows UTC daily and month-to-date totals for successful provider responses from engine generation and moderation, and for direct image responses the API can decode. Each response counts as one call, including repair calls and generated output later rejected by validation. Provider errors without usage are outside Neon coverage. Admin includes unpriced calls in call and available token totals. A reported or calculated zero counts as priced.
+The dashboard shows UTC daily and month-to-date totals for successful provider responses from engine generation and moderation, direct image responses the API can decode, and successful speech responses for Predict narration. Each response counts as one call, including repair calls and generated output later rejected by validation. Provider errors without usage are outside Neon coverage. Admin includes unpriced calls in call and available token totals. A reported or calculated zero counts as priced.
 
 The `ai_call_spend` table stores only the UTC day, prompt tokens, completion tokens, and nullable estimated USD per call. Calls without reported token counts contribute zero to the token columns. LearnSlop stores no model, learner ID, operation, prompt, or assets in that table. The engine sends its resolved amount in `x-engine-usage` and uses that same amount for PostHog. Both systems preserve costs already recorded.
 
@@ -23,19 +23,20 @@ On the next engine deploy, remove `LLM_INPUT_USD_PER_MTOK` and `LLM_OUTPUT_USD_P
 | Direct OpenAI, NVIDIA NIM, TokenRouter text | Models.dev provides a fallback with exact provider and model entries in USD per million tokens, including published context tiers. Missing rates, models outside the supported text modality, and unidentified endpoints produce an unpriced call. |
 | TokenRouter image generations | Counts returned images for default-group models whose catalog explicitly supplies a matching fixed USD-per-image price. Variable, candidate-token, and dimension-dependent prices require their own billing data. |
 | OpenRouter image chat | Uses reported `usage.cost`. |
+| OpenRouter Predict narration | Uses `total_cost` from the generation metadata identified by the speech response's `X-Generation-Id`. When metadata confirms that Together served `hexgrad/kokoro-82m` and omits the cost, input characters are multiplied by the matching rate from LiteLLM's public pricing catalog. Missing usage or unmatched rates leave the call unpriced. |
 | Moderation | OpenAI's documented free `omni-moderation-latest` and `omni-moderation-2024-09-26` calls on the direct OpenAI endpoint count as zero. Other moderation routes count as unpriced. |
 
 Text estimates use measured prompt and completion counts and the applicable cached read/write or reasoning rates when those quantities are reported. Catalog prices estimate public rates. Account-specific billing, credits, routing fees, and overrides absent from a catalog may differ. The TokenRouter catalog currently lists `openai/gpt-6-luna` at **$0.10 input / $0.50 output per million tokens** below 272,000 prompt tokens and **$0.20 / $0.75** at 272,000 and above. Its `google/gemini-3.1-flash-lite-image` entry lacks verified billing units for image output through chat. The exact `nvidia/nemotron-3.5-super-vl-120b-a12b` price was unavailable for the checked routes. These unsupported calls remain unpriced unless a supported billed cost or a matching text override applies. [TokenRouter catalog](https://api.tokenrouter.com/api/pricing) · [TokenRouter model pricing](https://www.tokenrouter.com/models) · [OpenRouter catalog schema](https://openrouter.ai/docs/api/api-reference/models/get-models) · [OpenRouter usage accounting](https://openrouter.ai/docs/guides/guides/usage-accounting) · [Models.dev](https://models.dev) · [OpenAI moderation](https://platform.openai.com/docs/guides/moderation)
 
-Catalogs refresh in the background per process. A successful read stays fresh for six hours. Fetch or parse failures retry after five minutes and retain the last valid snapshot for up to 48 hours after it was fetched. Calls can be unpriced while a cold cache warms or after it expires. Requests send no content, identifiers, or credentials to the public feeds.
+Text and image catalogs refresh in the background. The narration catalog refreshes when a call needs its rate. A successful read stays fresh for six hours per process. Fetch or parse failures retry after five minutes and retain the last valid snapshot for up to 48 hours after it was fetched. Calls can be unpriced while a cold cache warms or after it expires. Requests send no content, identifiers, or credentials to the public feeds. [LiteLLM pricing catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
 
-Audio generation and transcription run only on the Studio branch. To price audio, capture the response's billed USD, or the exact provider and model rate alongside metered duration in seconds or minutes, or measured audio input/output token counts for a token-priced model. Text token totals and file size do not establish the audio bill.
+Predict narration runs in the API, and transcription runs on the Studio branch. The narration reservation uses `STUDIO_TTS_ESTIMATE_USD`. The spend dashboard records the reported or calculated cost separately from the reservation. Playback of cached narration creates no new spend entry.
 
 `AI_DAILY_BUDGET_USD` and `AI_MONTHLY_BUDGET_USD` continue to apply to reservations in `spend_ledger` using `AI_CALL_ESTIMATE_USD`, `IMAGE_ESTIMATE_USD`, `STUDIO_TTS_ESTIMATE_USD`, or `MODERATION_ESTIMATE_USD` as applicable.
 
 ## Counting unpriced calls in PostHog
 
-The engine emits one `$ai_generation` event per provider attempt under `learnslop-engine`, including failed attempts. Events carry `pricing_status` (`priced` or `unpriced`), `$ai_model`, `$ai_provider`, `modality`, and `$ai_is_error`. `$ai_total_cost_usd` is present for priced events, including zero. Legacy events predate `pricing_status`. Direct API image calls appear in Neon only.
+The engine emits one `$ai_generation` event per provider attempt under `learnslop-engine`, including failed attempts. The API captures Predict narration attempts in the same event under `learnslop-api` with `modality = 'audio'` when `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` are configured. Events carry `pricing_status` (`priced` or `unpriced`), `$ai_model`, `$ai_provider`, `modality`, and `$ai_is_error`. `$ai_total_cost_usd` is present for priced events, including zero. Priced narration events use `pricing_source` to identify OpenRouter billing or the LiteLLM estimate. Direct API image calls appear in Neon only.
 
 Use this query in a PostHog SQL insight. Set the insight's date range to select a reporting period. Add `AND properties.$ai_is_error = false` to count only successful provider responses.
 
@@ -45,7 +46,7 @@ SELECT
     count() AS unpriced_calls
 FROM events
 WHERE event = '$ai_generation'
-    AND distinct_id = 'learnslop-engine'
+    AND distinct_id IN ('learnslop-engine', 'learnslop-api')
     AND properties.pricing_status = 'unpriced'
     AND {filters}
 GROUP BY model

@@ -1,10 +1,10 @@
 import { out, signUp, trpc } from "./helpers.ts";
 import { after, test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { lessonMedia, lessons, steps, user, worlds } from "../src/db/schema.ts";
+import { aiCallSpend, lessonMedia, lessons, steps, user, worlds } from "../src/db/schema.ts";
 import { env } from "../src/env.ts";
 import { memoryStorage, setStorage } from "../src/media/storage.ts";
 
@@ -29,7 +29,11 @@ async function fixture(t: TestContext) {
   setStorage(store);
   t.after(() => {
     setStorage(null);
-    Object.assign(env, previous, { OPENROUTER_API_KEY: previous.OPENROUTER_API_KEY });
+    Object.assign(env, previous, {
+      OPENROUTER_API_KEY: previous.OPENROUTER_API_KEY,
+      POSTHOG_PROJECT_TOKEN: previous.POSTHOG_PROJECT_TOKEN,
+      POSTHOG_HOST: previous.POSTHOG_HOST,
+    });
   });
   return { a, b, lesson, step, store, text };
 }
@@ -92,6 +96,70 @@ test("provider failure falls back and rapid retries reuse the failed reservation
   const [row] = await db.select().from(lessonMedia).where(eq(lessonMedia.stepId, step.id));
   assert.deepEqual([row.status, row.key], ["failed", null]);
 });
+
+const pricingCases = [
+  { name: "uses LiteLLM's live Together character rate", provider: "Together", cost: 0.000123, source: "litellm" },
+  { name: "prefers OpenRouter's reported zero", provider: "Together", billed: 0, cost: 0, source: "openrouter" },
+  { name: "leaves a provider without a matching rate unpriced", provider: "DeepInfra", cost: null },
+] as const;
+
+for (const scenario of pricingCases) {
+  test(`narration accounting ${scenario.name}`, async (t) => {
+    const { a, step, text } = await fixture(t);
+    const expectedCost = scenario.cost;
+    env.POSTHOG_PROJECT_TOKEN = "mock-posthog-token";
+    env.POSTHOG_HOST = "https://posthog.example";
+    const captures: unknown[] = [];
+    let catalogCalls = 0;
+    const http = t.mock.method(globalThis, "fetch", (async (url, options) => {
+      switch (String(url)) {
+        case "https://openrouter.ai/api/v1/audio/speech":
+          return new Response(audio, { headers: { "content-type": "audio/mpeg", "x-generation-id": "gen-test" } });
+        case "https://openrouter.ai/api/v1/generation?id=gen-test":
+          assert.deepEqual(options?.headers, { authorization: "Bearer mock-openrouter-key" });
+          return Response.json({ data: {
+            model: "hexgrad/kokoro-82m",
+            provider_name: scenario.provider,
+            ...("billed" in scenario ? { total_cost: scenario.billed } : {}),
+          } });
+        case "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json":
+          catalogCalls += 1;
+          assert.equal(options?.headers, undefined);
+          return Response.json({ "together_ai/hexgrad/Kokoro-82M": {
+            litellm_provider: "together_ai", mode: "audio_speech", input_cost_per_character: 0.000123 / [...text].length,
+          } });
+        case "https://posthog.example/capture/":
+          captures.push(JSON.parse(String(options?.body)));
+          return new Response(null, { status: 200 });
+        default:
+          throw new Error(`Unexpected URL ${String(url)}`);
+      }
+    }) satisfies typeof fetch);
+    const matchingSpend = and(
+      eq(aiCallSpend.promptTokens, 0),
+      eq(aiCallSpend.completionTokens, 0),
+      expectedCost === null ? isNull(aiCallSpend.estimatedUsd) : eq(aiCallSpend.estimatedUsd, expectedCost.toFixed(12)),
+    );
+    const countBefore = await db.$count(aiCallSpend, matchingSpend);
+    assert.equal((await a.m("steps.attempt", { id: step.id, answer: { kind: "mcq", choice: 1 } })).statusCode, 200);
+    assert.match(out(await a.m("steps.narration", { id: step.id })).url, /^memory:/);
+    const callsBeforeReplay = http.mock.callCount();
+    assert.match(out(await a.m("steps.narration", { id: step.id })).url, /^memory:/);
+    assert.equal(http.mock.callCount(), callsBeforeReplay);
+    assert.equal(catalogCalls, "source" in scenario && scenario.source === "litellm" ? 1 : 0);
+    assert.equal(await db.$count(aiCallSpend, matchingSpend), countBefore + 1);
+    const [{ properties, event }] = captures as { properties: Record<string, unknown>; event: string }[];
+    assert.equal(captures.length, 1);
+    assert.equal(event, "$ai_generation");
+    assert.equal(properties.modality, "audio");
+    assert.equal(properties.$ai_model, "hexgrad/kokoro-82m");
+    assert.equal(properties.$ai_is_error, false);
+    assert.equal(properties.pricing_status, scenario.cost === null ? "unpriced" : "priced");
+    assert.equal(properties.pricing_source, "source" in scenario ? scenario.source : undefined);
+    assert.equal(properties.$ai_total_cost_usd, expectedCost ?? undefined);
+    assert.ok(!JSON.stringify(captures).includes(text));
+  });
+}
 
 test("a disabled or over-budget speech service returns no URL without a provider request", async (t) => {
   const { a, step } = await fixture(t);
