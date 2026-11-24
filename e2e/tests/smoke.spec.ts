@@ -90,7 +90,7 @@ test("signs up, confirms and edits a public handle, and stays signed in on /less
 
   const pool = new pg.Pool({ connectionString: process.env.E2E_DATABASE_URL });
   try {
-    await pool.query(`UPDATE learners SET handle_updated_at = (date_trunc('day', now() AT TIME ZONE timezone) - interval '1 second') AT TIME ZONE timezone
+    await pool.query(`UPDATE learners SET handle_updated_at = now() - interval '48 hours'
       WHERE user_id = (SELECT id FROM "user" WHERE email = $1)`, [email]);
   } finally {
     await pool.end();
