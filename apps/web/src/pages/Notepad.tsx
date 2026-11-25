@@ -58,7 +58,7 @@ function tabTitle(note: Note, index: number) {
 
 type Box = { left: number; top: number; width: number; height: number };
 
-export default function Notepad({ onClose, instructions }: { onClose(): void; instructions?: string }) {
+export default function Notepad({ onClose, instructions, docked = false }: { onClose?: () => void; instructions?: string; docked?: boolean }) {
   const [store, setStore] = useState(readStore);
   const [view, setView] = useState<View>("edit");
   const [onInstructions, setOnInstructions] = useState(Boolean(instructions));
@@ -162,30 +162,30 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
     <section
       ref={windowRef}
       aria-label="Notepad"
-      style={style}
-      className={`wb-preview-float${maximized ? " wb-preview-maximized" : ""}${minimized ? " wb-preview-minimized" : ""}`}
+      style={docked ? undefined : style}
+      className={docked ? "flex min-h-0 flex-1 flex-col bg-[var(--code)]" : `wb-preview-float${maximized ? " wb-preview-maximized" : ""}${minimized ? " wb-preview-minimized" : ""}`}
     >
       <header
         className="wb-preview-float-head"
-        onPointerDown={startDrag}
+        onPointerDown={docked ? undefined : startDrag}
         onPointerMove={moveDrag}
         onPointerUp={endGesture}
         onPointerCancel={endGesture}
         onDoubleClick={(event) => {
-          if (!(event.target as HTMLElement).closest("button")) toggleMaximized();
+          if (!docked && !(event.target as HTMLElement).closest("button")) toggleMaximized();
         }}
       >
-        <span className="wb-preview-mac-dots" role="group" aria-label="Notepad window controls">
+        {!docked && <span className="wb-preview-mac-dots" role="group" aria-label="Notepad window controls">
           <button type="button" className="wb-preview-dot wb-preview-dot-close" aria-label="Close notepad" title="Close" onClick={onClose} />
           <button type="button" className="wb-preview-dot wb-preview-dot-minimize" aria-label={minimized ? "Restore notepad" : "Minimize notepad"} title={minimized ? "Restore" : "Minimize"} onClick={() => setMinimized((value) => !value)} />
           <button type="button" className="wb-preview-dot wb-preview-dot-maximize" aria-label={maximized ? "Restore notepad size" : "Maximize notepad"} title={maximized ? "Restore size" : "Maximize"} onClick={toggleMaximized}>
             {maximized ? <Minimize2 size={7} aria-hidden="true" /> : null}
           </button>
-        </span>
+        </span>}
         <span className="wb-preview-float-title">Notepad</span>
         {!minimized && <span role="group" aria-label="Notepad view" className="wb-preview-float-actions">
           <button type="button" className="wb-tb wb-n34" aria-label="Edit only" title="Edit" aria-pressed={view === "edit"} onClick={() => setView("edit")}><Pencil size={13} aria-hidden="true" /></button>
-          <button type="button" className="wb-tb wb-n34" aria-label="Edit and preview side by side" title="Side by side" aria-pressed={view === "split"} onClick={() => setView("split")}><Columns2 size={13} aria-hidden="true" /></button>
+          {!docked && <button type="button" className="wb-tb wb-n34" aria-label="Edit and preview side by side" title="Side by side" aria-pressed={view === "split"} onClick={() => setView("split")}><Columns2 size={13} aria-hidden="true" /></button>}
           <button type="button" className="wb-tb wb-n34" aria-label="Markdown preview only" title="Preview" aria-pressed={view === "preview"} onClick={() => setView("preview")}><Eye size={13} aria-hidden="true" /></button>
         </span>}
       </header>
@@ -230,7 +230,7 @@ export default function Notepad({ onClose, instructions }: { onClose(): void; in
               : active.text.trim() ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{active.text}</ReactMarkdown> : <p className="text-[var(--mu)]">Nothing to render yet.</p>}
           </article>}
         </div>
-        {!maximized && <div
+        {!docked && !maximized && <div
           aria-hidden="true"
           onPointerDown={startResize}
           onPointerMove={moveResize}
