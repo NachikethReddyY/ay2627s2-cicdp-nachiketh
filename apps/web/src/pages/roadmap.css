@@ -15,11 +15,78 @@
   font-size: 1.375rem;
 }
 
-.lq-roadmap nav a,
+.lq-roadmap-heading {
+  display: grid;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.lq-roadmap-nav,
+.lq-roadmap-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+
+.lq-roadmap-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.lq-roadmap nav:not(.lq-roadmap-nav) a,
 .lq-roadmap-lesson-link {
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
+
+.lq-roadmap-build {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(0.875rem, 3vw, 1.5rem);
+  padding: clamp(1rem, 4vw, 2rem);
+}
+
+.lq-roadmap-build-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  aspect-ratio: 1;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  color: var(--acT);
+}
+
+.lq-roadmap-build:is([data-state="failed"], [data-state="refused"]) .lq-roadmap-build-icon {
+  color: var(--warn);
+}
+
+.lq-roadmap-build-copy {
+  display: grid;
+  justify-items: start;
+  gap: 1rem;
+}
+
+.lq-roadmap-build-copy p {
+  color: var(--mu);
+  margin-block-start: 0.375rem;
+}
+
+.lq-roadmap-build progress {
+  display: block;
+  width: 100%;
+  height: 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  accent-color: var(--ac);
+  overflow: hidden;
+}
+
+.lq-roadmap-build progress::-webkit-progress-bar { background: var(--track); }
+.lq-roadmap-build progress::-webkit-progress-value { background: var(--ac); border-radius: 999px; }
+.lq-roadmap-build progress::-moz-progress-bar { background: var(--ac); border-radius: 999px; }
 
 .lq-roadmap-panel {
   display: grid;
