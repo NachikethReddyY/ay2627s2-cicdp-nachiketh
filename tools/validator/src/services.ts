@@ -15,6 +15,8 @@ export const VALIDATOR_NAME = "Validator Agent";
 export const WEB_ORIGIN = `http://localhost:${PORTS.web}`;
 export const API_ORIGIN = `http://localhost:${PORTS.api}`;
 
+const offlineAnalyticsEnv = { POSTHOG_PROJECT_TOKEN: "", POSTHOG_HOST: "" };
+
 export type ServiceSpec = {
   name: ServiceName;
   port: number;
@@ -37,13 +39,19 @@ export function appEnv(databaseUrl: string): Record<string, string> {
 }
 
 export function apiEnv(databaseUrl: string, engine: boolean): Record<string, string> {
-  const base = { ...appEnv(databaseUrl), PORT: String(PORTS.api), HOST: "127.0.0.1" };
+  const base = {
+    ...appEnv(databaseUrl),
+    ...offlineAnalyticsEnv,
+    PORT: String(PORTS.api),
+    HOST: "127.0.0.1",
+  };
   if (!engine) return base;
   return { ...base, ENGINE_URL: `http://localhost:${PORTS.engine}`, ENGINE_TOKEN: VALIDATOR_ENGINE_TOKEN };
 }
 
 export function engineEnv(): Record<string, string> {
   return {
+    ...offlineAnalyticsEnv,
     LLM_MODEL: "openai/fake-llm",
     LLM_API_BASE: `http://localhost:${PORTS.fakeLlm}/v1`,
     LLM_API_KEY: "validator",
@@ -97,7 +105,7 @@ export function serviceSpecs(root: string, databaseUrl: string, engine: boolean)
       cwd: root,
       command: "pnpm",
       args: ["--filter", "@learnquest/web", "exec", "vite", "--port", String(PORTS.web), "--host", "127.0.0.1", "--strictPort"],
-      env: { DEV_API_ORIGIN: API_ORIGIN },
+      env: { ...offlineAnalyticsEnv, DEV_API_ORIGIN: API_ORIGIN },
       healthUrl: `${WEB_ORIGIN}/`,
       url: WEB_ORIGIN,
       timeoutMs: 90_000,
