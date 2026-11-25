@@ -97,31 +97,66 @@
   contain-intrinsic-block-size: auto 22rem;
 }
 
-.lq-roadmap-panel ol {
-  padding-inline-start: 1.25rem;
-  list-style: decimal;
-}
-
 .lq-roadmap-panel .lq-btn {
   justify-self: start;
 }
 
-.lq-roadmap-lessons li {
-  padding-block: 0.35rem;
-  border-bottom: 1px solid var(--br);
+.lq-roadmap-overview {
+  display: grid;
+  gap: 1.5rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
 }
 
-.lq-roadmap-lessons li > * + * {
-  margin-inline-start: 0.6rem;
+.lq-roadmap-overview-top,
+.lq-roadmap-progress > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-.lq-roadmap-lessons li span:first-child,
-.lq-roadmap-lessons li span:last-child {
-  color: var(--mu);
-  font-size: 0.875rem;
+.lq-roadmap-eyebrow,
+.lq-roadmap-endpoints span {
+  color: var(--acT);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.lq-roadmap-panel ul {
-  list-style: disc;
-  padding-inline-start: 1.25rem;
+.lq-roadmap-overview h2,
+.lq-roadmap-journey-heading h2 { margin-top: 0.35rem; }
+.lq-roadmap-topic-count { color: var(--mu); font-size: 0.875rem; }
+.lq-roadmap-endpoints { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+.lq-roadmap-endpoints p { margin-top: 0.5rem; color: var(--mu); line-height: 1.6; }
+.lq-roadmap-topics { border-top: 1px solid var(--br); padding-top: 1rem; }
+.lq-roadmap-topics summary { cursor: pointer; font-weight: 600; }
+.lq-roadmap-topics ul { display: grid; gap: 1rem; margin-top: 1rem; list-style: none; padding: 0; }
+.lq-roadmap-topics li p { color: var(--mu); margin-top: 0.25rem; line-height: 1.5; }
+.lq-roadmap-progress { display: grid; gap: 0.75rem; }
+.lq-roadmap-progress span, .lq-roadmap-journey-heading p { color: var(--mu); font-size: 0.875rem; }
+.lq-roadmap-progress progress { width: 100%; height: 0.5rem; border: 0; border-radius: 999px; overflow: hidden; accent-color: var(--ac); }
+.lq-roadmap-progress progress::-webkit-progress-bar { background: var(--track); }
+.lq-roadmap-progress progress::-webkit-progress-value { background: var(--ac); border-radius: 999px; }
+.lq-roadmap-progress progress::-moz-progress-bar { background: var(--ac); border-radius: 999px; }
+.lq-roadmap-journey-heading p { margin-top: 0.4rem; }
+.lq-roadmap-journey { display: grid; gap: 1.5rem; margin-left: 1.25rem; padding-left: 2rem; border-left: 2px dashed var(--line); }
+.lq-roadmap-section { position: relative; }
+.lq-roadmap-section-number { position: absolute; top: 1.25rem; left: -3.25rem; display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: var(--ac); color: white; font-weight: 700; }
+.lq-roadmap-panel ol.lq-roadmap-lessons { list-style: none; padding: 0; margin: 0.5rem 0; }
+.lq-roadmap-lessons li { position: relative; display: flex; gap: 1rem; padding: 0 0 1.25rem; border: 0; }
+.lq-roadmap-lessons li:not(:last-child)::before { content: ""; position: absolute; top: 1.5rem; bottom: 0; left: 0.6875rem; border-left: 2px solid var(--line); }
+.lq-roadmap-lessons li[data-complete="true"]:not(:last-child)::before { border-color: var(--ac); }
+.lq-roadmap-lessons li > * + * { margin: 0; }
+.lq-roadmap-lesson-dot { position: relative; flex: none; display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border: 2px solid var(--line); border-radius: 50%; background: var(--bg); }
+.lq-roadmap-lessons li[data-complete="true"] .lq-roadmap-lesson-dot { background: var(--ac); border-color: var(--ac); color: white; }
+.lq-roadmap-lesson-copy { display: grid; gap: 0.2rem; min-width: 0; }
+.lq-roadmap-lesson-kind, .lq-roadmap-lesson-copy > span:last-child { color: var(--mu); font-size: 0.8rem; }
+.lq-roadmap-lesson-kind { font-weight: 600; }
+.lq-roadmap-lesson-link { font-weight: 600; }
+@media (max-width: 600px) {
+  .lq-roadmap-endpoints { grid-template-columns: 1fr; }
+  .lq-roadmap-journey { margin-left: 1rem; padding-left: 1.5rem; }
+  .lq-roadmap-section-number { left: -2.75rem; }
 }

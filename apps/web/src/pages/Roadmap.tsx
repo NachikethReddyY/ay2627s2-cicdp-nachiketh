@@ -1,11 +1,13 @@
 import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useMachine } from "@xstate/react";
-import { ArrowLeft, CircleAlert, ListTree, Route } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, ListTree, Route } from "lucide-react";
 import { Spinner } from "../components/Bits";
 import { isNotFound, type RouterOutputs } from "../lib/trpc";
 import { roadmapBuild } from "./roadmapBuild";
 import "./home.css";
 import "./roadmap.css";
+
+const lessonTitle = (title: string, kind: string) => title.replace(new RegExp(`^${kind}:\\s*`, "i"), "");
 
 const scrollToSection = (node: HTMLElement | null) => node?.scrollIntoView();
 
@@ -61,6 +63,8 @@ function RoadmapPage({ slug }: { slug: string }) {
   const { data, error, retryFailed } = snapshot.context;
 
   const ready = !data?.build || data.build.state === "ready";
+  const lessons = data?.sections.flatMap((section) => section.lessons) ?? [];
+  const completed = lessons.filter((lesson) => lesson.total > 0 && lesson.done >= lesson.total).length;
   const start = data?.sections.flatMap((section) => section.lessons
     .filter((lesson) => lesson.writeState === "ready" && lesson.missingPrerequisites.length === 0 && lesson.done < lesson.total)
     .map((lesson) => ({ course: section.slug, lesson: lesson.slug })))[0];
@@ -86,48 +90,55 @@ function RoadmapPage({ slug }: { slug: string }) {
               <button type="button" className="lq-btn lq-btn-surface" disabled={snapshot.matches("loading")} onClick={() => send({ type: "REFRESH" })}>Refresh</button>
             </div> : null}
             {data.roadmap && (
-              <div className="lq-card lq-roadmap-panel">
-                <h2>Starting point</h2>
-                <p>{data.roadmap.startingPoint}</p>
-                <h2>Destination</h2>
-                <p>{data.roadmap.destination}</p>
-                <h2>What you’ll learn</h2>
-                <ul>
-                  {data.roadmap.topics.map((topic) => <li key={topic.title}><strong>{topic.title}</strong> · {topic.outcome}</li>)}
-                </ul>
-              </div>
+              <section className="lq-roadmap-overview lq-card" aria-labelledby="overview-title">
+                <div className="lq-roadmap-overview-top">
+                  <div><span className="lq-roadmap-eyebrow">Your learning path</span><h2 id="overview-title">Where you’re headed</h2></div>
+                  <span className="lq-roadmap-topic-count">{data.roadmap.topics.length} topics</span>
+                </div>
+                <div className="lq-roadmap-endpoints">
+                  <div><span>Start here</span><p>{data.roadmap.startingPoint}</p></div>
+                  <div><span>Your goal</span><p>{data.roadmap.destination}</p></div>
+                </div>
+                <details className="lq-roadmap-topics">
+                  <summary>Explore the topics</summary>
+                  <ul>{data.roadmap.topics.map((topic) => <li key={topic.title}><strong>{topic.title}</strong><p>{topic.outcome}</p></li>)}</ul>
+                </details>
+              </section>
             )}
+            {lessons.length > 0 && <section className="lq-roadmap-progress" aria-label="Your progress">
+              <div><h2>Your progress</h2><span>{completed} of {lessons.length} lessons complete</span></div>
+              <progress aria-label="Lessons completed" max={lessons.length} value={completed} />
+            </section>}
             {ready && start && data.build && (
               <div><Link to="/lessons" search={{ ...start, path: slug }} state={{ lessonEntrySource: "course_cta" }} className="lq-btn lq-btn-blue">Start</Link></div>
             )}
             {data.sections.length === 0 ? ready && <p>No sections are available.</p> : <>
-              <nav className="lq-card lq-roadmap-panel" aria-label="Roadmap sections">
-                <h2>Roadmap</h2>
-                <ol>
-                  {data.sections.map((section) => <li key={section.slug}><a href={`#${section.slug}`}>{section.title}</a></li>)}
-                </ol>
-              </nav>
-              {data.sections.map((section) => {
+              <div className="lq-roadmap-journey-heading"><span className="lq-roadmap-eyebrow">Step by step</span><h2>Your path</h2><p>Follow the lessons in order, one step at a time.</p></div>
+              <div className="lq-roadmap-journey">
+              {data.sections.map((section, sectionIndex) => {
                 const done = section.lessons.filter((lesson) => lesson.total > 0 && lesson.done >= lesson.total).length;
                 return (
-                  <section key={section.slug} id={section.slug} className="lq-card lq-roadmap-panel"
+                  <section key={section.slug} id={section.slug} className="lq-card lq-roadmap-panel lq-roadmap-section"
                     ref={hash === section.slug ? scrollToSection : undefined}>
+                    <span className="lq-roadmap-section-number" aria-hidden="true">{sectionIndex + 1}</span>
+                    <span className="lq-roadmap-eyebrow">Part {sectionIndex + 1}</span>
                     <h2>{section.title}</h2>
                     <p className="lq-tagline">{section.description}</p>
                     <p>{done} of {section.lessons.length} lessons complete</p>
                     <ol className="lq-roadmap-lessons">
                       {section.lessons.map((lesson) => (
-                        <li key={lesson.slug}>
-                          <span>{kinds[lesson.kind]}</span>
+                        <li key={lesson.slug} data-complete={lesson.total > 0 && lesson.done >= lesson.total}>
+                          <span className="lq-roadmap-lesson-dot" aria-hidden="true">{lesson.total > 0 && lesson.done >= lesson.total ? <Check size={14} /> : null}</span>
+                          <div className="lq-roadmap-lesson-copy"><span className="lq-roadmap-lesson-kind">{kinds[lesson.kind]}</span>
                           {ready && lesson.writeState === "ready" && lesson.missingPrerequisites.length === 0
-                            ? <Link to="/lessons" search={{ path: slug, lesson: lesson.slug, course: section.slug }} className="lq-roadmap-lesson-link">{lesson.title}</Link>
-                            : <span>{lesson.title}</span>}
+                            ? <Link to="/lessons" search={{ path: slug, lesson: lesson.slug, course: section.slug }} className="lq-roadmap-lesson-link">{lessonTitle(lesson.title, kinds[lesson.kind])}</Link>
+                            : <span>{lessonTitle(lesson.title, kinds[lesson.kind])}</span>}
                           <span>{lesson.total > 0 && lesson.done >= lesson.total ? "Complete"
-                            : lesson.missingPrerequisites.length > 0 ? "Prerequisites needed"
+                            : lesson.missingPrerequisites.length > 0 ? `Requires: ${lesson.missingPrerequisites.join(", ")}`
                             : lesson.writeState === "writing" ? "Building"
                             : lesson.writeState === "failed" ? "Build paused"
                             : lesson.writeState === "pending" ? (data.build ? "Queued" : "Needs generation")
-                            : lesson.done > 0 ? "In progress" : "Ready"}</span>
+                            : lesson.done > 0 ? "In progress" : "Ready"}</span></div>
                         </li>
                       ))}
                     </ol>
@@ -135,6 +146,7 @@ function RoadmapPage({ slug }: { slug: string }) {
                   </section>
                 );
               })}
+              </div>
             </>}
           </>}
       </main>
