@@ -18,7 +18,7 @@ step "boundaries, comments, script tests"
 pnpm run test:scripts
 
 step "turbo lint test build"
-pnpm exec turbo run lint test build
+LEARNSLOP_USE_CACHED_RELEASES=1 pnpm exec turbo run lint test build
 
 step "engine"
 (cd services/engine && uv sync --frozen --no-build --python 3.12 && uv run --no-sync ruff check learnquest_engine tests scripts && uv run --no-sync mypy --strict learnquest_engine && uv run --no-sync pytest -q)
