@@ -817,7 +817,7 @@ test("a Learn page introduces the topic before the prediction unlocks the readin
     );
     const { rows: [version] } = await db.query(
       "INSERT INTO lesson_versions (id, lesson_id, version, content) VALUES (gen_random_uuid()::text, $1, 1, $2) RETURNING id",
-      [lesson.id, { kind: "learn", intro, body }],
+      [lesson.id, { kind: "learn", intro, body, workedExample: { code: "const count = 4;\nconst title = 'Map';\nconsole.log(count, title);", explanation: "The program prints the values." } }],
     );
     const question = { kind: "mcq", title: "Read the result", prompt: "What will the program print when the addition changes from one to two?", options: ["1", "2", "3", "4"] };
     const secret = {
@@ -838,6 +838,8 @@ test("a Learn page introduces the topic before the prediction unlocks the readin
   await signUp(page, newEmail(), `/lessons?lesson=${slug}`);
   await expect(page.getByRole("heading", { name: "Track a running total" })).toBeVisible();
   await expect(page.getByText(intro)).toBeVisible();
+  await expect(page.locator(".learn-md pre code .hljs-keyword").first()).toHaveText("const");
+  await expect(page.locator(".learn-md pre code .hljs-number")).toHaveText("4");
   await expect(page.getByText(body)).toHaveCount(0);
   await expect(page.getByRole("radio")).toHaveCount(0);
   await page.getByRole("button", { name: "Start the check" }).click();

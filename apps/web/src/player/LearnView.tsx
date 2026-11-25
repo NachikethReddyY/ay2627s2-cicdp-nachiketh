@@ -12,7 +12,7 @@ export function Markdown({ body }: { body: string }) {
     <div className="learn-md mt-4">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={[[rehypeHighlight, { detect: true, subset: ["javascript", "typescript", "python", "java", "c", "cpp", "csharp", "go", "rust", "sql", "ruby", "swift", "kotlin"] }]]}
         components={{
           pre: ({ node: _node, ...props }) => <CodeBlock {...props} />,
           img: ({ alt }) => <span className="italic">{alt}</span>,
