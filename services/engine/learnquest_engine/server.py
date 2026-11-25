@@ -32,7 +32,7 @@ from learnquest_engine.guide import LintFinding
 from learnquest_engine.llm import GenerationError, Result
 from learnquest_engine.posthog_client import posthog_client
 from learnquest_engine.pricing import Route, moderation_cost
-from learnquest_engine.schemas import LessonContext, StudioPlan
+from learnquest_engine.schemas import LessonContext, RequestedTopic, StudioPlan
 
 log = logging.getLogger(__name__)
 MAX_BODY_BYTES = 64 * 1024
@@ -59,6 +59,32 @@ class OutlineLearnerMemory(BaseModel):
 class OutlineRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=200)
     learnerMemory: OutlineLearnerMemory = Field(default_factory=OutlineLearnerMemory)
+
+
+class RoadmapTopicsRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+
+
+class RoadmapRequest(RoadmapTopicsRequest):
+    requested: list[RequestedTopic] = Field(min_length=1, max_length=100)
+    learnerMemory: OutlineLearnerMemory = Field(default_factory=OutlineLearnerMemory)
+
+
+class PreviousRoadmapLesson(BaseModel):
+    title: str = Field(max_length=80)
+    objective: str = Field(max_length=300)
+
+
+class RoadmapBatchRequest(BaseModel):
+    pathTitle: str = Field(max_length=80)
+    sectionTitle: str = Field(max_length=80)
+    sectionOutcome: str = Field(max_length=300)
+    topic: str = Field(max_length=80)
+    outcome: str = Field(max_length=300)
+    offset: int = Field(ge=0, le=999)
+    count: int = Field(ge=1, le=12)
+    total: int = Field(ge=1, le=1000)
+    previous: list[PreviousRoadmapLesson] = Field(max_length=12)
 
 
 class VisualRequest(BaseModel):
@@ -190,6 +216,21 @@ def healthz() -> dict[str, Any]:
 @app.post("/v1/pipeline/outline", dependencies=[Depends(require_token)])
 def outline_route(body: OutlineRequest) -> dict[str, Any]:
     return _body("outline", pipeline.outline(body.topic, body.learnerMemory.focusConcepts))
+
+
+@app.post("/v1/pipeline/roadmap-topics", dependencies=[Depends(require_token)])
+def roadmap_topics_route(body: RoadmapTopicsRequest) -> dict[str, Any]:
+    return _body("plan", pipeline.roadmap_topics(body.topic))
+
+
+@app.post("/v1/pipeline/roadmap", dependencies=[Depends(require_token)])
+def roadmap_route(body: RoadmapRequest) -> dict[str, Any]:
+    return _body("plan", pipeline.roadmap(body.model_dump()))
+
+
+@app.post("/v1/pipeline/roadmap-batch", dependencies=[Depends(require_token)])
+def roadmap_batch_route(body: RoadmapBatchRequest) -> dict[str, Any]:
+    return _body("plan", pipeline.roadmap_batch(body.model_dump()))
 
 
 @app.post("/v1/studio/plan", dependencies=[Depends(require_token)])

@@ -85,7 +85,7 @@ function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: 
   return (
     <li className="explore-card">
       {first ? (
-        <Link to="/courses/$slug" params={{ slug: first.slug }} className="explore-open">{body}</Link>
+        <Link to="/paths/$slug" params={{ slug: p.slug }} className="explore-open">{body}</Link>
       ) : (
         <div className="explore-open">{body}</div>
       )}
@@ -100,7 +100,7 @@ function Row({ p, onDone, scope }: { p: ExplorePath; onDone: () => void; scope: 
               onClick={() => { setBusy(true); setJoinFailed(false); trpc.paths.enroll.mutate({ slug: p.slug }).then(() => {
                 posthog?.capture("learning_path_joined", { source: "explore" });
                 onDone();
-                if (first) void navigate({ to: "/courses/$slug", params: { slug: first.slug } });
+                if (first) void navigate({ to: "/paths/$slug", params: { slug: p.slug } });
               }, () => setJoinFailed(true)).finally(() => setBusy(false)); }}>
               Join
             </button>

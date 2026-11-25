@@ -12,18 +12,18 @@ export default function YourPath({ p }: { p: HomeData["paths"][number] }) {
   const nowIndex = p.courses.findIndex((course) => !(course.lessonsTotal > 0 && course.lessonsDone >= course.lessonsTotal));
   return (
     <article className="lq-dashboard-path">
-      <h3>{p.title}</h3>
-      <p className="lq-tagline">{p.tagline}</p>
+      <h3><Link to="/paths/$slug" params={{ slug: p.slug }}>{p.title}</Link></h3>
+      <p className="lq-tagline">{p.building ? "Setting up your path" : p.tagline}</p>
       {p.courses.length > 0 && (
         <ol className="lq-dashboard-courses" aria-label={`${p.title} courses`}>
           {p.courses.map((course, index) => {
             const done = course.lessonsTotal > 0 && course.lessonsDone >= course.lessonsTotal;
-            const current = index === nowIndex;
-            const upcoming = nowIndex >= 0 && index === nowIndex + 1 && course.lessonsDone === 0;
+            const current = !p.building && index === nowIndex;
+            const upcoming = !p.building && nowIndex >= 0 && index === nowIndex + 1 && course.lessonsDone === 0;
             const language = courseLanguage(course.title, p.tagline);
             return (
               <li key={course.slug}>
-                <Link to="/courses/$slug" params={{ slug: course.slug }} className="lq-dashboard-course" aria-current={current ? "step" : undefined} data-upcoming={upcoming || undefined}>
+                <Link to="/paths/$slug" params={{ slug: p.slug }} hash={course.slug} className="lq-dashboard-course" aria-current={current ? "step" : undefined} data-upcoming={upcoming || undefined}>
                   <div className="lq-dashboard-course-head">
                     <span className="lq-dashboard-course-icon" data-language={language} aria-hidden="true">{language ?? <Code2 size={16} />}</span>
                     <div>

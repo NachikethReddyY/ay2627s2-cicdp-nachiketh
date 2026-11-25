@@ -49,7 +49,7 @@ After a learner reveals a prediction, the API requests MP3 audio from `https://o
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PRACTICE_STRETCH_TESTS` | `0` | Number of bonus hacker-edition tests (0 to 10) the engine adds to each practice part. They give bonus points only. |
-| `AI_WRITE_COURSE_ON_GENERATE` | `true` | When `true`, generating a course writes all its lessons in the background, three at a time, so they are ready when opened. Set `false` to keep the old write-on-open behaviour, for example to hold AI spend down or in tests that count engine calls. |
+| `AI_WRITE_COURSE_ON_GENERATE` | `true` | When `true`, Postgres jobs plan and build the full path, with at most three active jobs across API replicas. Planning checkpoints retain validated batches. A path can use 1–1,000 lessons, with individual planning calls capped at 12 lessons. Spend is reserved before each model request using the existing budget ledger. New lessons build with self-contained visuals. Optional Predict audio remains available after reveal. Set `false` to use the legacy outline and write-on-open flow. |
 
 ### How the Daytona backend works
 

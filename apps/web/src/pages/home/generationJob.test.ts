@@ -5,8 +5,8 @@ import { dismissJob, getJob, getQueue, startGeneration } from "./generationJob.t
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 test("a finished job keeps its course slug", async () => {
-  await startGeneration("rust", async () => ({ firstCourseSlug: "rust-basics" }));
-  assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-basics" });
+  await startGeneration("rust", async () => ({ slug: "rust-basics" }));
+  assert.deepEqual(getJob(), { status: "done", prompt: "rust", pathSlug: "rust-basics" });
 });
 
 test("a tRPC error keeps its code so the page can explain it", async () => {
@@ -22,7 +22,7 @@ test("a request that never answers shows TIMEOUT, and a retry is queued until th
   await wait(20);
   assert.deepEqual(getJob(), { status: "failed", prompt: "rust", code: "TIMEOUT", pending: true });
 
-  await startGeneration("rust", async () => (calls++, { firstCourseSlug: "rust-basics" }), { timeoutMs: 10, abandonMs: 40 });
+  await startGeneration("rust", async () => (calls++, { slug: "rust-basics" }), { timeoutMs: 10, abandonMs: 40 });
   assert.equal(calls, 1, "no second request while the first may still finish");
   assert.deepEqual(getQueue(), ["rust"]);
 
@@ -31,7 +31,7 @@ test("a request that never answers shows TIMEOUT, and a retry is queued until th
   dismissJob();
   assert.equal(calls, 2, "the queued retry starts once the timed-out job has been seen");
   await wait(0);
-  assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-basics" });
+  assert.deepEqual(getJob(), { status: "done", prompt: "rust", pathSlug: "rust-basics" });
   dismissJob();
 });
 
@@ -46,25 +46,25 @@ test("dismissJob keeps a timed-out job the server may still answer", async () =>
 });
 
 test("a late answer after the timeout still reaches the page", async () => {
-  let answer!: (r: { firstCourseSlug: string }) => void;
+  let answer!: (r: { slug: string }) => void;
   const late = startGeneration("rust", () => new Promise((resolve) => { answer = resolve; }), { timeoutMs: 10, abandonMs: 1000 });
   await wait(20);
   assert.equal(getJob().status, "failed");
-  answer({ firstCourseSlug: "rust-late" });
+  answer({ slug: "rust-late" });
   await late;
-  assert.deepEqual(getJob(), { status: "done", prompt: "rust", courseSlug: "rust-late" });
+  assert.deepEqual(getJob(), { status: "done", prompt: "rust", pathSlug: "rust-late" });
 });
 
 test("a start while one is running is queued, not sent, and waits for the learner to see the job before it", async () => {
   const sent: string[] = [];
-  let finish!: (r: { firstCourseSlug: string }) => void;
+  let finish!: (r: { slug: string }) => void;
   const first = startGeneration("rust", () => new Promise((resolve) => { finish = resolve; }));
-  void startGeneration("python", async () => (sent.push("python"), { firstCourseSlug: "python-basics" }));
+  void startGeneration("python", async () => (sent.push("python"), { slug: "python-basics" }));
   assert.deepEqual(getJob(), { status: "running", prompt: "rust" });
   assert.deepEqual(getQueue(), ["python"]);
   assert.deepEqual(sent, []);
 
-  finish({ firstCourseSlug: "rust-basics" });
+  finish({ slug: "rust-basics" });
   await first;
   assert.deepEqual(sent, [], "the queued prompt waits while the finished job is unseen");
   assert.equal(getJob().status, "done");
@@ -74,19 +74,19 @@ test("a start while one is running is queued, not sent, and waits for the learne
   assert.deepEqual(getQueue(), []);
   assert.deepEqual(getJob(), { status: "running", prompt: "python" });
   await wait(0);
-  assert.deepEqual(getJob(), { status: "done", prompt: "python", courseSlug: "python-basics" });
+  assert.deepEqual(getJob(), { status: "done", prompt: "python", pathSlug: "python-basics" });
 });
 
 test("queued prompts run one at a time, in the order they were submitted", async () => {
   const order: string[] = [];
-  const quick = (name: string) => async () => (order.push(name), { firstCourseSlug: `${name}-basics` });
-  let finish!: (r: { firstCourseSlug: string }) => void;
+  const quick = (name: string) => async () => (order.push(name), { slug: `${name}-basics` });
+  let finish!: (r: { slug: string }) => void;
   void startGeneration("first", () => new Promise((resolve) => { finish = resolve; }));
   void startGeneration("second", quick("second"));
   void startGeneration("third", quick("third"));
   assert.deepEqual(getQueue(), ["second", "third"]);
 
-  finish({ firstCourseSlug: "first-basics" });
+  finish({ slug: "first-basics" });
   await wait(0);
   dismissJob();
   assert.deepEqual(order, ["second"]);
@@ -98,15 +98,15 @@ test("queued prompts run one at a time, in the order they were submitted", async
 });
 
 test("dismissJob clears a settled job but never a running one", async () => {
-  await startGeneration("rust", async () => ({ firstCourseSlug: "rust-basics" }));
+  await startGeneration("rust", async () => ({ slug: "rust-basics" }));
   dismissJob();
   assert.deepEqual(getJob(), { status: "idle" });
 
-  let finish!: (r: { firstCourseSlug: string }) => void;
+  let finish!: (r: { slug: string }) => void;
   const running = startGeneration("python", () => new Promise((resolve) => { finish = resolve; }));
   dismissJob();
   assert.deepEqual(getJob(), { status: "running", prompt: "python" });
-  finish({ firstCourseSlug: "python-basics" });
+  finish({ slug: "python-basics" });
   await running;
   assert.equal(getJob().status, "done");
 });

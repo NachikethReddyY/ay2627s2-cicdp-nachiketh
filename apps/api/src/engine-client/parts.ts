@@ -3,7 +3,7 @@ import { callEngine } from "./client.ts";
 export type PartContext = {
   path: { title: string; tagline: string };
   course: { title: string; description: string };
-  lesson: { title: string; level: number; concepts: string[]; kind: string };
+  lesson: { title: string; objective?: string; level: number; concepts: string[]; kind: string };
   missedConcepts: string[];
   stretchTests?: number;
 };

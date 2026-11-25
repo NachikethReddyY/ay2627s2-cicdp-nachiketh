@@ -1,187 +1,205 @@
-import { out, signUp, trpc, withChecks } from "./helpers.ts";
-import { after, afterEach, beforeEach, test } from "node:test";
+import { code, out, readSteps, signUp, trpc } from "./helpers.ts";
+import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { eq, sql } from "drizzle-orm";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { sql } from "drizzle-orm";
+import { runPathBuildBatch } from "../src/ai/path-build-worker.ts";
+import { LESSON_WRITE_CONCURRENCY } from "../src/ai/service.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
-import { learners, lessons } from "../src/db/schema.ts";
-import { env } from "../src/env.ts";
-import { generator } from "../src/ai/generator.ts";
 import { engineParts } from "../src/engine-client/parts.ts";
-import { ensureLesson, idle, LESSON_WRITE_CONCURRENCY, lessonWriteState, stopLessonWrites } from "../src/ai/service.ts";
+import { env } from "../src/env.ts";
 
-const realLesson = engineParts.lesson;
 const app = buildApp();
-after(() => app.close());
-
-const outline = {
-  title: "Learn Rust",
-  tagline: "Ownership first",
-  courses: [0, 1].map((c) => ({
-    title: `Course ${c}`,
-    description: "d",
-    lessons: [1, 2, 3].map((n) => ({ title: `Lesson ${c}.${n}`, level: n, concepts: ["ownership"], kind: "learn" as const })),
-  })),
+const variables = { id: "variables", title: "Variables" };
+const scope = { id: "scope", title: "Lexical scope" };
+const layout = {
+  title: "JavaScript variables and scope",
+  tagline: "Trace where values come from",
+  startingPoint: "Read a line of JavaScript.",
+  destination: "Explain which value a block reads.",
+  topics: [
+    { ...variables, outcome: "Trace a binding", prerequisites: [] },
+    { ...scope, outcome: "Trace a local binding", prerequisites: ["variables"] },
+  ],
+  sections: [
+    { title: "Bindings", description: "Read and update bindings.", units: [{ topicId: variables.id, lessonCount: 1 }] },
+    { title: "Visibility", description: "Use bindings inside a block.", units: [{ topicId: scope.id, lessonCount: 4 }] },
+  ],
 };
-const learnPart = withChecks({ kind: "learn", body: "Variables hold values." });
+
+const learned = (concepts: string[]) => ({
+  kind: "learn",
+  intro: "A binding gives a value a name.",
+  workedExample: { code: "const rate = 3;", explanation: "The name rate holds the number three." },
+  body: "A binding connects a name to a value. Look for where it was first declared.",
+  steps: readSteps.map((step) => ({ ...step, concepts })),
+});
+const practice = { kind: "practice", instructions: "Print the value of a binding.", starterCode: "const x = 2;", expectedOutput: "2" };
+
+type BatchRequest = { topic: string; offset: number; count: number };
+let planned = layout;
+let requested = [variables, scope];
+let rejectOffset: number | null = null;
+let starts: string[] = [];
+let batches: BatchRequest[] = [];
+const engine = createServer((request, response) => {
+  let body = "";
+  request.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+  request.on("end", () => {
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v1/pipeline/roadmap-topics") return response.end(JSON.stringify({ plan: { topics: requested } }));
+    if (request.url === "/v1/pipeline/roadmap") return response.end(JSON.stringify({ plan: planned }));
+    const input = JSON.parse(body) as BatchRequest;
+    batches.push(input);
+    if (rejectOffset === input.offset) {
+      response.statusCode = 503;
+      return response.end("{}");
+    }
+    const lessons = Array.from({ length: input.count }, (_, i) => {
+      const ordinal = input.offset + i;
+      return { title: `${input.topic} lesson ${ordinal + 1}`, objective: `Apply ${input.topic} in example ${ordinal + 1}`, kind: ordinal === 0 ? "learn" : "practice" };
+    });
+    response.end(JSON.stringify({ plan: { lessons } }));
+  });
+});
+
+before(async () => {
+  await new Promise<void>((resolve) => engine.listen(0, "127.0.0.1", resolve));
+  env.ENGINE_URL = `http://127.0.0.1:${(engine.address() as AddressInfo).port}`;
+});
+after(async () => {
+  await new Promise<void>((resolve, reject) => engine.close((error) => error ? reject(error) : resolve()));
+  await app.close();
+});
 
 beforeEach(() => {
   env.ENGINE_TOKEN = "t".repeat(32);
-  generator.outline = async () => outline;
-  engineParts.lesson = async () => learnPart;
-});
-afterEach(async () => {
-  await idle();
-  engineParts.lesson = realLesson;
+  env.AI_WRITE_COURSE_ON_GENERATE = true;
+  planned = layout;
+  requested = [variables, scope];
+  rejectOffset = null;
+  starts = [];
+  batches = [];
+  engineParts.lesson = async ({ lesson }) => {
+    starts.push(lesson.title);
+    return lesson.kind === "learn" ? learned(lesson.concepts) : practice;
+  };
 });
 
-function gate() {
-  let open!: () => void;
-  const opened = new Promise<void>((r) => (open = r));
-  return { opened, open };
-}
-
-async function generate(email = "course-writes@example.com") {
+async function generate(email = "course-build@example.com") {
   const t = trpc(app, await signUp(app, email));
-  const res = await t.m("paths.generate", { prompt: "learn rust" });
+  const res = await t.m("paths.generate", { prompt: "JavaScript variables and scope" });
   assert.equal(res.statusCode, 200, res.body);
-  return { t, firstCourseSlug: out(res).firstCourseSlug as string };
+  const { slug } = out(res);
+  const roadmap = async () => out(await t.q("paths.get", { slug }));
+  return { t, slug, roadmap };
 }
 
-const titled = (lessons: { title: string; writeState: string }[]) => Object.fromEntries(lessons.map((l) => [l.title, l.writeState]));
-
-test("generating a course writes every lesson in the background, before any is opened", async () => {
-  let calls = 0;
-  engineParts.lesson = async () => (calls++, learnPart);
-  await generate();
-  await idle();
-  const aiLessons = await db.select({ currentVersionId: lessons.currentVersionId }).from(lessons).where(eq(lessons.sourceKind, "ai"));
-  assert.equal(aiLessons.length, 6);
-  assert.ok(aiLessons.every((l) => l.currentVersionId !== null), "each lesson has a version");
-  assert.equal(calls, 6);
-});
-
-test("courses.get shows lessons as writing until their write finishes", async () => {
-  const release = gate();
-  engineParts.lesson = async () => (await release.opened, learnPart);
-  const { t, firstCourseSlug } = await generate();
-  const writing = out(await t.q("courses.get", { slug: firstCourseSlug }));
-  assert.deepEqual(Object.values(titled(writing.lessons)), ["writing", "writing", "writing"]);
-  release.open();
-  await idle();
-  const written = out(await t.q("courses.get", { slug: firstCourseSlug }));
-  assert.deepEqual(Object.values(titled(written.lessons)), ["ready", "ready", "ready"]);
-});
-
-test("a lesson whose write fails is marked failed, and lessons.write writes it again", async () => {
-  let failing = true;
-  engineParts.lesson = async (ctx) => {
-    if (failing && ctx.lesson.title === "Lesson 0.2") throw new Error("engine down");
-    return learnPart;
-  };
-  const { t, firstCourseSlug } = await generate();
-  await idle();
-  const failedCourse = out(await t.q("courses.get", { slug: firstCourseSlug }));
-  assert.deepEqual(titled(failedCourse.lessons), { "Lesson 0.1": "ready", "Lesson 0.2": "failed", "Lesson 0.3": "ready" });
-
-  failing = false;
-  const stuck = failedCourse.lessons.find((l: { title: string }) => l.title === "Lesson 0.2");
-  const retry = await t.m("lessons.write", { id: stuck.slug });
-  assert.equal(retry.statusCode, 200, retry.body);
-  const retried = out(await t.q("courses.get", { slug: firstCourseSlug }));
-  assert.equal(retried.lessons.find((l: { title: string }) => l.title === "Lesson 0.2").writeState, "ready");
-});
-
-test("background writes run at most LESSON_WRITE_CONCURRENCY at a time", async () => {
-  let running = 0;
-  let peak = 0;
-  engineParts.lesson = async () => {
-    running++;
-    peak = Math.max(peak, running);
-    await new Promise((r) => setTimeout(r, 20));
-    running--;
-    return learnPart;
-  };
-  await generate();
-  await idle();
-  assert.ok(peak >= 2, `writes overlap (peak ${peak})`);
-  assert.ok(peak <= LESSON_WRITE_CONCURRENCY, `writes stay within the limit (peak ${peak})`);
-});
-
-test("lessons.write refuses a lesson the learner cannot see", async () => {
-  const { t, firstCourseSlug } = await generate();
-  const slug = out(await t.q("courses.get", { slug: firstCourseSlug })).lessons[0].slug;
-  const stranger = trpc(app, await signUp(app, "someone-else@example.com"));
-  const res = await stranger.m("lessons.write", { id: slug });
-  assert.equal(res.statusCode, 404, res.body);
-});
-
-async function until(condition: () => boolean) {
-  for (let i = 0; i < 200 && !condition(); i++) await new Promise((r) => setTimeout(r, 5));
-  assert.ok(condition(), "condition was not met in time");
+async function drain() {
+  while (await runPathBuildBatch()) { }
 }
 
-test("the write limit is global: two paths together never exceed it", async () => {
+test("Home lists the pending path, then the full roadmap appears before any lesson can be opened", async () => {
+  const { t, slug, roadmap } = await generate();
+  assert.equal((await roadmap()).build.state, "planning");
+  assert.equal(out(await t.q("home.get")).paths.find((path: { slug: string }) => path.slug === slug).building, true);
+  assert.equal(out(await t.q("home.get")).continue, null);
+
+  assert.equal(await runPathBuildBatch(), 1);
+  const plan = await roadmap();
+  assert.deepEqual(plan.build, { state: "building", ready: 0, total: 5 });
+  assert.deepEqual(plan.sections.map(({ title }: { title: string }) => title), ["Bindings", "Visibility"]);
+  assert.deepEqual(plan.roadmap.topics.map(({ title }: { title: string }) => title), ["Variables", "Lexical scope"]);
+  const first = plan.sections[0].lessons[0].slug;
+  assert.equal(code(await t.q("courses.get", { slug: plan.sections[0].slug })), "PRECONDITION_FAILED");
+  assert.equal(code(await t.m("paths.publish", { slug })), "PRECONDITION_FAILED");
+  assert.equal(code(await t.q("lessons.get", { id: first })), "NOT_FOUND");
+  assert.equal(code(await t.m("lessons.write", { id: first })), "NOT_FOUND");
+
+  assert.equal(await runPathBuildBatch(), LESSON_WRITE_CONCURRENCY);
+  assert.deepEqual((await roadmap()).build, { state: "building", ready: 3, total: 5 });
+  assert.equal(code(await t.q("lessons.get", { id: first })), "NOT_FOUND");
+
+  await drain();
+  assert.deepEqual((await roadmap()).build, { state: "ready", ready: 5, total: 5 });
+  const section = out(await t.q("courses.get", { slug: plan.sections[0].slug, path: slug }));
+  assert.equal(section.nextSection, plan.sections[1].slug);
+  const response = await t.q("lessons.get", { id: first });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.match(out(response).learnIntro, /const rate = 3/);
+  assert.doesNotMatch(response.body, /READ_ANSWER_OPTION_PRIVATE/);
+});
+
+test("validates requested topics and prerequisites before enqueuing lessons", async () => {
+  requested = [...requested, { id: "object-spread", title: "Object spread" }];
+  const { roadmap } = await generate();
+  await runPathBuildBatch();
+  assert.equal((await roadmap()).sections.length, 0);
+  assert.equal(batches.length, 0);
+  requested = [variables, scope];
+  planned = { ...layout, sections: [...layout.sections].reverse() };
+  await db.execute(sql`UPDATE path_build_jobs SET checkpoint = NULL, available_at = now()`);
+  await runPathBuildBatch();
+  assert.equal((await roadmap()).sections.length, 0);
+  assert.equal(batches.length, 0);
+});
+
+test("plans 205 lessons in one section, resumes a failed batch, and keeps different topic levels", async () => {
+  planned = {
+    ...layout,
+    sections: [{ ...layout.sections[0]!, units: [{ topicId: variables.id, lessonCount: 205 }, { topicId: scope.id, lessonCount: 1 }] }],
+  };
+  rejectOffset = 12;
+  const { roadmap } = await generate();
+  await runPathBuildBatch();
+  assert.equal((await roadmap()).sections.length, 0);
+  assert.deepEqual(batches.map((batch) => batch.offset), [0, 12]);
+
+  rejectOffset = null;
+  await db.execute(sql`UPDATE path_build_jobs SET available_at = now()`);
+  await runPathBuildBatch();
+  const plan = await roadmap();
+  assert.equal(plan.build.total, 206);
+  assert.equal(plan.sections[0].lessons[204].level, 1);
+  assert.equal(plan.sections[0].lessons[205].level, 2);
+  assert.equal(batches.filter((batch) => batch.topic === variables.title && batch.offset === 0).length, 1);
+  assert.ok(batches.every((batch) => batch.count <= 12));
+});
+
+test("reclaims an expired lease and never writes a second version after recovery", async () => {
+  const { roadmap } = await generate();
+  await runPathBuildBatch();
+  await runPathBuildBatch();
+  const { rows: [job] } = await db.execute<{ id: string }>(sql`SELECT id FROM path_build_jobs WHERE lesson_id IS NOT NULL AND state = 'ready' LIMIT 1`);
+  await db.execute(sql`UPDATE path_build_jobs SET state = 'writing', lease_until = now() - interval '1 second', lease_token = 'dead-worker' WHERE id = ${job.id}`);
+  await drain();
+  assert.equal((await roadmap()).build.state, "ready");
+  assert.equal(starts.length, 5);
+  const { rows } = await db.execute(sql`SELECT 1 FROM lesson_versions v JOIN path_build_jobs j ON j.lesson_id = v.lesson_id WHERE j.id = ${job.id}`);
+  assert.equal(rows.length, 1);
+});
+
+test("multiple worker claims respect the global limit and an owner can retry a paused build", async () => {
+  const { t, slug, roadmap } = await generate();
+  await runPathBuildBatch();
   let running = 0;
   let peak = 0;
-  engineParts.lesson = async () => {
+  engineParts.lesson = async ({ lesson }) => {
     running++;
     peak = Math.max(peak, running);
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((resolve) => setTimeout(resolve, 30));
     running--;
-    return learnPart;
+    return lesson.kind === "learn" ? learned(lesson.concepts) : practice;
   };
-  await Promise.all([generate("global-one@example.com"), generate("global-two@example.com")]);
-  await idle();
-  const written = await db.select({ id: lessons.id }).from(lessons).where(sql`${lessons.sourceKind} = 'ai' AND ${lessons.currentVersionId} IS NOT NULL`);
-  assert.equal(written.length, 12);
-  assert.ok(peak <= LESSON_WRITE_CONCURRENCY, `writes across paths stay within the limit (peak ${peak})`);
-});
-
-test("opening a lesson that is waiting for a slot writes it before the rest of the queue", async () => {
-  const firstSlot = gate();
-  const otherSlots = gate();
-  const order: string[] = [];
-  engineParts.lesson = async (ctx) => {
-    order.push(ctx.lesson.title);
-    await (order.length === 1 ? firstSlot.opened : otherSlots.opened);
-    return learnPart;
-  };
-  try {
-    await generate();
-    await until(() => order.length === LESSON_WRITE_CONCURRENCY);
-    const lastTitle = "Lesson 1.3";
-    const [last] = await db.select({ id: lessons.id }).from(lessons).where(eq(lessons.title, lastTitle));
-    const [learner] = await db.select({ id: learners.id }).from(learners);
-    const opening = ensureLesson(last.id, learner.id);
-    firstSlot.open();
-    await until(() => order.length > LESSON_WRITE_CONCURRENCY);
-    assert.equal(order[LESSON_WRITE_CONCURRENCY], lastTitle);
-    otherSlots.open();
-    await opening;
-  } finally {
-    firstSlot.open();
-    otherSlots.open();
-    await idle();
-  }
-});
-
-test("stopping lesson writes lets running writes finish and leaves queued lessons pending", async () => {
-  const release = gate();
-  let started = 0;
-  engineParts.lesson = async () => {
-    started++;
-    await release.opened;
-    return learnPart;
-  };
-  await generate("stop-writes@example.com");
-  await until(() => started === LESSON_WRITE_CONCURRENCY);
-  stopLessonWrites();
-  release.open();
-  await idle();
-  assert.equal(started, LESSON_WRITE_CONCURRENCY, "no queued write starts after the stop");
-  const rows = await db.select({ id: lessons.id, currentVersionId: lessons.currentVersionId }).from(lessons).where(eq(lessons.sourceKind, "ai"));
-  const states = rows.map((l) => lessonWriteState(l.id, l.currentVersionId !== null));
-  assert.equal(states.filter((s) => s === "ready").length, LESSON_WRITE_CONCURRENCY);
-  assert.equal(states.filter((s) => s === "pending").length, rows.length - LESSON_WRITE_CONCURRENCY, "queued lessons are pending, not failed");
+  await Promise.all([runPathBuildBatch(), runPathBuildBatch()]);
+  assert.equal(peak, LESSON_WRITE_CONCURRENCY);
+  await db.execute(sql`UPDATE path_build_jobs SET state = 'failed' WHERE state = 'pending'`);
+  assert.equal((await roadmap()).build.state, "failed");
+  const stranger = trpc(app, await signUp(app, "build-stranger@example.com"));
+  assert.equal(code(await stranger.m("paths.retryBuild", { slug })), "NOT_FOUND");
+  assert.equal((await t.m("paths.retryBuild", { slug })).statusCode, 200);
+  await drain();
+  assert.equal((await roadmap()).build.state, "ready");
 });

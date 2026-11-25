@@ -2,7 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { db } from "../db/client.ts";
-import { playableLesson, userOfLearner, visibleWorld } from "../access.ts";
+import { listedLesson, playableLesson, userOfLearner, visibleWorld } from "../access.ts";
 
 export const notFound = (message: string) => new TRPCError({ code: "NOT_FOUND", message });
 export const Origin = z.enum(["official", "community", "ai"]);
@@ -97,6 +97,7 @@ export const lastActive = (me: string) => sql`GREATEST(
   (SELECT pc.completed_at FROM part_completions pc WHERE pc.lesson_id = l.id AND pc.learner_id = ${me}),
   (SELECT max(gc.created_at) FROM game_completions gc WHERE gc.lesson_id = l.id AND gc.learner_id = ${me}))`;
 export const complete = (l: { done: number; total: number }) => l.total > 0 && l.done >= l.total;
+export const listedForRoadmap = sql`${listedLesson()} AND l.assessment IS NULL`;
 export const listed = sql`${playableLesson()} AND l.assessment IS NULL`;
 export const visibleCourse = (me: string) => visibleWorld(userOfLearner(me));
 export const myUser = userOfLearner;

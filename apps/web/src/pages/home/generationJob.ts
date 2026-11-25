@@ -6,9 +6,9 @@ export type GenerationJob =
   | { status: "idle" }
   | { status: "running"; prompt: string }
   | { status: "failed"; prompt: string; code: string | null; pending: boolean }
-  | { status: "done"; prompt: string; courseSlug: string };
+  | { status: "done"; prompt: string; pathSlug: string };
 
-export type GenerateFn = (prompt: string) => Promise<{ firstCourseSlug: string }>;
+export type GenerateFn = (prompt: string) => Promise<{ slug: string }>;
 
 export type StartOptions = { timeoutMs?: number; abandonMs?: number };
 
@@ -75,7 +75,7 @@ function run(prompt: string, generate: GenerateFn, { timeoutMs = CLIENT_TIMEOUT_
     if (id === latest) setJob(next);
   };
   return generate(prompt).then(
-    (r) => settle({ status: "done", prompt, courseSlug: r.firstCourseSlug }),
+    (r) => settle({ status: "done", prompt, pathSlug: r.slug }),
     (e: unknown) => settle({ status: "failed", prompt, code: errorCode(e), pending: false }),
   );
 }

@@ -6,7 +6,8 @@ import { lessonRef, playableLesson } from "../access.ts";
 import { db, type Db } from "../db/client.ts";
 import { withTx } from "../db/tx.ts";
 import { env } from "../env.ts";
-import { aiGenerations, concepts, enrollments, generationCache, learners, lessons, lessonVersions, mastery, pathCourses, paths, steps, worlds, type GeneratedPart } from "../db/schema.ts";
+import { aiGenerations, concepts, enrollments, generationCache, learners, lessons, lessonVersions, mastery, pathBuildJobs, pathCourses, paths, steps, worlds, type GeneratedPart } from "../db/schema.ts";
+import { planCurriculum, type Curriculum, type SavePlanCheckpoint } from "./curriculum.ts";
 import { generator, type LessonContext } from "./generator.ts";
 import { checkStep, PredictStep, text, type GeneratedMcqStep } from "./step-schema.ts";
 import { EngineError } from "../engine-client/client.ts";
@@ -76,17 +77,18 @@ export async function generatePath(learnerId: string, topic: string) {
   if (!(await isSafeText(topic))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: REFUSAL_COPY });
   if (!env.ENGINE_TOKEN) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "AI is not configured" });
   const [me] = await db.select({ userId: learners.userId }).from(learners).where(eq(learners.id, learnerId));
-  const slot = await withTx(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${me.userId}))`);
-    const {
-      rows: [{ n }],
-    } = await tx.execute<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${me.userId} AND created_at > now() - interval '24 hours'`);
-    if (n >= mvpLimits.aiPathsPerDay) return null;
-    const [row] = await tx.insert(aiGenerations).values({ userId: me.userId }).returning({ id: aiGenerations.id });
-    return row.id;
-  });
-  if (!slot) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${mvpLimits.aiPathsPerDay} AI paths for today` });
+  if (env.AI_WRITE_COURSE_ON_GENERATE) {
+    return withTx(async (tx) => {
+      await claimPathQuota(tx, me.userId);
+      const [path] = await tx.insert(paths).values({
+        slug: slugify("path", 40), title: topic, ownerId: me.userId, visibility: "private", origin: "ai",
+      }).returning({ id: paths.id, slug: paths.slug });
+      await tx.insert(pathBuildJobs).values({ pathId: path.id, learnerId, topic });
+      await tx.insert(enrollments).values({ learnerId, pathId: path.id });
+      return { slug: path.slug };
+    });
+  }
+  const slot = await withTx((tx) => claimPathQuota(tx, me.userId));
   try {
     await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_REPLY);
   } catch (e) {
@@ -109,54 +111,70 @@ export async function generatePath(learnerId: string, topic: string) {
   }
   if ("refused" in outline) throw new TRPCError({ code: "BAD_REQUEST", message: REFUSAL_COPY });
 
-  let path;
+  const { title, tagline, courses } = outline;
   try {
-    path = await persistPath(me.userId, learnerId, outline);
+    return await withTx(async (tx) => {
+      const owned = { ownerId: me.userId, visibility: "private", origin: "ai" } as const;
+      const [path] = await tx.insert(paths).values({ slug: slugify(title, 40), title, tagline, ...owned }).returning();
+      const saved = await persistCourses(tx, path.id, me.userId, courses.map((course) => ({
+        ...course,
+        lessons: course.lessons.map((lesson) => ({ ...lesson, level: 1, objective: null })),
+      })));
+      await tx.insert(enrollments).values({ learnerId, pathId: path.id });
+      return { slug: path.slug, firstCourseSlug: saved.firstCourseSlug };
+    });
   } catch (e) {
     await db.delete(aiGenerations).where(eq(aiGenerations.id, slot)).catch(() => undefined);
     throw e;
   }
-  if (env.AI_WRITE_COURSE_ON_GENERATE) writeLessons(path.lessonIds, learnerId);
-  return { slug: path.slug, firstCourseSlug: path.firstCourseSlug };
 }
 
-async function persistPath(ownerId: string, learnerId: string, outline: Exclude<z.infer<typeof Outline>, { refused: true }>) {
-  return withTx(async (tx) => {
-    const owned = { ownerId, visibility: "private", origin: "ai" } as const;
-    const [path] = await tx
-      .insert(paths)
-      .values({ slug: slugify(outline.title, 40), title: outline.title, tagline: outline.tagline, ...owned })
-      .returning();
-    const courseSlugs: string[] = [];
-    const lessonIds: string[] = [];
-    for (const [position, c] of outline.courses.entries()) {
-      const [world] = await tx
-        .insert(worlds)
-        .values({ slug: slugify(c.title, 40), title: c.title, description: c.description, ...owned })
-        .returning();
-      courseSlugs.push(world.slug);
-      await tx.insert(pathCourses).values({ pathId: path.id, worldId: world.id, position });
-      const rows = await tx
-        .insert(lessons)
-        .values(
-          c.lessons.map((l, i) => ({
-            slug: slugify(l.title, 40),
-            worldId: world.id,
-            title: l.title,
-            level: 1,
-            position: i,
-            concepts: l.concepts,
-            kind: l.kind,
-            sourceKind: "ai" as const,
-            status: "draft" as const,
-          })),
-        )
-        .returning({ id: lessons.id });
-      lessonIds.push(...rows.map((r) => r.id));
-    }
-    await tx.insert(enrollments).values({ learnerId, pathId: path.id });
-    return { slug: path.slug, firstCourseSlug: courseSlugs[0], lessonIds };
-  });
+async function claimPathQuota(tx: Db, userId: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
+  const { rows: [{ n }] } = await tx.execute<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM ai_generations WHERE user_id = ${userId} AND created_at > now() - interval '24 hours'`);
+  if (n >= mvpLimits.aiPathsPerDay) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `You've reached your ${mvpLimits.aiPathsPerDay} AI paths for today` });
+  }
+  const [row] = await tx.insert(aiGenerations).values({ userId }).returning({ id: aiGenerations.id });
+  return row.id;
+}
+
+type SavedCourse = { title: string; description: string; lessons: (Omit<Curriculum["courses"][number]["lessons"][number], "objective"> & { objective: string | null })[] };
+
+async function persistCourses(tx: Db, pathId: string, ownerId: string, courses: SavedCourse[]) {
+  const owned = { ownerId, visibility: "private", origin: "ai" } as const;
+  const courseSlugs: string[] = [];
+  const lessonIds: string[] = [];
+  for (const [position, course] of courses.entries()) {
+    const [world] = await tx.insert(worlds).values({
+      slug: slugify(course.title, 40), title: course.title, description: course.description, ...owned,
+    }).returning({ id: worlds.id, slug: worlds.slug });
+    courseSlugs.push(world.slug);
+    await tx.insert(pathCourses).values({ pathId, worldId: world.id, position });
+    const rows = await tx.insert(lessons).values(course.lessons.map((lesson, position) => ({
+      ...lesson,
+      slug: slugify(lesson.title, 40),
+      worldId: world.id,
+      position,
+      sourceKind: "ai" as const,
+      status: "draft" as const,
+    }))).returning({ id: lessons.id });
+    lessonIds.push(...rows.map(({ id }) => id));
+  }
+  return { firstCourseSlug: courseSlugs[0], lessonIds };
+}
+
+export async function planPath(topic: string, learnerId: string, checkpoint: unknown, save: SavePlanCheckpoint) {
+  return planCurriculum(topic, { focusConcepts: await generationFocusConcepts(learnerId) }, checkpoint, save);
+}
+
+export async function persistCurriculum(tx: Db, pathId: string, learnerId: string, plan: Curriculum) {
+  const [path] = await tx.update(paths).set({ title: plan.title, tagline: plan.tagline, roadmap: plan.roadmap })
+    .where(eq(paths.id, pathId)).returning({ ownerId: paths.ownerId });
+  if (!path?.ownerId) throw new Error("Path owner is missing");
+  const { lessonIds } = await persistCourses(tx, pathId, path.ownerId, plan.courses);
+  await tx.insert(pathBuildJobs).values(lessonIds.map((lessonId) => ({ pathId, lessonId, learnerId })));
 }
 
 function validate(raw: unknown): GeneratedMcqStep[] {
@@ -216,7 +234,7 @@ async function lessonContext(l: LessonRow, learnerId: string): Promise<LessonCon
   return {
     path: path ?? { title: world.title, tagline: "" },
     course: { title: world.title, description: world.description },
-    lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind },
+    lesson: { title: l.title, level: l.level, concepts: l.concepts, kind: l.kind, ...(l.objective ? { objective: l.objective } : {}) },
     missedConcepts: [...new Set([...misses.map((r) => r.concept), ...weakConcepts])].slice(0, FOCUS_CONCEPT_LIMIT),
     ...((l.kind === "practice" || l.kind === "scrim") && { stretchTests: env.PRACTICE_STRETCH_TESTS }),
   };
@@ -238,6 +256,7 @@ async function generate(ctx: LessonContext, key: string | null, cached: PartCach
       if (verification === "valid") lab.referenceSolutionVerified = true;
       if (verification === "invalid") delete lab.referenceSolution;
     }
+    if (ctx.lesson.objective) validatePlannedLesson(ctx.lesson.concepts, { part, generated: [] });
     const entry = { kind: part.kind, content: part };
     const insert = db.insert(generationCache).values({ key, ...entry });
     if (cached.obsolete) {
@@ -298,14 +317,13 @@ async function writeOnce(tx: Db, lessonId: string, usedPublicModeration: boolean
 }
 
 const inflight = new Map<string, Promise<boolean>>();
-const queued = new Set<string>();
 const failed = new Set<string>();
 
 export type WriteState = "ready" | "writing" | "failed" | "pending";
 
 export function lessonWriteState(lessonId: string, written: boolean): WriteState {
   if (written) return "ready";
-  if (queued.has(lessonId) || inflight.has(lessonId)) return "writing";
+  if (inflight.has(lessonId)) return "writing";
   return failed.has(lessonId) ? "failed" : "pending";
 }
 
@@ -335,27 +353,20 @@ export function ensureLesson(lessonId: string, learnerId: string, options: { bac
   return p;
 }
 
-export function writeLessons(lessonIds: readonly string[], learnerId: string): void {
-  for (const id of lessonIds) {
-    queued.add(id);
-    const p: Promise<unknown> = ensureLesson(id, learnerId, { background: true })
-      .catch((e: unknown) => {
-        if (!(e instanceof LimiterStopped)) console.error("background lesson write failed", e);
-      })
-      .finally(() => {
-        queued.delete(id);
-        background.delete(p);
-      });
-    background.add(p);
-  }
-}
-
 export function stopLessonWrites(): void {
   const dropped = writeSlots.stop();
   if (dropped > 0) console.warn(`${dropped} queued lesson writes were dropped on shutdown; learners can write them again from the course page`);
 }
 
-async function writeLesson(lessonId: string, learnerId: string): Promise<boolean> {
+type Lease = { id: string; token: string };
+
+export async function writePlannedLesson(lessonId: string, learnerId: string, lease: Lease) {
+  await writeLesson(lessonId, learnerId, lease);
+  const [lesson] = await db.select({ versionId: lessons.currentVersionId }).from(lessons).where(eq(lessons.id, lessonId));
+  if (!lesson?.versionId) throw new Error("Build did not produce a playable lesson version");
+}
+
+async function writeLesson(lessonId: string, learnerId: string, lease?: Lease): Promise<boolean> {
   const [pre] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!pre || pre.currentVersionId || pre.sourceKind !== "ai") return false;
   assertAiEnabled();
@@ -371,13 +382,24 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
     if (!cached.part) await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * (key ? ENGINE_CALLS_PER_PART : ENGINE_CALLS_PER_REPLY));
     try {
       const result = await generate(ctx, key, cached, isPublic);
-      const written = await withTx((tx) => writeOnce(tx, lessonId, isPublic, result));
+      if (lease) validatePlannedLesson(pre.concepts, result);
+      const written = await withTx(async (tx) => {
+        if (lease) {
+          const [claimed] = await tx.select({ id: pathBuildJobs.id }).from(pathBuildJobs)
+            .where(and(eq(pathBuildJobs.id, lease.id), eq(pathBuildJobs.leaseToken, lease.token), sql`${pathBuildJobs.leaseUntil} > clock_timestamp()`)).for("update");
+          if (!claimed) return null;
+        }
+        return writeOnce(tx, lessonId, isPublic, result);
+      });
       if (!written) return false;
       if (written.prewarm) {
-        const p: Promise<unknown> = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId })
-          .catch((e) => console.error("prewarm of lesson images failed", e))
-          .finally(() => background.delete(p));
-        background.add(p);
+        const images = prewarmDocImages(written.prewarm, { lessonVersionId: written.lessonVersionId, learnerId })
+          .catch((e) => console.error("prewarm of lesson images failed", e));
+        if (lease) await images;
+        else {
+          const p = images.finally(() => background.delete(p));
+          background.add(p);
+        }
       }
       return true;
     } catch (e) {
@@ -387,6 +409,22 @@ async function writeLesson(lessonId: string, learnerId: string): Promise<boolean
     }
   }
   throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't write this lesson. Try again.", cause: last });
+}
+
+function validatePlannedLesson(conceptIds: string[], result: Generated) {
+  const { part, generated } = result;
+  if (part?.kind === "learn" && (!part.intro || !part.workedExample)) {
+    throw new Error("A planned Learn lesson needs an introduction and a worked example before its first check");
+  }
+  const doc = part?.kind === "learn" || part?.kind === "game-practice" ? part.doc : undefined;
+  if (doc?.blocks.some((block) => block.type === "image")) {
+    throw new Error("Planned lessons use self-contained teaching visuals");
+  }
+  const { gateSteps } = splitPart(part);
+  const checks = part ? (gateSteps ?? []) : generated;
+  if (checks.length > 0 && checks.some((step) => !conceptIds.some((concept) => step.concepts.includes(concept)))) {
+    throw new Error("Each check must assess the planned concept");
+  }
 }
 
 function ownedReadLesson(tx: Db, ref: string, learnerId: string) {
@@ -488,7 +526,10 @@ export function prefetchNext(lesson: typeof lessons.$inferSelect, learnerId: str
       )
       .orderBy(asc(lessons.level), asc(lessons.position), asc(lessons.id))
       .limit(1);
-    if (next && !next.v && next.kind === "predict") await ensureLesson(next.id, learnerId);
+    if (next && !next.v && next.kind === "predict") {
+      const [job] = await db.select({ id: pathBuildJobs.id }).from(pathBuildJobs).where(eq(pathBuildJobs.lessonId, next.id));
+      if (!job) await ensureLesson(next.id, learnerId);
+    }
   })()
     .catch((e) => console.error("prefetch of next lesson failed", e))
     .finally(() => background.delete(p));

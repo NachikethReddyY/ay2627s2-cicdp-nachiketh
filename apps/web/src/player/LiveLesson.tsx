@@ -25,7 +25,7 @@ function isPlayable({ kind, steps, part, completed }: Lesson) {
   return part?.kind === kind;
 }
 
-export default function LiveLesson({ slug, course, entrySource }: { slug: string; course?: string; entrySource?: HistoryState["lessonEntrySource"] }) {
+export default function LiveLesson({ slug, course, path, entrySource }: { slug: string; course?: string; path?: string; entrySource?: HistoryState["lessonEntrySource"] }) {
   const [writing, setWriting] = useState(false);
   const started = useRef(false);
   const analytics = useLessonAnalytics();
@@ -48,7 +48,7 @@ export default function LiveLesson({ slug, course, entrySource }: { slug: string
     started.current = true;
     analytics.started(lesson.kind, entrySource);
   });
-  const courseState = useApi(`course:${course ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course }) : Promise.resolve(null)));
+  const courseState = useApi(`course:${course ?? ""}:${path ?? ""}`, () => (course ? trpcUnbatched.courses.get.query({ slug: course, path }) : Promise.resolve(null)));
   const [upgrading, setUpgrading] = useState(false);
   const [upgradeFailed, setUpgradeFailed] = useState(false);
 
@@ -82,7 +82,7 @@ export default function LiveLesson({ slug, course, entrySource }: { slug: string
     );
   }
   const next = (
-    <div className="flex justify-center">{course ? <CourseNext id={data.id} slug={course} course={courseState} /> : <NextLink href="/">Back home</NextLink>}</div>
+    <div className="flex justify-center">{course ? <CourseNext id={data.id} slug={course} path={path} course={courseState} /> : <NextLink href="/">Back home</NextLink>}</div>
   );
   const { part } = data;
   const progress = course ? <LessonProgress id={data.id} course={courseState} /> : null;

@@ -22,6 +22,9 @@ const Docs = lazy(() => import("./pages/Docs"));
 const Feedback = lazy(() => import("./pages/Feedback"));
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
+const pathSearch = (value: unknown) => typeof value === "string" && /^[\w-]{1,64}$/.test(value) ? value : undefined;
+
+const Roadmap = lazy(() => import("./pages/Roadmap"));
 const Course = lazy(() => import("./pages/Course"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Account = lazy(() => import("./pages/Account"));
@@ -215,9 +218,10 @@ const routeTree = root.addChildren([
     path: "/lessons",
     component: () => <LessonPage />,
     beforeLoad: guard,
-    validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string } => ({
+    validateSearch: (s: Record<string, unknown>): { lesson?: string; course?: string; path?: string } => ({
       lesson: typeof s.lesson === "string" ? s.lesson : undefined,
       course: typeof s.course === "string" ? s.course : undefined,
+      path: pathSearch(s.path),
     }),
   }),
   ...(Studio && StudioPreview ? [
@@ -225,7 +229,11 @@ const routeTree = root.addChildren([
     createRoute({ ...r, path: "/studio/preview", component: () => <StudioPreview />, beforeLoad: guard }),
   ] : []),
   createRoute({ ...r, path: "/review/$slug", component: () => <Review />, beforeLoad: guard }),
-  createRoute({ ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard }),
+  createRoute({ ...r, path: "/paths/$slug", component: () => <Roadmap />, beforeLoad: guard }),
+  createRoute({
+    ...r, path: "/courses/$slug", component: () => <Course />, beforeLoad: guard,
+    validateSearch: (s: Record<string, unknown>) => ({ path: pathSearch(s.path) }),
+  }),
   createRoute({ ...r, path: "/explore", component: () => <Explore />, beforeLoad: guard }),
   accountRoute,
   adminRoute,

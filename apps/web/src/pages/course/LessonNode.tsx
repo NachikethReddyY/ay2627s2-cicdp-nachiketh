@@ -19,6 +19,7 @@ export type LessonState = "done" | "cur" | "available" | "locked";
 type Props = {
   l: Lesson;
   slug: string;
+  path?: string;
   state: LessonState;
   x: number;
   cta: string;
@@ -29,7 +30,7 @@ type Props = {
 
 const stateText: Record<LessonState, string> = { done: "Complete", cur: "Up next", available: "Available", locked: "Locked" };
 
-export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWritten }: Props) {
+export default function LessonNode({ l, slug, path, state, x, cta, open, setOpen, onWritten }: Props) {
   const reduce = useReducedMotion();
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState(false);
@@ -97,7 +98,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
             {face}
           </button>
         ) : (
-          <Link ref={node} to="/lessons" search={{ lesson: l.slug, course: slug }} state={{ lessonEntrySource: "lesson_node" }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={click}>
+          <Link ref={node} to="/lessons" search={{ lesson: l.slug, course: slug, path }} state={{ lessonEntrySource: "lesson_node" }} aria-label={label} aria-current={state === "cur" ? "step" : undefined} className="lesson-hit" onClick={click}>
             {face}
           </Link>
         )}
@@ -146,7 +147,7 @@ export default function LessonNode({ l, slug, state, x, cta, open, setOpen, onWr
           ) : (
             <Link
               to="/lessons"
-              search={{ lesson: l.slug, course: slug }}
+              search={{ lesson: l.slug, course: slug, path }}
               state={{ lessonEntrySource: "lesson_detail" }}
               className={`${state === "done" ? "pill" : "btn"} lesson-pop-btn`}
             >

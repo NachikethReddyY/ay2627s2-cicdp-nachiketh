@@ -237,3 +237,35 @@ def test_moderation_usage_header(
         "model": "omni-moderation-latest", "prompt_tokens": 0, "completion_tokens": 0,
         "estimated_usd": cost,
     }]
+
+
+def test_roadmap_plans_and_builds_a_one_lesson_section(
+    client: TestClient, fake_llm: Callable[[str], list[dict[str, Any]]]
+) -> None:
+    calls = fake_llm("roadmap_variables")
+    extracted = client.post(
+        "/v1/pipeline/roadmap-topics", json={"topic": "variables"}, headers=TOKEN
+    )
+    assert extracted.status_code == 200, extracted.text
+    topics = extracted.json()["plan"]["topics"]
+    result = client.post(
+        "/v1/pipeline/roadmap", json={"topic": "variables", "requested": topics}, headers=TOKEN,
+    )
+    assert result.status_code == 200, result.text
+    plan = result.json()["plan"]
+    section = plan["sections"][0]
+    assert section["units"] == [{"topicId": "js.variables", "lessonCount": 1}]
+    batch = client.post("/v1/pipeline/roadmap-batch", json={
+        "pathTitle": plan["title"], "sectionTitle": section["title"],
+        "sectionOutcome": section["description"], "topic": topics[0]["title"],
+        "outcome": plan["topics"][0]["outcome"], "offset": 0, "count": 1, "total": 1,
+        "previous": [],
+    }, headers=TOKEN)
+    assert batch.status_code == 200, batch.text
+    lesson = batch.json()["plan"]["lessons"][0]
+    built = client.post("/v1/pipeline/lesson", json={
+        **CTX, "lesson": {**lesson, "level": 7, "concepts": ["js.variables"]},
+    }, headers=TOKEN)
+    assert built.status_code == 200, built.text
+    assert built.json()["lesson"]["workedExample"]["code"] == "const limit = 8;"
+    assert len(calls) == 4

@@ -6,11 +6,12 @@ import { publicScrimSegments, servedGateIds } from "../lessons/scrim.ts";
 import { loadScrimGates } from "../lessons/scrim-gates.ts";
 import { protectedProcedure, router } from "../trpc/trpc.ts";
 import { db } from "../db/client.ts";
+import { readyPath } from "../access.ts";
 import { activityEvents } from "./activity.ts";
 import { learning } from "./assessment.ts";
 import { NextStep, nextForWorld } from "./me.ts";
 import { streak, week } from "./streak.ts";
-import { complete, lastActive, lessonDone, lessonTotal, listed, Origin, PathCard, unshadowedMastery, visibleCourse } from "./shared.ts";
+import { complete, lastActive, lessonDone, lessonTotal, listedForRoadmap, myUser, Origin, PathCard, unshadowedMastery, visibleCourse } from "./shared.ts";
 
 const Course = z.object({ slug: z.string(), title: z.string(), lessonsDone: z.number(), lessonsTotal: z.number() });
 
@@ -55,7 +56,7 @@ const Home = z.object({
     rows: z.array(z.object({ handle: z.string(), xp: z.number() })),
   }),
   paths: z.array(
-    z.object({ slug: z.string(), title: z.string(), tagline: z.string(), origin: Origin, courses: z.array(Course) }),
+    z.object({ slug: z.string(), title: z.string(), tagline: z.string(), origin: Origin, building: z.boolean(), courses: z.array(Course) }),
   ),
   official: z.array(PathCard),
   community: z.array(PathCard),
@@ -67,9 +68,10 @@ type LessonRow = {
   tagline: string;
   origin: z.infer<typeof Origin>;
   enrolled_at: Date;
-  course_id: string;
-  course_slug: string;
-  course_title: string;
+  building: boolean;
+  course_id: string | null;
+  course_slug: string | null;
+  course_title: string | null;
   lesson_slug: string | null;
   lesson_title: string | null;
   level: number | null;
@@ -130,6 +132,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
 
     const { rows } = await db.execute<LessonRow>(sql`
       SELECT p.slug AS path_slug, p.title AS path_title, p.tagline, p.origin, e.created_at AS enrolled_at,
+        NOT (${readyPath(sql`p.id`)}) AS building,
         w.id AS course_id, w.slug AS course_slug, w.title AS course_title,
         l.slug AS lesson_slug, l.title AS lesson_title, l.level,
         ${lessonTotal} AS total,
@@ -137,23 +140,24 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         ${lastActive(me)} AS last_active
       FROM enrollments e
       JOIN paths p ON p.id = e.path_id
-      JOIN path_courses pc ON pc.path_id = p.id
-      JOIN worlds w ON w.id = pc.world_id
-      LEFT JOIN lessons l ON l.world_id = w.id AND ${listed}
-      WHERE e.learner_id = ${me} AND ${visibleCourse(me)}
+      LEFT JOIN path_courses pc ON pc.path_id = p.id
+      LEFT JOIN worlds w ON w.id = pc.world_id AND ${visibleCourse(me)}
+      LEFT JOIN lessons l ON l.world_id = w.id AND ${listedForRoadmap}
+      WHERE e.learner_id = ${me} AND (p.visibility = 'public' OR p.owner_id = ${myUser(me)})
       ORDER BY e.created_at DESC, p.id, pc.position, l.level, l.position, l.id`);
 
-    type Path = { slug: string; title: string; tagline: string; origin: LessonRow["origin"]; active: number; courses: Map<string, { id: string; slug: string; title: string; lessons: LessonRow[] }> };
+    type Path = { slug: string; title: string; tagline: string; origin: LessonRow["origin"]; building: boolean; active: number; courses: Map<string, { id: string; slug: string; title: string; lessons: LessonRow[] }> };
     const byPath = new Map<string, Path>();
     let resume: z.infer<typeof Resume> | null = null;
     let resumeAt = -Infinity;
     for (const row of rows) {
       let p = byPath.get(row.path_slug);
       if (!p) {
-        p = { slug: row.path_slug, title: row.path_title, tagline: row.tagline, origin: row.origin, active: new Date(row.enrolled_at).getTime(), courses: new Map() };
+        p = { slug: row.path_slug, title: row.path_title, tagline: row.tagline, origin: row.origin, building: row.building, active: new Date(row.enrolled_at).getTime(), courses: new Map() };
         byPath.set(row.path_slug, p);
       }
-      if (row.last_active) {
+      if (!row.course_id || !row.course_slug || row.course_title === null) continue;
+      if (row.last_active && !p.building) {
         const activeAt = new Date(row.last_active).getTime();
         p.active = Math.max(p.active, activeAt);
         if (activeAt > resumeAt && row.lesson_slug && row.lesson_title && row.total > 0 && !complete(row)) {
@@ -170,6 +174,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
     const activePaths = [...byPath.values()].sort((a, b) => b.active - a.active);
     let activeCourseId: string | undefined;
     findNext: for (const p of activePaths) {
+      if (p.building) continue;
       const courses = [...p.courses.values()];
       for (const [index, c] of courses.entries()) {
         if (c.lessons.length === 0) continue;
@@ -242,6 +247,7 @@ const homeQuery = protectedProcedure.output(Home).query(async ({ ctx }) => {
         title: p.title,
         tagline: p.tagline,
         origin: p.origin,
+        building: p.building,
         courses: [...p.courses.values()].map((c) => ({
           slug: c.slug,
           title: c.title,

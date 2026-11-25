@@ -12,6 +12,9 @@ from learnquest_engine.schemas import (
     Lesson,
     LessonContext,
     Outline,
+    RequestedTopics,
+    RoadmapBatch,
+    RoadmapLayout,
     ScrimDraft,
     StudioEdits,
     StudioPlan,
@@ -34,6 +37,18 @@ def outline(topic: str, focus_concepts: list[str] | None = None) -> Result[Outli
         Outline,
         context={"learningSequence": True},
     )
+
+
+def roadmap_topics(topic: str) -> Result[RequestedTopics]:
+    return generate(_prompt("roadmap_topics"), {"topic": topic}, RequestedTopics)
+
+
+def roadmap(data: dict[str, Any]) -> Result[RoadmapLayout]:
+    return generate(_prompt("roadmap"), data, RoadmapLayout)
+
+
+def roadmap_batch(data: dict[str, Any]) -> Result[RoadmapBatch]:
+    return generate(_prompt("roadmap_batch"), data, RoadmapBatch)
 
 
 def studio_plan(topic: str, source: str) -> Result[StudioPlan]:
@@ -103,7 +118,13 @@ def _checked_document(
 ) -> Result[BaseModel]:
     """Fail an unsolvable game here, not later in the API gate (that forces a full regeneration)."""
     system += "\n\n" + visual._system(embedded=True)
-    context = {"requireLearnIntro": True} if kind == "learn" else None
+    lesson_info = ctx_data.get("lesson", {})
+    planned = bool(lesson_info.get("objective"))
+    if planned:
+        system += "\n\nUse self-contained visual blocks. Omit image blocks and external assets."
+    context = (
+        {"requireLearnIntro": True, "requireWorkedExample": planned} if kind == "learn" else None
+    )
     res = generate(system, ctx_data, PARTS[kind], context=context)
     doc, found = _document_issues(res.value, kind)
     if found:
