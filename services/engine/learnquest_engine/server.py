@@ -368,6 +368,20 @@ def upstream_timeout(_: Request, exc: Timeout) -> JSONResponse:
 
 
 @app.exception_handler(RateLimitError)
+def upstream_rate_limit(_: Request, exc: RateLimitError) -> JSONResponse:
+    log.error("LLM upstream failure: RateLimitError")
+    headers = getattr(getattr(exc, "response", None), "headers", {})
+    retry_after = headers.get("retry-after", "")
+    retry_headers = (
+        {"retry-after": retry_after} if retry_after.isascii() and retry_after.isdigit() else {}
+    )
+    return JSONResponse(
+        status_code=429,
+        content={"error": "rate_limited"},
+        headers=retry_headers,
+    )
+
+
 @app.exception_handler(ServiceUnavailableError)
 @app.exception_handler(APIConnectionError)
 @app.exception_handler(BadRequestError)

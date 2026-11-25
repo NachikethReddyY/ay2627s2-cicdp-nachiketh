@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 
 import litellm
-from litellm.exceptions import APIError, BadRequestError, ContextWindowExceededError, Timeout
+from litellm.exceptions import (
+    APIError,
+    BadRequestError,
+    ContextWindowExceededError,
+    RateLimitError,
+    Timeout,
+)
 from pydantic import BaseModel, ValidationError
 
 from .config import get_settings
@@ -200,7 +206,12 @@ def generate[T: BaseModel](
             except APIError as e:
                 record_call(route, "text", ai_trace_id, call_started, failed=True)
                 status = getattr(e, "status_code", None)
-                if transient_retried or status is None or (status != 429 and status < 500):
+                if (
+                    isinstance(e, RateLimitError)
+                    or transient_retried
+                    or status is None
+                    or (status != 429 and status < 500)
+                ):
                     raise
                 transient_retried = True
             except Exception:

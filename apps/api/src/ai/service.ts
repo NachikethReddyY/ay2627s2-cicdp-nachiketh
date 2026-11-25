@@ -403,7 +403,7 @@ async function writeLesson(lessonId: string, learnerId: string, lease?: Lease): 
       }
       return true;
     } catch (e) {
-      if (e instanceof TRPCError) throw e;
+      if (e instanceof TRPCError || (lease && e instanceof EngineError && e.status === 429)) throw e;
       last = e;
       console.error(`lesson generation attempt ${attempt + 1} failed`, e);
     }
