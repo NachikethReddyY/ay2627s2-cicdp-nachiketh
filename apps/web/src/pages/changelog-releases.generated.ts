@@ -3,6 +3,27 @@ export type ReleaseEntry = { date: string; tag: string; title: string; url: stri
 
 export const releases: ReleaseEntry[] = [
   {
+    "date": "2026-11-23T19:11:55Z",
+    "tag": "v1.0.0",
+    "title": "LearnSlop 1.0.0",
+    "url": "https://github.com/NachikethReddyY/ay2627s2-cicdp-nachiketh/releases/tag/v1.0.0",
+    "summary": "LearnSlop teaches programming through predictions, code replay, and hands-on practice. Learners can generate a private learning path, work through its lessons, and pick up from Home.",
+    "changes": [
+      "Predict what the program will do before seeing the answer or replay. Newly generated Predict steps include four choices and describe the relevant change in the question. Multiline choices retain their line breaks.",
+      "Use the read-only Predict Workbench and play hosted OpenRouter narration after revealing an answer. In Watch lessons, pause the replay, choose **Edit from here**, run an experiment in a temporary workspace, then return to the original replay.",
+      "Run code in the Practice Workbench and ask Sloppy for a hint or a follow-up. Sloppy guides the learner and declines requests for the finished solution or hidden tests.",
+      "Follow the next lesson or review recommendation after a lesson. Share a generated path after automatic moderation passes.",
+      "Fixed the production terminal policy that blocked Ghostty's WebAssembly module from loading.",
+      "Added targeted repair guidance when a generated Predict scenario repeats the correct answer. Previously saved lessons retain their original content.",
+      "Added a feedback form for bugs, feature requests and general feedback. Bug reports can include a private screenshot. PostHog receives the category and an opaque report ID.",
+      "Record one generation request per action and track lesson starts, accepted answers, completions, Continue actions and Web Vitals. AI observability reports model usage and separates priced and unpriced attempts using provider usage or a matching catalog rate.",
+      "Published the API coverage report with the remaining gaps and extended production smoke checks to account for rollout time.",
+      "Recorded production signup, sign-in, course generation, hosted narration, lesson completion and next-lesson navigation for JavaScript, TypeScript and Python. The Python run resumed after the multiline-choice fix.",
+      "Verified Watch pause and edit, live terminal output, Sloppy hints and refusal, private-course isolation, feedback upload, and PostHog ingestion. Admin-side screenshot retrieval remains unverified in production.",
+      "The release commit `0cb541d0e3aad8e6a51a74ecec880440541ea3f5` passed lint, unit, engine, deploy-script and end-to-end checks, plus the production rollout and smoke tests. [Production workflow](https://github.com/NachikethReddyY/ay2627s2-cicdp-nachiketh/actions/runs/45238028230)"
+    ]
+  },
+  {
     "date": "2026-11-22T14:55:12Z",
     "tag": "v0.0.2",
     "title": "v0.0.2",
