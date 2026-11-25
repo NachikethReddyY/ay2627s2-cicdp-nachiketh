@@ -18,6 +18,7 @@ const { db, pool } = await import("../src/db/client.ts");
 const { runMigrations } = await import("../src/db/migrate.ts");
 const { seed } = await import("../src/db/seed.ts");
 const { idle } = await import("../src/ai/service.ts");
+const { idleMastery } = await import("../src/progress/mastery.ts");
 const { setModerationClient } = await import("../src/safety/moderation.ts");
 setModerationClient(async () => ({ flagged: false, scores: { hate: 0, harassment: 0, "self-harm": 0, sexual: 0, violence: 0, illicit: 0, jailbreak: 0 } }));
 
@@ -25,12 +26,14 @@ await runMigrations();
 
 beforeEach(async () => {
   await idle();
+  await idleMastery();
   await db.execute(
     sql`TRUNCATE collection_paths, collections, enrollments, generation_cache, lesson_media, part_completions, path_courses, paths, hint_events, attempts, mastery, recommendations, step_progress, steps, lesson_versions, lessons, concepts, worlds, learners, verification, account, session, "user" CASCADE`,
   );
 });
 
 after(async () => {
+  await idleMastery();
   try { await pool.end(); } catch { }
 });
 

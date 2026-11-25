@@ -1,13 +1,92 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
 import { code, out, readSteps, signUp, trpc } from "./helpers.ts";
 import { buildApp } from "../src/app.ts";
 import { db } from "../src/db/client.ts";
 import { attempts, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, user, worlds, type PartSecret } from "../src/db/schema.ts";
+import { engineLearner } from "../src/engine-client/learner.ts";
+import { idleMastery } from "../src/progress/mastery.ts";
+import { env } from "../src/env.ts";
 
 const app = buildApp();
 after(() => app.close());
+
+test("a read check returns its verdict while mastery processing is still waiting", async () => {
+  const api = trpc(app, await signUp(app));
+  const { checks } = await addLesson("learn", 2);
+  const originalUpdate = engineLearner.update;
+  const originalNext = engineLearner.next;
+  let release = () => {};
+  let started = () => {};
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  const called = new Promise<void>((resolve) => { started = resolve; });
+  engineLearner.update = async (req) => {
+    started();
+    await blocked;
+    return req.priors.map((prior) => ({ conceptId: prior.conceptId, pPosterior: 0.5, pNext: 0.5 }));
+  };
+  engineLearner.next = async () => ({ policyVersion: "test", action: "done", lessonId: null, conceptId: null, reasonCode: "DONE", reason: "Done" });
+  try {
+    const response = await Promise.race([
+      api.m("steps.attempt", { id: checks[0]!.id, answer: { kind: "mcq", choice: 0 } }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("verdict waited for mastery")), 2_000)),
+    ]);
+    assert.equal(out(response).correct, true);
+    await called;
+    const [record] = await db.select().from(attempts).where(eq(attempts.stepId, checks[0]!.id));
+    assert.equal(record?.masteryAppliedAt, null);
+    release();
+    await idleMastery();
+    const [applied] = await db.select().from(attempts).where(eq(attempts.stepId, checks[0]!.id));
+    assert.ok(applied?.masteryAppliedAt);
+  } finally {
+    release();
+    await idleMastery();
+    engineLearner.update = originalUpdate;
+    engineLearner.next = originalNext;
+  }
+});
+
+test("AI help requires a wrong answer and never returns the answer key", async () => {
+  const api = trpc(app, await signUp(app));
+  const { checks } = await addLesson("learn", 2);
+  const id = checks[0]!.id;
+  let calls = 0;
+  const server = createServer((_req, res) => {
+    calls++;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ guide: { message: "The answer is READ_ANSWER_OPTION_PRIVATE", widgets: [] } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const old = { url: env.ENGINE_URL, token: env.ENGINE_TOKEN, update: engineLearner.update, next: engineLearner.next };
+  env.ENGINE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  env.ENGINE_TOKEN = "t".repeat(32);
+  engineLearner.update = async (req) => req.priors.map((p) => ({ conceptId: p.conceptId, pPosterior: 0.5, pNext: 0.5 }));
+  engineLearner.next = async () => ({ policyVersion: "test", action: "done", lessonId: null, conceptId: null, reasonCode: "DONE", reason: "Done" });
+  try {
+    assert.equal(code(await api.m("steps.aiHint", { id })), "FORBIDDEN");
+    assert.equal(calls, 0);
+    assert.equal(out(await api.m("steps.attempt", { id, answer: { kind: "mcq", choice: 1 } })).correct, false);
+    assert.equal(calls, 0);
+    const hint = await api.m("steps.aiHint", { id });
+    assert.equal(hint.statusCode, 200, hint.body);
+    assert.doesNotMatch(hint.body, /READ_ANSWER_OPTION_PRIVATE/);
+    assert.equal(calls, 1);
+    assert.equal(out(await api.m("steps.attempt", { id, answer: { kind: "mcq", choice: 0 } })).correct, true);
+    assert.equal(code(await api.m("steps.aiHint", { id })), "FORBIDDEN");
+    assert.equal(calls, 1);
+  } finally {
+    await idleMastery();
+    env.ENGINE_URL = old.url;
+    env.ENGINE_TOKEN = old.token;
+    engineLearner.update = old.update;
+    engineLearner.next = old.next;
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
 
 async function addLesson(kind: "learn" | "watch", count: number, intro?: string) {
   const [world] = await db.select().from(worlds).where(eq(worlds.slug, "codequest"));

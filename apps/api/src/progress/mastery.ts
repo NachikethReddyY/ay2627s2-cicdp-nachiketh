@@ -199,6 +199,10 @@ const insertRecommendation = (tx: Db, learnerId: string, worldId: string, r: Nex
 
 const inFlight = new Map<string, Promise<void>>();
 
+export async function idleMastery() {
+  while (inFlight.size > 0) await Promise.allSettled(inFlight.values());
+}
+
 export async function applyObservations(learnerId: string, opts: { worldId?: string } = {}): Promise<void> {
   const previous = inFlight.get(learnerId);
   if (previous) {

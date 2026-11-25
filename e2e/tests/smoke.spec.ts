@@ -802,6 +802,15 @@ test("a scrim keeps later code hidden until its prediction and shows the updated
 });
 
 test("a Learn page introduces the topic before the prediction unlocks the reading", async ({ page }) => {
+  let stepRequests = 0;
+  let stepResponses = 0;
+  let aiCalls = 0;
+  await page.route("**/api/trpc/steps.aiHint?*", async (route) => {
+    aiCalls++;
+    await route.fulfill({ json: [{ result: { data: { message: "Trace the change in total." } } }] });
+  });
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/trpc/steps.get") stepRequests++; });
+  page.on("response", (response) => { if (new URL(response.url()).pathname === "/api/trpc/steps.get") stepResponses++; });
   const slug = `learn-intro-${randomUUID()}`;
   const intro = "Let's follow a small program that keeps a running total.";
   const body = "The assignment stores a new total that the next line can read.";
@@ -842,13 +851,29 @@ test("a Learn page introduces the topic before the prediction unlocks the readin
   await expect(page.locator(".learn-md pre code .hljs-number")).toHaveText("4");
   await expect(page.getByText(body)).toHaveCount(0);
   await expect(page.getByRole("radio")).toHaveCount(0);
+  await expect.poll(() => stepResponses > 0 && stepResponses === stepRequests).toBe(true);
+  const prefetchedRequests = stepRequests;
   await page.getByRole("button", { name: "Start the check" }).click();
+  await expect(page.getByRole("radio", { name: "3", exact: true })).toBeVisible();
+  expect(stepRequests).toBe(prefetchedRequests);
   await expect(page.getByText(body)).toHaveCount(0);
-  await page.getByRole("radio", { name: "3", exact: true }).check();
+  await expect(page.getByRole("button", { name: "Ask Sloppy for a clue" })).toHaveCount(0);
+  await page.getByRole("radio", { name: "1", exact: true }).check();
   await page.getByRole("button", { name: "Check", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Not quite." })).toBeVisible();
+  expect(aiCalls).toBe(0);
+  await page.getByRole("button", { name: "Ask Sloppy for a clue" }).click();
+  await expect(page.getByText("Trace the change in total.")).toBeVisible();
+  expect(aiCalls).toBe(1);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText(body)).toBeVisible();
   await expect(page.getByRole("button", { name: "Check what you learned" })).toBeVisible();
+  await page.getByRole("button", { name: "Check what you learned" }).click();
+  await page.getByRole("radio", { name: "3", exact: true }).check();
+  await page.getByRole("button", { name: "Check", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Correct!" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask Sloppy for a clue" })).toHaveCount(0);
+  expect(aiCalls).toBe(1);
 });
 
 test("a lesson with no lab can open a temporary Watch workspace", async ({ page }) => {
