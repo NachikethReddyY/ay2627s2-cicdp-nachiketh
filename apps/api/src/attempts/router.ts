@@ -7,6 +7,10 @@ import { db, type Db } from "../db/client.ts";
 import { attempts, hintEvents, learners, lessons, lessonVersions, partCompletions, stepProgress, steps, worlds } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
 import { containsAnswer } from "../ai/answer-leak.ts";
+import { takeGuideCall } from "../ai/guide-rate.ts";
+import { assertAiEnabled, ENGINE_CALLS_PER_REPLY, reserveAiSpend } from "../config/budget.ts";
+import { callEngine } from "../engine-client/client.ts";
+import { env } from "../env.ts";
 import { gradeCloze } from "../grading/cloze.ts";
 import { gradeMcq } from "../grading/mcq.ts";
 import { scrimGateOpen } from "../lessons/scrim.ts";
@@ -295,7 +299,10 @@ export const stepsRouter = router({
         b.kind === "mcq" ? gradeMcq(b.choice, answer as number) : gradeCloze(b.text, answer as string, accepted ?? []);
       const out = await mutate(ctx.learnerId, step, { type: "attempt", correct });
       if ("conflict" in out) throw conflict(out.conflict);
-      if (out.observed && !step.assessment) await catchUpMastery(ctx.learnerId);
+      if (out.observed && !step.assessment) {
+        if (isReadLesson(step)) void catchUpMastery(ctx.learnerId);
+        else await catchUpMastery(ctx.learnerId);
+      }
       return {
         attemptId: out.attemptId!,
         correct,
@@ -306,6 +313,33 @@ export const stepsRouter = router({
         attemptAllowed: out.progress.attemptAllowed,
         lessonJustCompleted: out.lessonJustCompleted,
       };
+    }),
+
+  aiHint: protectedProcedure
+    .input(Id)
+    .output(z.object({ message: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const step = await mustStep(input.id, ctx.learnerId);
+      if (!isReadLesson(step)) throw notFound();
+      const history = await db.select({ correct: attempts.correct }).from(attempts)
+        .where(and(eq(attempts.learnerId, ctx.learnerId), eq(attempts.stepId, step.id)));
+      if (!history.some((entry) => entry.correct === false) || history.some((entry) => entry.correct === true))
+        throw new TRPCError({ code: "FORBIDDEN", message: "AI help is available after an incorrect answer." });
+      const help = await guideStep(ctx.learnerId, [step.id]);
+      if (!help) throw conflict("This check is already complete");
+      assertAiEnabled();
+      if (!takeGuideCall(ctx.learnerId)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Please wait before asking for more help." });
+      await reserveAiSpend(env.AI_CALL_ESTIMATE_USD * ENGINE_CALLS_PER_REPLY);
+      const [fileName, code] = Object.entries(step.secret.beforeFiles)[0] ?? ["example.txt", ""];
+      const response = z.object({ guide: z.object({ message: z.string().trim().min(1).max(1200) }) }).parse(await callEngine("/v1/guide/chat", {
+        fileName: fileName.slice(-240) || "example.txt", language: "text", code: code.slice(0, 12_000), selection: "", workspaceFiles: [],
+        lessonContext: { task: help.task, hintRung: help.rung },
+        messages: [{ role: "user", content: "Give me a short clue to help me rethink this question without revealing the answer." }],
+      }, { timeoutMs: 30_000 }));
+      await help.record();
+      const safe = (text: string) => help.answers.every((answer) => !containsAnswer(text, answer));
+      const message = [response.guide.message, "Look again.", "Consider each step.", "…"].find(safe) ?? "";
+      return { message };
     }),
 
   hint: protectedProcedure

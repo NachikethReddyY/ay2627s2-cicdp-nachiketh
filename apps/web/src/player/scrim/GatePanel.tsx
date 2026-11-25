@@ -42,6 +42,31 @@ function RevealView({ stepId, ordinal, total, state, correct, step, onDone }: Pi
   );
 }
 
+function ReadOutcome({ stepId, ordinal, total, correct, step, onDone }: Pick<GateProps, "stepId" | "ordinal" | "total" | "onDone"> & { correct: boolean; step: StepPublic }) {
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ask = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setMessage((await trpc.steps.aiHint.mutate({ id: stepId })).message);
+    } catch (e) {
+      setError(rpcMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <>
+    <OutcomePanel idx={ordinal} total={total} correct={correct} step={step} nextLabel="Continue" onNext={onDone} />
+    {!correct && <div className="mt-4">
+      {!message && <button type="button" className="pill px-4 py-2 text-sm" disabled={busy} onClick={() => void ask()}>{busy ? "Asking Sloppy…" : "Ask Sloppy for a clue"}</button>}
+      {message && <p role="status" className="text-sm">{message}</p>}
+      {error && <p role="alert" className="text-sm">{error}</p>}
+    </div>}
+  </>;
+}
+
 function GateRun({ lessonKind, stepId, ordinal, total, step, onDone, onAttempt, showCode = false, showAnswer = true, finishOnAttempt = false }: GateProps & { step: StepPublic }) {
   const analytics = useLessonAnalytics();
   const [snap, send] = useMachine(stepMachine, { input: { lessonSteps: total, idx: ordinal, step } });
@@ -74,7 +99,7 @@ function GateRun({ lessonKind, stepId, ordinal, total, step, onDone, onAttempt, 
   if (failed)
     return <Failure message={failed} onRetry={() => { setFailed(""); if (state === "browse") void reload(); }} />;
   if (finishOnAttempt && answer !== null)
-    return <OutcomePanel idx={ordinal} total={total} correct={answer} step={snap.context.step ?? step} nextLabel="Continue" onNext={onDone} />;
+    return <ReadOutcome stepId={stepId} ordinal={ordinal} total={total} correct={answer} step={snap.context.step ?? step} onDone={onDone} />;
   if ((state === "revealed" || state === "skipped") && !showAnswer)
     return <OutcomePanel idx={ordinal} total={total} correct={snap.context.lastCorrect} step={snap.context.step ?? step} nextLabel="Continue" onNext={onDone} />;
   if (state === "revealed" || state === "skipped")
@@ -107,6 +132,10 @@ function GateRun({ lessonKind, stepId, ordinal, total, step, onDone, onAttempt, 
       />
     );
   return <p role="status" className="font-medium">Loading step…</p>;
+}
+
+export function LoadedGatePanel(props: GateProps & { step: StepPublic }) {
+  return <GateRun key={props.stepId} {...props} />;
 }
 
 export default function GatePanel(props: GateProps) {

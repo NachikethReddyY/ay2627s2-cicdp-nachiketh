@@ -272,7 +272,7 @@ export const lessonsRouter = router({
       const read = version?.content?.kind === "learn" ? version.content : null;
       const example = read?.workedExample;
       const learnIntro = read?.intro && example
-        ? [read.intro, ["```text", example.code, "```"].join("\n"), example.explanation].join("\n\n")
+        ? [read.intro, ["```", example.code, "```"].join("\n"), example.explanation].join("\n\n")
         : read?.intro;
       const servedRows = part?.kind === "scrim" ? rows.filter((row) => served.has(row.id)) : rows;
       return {

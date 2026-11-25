@@ -132,6 +132,7 @@ test("Home lists the pending path, then the full roadmap appears before any less
   const response = await t.q("lessons.get", { id: first });
   assert.equal(response.statusCode, 200, response.body);
   assert.match(out(response).learnIntro, /const rate = 3/);
+  assert.match(out(response).learnIntro, /```\nconst rate = 3;\n```/);
   assert.doesNotMatch(response.body, /READ_ANSWER_OPTION_PRIVATE/);
 });
 
