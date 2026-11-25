@@ -16,10 +16,14 @@ def restore_litellm() -> object:
 
 
 def test_missing_key_creates_no_client_and_no_callbacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("POSTHOG_API_KEY", raising=False)
+    monkeypatch.setenv("POSTHOG_HOST", "https://us.i.posthog.com")
     litellm.success_callback = []
     assert posthog_client.create_posthog_client() is None
     assert "posthog" not in litellm.success_callback
+
+
+def test_test_suite_does_not_initialize_posthog() -> None:
+    assert posthog_client.posthog_client is None
 
 
 def test_configured_client_uses_engine_events_and_redacts_litellm_logging(

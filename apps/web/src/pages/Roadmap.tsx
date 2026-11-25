@@ -1,8 +1,9 @@
 import { Link, useLocation, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMachine } from "@xstate/react";
+import { ArrowLeft, CircleAlert, ListTree, Route } from "lucide-react";
 import { Spinner } from "../components/Bits";
-import { useApi } from "../lib/api";
-import { isNotFound, trpc } from "../lib/trpc";
+import { isNotFound, type RouterOutputs } from "../lib/trpc";
+import { roadmapBuild } from "./roadmapBuild";
 import "./home.css";
 import "./roadmap.css";
 
@@ -17,37 +18,73 @@ const kinds = {
   "game-practice": "Game",
 };
 
-export default function Roadmap() {
-  const { slug } = useParams({ from: "/paths/$slug" });
+function BuildPanel({ build, busy, retryFailed, retry }: {
+  build: NonNullable<RouterOutputs["paths"]["get"]["build"]>;
+  busy: boolean;
+  retryFailed: boolean;
+  retry: () => void;
+}) {
+  const { state, ready, total } = build;
+  const failed = state === "failed";
+  const refused = state === "refused";
+  const building = state === "building";
+  const title = refused ? "Try a different topic"
+    : failed ? (total ? "Lesson build paused" : "Roadmap planning paused")
+    : building ? "Building your lessons" : "Planning your roadmap";
+  const description = refused ? "This topic couldn’t be turned into a learning path."
+    : failed && !total ? "We couldn’t finish planning this path. You can retry from here."
+    : total ? `${ready} of ${total} lessons ready`
+    : "We’re organizing your topics and putting the lessons in order.";
+  const Icon = failed || refused ? CircleAlert : building ? ListTree : Route;
+
+  return (
+    <section className="lq-card lq-roadmap-build" data-state={state} aria-labelledby="roadmap-build-title">
+      <div className="lq-roadmap-build-icon"><Icon size={22} aria-hidden="true" /></div>
+      <div className="lq-roadmap-build-copy">
+        <div role="status">
+          <h2 id="roadmap-build-title">{title}</h2>
+          <p>{description}</p>
+        </div>
+        {total > 0 ? <progress aria-label="Lessons ready" max={total} value={ready} /> : null}
+        {failed ? (
+          <button type="button" className="lq-btn lq-btn-blue" disabled={busy} onClick={retry}>{busy ? "Retrying…" : "Retry build"}</button>
+        ) : refused ? <Link to="/" className="lq-btn lq-btn-surface">Back to Home</Link> : null}
+        {retryFailed ? <p role="alert">Couldn't retry this build. Try again.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function RoadmapPage({ slug }: { slug: string }) {
   const hash = useLocation({ select: (location) => location.hash });
-  const [retryFailed, setRetryFailed] = useState(false);
-  const { data, error, reload, loading } = useApi(`path:${slug}`, () => trpc.paths.get.query({ slug }));
+  const [snapshot, send] = useMachine(roadmapBuild, { input: { slug } });
+  const { data, error, retryFailed } = snapshot.context;
 
   const ready = !data?.build || data.build.state === "ready";
   const start = data?.sections.flatMap((section) => section.lessons
     .filter((lesson) => lesson.writeState === "ready" && lesson.missingPrerequisites.length === 0 && lesson.done < lesson.total)
     .map((lesson) => ({ course: section.slug, lesson: lesson.slug })))[0];
 
-  const retry = async () => {
-    setRetryFailed(false);
-    try {
-      await trpc.paths.retryBuild.mutate({ slug });
-      reload();
-    } catch {
-      setRetryFailed(true);
-    }
-  };
-
   return (
     <div className="lq lq-moon">
       <main className="lq-roadmap">
-        <nav aria-label="Main"><Link to="/">Home</Link> · <Link to="/explore">Explore</Link></nav>
-        {error ? <p role="alert">{isNotFound(error) ? "We couldn't find that path." : "Couldn't load this roadmap."}</p>
-          : !data ? <Spinner /> : <>
-            <header>
+        <nav className="lq-roadmap-nav" aria-label="Main">
+          <Link to="/"><ArrowLeft size={16} aria-hidden="true" /> Home</Link><Link to="/explore">Explore</Link>
+        </nav>
+        {!data ? (error ? <div className="lq-card lq-roadmap-panel">
+          <p role="alert">{isNotFound(error) ? "We couldn't find that path." : "Couldn't load this roadmap."}</p>
+          {!isNotFound(error) ? <button type="button" className="lq-btn lq-btn-surface" disabled={snapshot.matches("loading")} onClick={() => send({ type: "REFRESH" })}>Try again</button> : null}
+        </div> : <Spinner />) : <>
+            <header className="lq-roadmap-heading">
               <h1>{data.title}</h1>
-              <p className="lq-tagline">{data.tagline}</p>
+              {data.tagline ? <p className="lq-tagline">{data.tagline}</p> : null}
             </header>
+            {data.build && !ready ? <BuildPanel build={data.build} busy={!snapshot.matches("loaded")}
+              retryFailed={retryFailed} retry={() => send({ type: "RETRY" })} /> : null}
+            {error ? <div className="lq-roadmap-actions">
+              <p role="status">Couldn't refresh build progress.</p>
+              <button type="button" className="lq-btn lq-btn-surface" disabled={snapshot.matches("loading")} onClick={() => send({ type: "REFRESH" })}>Refresh</button>
+            </div> : null}
             {data.roadmap && (
               <div className="lq-card lq-roadmap-panel">
                 <h2>Starting point</h2>
@@ -62,17 +99,6 @@ export default function Roadmap() {
             )}
             {ready && start && data.build && (
               <div><Link to="/lessons" search={{ ...start, path: slug }} state={{ lessonEntrySource: "course_cta" }} className="lq-btn lq-btn-blue">Start</Link></div>
-            )}
-            {data.build && !ready && (
-              <div className="lq-card lq-roadmap-panel" role="status">
-                <p>{data.build.state === "planning" ? "Planning your roadmap…"
-                  : data.build.state === "refused" ? "This topic couldn’t be turned into a learning path. Go back to Home and try a different programming topic."
-                  : data.build.state === "failed" ? `Build paused with ${data.build.ready} of ${data.build.total} lessons ready.`
-                  : `Building ${data.build.ready} of ${data.build.total} lessons.`}</p>
-                {data.build.state !== "refused" && <button type="button" className="lq-btn lq-btn-surface" disabled={loading} onClick={reload}>Check progress</button>}
-                {data.build.state === "failed" && <button type="button" className="lq-btn lq-btn-blue" onClick={() => void retry()}>Retry build</button>}
-                {retryFailed && <p role="alert">Couldn't retry this build. Try again.</p>}
-              </div>
             )}
             {data.sections.length === 0 ? ready && <p>No sections are available.</p> : <>
               <nav className="lq-card lq-roadmap-panel" aria-label="Roadmap sections">
@@ -114,4 +140,9 @@ export default function Roadmap() {
       </main>
     </div>
   );
+}
+
+export default function Roadmap() {
+  const { slug } = useParams({ from: "/paths/$slug" });
+  return <RoadmapPage key={slug} slug={slug} />;
 }

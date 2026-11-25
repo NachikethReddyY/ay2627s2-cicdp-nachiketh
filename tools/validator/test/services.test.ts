@@ -33,6 +33,15 @@ test("service specs list the engine only with --engine and start the API after i
   assert.deepEqual(withEngine, ["fake-llm", "engine", "api", "web"]);
 });
 
+test("validator services override the PostHog settings inherited from local development", () => {
+  const specs = serviceSpecs("/repo", URL, true);
+  const trackedServices = specs.filter(({ name }) => name !== "fake-llm");
+  for (const { env } of trackedServices) {
+    assert.equal(env.POSTHOG_HOST, "");
+    assert.equal(env.POSTHOG_PROJECT_TOKEN, "");
+  }
+});
+
 test("health URLs match the real routes", () => {
   const specs = Object.fromEntries(serviceSpecs("/repo", URL, true).map((s) => [s.name, s]));
   assert.equal(specs.api.healthUrl, "http://localhost:3000/api/healthz");

@@ -42,6 +42,7 @@ type BatchRequest = { topic: string; offset: number; count: number };
 let planned = layout;
 let requested = [variables, scope];
 let rejectOffset: number | null = null;
+let retryAfter: number | undefined;
 let starts: string[] = [];
 let batches: BatchRequest[] = [];
 const engine = createServer((request, response) => {
@@ -54,7 +55,8 @@ const engine = createServer((request, response) => {
     const input = JSON.parse(body) as BatchRequest;
     batches.push(input);
     if (rejectOffset === input.offset) {
-      response.statusCode = 503;
+      response.statusCode = retryAfter === undefined ? 503 : 429;
+      if (retryAfter !== undefined) response.setHeader("retry-after", retryAfter);
       return response.end("{}");
     }
     const lessons = Array.from({ length: input.count }, (_, i) => {
@@ -80,6 +82,7 @@ beforeEach(() => {
   planned = layout;
   requested = [variables, scope];
   rejectOffset = null;
+  retryAfter = undefined;
   starts = [];
   batches = [];
   engineParts.lesson = async ({ lesson }) => {
@@ -146,19 +149,30 @@ test("validates requested topics and prerequisites before enqueuing lessons", as
   assert.equal(batches.length, 0);
 });
 
-test("plans 205 lessons in one section, resumes a failed batch, and keeps different topic levels", async () => {
+test("plans 205 lessons in one section, defers queued builds on a rate limit, and resumes the saved batch", async () => {
   planned = {
     ...layout,
     sections: [{ ...layout.sections[0]!, units: [{ topicId: variables.id, lessonCount: 205 }, { topicId: scope.id, lessonCount: 1 }] }],
   };
   rejectOffset = 12;
-  const { roadmap } = await generate();
+  retryAfter = 90;
+  const { slug, roadmap } = await generate();
+  const other = await generate("queued-path@example.com");
+  await db.execute(sql`
+    UPDATE path_build_jobs SET available_at = now() + interval '30 seconds'
+    WHERE path_id = (SELECT id FROM paths WHERE slug = ${other.slug})`);
   await runPathBuildBatch();
   assert.equal((await roadmap()).sections.length, 0);
   assert.deepEqual(batches.map((batch) => batch.offset), [0, 12]);
+  const { rows: jobs } = await db.execute<{ attempts: number; waiting: boolean }>(sql`
+    SELECT attempts, available_at > now() + interval '85 seconds' AS waiting FROM path_build_jobs`);
+  assert.deepEqual(jobs, [{ attempts: 0, waiting: true }, { attempts: 0, waiting: true }]);
+  assert.equal(await runPathBuildBatch(), 0);
 
   rejectOffset = null;
-  await db.execute(sql`UPDATE path_build_jobs SET available_at = now()`);
+  await db.execute(sql`
+    UPDATE path_build_jobs SET available_at = now()
+    WHERE path_id = (SELECT id FROM paths WHERE slug = ${slug})`);
   await runPathBuildBatch();
   const plan = await roadmap();
   assert.equal(plan.build.total, 206);

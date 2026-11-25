@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 os.environ.setdefault("LITELLM_MODE", "PRODUCTION")
+os.environ["POSTHOG_HOST"] = ""
 
 import litellm  # noqa: E402
 import pytest  # noqa: E402
@@ -25,6 +26,8 @@ def engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None
     monkeypatch.setenv("ENGINE_TOKEN", "x" * 32)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("TOKENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("POSTHOG_API_KEY", raising=False)
+    monkeypatch.delenv("POSTHOG_PROJECT_TOKEN", raising=False)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
