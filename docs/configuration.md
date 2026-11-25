@@ -51,6 +51,8 @@ After a learner reveals a prediction, the API requests MP3 audio from `https://o
 | `PRACTICE_STRETCH_TESTS` | `0` | Number of bonus hacker-edition tests (0 to 10) the engine adds to each practice part. They give bonus points only. |
 | `AI_WRITE_COURSE_ON_GENERATE` | `true` | When `true`, Postgres jobs plan and build the full path, with at most three active jobs across API replicas. Planning checkpoints retain validated batches. A path can use 1–1,000 lessons, with individual planning calls capped at 12 lessons. Spend is reserved before each model request using the existing budget ledger. New lessons build with self-contained visuals. Optional Predict audio remains available after reveal. Set `false` to use the legacy outline and write-on-open flow. |
 
+When `ENGINE_URL` points to an `onrender.com` host, generation calls wake the engine with `GET /healthz`. The readiness check has its own two-minute deadline. The pipeline request uses its configured timeout after the engine responds.
+
 ### How the Daytona backend works
 
 - **Shell:** one sandbox per learner. The API looks up new shells by name and checks their `app=learnquest`, `role=shell` and hashed learner labels. Existing unnamed shells are looked up by label. The API creates a shell if missing, starts it if stopped, then attaches a PTY. Daytona stops idle shells after three minutes by default. Files persist on disk between sessions.

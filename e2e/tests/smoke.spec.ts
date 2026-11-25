@@ -44,6 +44,34 @@ async function signUp(page: Page, email: string, next: string) {
   await page.goto(next);
 }
 
+test("roadmap refreshes progress and retries a failed plan on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  let paused = false;
+  let retried = false;
+  const slug = "test-roadmap";
+  await page.route(/\/api\/trpc\/paths\.get(?:,paths\.get)*\?/, async (route) => {
+    const build = retried ? { state: "building", ready: 1, total: 2 }
+      : { state: paused ? "failed" : "planning", ready: 0, total: 0 };
+    const data = { slug, title: "JavaScript closures and spread", tagline: "", roadmap: null, build, sections: [] };
+    const procedures = new URL(route.request().url()).pathname.split(",");
+    await route.fulfill({ json: procedures.map(() => ({ result: { data } })) });
+  });
+  await page.route("**/api/trpc/paths.retryBuild?*", async (route) => {
+    retried = true;
+    await route.fulfill({ json: [{ result: { data: null } }] });
+  });
+  await signUp(page, newEmail(), `/paths/${slug}`);
+  await expect(page.getByRole("heading", { name: "Planning your roadmap" })).toBeVisible();
+  paused = true;
+  await expect(page.getByRole("heading", { name: "Roadmap planning paused" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  await page.getByRole("button", { name: "Retry build" }).click();
+  await expect(page.getByRole("heading", { name: "Building your lessons" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Lessons ready" })).toHaveAttribute("value", "1");
+  await expect(page.getByText("1 of 2 lessons ready")).toBeVisible();
+  expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
+});
+
 async function checkAdminSpend(page: Page, email: string) {
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin access required" })).toBeVisible();

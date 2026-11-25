@@ -199,6 +199,31 @@ def test_other_litellm_errors_are_502_without_details(
     assert r.json() == {"error": "upstream"}
 
 
+def test_roadmap_rate_limit_preserves_retry_delay(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def fail(**_: Any) -> None:
+        nonlocal calls
+        calls += 1
+        raise litellm.exceptions.RateLimitError(
+            "provider-specific detail",
+            "openai/test",
+            "openai",
+            response=httpx.Response(
+                429, headers={"retry-after": "90"}, request=httpx.Request("POST", "https://test")
+            ),
+        )
+
+    monkeypatch.setattr(litellm, "completion", fail)
+    r = client.post("/v1/pipeline/roadmap-topics", json={"topic": "JavaScript"}, headers=TOKEN)
+    assert r.status_code == 429
+    assert r.headers["retry-after"] == "90"
+    assert r.json() == {"error": "rate_limited"}
+    assert calls == 1
+
+
 def test_chunked_oversize_body_is_413(client: TestClient) -> None:
     def chunks() -> Any:
         for _ in range(70):

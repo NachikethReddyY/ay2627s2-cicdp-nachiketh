@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { db } from "../db/client.ts";
 import { pathBuildJobs } from "../db/schema.ts";
 import { withTx } from "../db/tx.ts";
+import { EngineError } from "../engine-client/client.ts";
 import { CurriculumRefused } from "./curriculum.ts";
 import { LESSON_WRITE_CONCURRENCY, persistCurriculum, planPath, writePlannedLesson } from "./service.ts";
 
@@ -52,10 +53,12 @@ async function runJob(job: Job, token: string) {
   }, HEARTBEAT_MS);
   heartbeat.unref();
 
+  let attempts = job.attempts;
   try {
     const plan = job.topic ? await planPath(job.topic, job.learnerId, job.checkpoint, async (checkpoint) => {
-      const [updated] = await db.update(pathBuildJobs).set({ checkpoint }).where(owned).returning({ id: pathBuildJobs.id });
+      const [updated] = await db.update(pathBuildJobs).set({ checkpoint, attempts: 0 }).where(owned).returning({ id: pathBuildJobs.id });
       if (!updated) throw new Error("Path build lease expired");
+      attempts = 0;
     }) : null;
     if (job.lessonId) await writePlannedLesson(job.lessonId, job.learnerId, { id: job.id, token });
     await withTx(async (tx) => {
@@ -67,15 +70,32 @@ async function runJob(job: Job, token: string) {
   } catch (error) {
     const paused = error instanceof TRPCError && (error.code === "TOO_MANY_REQUESTS" || error.code === "PRECONDITION_FAILED");
     const refused = error instanceof CurriculumRefused;
-    const terminal = refused || paused || job.attempts >= MAX_ATTEMPTS;
-    const delay = 15 * job.attempts;
-    await db.update(pathBuildJobs).set({
-      state: refused ? "refused" : terminal ? "failed" : "pending",
-      availableAt: sql`now() + make_interval(secs => ${delay})`,
-      leaseUntil: null,
-      leaseToken: null,
-    }).where(owned);
-    console.error("Path build job failed", { jobId: job.id, attempt: job.attempts, terminal });
+    const terminal = refused || paused || attempts >= MAX_ATTEMPTS;
+    const cooldown = error instanceof EngineError && error.status === 429
+      ? Math.max(60, Math.min(error.retryAfterSeconds ?? 0, 900)) : null;
+    await withTx(async (tx) => {
+      if (cooldown !== null) await tx.execute(claimLock);
+      const [updated] = await tx.update(pathBuildJobs).set({
+        state: refused ? "refused" : terminal ? "failed" : "pending",
+        availableAt: sql`now() + make_interval(secs => ${cooldown ?? 15 * Math.max(1, attempts)})`,
+        leaseUntil: null,
+        leaseToken: null,
+      }).where(owned).returning({ availableAt: pathBuildJobs.availableAt });
+      if (cooldown !== null && updated) {
+        await tx.execute(sql`
+          UPDATE path_build_jobs SET available_at = ${updated.availableAt.toISOString()}
+          WHERE state = 'pending' AND available_at < ${updated.availableAt.toISOString()}`);
+      }
+    });
+    console.error(JSON.stringify({
+      event: "path_build_failed",
+      stage: job.lessonId ? "lesson" : "planning",
+      jobId: job.id,
+      attemptsSinceProgress: attempts,
+      terminal,
+      engineStatus: error instanceof EngineError ? error.status : undefined,
+      code: error instanceof TRPCError ? error.code : undefined,
+    }));
   } finally {
     clearInterval(heartbeat);
   }
