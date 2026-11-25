@@ -103,6 +103,57 @@ class Outline(BaseModel):
         return self
 
 
+class RequestedTopic(BaseModel):
+    id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9.-]*$", max_length=60)]
+    title: T80
+
+
+class RequestedTopics(BaseModel):
+    refused: Literal[True] | None = None
+    topics: list[RequestedTopic] | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _one_shape(self) -> "RequestedTopics":
+        if bool(self.refused) == bool(self.topics):
+            raise ValueError("Return either a refusal or the requested topics")
+        return self
+
+
+class RoadmapTopic(RequestedTopic):
+    outcome: T300
+    prerequisites: list[T60] = Field(max_length=20)
+
+
+class RoadmapUnit(BaseModel):
+    topicId: T60
+    lessonCount: int = Field(ge=1, le=1000)
+
+
+class RoadmapSection(BaseModel):
+    title: T80
+    description: T300
+    units: list[RoadmapUnit] = Field(min_length=1, max_length=100)
+
+
+class RoadmapLayout(BaseModel):
+    title: T80
+    tagline: T160
+    startingPoint: T300
+    destination: T300
+    topics: list[RoadmapTopic] = Field(min_length=1, max_length=100)
+    sections: list[RoadmapSection] = Field(min_length=1, max_length=100)
+
+
+class RoadmapLesson(BaseModel):
+    title: T80
+    objective: T300
+    kind: Literal["learn", "watch", "predict", "practice", "game-practice", "scrim"]
+
+
+class RoadmapBatch(BaseModel):
+    lessons: list[RoadmapLesson] = Field(min_length=1, max_length=12)
+
+
 class Hunk(BaseModel):
     id: T40
     file: T200
@@ -219,7 +270,8 @@ class _Course(BaseModel):
 
 class _LessonRef(BaseModel):
     title: str = Field(max_length=200)
-    level: int = Field(ge=1, le=5)
+    level: int = Field(ge=1)
+    objective: T300 | None = None
     concepts: list[_Loose200] = Field(max_length=12)
     kind: Literal["predict", "learn", "watch", "practice", "game-practice", "scrim"] = "predict"
 
@@ -227,9 +279,15 @@ class _LessonRef(BaseModel):
 T4000 = Annotated[str, _c(4000)]
 
 
+class LearnWorkedExample(BaseModel):
+    code: Annotated[str, _c(600)]
+    explanation: T400
+
+
 class LearnPart(BaseModel):
     kind: Literal["learn"]
     intro: T500 | None = None
+    workedExample: LearnWorkedExample | None = None
     body: T4000
     doc: dict[str, Any] | None = None
     steps: list[McqStep] = Field(min_length=2, max_length=2)
@@ -238,6 +296,8 @@ class LearnPart(BaseModel):
     def _intro_hides_answer(self, info: ValidationInfo) -> "LearnPart":
         if (info.context or {}).get("requireLearnIntro") and self.intro is None:
             raise ValueError("include a short intro before the opening prediction")
+        if (info.context or {}).get("requireWorkedExample") and self.workedExample is None:
+            raise ValueError("include a separate worked example before the opening prediction")
         opening = self.steps[0]
         answer = opening.options[opening.answer]
         if self.intro and (

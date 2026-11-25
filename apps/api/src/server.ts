@@ -1,3 +1,4 @@
+import { startPathBuildWorker } from "./ai/path-build-worker.ts";
 import { buildApp } from "./app.ts";
 import { env, startupWarnings } from "./env.ts";
 import { sweepOrphanedJobs } from "./imports/runner.ts";
@@ -5,6 +6,7 @@ import { sweepOrphanedJobs } from "./imports/runner.ts";
 const SHUTDOWN_MS = 25_000;
 
 const app = buildApp();
+const stopPathBuildWorker = startPathBuildWorker();
 
 let closing = false;
 async function shutdown(signal: string) {
@@ -16,6 +18,7 @@ async function shutdown(signal: string) {
     process.exit(1);
   }, SHUTDOWN_MS).unref();
   try {
+    await stopPathBuildWorker();
     await app.close();
     process.exit(0);
   } catch (err) {

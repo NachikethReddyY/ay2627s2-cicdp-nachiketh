@@ -34,7 +34,7 @@ export function LessonProgress({ id, course, inline }: { id: string; course: Cou
   );
 }
 
-export function CourseNext({ id, slug, course }: { id: string; slug: string; course: CourseState }) {
+export function CourseNext({ id, slug, path, course }: { id: string; slug: string; path?: string; course: CourseState }) {
   const rec = useApi(`me.next:${slug}`, () => trpc.me.next.query({ world: slug }));
   const { data, error } = course;
   if (error) return <NextLink href={`/courses/${slug}`}>Back to course</NextLink>;
@@ -43,13 +43,17 @@ export function CourseNext({ id, slug, course }: { id: string; slug: string; cou
   const recommended = rec.data?.lessonSlug && rec.data.lessonSlug !== id ? rec.data.lessonSlug : null;
   const fallback = data.lessons.slice(i + 1).find((l) => l.missingPrerequisites.length === 0 && l.done < l.total);
   const next = recommended ?? (rec.error || (rec.data === null && !rec.loading) ? fallback?.slug : undefined);
+  const roadmap = path ? `/paths/${path}#${slug}` : null;
   return (
     <div className="flex flex-col items-center text-center">
       {rec.data && <p className="mt-4 mb-0 text-sm text-[var(--mu)]">{rec.data.reason}</p>}
       {rec.data?.action === "review"
         ? <NextLink href={`/review/${slug}`} action="review">Review</NextLink>
-        : next ? <NextLink href={`/lessons?lesson=${next}&course=${slug}`} action={rec.data?.action === "assess" ? "assess" : "lesson"}>Next</NextLink>
-          : <NextLink href={`/courses/${slug}`}>Back to course</NextLink>}
+        : next ? <NextLink href={`/lessons?lesson=${next}&course=${slug}${path ? `&path=${path}` : ""}`} action={rec.data?.action === "assess" ? "assess" : "lesson"}>Next</NextLink>
+          : data.nextSection && path
+            ? <NextLink href={`/courses/${data.nextSection}?path=${path}`}>Next section</NextLink>
+            : !roadmap && <NextLink href={`/courses/${slug}`}>Back to course</NextLink>}
+      {roadmap && <NextLink href={roadmap}>Back to roadmap</NextLink>}
     </div>
   );
 }

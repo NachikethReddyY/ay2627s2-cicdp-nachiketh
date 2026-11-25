@@ -32,7 +32,7 @@ export default function Generator({ prompt, setPrompt, promptField }: { prompt: 
       posthog?.logger.info("learning path generation completed", { generation_source: "home_generator" });
       waiting.current = false;
       dismissJob();
-      void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } });
+      void navigate({ to: "/paths/$slug", params: { slug: job.pathSlug } });
     }
     if (job.status === "failed" && waiting.current && !failureReported.current) {
       posthog?.logger.warn("learning path generation failed", { generation_failure: job.code });
@@ -100,7 +100,7 @@ export default function Generator({ prompt, setPrompt, promptField }: { prompt: 
         {busy && (
           <p className="lq-msg load">
             <svg className="lq-sketch" width="64" height="28" viewBox="0 0 64 28" aria-hidden="true"><path className="lq-msg-sketch" d="M3 22c8-14 14-14 18-4s10 8 14-2 12-10 26 2" fill="none" strokeWidth={3} strokeLinecap="round" /></svg>
-            Generating your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
+            Setting up your path<span className="lq-blink" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span>
           </p>
         )}
         {queue.length > 0 && (
@@ -110,9 +110,9 @@ export default function Generator({ prompt, setPrompt, promptField }: { prompt: 
         )}
         {job.status === "done" && !waiting.current && (
           <div className="lq-msg load">
-            <span style={{ flex: "1 1 260px" }}>Your path is ready.</span>
-            <button className="lq-btn lq-btn-blue" type="button" onClick={() => { dismissJob(); void navigate({ to: "/courses/$slug", params: { slug: job.courseSlug } }); }}>
-              Open it
+            <span style={{ flex: "1 1 260px" }}>Your path was saved.</span>
+            <button className="lq-btn lq-btn-blue" type="button" onClick={() => { dismissJob(); void navigate({ to: "/paths/$slug", params: { slug: job.pathSlug } }); }}>
+              Open roadmap
             </button>
           </div>
         )}

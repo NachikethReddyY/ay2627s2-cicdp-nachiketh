@@ -1,0 +1,60 @@
+.lq-roadmap {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 56rem;
+  margin-inline: auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.lq-roadmap h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  line-height: 1.1;
+}
+
+.lq-roadmap h2 {
+  font-size: 1.375rem;
+}
+
+.lq-roadmap nav a,
+.lq-roadmap-lesson-link {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.lq-roadmap-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  scroll-margin-top: 1rem;
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 22rem;
+}
+
+.lq-roadmap-panel ol {
+  padding-inline-start: 1.25rem;
+  list-style: decimal;
+}
+
+.lq-roadmap-panel .lq-btn {
+  justify-self: start;
+}
+
+.lq-roadmap-lessons li {
+  padding-block: 0.35rem;
+  border-bottom: 1px solid var(--br);
+}
+
+.lq-roadmap-lessons li > * + * {
+  margin-inline-start: 0.6rem;
+}
+
+.lq-roadmap-lessons li span:first-child,
+.lq-roadmap-lessons li span:last-child {
+  color: var(--mu);
+  font-size: 0.875rem;
+}
+
+.lq-roadmap-panel ul {
+  list-style: disc;
+  padding-inline-start: 1.25rem;
+}

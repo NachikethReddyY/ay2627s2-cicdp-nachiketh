@@ -9,7 +9,7 @@ import type { GeneratedPart } from "../db/schema.ts";
 const ReadSteps = z.tuple([McqStep, McqStep]);
 
 const Part = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("learn"), intro: text(500).nullish(), body: text(4000), doc: z.unknown().optional(), steps: ReadSteps }),
+  z.object({ kind: z.literal("learn"), intro: text(500).nullish(), workedExample: z.object({ code: text(600), explanation: text(400) }).nullish(), body: text(4000), doc: z.unknown().optional(), steps: ReadSteps }),
   z.object({
     kind: z.literal("watch"),
     beforeFiles: z.record(text(200), z.string().max(6000)).refine((f) => Object.keys(f).length >= 1 && Object.keys(f).length <= 4),
@@ -42,12 +42,19 @@ export function validatePart(raw: unknown): GeneratedPart {
       for (const step of part.steps) checkStep(step);
       const opening = part.steps[0];
       const answer = opening.options[opening.answer];
-      if (part.intro && (part.intro.toLowerCase() === answer.toLowerCase() || containsMcqOption(part.intro, answer)))
+      const example = part.workedExample;
+      const preview = [part.intro, example?.code, example?.explanation].filter(Boolean);
+      if (example?.code.includes("```")) throw new Error("Supply the worked example code without Markdown fences");
+      if (example && part.steps.some((step) => Object.values(step.beforeFiles).some((file) => file.trim() === example.code.trim()))) {
+        throw new Error("Use a fresh example for each check");
+      }
+      if (preview.some((line) => line?.toLowerCase() === answer.toLowerCase() || (line && containsMcqOption(line, answer))))
         throw new Error("The intro repeats the opening prediction answer. Give context only.");
       const parsed = part.doc === undefined ? null : parseSpec(part.doc);
       return {
         kind: "learn", body: part.body, steps: part.steps,
         ...(part.intro ? { intro: part.intro } : {}),
+        ...(example ? { workedExample: example } : {}),
         ...(parsed?.ok ? { doc: dropClientImages(parsed.spec) } : {}),
       };
     }

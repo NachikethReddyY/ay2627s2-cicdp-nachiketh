@@ -156,6 +156,7 @@ export const paths = pgTable(
   slug: text("slug").notNull().unique(),
   title: text("title").notNull(),
   tagline: text("tagline").notNull().default(""),
+  roadmap: jsonb("roadmap").$type<{ startingPoint: string; destination: string; topics: { title: string; outcome: string }[] }>(),
   ownerId: ownerId(),
   visibility: visibility(),
   origin: origin(),
@@ -274,7 +275,7 @@ export type LessonSource = { repo: string; sha: string; path: string };
 
 export type Hunk = { id: string; file: string; oldStart: number; lines: string[] };
 export type PartSecret =
-  | { kind: "learn"; intro?: string; body: string; doc?: Spec }
+  | { kind: "learn"; intro?: string; workedExample?: { code: string; explanation: string }; body: string; doc?: Spec }
   | { kind: "watch"; beforeFiles: Record<string, string>; hunks: Hunk[] }
   | {
       kind: "practice";
@@ -302,6 +303,7 @@ export const lessons = pgTable(
     .notNull()
     .references(() => worlds.id),
   title: text("title").notNull(),
+  objective: text("objective"),
   level: integer("level").notNull().default(1),
   position: integer("position").notNull().default(0),
   sourceKind: text("source_kind", { enum: ["repo", "authored", "ai"] }).notNull(),
@@ -319,6 +321,26 @@ export const lessons = pgTable(
   },
   (t) => [index("lessons_world_order").on(t.worldId, t.level, t.position)],
 );
+
+export const pathBuildJobs = pgTable("path_build_jobs", {
+  id: id(),
+  pathId: text("path_id").notNull().references(() => paths.id, { onDelete: "cascade" }),
+  learnerId: text("learner_id").notNull().references(() => learners.id, { onDelete: "cascade" }),
+  lessonId: text("lesson_id").references(() => lessons.id, { onDelete: "cascade" }),
+  topic: text("topic"),
+  checkpoint: jsonb("checkpoint"),
+  state: text("state", { enum: ["pending", "writing", "failed", "ready", "refused"] }).notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  leaseToken: text("lease_token"),
+}, (t) => [
+  index("path_build_jobs_path").on(t.pathId),
+  index("path_build_jobs_queue").on(t.state, t.availableAt),
+  uniqueIndex("path_build_jobs_lesson").on(t.lessonId),
+  uniqueIndex("path_build_jobs_plan").on(t.pathId).where(sql`${t.lessonId} IS NULL`),
+  check("path_build_jobs_kind", sql`(${t.lessonId} IS NULL) <> (${t.topic} IS NULL)`),
+]);
 
 export const lessonVersions = pgTable(
   "lesson_versions",

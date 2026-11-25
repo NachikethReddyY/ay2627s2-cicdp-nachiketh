@@ -85,6 +85,23 @@ test("outline creates a private path, courses, draft lessons and an enrollment",
   assert.equal(out(await other.q("paths.list", { scope: "community" })).length, 0);
 });
 
+test("the path roadmap preserves recorded section order and shows each lesson's readiness and progress", async () => {
+  const { t, slug, firstCourseSlug, lessons: planned } = await setup();
+  const first = out(await openGeneratedLesson(t, { id: planned[0]!.slug }));
+  const [learner] = await db.select({ id: learners.id }).from(learners);
+  await db.execute(sql`INSERT INTO part_completions (lesson_id, learner_id) SELECT id, ${learner!.id} FROM lessons WHERE slug = ${first.id}`);
+  const roadmap = out(await t.q("paths.get", { slug }));
+  assert.equal(roadmap.sections[0].slug, firstCourseSlug);
+  assert.deepEqual(roadmap.sections.map((section: { title: string }) => section.title), ["Course 0", "Course 1"]);
+  assert.deepEqual(roadmap.sections[0].lessons.map((lesson: { title: string; done: number; writeState: string }) =>
+    [lesson.title, lesson.done, lesson.writeState]), [
+    ["Lesson 0.1", 1, "ready"], ["Lesson 0.2", 0, "pending"], ["Lesson 0.3", 0, "pending"],
+  ]);
+  assert.equal(roadmap.sections[1].lessons.length, 3);
+  const stranger = trpc(app, await signUp(app, "roadmap-stranger@example.com"));
+  assert.equal(code(await stranger.q("paths.get", { slug })), "NOT_FOUND");
+});
+
 test("an outline can schedule a prediction lesson", async () => {
   generator.outline = async () => ({
     ...outline,

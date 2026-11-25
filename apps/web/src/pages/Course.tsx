@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { Check, ChevronDown, Lock, Star } from "lucide-react";
 import { useApi, type CourseData } from "../lib/api";
 import { authClient } from "../lib/auth";
@@ -29,7 +29,8 @@ function useWide() {
 
 export default function Course() {
   const { slug } = useParams({ from: "/courses/$slug" });
-  const { data, error, reload } = useApi(`course:${slug}`, () => trpc.courses.get.query({ slug }));
+  const { path } = useSearch({ from: "/courses/$slug" });
+  const { data, error, reload } = useApi(`course:${slug}:${path ?? ""}`, () => trpc.courses.get.query({ slug, path }));
   const { data: session } = authClient.useSession();
   const wide = useWide();
   const [open, setOpen] = useState<string | null>(null);
@@ -66,6 +67,7 @@ export default function Course() {
     body = (
       <div className="course-wrap">
         <section className="chunk course-head">
+          {path && <Link to="/paths/$slug" params={{ slug: path }} hash={slug} className="underline">Back to roadmap</Link>}
           <p className="course-eyebrow">
             <span className="course-badge">Course</span>
             <span className="course-eyebrow-n">
@@ -136,7 +138,7 @@ export default function Course() {
                         const cta = l.kind === "scrim"
                           ? state === "done" ? "Reopen Scrim" : l.done > 0 ? "Continue Scrim" : "Start Scrim"
                           : state === "done" ? "Review" : l.done > 0 ? "Continue" : "Start";
-                        return <LessonNode key={l.slug} l={l} slug={slug} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} onWritten={reload} />;
+                        return <LessonNode key={l.slug} l={l} slug={slug} path={path} state={state} x={xs[i]} cta={cta} open={open === l.slug} setOpen={setOpen} onWritten={reload} />;
                       })}
                     </ol>
                   </div>
@@ -152,7 +154,7 @@ export default function Course() {
               <p className="course-cta-meta">Level {current.level} · Lesson {data.lessons.filter((l) => l.level === current.level).indexOf(current) + 1}</p>
               <p className="course-cta-title">{current.title}</p>
             </div>
-            <Link to="/lessons" search={{ lesson: current.slug, course: slug }} state={{ lessonEntrySource: "course_cta" }} className="btn course-cta-btn">
+            <Link to="/lessons" search={{ lesson: current.slug, course: slug, path }} state={{ lessonEntrySource: "course_cta" }} className="btn course-cta-btn">
               {current.done > 0 ? "Continue" : "Start"}
             </Link>
           </div>
