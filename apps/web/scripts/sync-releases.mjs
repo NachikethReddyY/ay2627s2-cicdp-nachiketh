@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 const REPO = "NachikethReddyY/ay2627s2-cicdp-nachiketh";
 const OUT = fileURLToPath(new URL("../src/pages/changelog-releases.generated.ts", import.meta.url));
 
+if (process.env.LEARNSLOP_USE_CACHED_RELEASES === "1" && existsSync(OUT)) process.exit(0);
+
 const headers = { Accept: "application/vnd.github+json", "User-Agent": "learnslop-changelog" };
 if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 

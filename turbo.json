@@ -3,6 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": ["LEARNSLOP_USE_CACHED_RELEASES"],
       "outputs": ["dist/**"]
     },
     "dev": {

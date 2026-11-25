@@ -72,6 +72,34 @@ test("roadmap refreshes progress and retries a failed plan on mobile", async ({ 
   expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
 });
 
+test("completed roadmap presents progress and accessible lesson links on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  const slug = "test-completed-roadmap";
+  await page.route(/\/api\/trpc\/paths\.get(?:,paths\.get)*\?/, async (route) => {
+    const data = {
+      slug, title: "JavaScript path", tagline: "Learn JavaScript",
+      roadmap: { startingPoint: "No experience needed", destination: "Build a program", topics: [{ title: "Values", outcome: "Read values" }] },
+      build: { state: "ready", ready: 2, total: 2 },
+      sections: [{ slug: "foundations", title: "Foundations", description: "Learn the basics", origin: "generated", lessons: [
+        { slug: "values", title: "Learn: Values", kind: "learn", level: 1, done: 1, total: 1, writeState: "ready", missingPrerequisites: [] },
+        { slug: "variables", title: "Variables", kind: "learn", level: 2, done: 0, total: 1, writeState: "ready", missingPrerequisites: ["values"] },
+      ] }],
+    };
+    const procedures = new URL(route.request().url()).pathname.split(",");
+    await route.fulfill({ json: procedures.map(() => ({ result: { data } })) });
+  });
+  await signUp(page, newEmail(), `/paths/${slug}`);
+  await expect(page.getByRole("heading", { name: "Where you’re headed" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Lessons completed" })).toHaveAttribute("value", "1");
+  await expect(page.getByText("1 of 2 lessons complete").first()).toBeVisible();
+  await page.getByText("Explore the topics").click();
+  await expect(page.getByText("Read values")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Values", exact: true })).toBeVisible();
+  await expect(page.getByText("Requires: values")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Variables" })).toHaveCount(0);
+  expect(await page.evaluate("document.documentElement.scrollWidth")).toBe(375);
+});
+
 async function checkAdminSpend(page: Page, email: string) {
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Admin access required" })).toBeVisible();
