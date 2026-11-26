@@ -24,17 +24,17 @@
     "index": "node tools/repo-index/src/cli.ts index"
   },
   "devDependencies": {
-    "@babel/parser": "^8.1.2",
-    "@babel/traverse": "^8.1.2",
-    "@babel/types": "^8.1.2",
+    "@babel/parser": "^8.1.3",
+    "@babel/traverse": "^8.1.3",
+    "@babel/types": "^8.1.3",
     "@types/node": "^26.6.6",
     "oxlint": "^1.94.0",
-    "oxlint-tsgolint": "^7.0.2007",
-    "turbo": "^2.11.11",
+    "oxlint-tsgolint": "^7.0.2008",
+    "turbo": "^2.11.13",
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@neon/config": "^1.14.1",
-    "@neon/env": "^2.1.4"
+    "@neon/config": "^1.14.6",
+    "@neon/env": "^2.1.9"
   }
 }
